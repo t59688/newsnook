@@ -71,7 +71,7 @@ newsnook/
 | 代理 / 网络 | `features/proxy/` · `lib/http.ts` · `vite.config.ts` · `functions/` |
 | 跟贴 | `features/comments/` |
 | 墨水屏 | `lib/eink.ts` · `hooks/usePagedReader.ts` · `index.css` 中 `[data-eink]` |
-| 主题 / 排版 | `lib/theme.ts` · `sources/preferences.ts` · `index.css` |
+| 主题 / 排版 | `lib/theme.ts`（明暗 + 风格方案注册表） · `lib/customScheme.ts`（自定义配色推导） · `sources/preferences.ts` · `index.css`（`data-scheme` 方案块） |
 | 应用更新 | `features/appUpdate/` |
 | Android 构建 / 签名 | `docs/android-build.md` · `scripts/android-*.mjs` |
 | 产品设计背景 | `docs/superpowers/specs/` |

@@ -57,6 +57,7 @@
     "test:finance-sources": "npx tsx scripts/finance-sources.test.ts",
     "test:high-signal": "npx tsx scripts/high-signal-sources.test.ts",
     "test:eink": "npx tsx scripts/eink-mode.test.ts",
+    "test:theme": "npx tsx scripts/theme-schemes.test.ts",
     "test:wifi-media": "npx tsx scripts/wifi-only-media.test.ts",
     "bergamot:init": "node scripts/bergamot-init.mjs",
     "preview": "vite preview",

@@ -10,7 +10,13 @@ import { setRuntimeProxyPrefs } from '../lib/http'
 import { setRuntimeWifiOnlyAutoLoadMedia } from '../lib/mediaLoadRuntime'
 import { loadPreferences, savePreferences } from '../lib/storage'
 import { applyEinkMode } from '../lib/eink'
-import { applyTheme, resolveTheme, watchSystemTheme, type ResolvedTheme } from '../lib/theme'
+import {
+  applyTheme,
+  applyThemeScheme,
+  resolveTheme,
+  watchSystemTheme,
+  type ResolvedTheme,
+} from '../lib/theme'
 import {
   FONT_FAMILY_OPTIONS,
   normalizePreferences,
@@ -73,6 +79,7 @@ export function usePreferences(): PreferencesApi {
   const [resolvedTheme, setResolvedTheme] = useState<ResolvedTheme>(() => resolveTheme(prefs.theme))
   // 首屏主题已由 main.tsx 应用，这里只负责后续变更，避免启动时多一次过渡
   const themeApplied = useRef(false)
+  const schemeApplied = useRef(false)
 
   useEffect(() => {
     savePreferences(prefs)
@@ -85,6 +92,14 @@ export function usePreferences(): PreferencesApi {
   useEffect(() => {
     applyEinkMode(Boolean(prefs.einkMode))
   }, [prefs.einkMode])
+
+  useEffect(() => {
+    applyThemeScheme(prefs.scheme, {
+      animate: schemeApplied.current && !prefs.einkMode,
+      custom: prefs.customScheme,
+    })
+    schemeApplied.current = true
+  }, [prefs.scheme, prefs.customScheme, prefs.einkMode, resolvedTheme])
 
   useEffect(() => {
     const sync = () => {

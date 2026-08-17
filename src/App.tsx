@@ -28,7 +28,7 @@ import {
 } from './lib/storage'
 import { chineseDate } from './lib/time'
 import type { Article } from './lib/types'
-import { THEME_MODES } from './lib/theme'
+import { THEME_MODES, THEME_SCHEMES, schemeSeedColors } from './lib/theme'
 import { ChannelsScreen } from './screens/ChannelsScreen'
 import { FeedScreen } from './screens/FeedScreen'
 import { MeScreen } from './screens/MeScreen'
@@ -36,6 +36,7 @@ import { AboutScreen } from './screens/settings/AboutScreen'
 import { ChangelogScreen } from './screens/settings/ChangelogScreen'
 import { OpenSourceScreen } from './screens/settings/OpenSourceScreen'
 import { AppearanceScreen } from './screens/settings/AppearanceScreen'
+import { CustomSchemeScreen } from './screens/settings/CustomSchemeScreen'
 import { CategorySettingsScreen } from './screens/settings/CategorySettingsScreen'
 import { CategorySourcesScreen } from './screens/settings/CategorySourcesScreen'
 import { CategoryEditScreen } from './screens/settings/CategoryEditScreen'
@@ -79,6 +80,8 @@ import {
   setCategoryOrder,
   setEinkMode,
   setWifiOnlyAutoLoadMedia,
+  selectThemeScheme,
+  setCustomSchemeColors,
   setThemeMode,
   sourceIdsForCategoryWithPrefs,
   toggleCategorySource,
@@ -125,6 +128,7 @@ type SettingsRoute =
   | { name: 'channels' }
   | { name: 'typography' }
   | { name: 'appearance' }
+  | { name: 'custom-scheme' }
   | { name: 'storage' }
   | { name: 'translation' }
   | { name: 'proxy' }
@@ -351,6 +355,10 @@ export default function App() {
       }
       if (settingsRoute?.name === 'changelog' || settingsRoute?.name === 'licenses') {
         setSettingsRoute({ name: 'about' })
+        return
+      }
+      if (settingsRoute?.name === 'custom-scheme') {
+        setSettingsRoute({ name: 'appearance' })
         return
       }
       if (settingsRoute) {
@@ -585,11 +593,14 @@ export default function App() {
 
   const appearanceSummary = useMemo(() => {
     const mode = THEME_MODES.find((item) => item.id === prefs.theme)
+    const scheme = THEME_SCHEMES.find((item) => item.id === prefs.scheme)
     const current = resolvedTheme === 'dark' ? '夜读深色' : '昼读浅色'
-    return prefs.theme === 'system'
-      ? `跟随系统 · 当前${current}`
-      : `${mode?.label ?? '夜读'} · ${mode?.caption ?? ''}`
-  }, [prefs.theme, resolvedTheme])
+    const themeSummary =
+      prefs.theme === 'system'
+        ? `跟随系统 · 当前${current}`
+        : `${mode?.label ?? '夜读'} · ${mode?.caption ?? ''}`
+    return `${scheme?.label ?? '墨问'} · ${themeSummary}`
+  }, [prefs.scheme, prefs.theme, resolvedTheme])
 
   const translationSummary = useMemo(
     () =>
@@ -624,10 +635,25 @@ export default function App() {
         <AppearanceScreen
           theme={prefs.theme}
           resolved={resolvedTheme}
+          scheme={prefs.scheme}
+          customScheme={prefs.customScheme}
           einkMode={Boolean(prefs.einkMode)}
           onChange={(theme) => update((prev) => setThemeMode(prev, theme))}
+          onSchemeChange={(scheme) => update((prev) => selectThemeScheme(prev, scheme))}
+          onEditCustomScheme={() => setSettingsRoute({ name: 'custom-scheme' })}
           onEinkModeChange={(enabled) => update((prev) => setEinkMode(prev, enabled))}
           onBack={() => setSettingsRoute(null)}
+        />
+      )
+    }
+
+    if (settingsRoute.name === 'custom-scheme') {
+      return (
+        <CustomSchemeScreen
+          customScheme={prefs.customScheme ?? schemeSeedColors('ink')}
+          resolved={resolvedTheme}
+          onChange={(mode, colors) => update((prev) => setCustomSchemeColors(prev, mode, colors))}
+          onBack={() => setSettingsRoute({ name: 'appearance' })}
         />
       )
     }

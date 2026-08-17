@@ -189,6 +189,99 @@
   --color-haze: var(--tone-haze);
 }
 
+/*
+ * 风格方案（data-scheme）
+ *
+ * 与 data-theme 正交：同一套语义 token，不同配色与展示字体。
+ * --tone-cinnabar 是「主题强调色」语义 token（名称保留兼容，各方案取色不同）。
+ * 未命中任何方案块时（data-scheme 缺省或为 ink），上方 [data-theme] 两块即墨问。
+ *
+ * 选择器写双联：既命中 <html> 根节点，也命中方案根下局部强制深/浅的子树
+ * （图片查看器、视频播放器的 data-theme="dark"）。
+ */
+
+/* 天青 · 夜：窑黛深釉，月白字，青瓷青一点 */
+[data-scheme='celadon'][data-theme='dark'],
+[data-scheme='celadon'] [data-theme='dark'] {
+  color-scheme: dark;
+
+  --tone-paper-rgb: 222 229 223;
+  --tone-ink-rgb: 18 24 23;
+  --tone-ink-raised-rgb: 26 34 32;
+  --tone-ink-deep-rgb: 11 16 15;
+  --tone-paper-muted-rgb: 149 162 155;
+  --tone-paper-faint-rgb: 107 120 113;
+  --tone-cinnabar-rgb: 143 179 174;
+  --tone-cinnabar-soft-rgb: 163 196 190;
+
+  --tone-ink: #121817;
+  --tone-ink-raised: #1a2220;
+  --tone-ink-deep: #0b100f;
+  --tone-paper: #dee5df;
+  --tone-paper-muted: #95a29b;
+  --tone-paper-faint: #6b7871;
+  --tone-cinnabar: #8fb3ae;
+  --tone-cinnabar-soft: #a3c4be;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 12px 40px -16px rgb(0 0 0 / 0.85);
+  --dim-hidden: brightness(0.72);
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 天青 · 昼：汝窑釉面，黛墨，单色青的克制 */
+[data-scheme='celadon'][data-theme='light'],
+[data-scheme='celadon'] [data-theme='light'] {
+  color-scheme: light;
+
+  --tone-paper-rgb: 31 36 38;
+  --tone-ink-rgb: 230 235 232;
+  --tone-ink-raised-rgb: 240 244 241;
+  --tone-ink-deep-rgb: 211 219 214;
+  --tone-paper-muted-rgb: 84 96 91;
+  --tone-paper-faint-rgb: 120 133 127;
+  --tone-cinnabar-rgb: 62 102 99;
+  --tone-cinnabar-soft-rgb: 79 122 118;
+
+  --tone-ink: #e6ebe8;
+  --tone-ink-raised: #f0f4f1;
+  --tone-ink-deep: #d3dbd6;
+  --tone-paper: #1f2426;
+  --tone-paper-muted: #54605b;
+  --tone-paper-faint: #78857f;
+  --tone-cinnabar: #3e6663;
+  --tone-cinnabar-soft: #4f7a76;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.1);
+
+  --tone-body-text: #23282a;
+  --tone-quote-text: #4f5b56;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 14px 34px -18px rgb(52 72 66 / 0.32);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
 /* 安全区变量：优先取 Android 原生注入的高度，回退取 CSS env() */
 :root {
   --sat: max(var(--sat-native, 0px), env(safe-area-inset-top, 0px));

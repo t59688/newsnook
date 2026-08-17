@@ -101,7 +101,7 @@
         }
       })()
 
-      // 在样式表生效前定好明暗。启动阶段不改 theme-color，避免状态栏闪米白。
+      // 在样式表生效前定好明暗与风格方案。启动阶段不改 theme-color，避免状态栏闪米白。
       // 数据源是 localStorage 镜像，真实偏好稍后由 main.tsx 再校准一次。
       ;(function () {
         document.documentElement.dataset.boot = 'splash'
@@ -116,6 +116,10 @@
                 ? 'dark'
                 : 'light'
           document.documentElement.dataset.theme = resolved
+          // 方案白名单与 src/lib/theme.ts 的 ThemeScheme 保持一致，非法值兜底墨问
+          var scheme = saved && saved.scheme
+          document.documentElement.dataset.scheme =
+            scheme === 'celadon' || scheme === 'custom' ? scheme : 'ink'
           if (saved && saved.einkMode === true) {
             document.documentElement.dataset.eink = '1'
           } else {
@@ -123,6 +127,7 @@
           }
         } catch (error) {
           document.documentElement.dataset.theme = 'dark'
+          document.documentElement.dataset.scheme = 'ink'
           delete document.documentElement.dataset.eink
         }
       })()

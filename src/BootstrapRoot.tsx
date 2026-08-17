@@ -12,7 +12,7 @@ import {
   loadPreferences,
   markStartupSplashSeen,
 } from './lib/storage'
-import { applyTheme, THEME_SURFACE } from './lib/theme'
+import { applyTheme, applyThemeScheme, themeSurface } from './lib/theme'
 import { normalizePreferences } from './sources/preferences'
 
 const SPLASH_ENABLED = Capacitor.getPlatform() === 'android' || import.meta.env.DEV
@@ -25,7 +25,9 @@ async function bootstrap(): Promise<void> {
   await hydrateNativeStorage()
   bootMark('hydrate-done')
   bootMeasure('hydrate', 'hydrate-start', 'hydrate-done')
-  const theme = applyTheme(normalizePreferences(loadPreferences()).theme)
+  const prefs = normalizePreferences(loadPreferences())
+  applyThemeScheme(prefs.scheme, { custom: prefs.customScheme })
+  const theme = applyTheme(prefs.theme)
   await applyNativeChrome(theme)
   bootMark('chrome-done')
 }
@@ -46,10 +48,12 @@ function clearBootSplashShell(): void {
 /** 启动页结束：允许按真实主题着色状态栏 / theme-color */
 async function endSplashBoot(): Promise<void> {
   delete document.documentElement.dataset.boot
-  const theme = applyTheme(normalizePreferences(loadPreferences()).theme)
+  const prefs = normalizePreferences(loadPreferences())
+  applyThemeScheme(prefs.scheme, { custom: prefs.customScheme })
+  const theme = applyTheme(prefs.theme)
   document
     .querySelector<HTMLMetaElement>('meta[name="theme-color"]')
-    ?.setAttribute('content', THEME_SURFACE[theme])
+    ?.setAttribute('content', themeSurface(prefs.scheme, theme))
   await applyNativeChrome(theme)
 }
 

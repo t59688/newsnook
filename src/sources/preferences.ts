@@ -5,7 +5,22 @@
  * 因此后续增删分类或信源时，旧偏好不会失效，也不需要写迁移脚本。
  */
 
-import { DEFAULT_THEME_MODE, isThemeMode, type ThemeMode } from '../lib/theme'
+import {
+  DEFAULT_THEME_MODE,
+  DEFAULT_THEME_SCHEME,
+  isThemeMode,
+  isThemeScheme,
+  schemeSeedColors,
+  type ThemeMode,
+  type ThemeScheme,
+} from '../lib/theme'
+import {
+  DEFAULT_CUSTOM_SCHEME,
+  normalizeCustomScheme,
+  type CustomSchemeColors,
+  type CustomSchemePrefs,
+} from '../lib/customScheme'
+import type { ResolvedTheme } from '../lib/theme'
 import {
   DEFAULT_TRANSLATION_PREFS,
   normalizeTranslationPrefs,
@@ -50,6 +65,10 @@ export interface Preferences {
   customSources?: NewsSource[]
   typography: TypographyPrefs
   theme: ThemeMode
+  /** 风格方案：与明暗正交的配色主题，见 lib/theme.ts */
+  scheme: ThemeScheme
+  /** 自定义配色（scheme === 'custom' 时生效）：昼/夜各一组底色与强调色 */
+  customScheme?: CustomSchemePrefs
   translation: TranslationPrefs
   proxy: ProxyPrefs
   /** 切换/滑动到分类页时是否自动刷新（关闭时保留滚动阅读位置） */
@@ -112,6 +131,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   customSources: [],
   typography: DEFAULT_TYPOGRAPHY,
   theme: DEFAULT_THEME_MODE,
+  scheme: DEFAULT_THEME_SCHEME,
   translation: DEFAULT_TRANSLATION_PREFS,
   proxy: DEFAULT_PROXY_PREFS,
   autoRefreshOnCategorySwitch: true,
@@ -262,6 +282,16 @@ export function normalizePreferences(raw: unknown): Preferences {
     ? uniqueValid(input.hiddenCategoryIds, allCategoryIds)
     : [...DEFAULT_HIDDEN_CATEGORY_IDS]
 
+  const scheme = isThemeScheme(input.scheme) ? input.scheme : DEFAULT_THEME_SCHEME
+  let customScheme = normalizeCustomScheme(input.customScheme)
+  // 选了自定义但还没有配色数据（例如同步来的旧偏好）：从墨问种子起步
+  if (scheme === 'custom' && !customScheme) {
+    customScheme = {
+      light: { ...DEFAULT_CUSTOM_SCHEME.light },
+      dark: { ...DEFAULT_CUSTOM_SCHEME.dark },
+    }
+  }
+
   return {
     categoryOrder: uniqueValid(input.categoryOrder, allCategoryIds),
     // 至少保留一个可见分类，否则首页无内容可选
@@ -270,6 +300,8 @@ export function normalizePreferences(raw: unknown): Preferences {
     customCategories,
     customSources,
     theme: isThemeMode(input.theme) ? input.theme : DEFAULT_THEME_MODE,
+    scheme,
+    customScheme,
     translation: normalizeTranslationPrefs(input.translation),
     proxy: normalizeProxyPrefs(input.proxy),
     autoRefreshOnCategorySwitch:
@@ -854,6 +886,36 @@ export function resetCategoryLayout(
 
 export function setThemeMode(prefs: Preferences, theme: ThemeMode): Preferences {
   return prefs.theme === theme ? prefs : { ...prefs, theme }
+}
+
+export function setThemeScheme(prefs: Preferences, scheme: ThemeScheme): Preferences {
+  return prefs.scheme === scheme ? prefs : { ...prefs, scheme }
+}
+
+/**
+ * 选择方案；首次选「自定义」时从当前方案复制种子色，让编辑器有可见的起点。
+ * （外观页与编辑器都走这个入口）
+ */
+export function selectThemeScheme(prefs: Preferences, scheme: ThemeScheme): Preferences {
+  if (scheme === 'custom' && !prefs.customScheme) {
+    return { ...setThemeScheme(prefs, scheme), customScheme: schemeSeedColors(prefs.scheme) }
+  }
+  return setThemeScheme(prefs, scheme)
+}
+
+/** 更新自定义配色中某一档（昼/夜）的底色与强调色 */
+export function setCustomSchemeColors(
+  prefs: Preferences,
+  mode: ResolvedTheme,
+  colors: CustomSchemeColors,
+): Preferences {
+  const current = prefs.customScheme ?? {
+    light: { ...DEFAULT_CUSTOM_SCHEME.light },
+    dark: { ...DEFAULT_CUSTOM_SCHEME.dark },
+  }
+  const existing = current[mode]
+  if (existing.ink === colors.ink && existing.accent === colors.accent) return prefs
+  return { ...prefs, customScheme: { ...current, [mode]: colors } }
 }
 
 export function setEinkMode(prefs: Preferences, enabled: boolean): Preferences {
