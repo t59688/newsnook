@@ -1,5 +1,6 @@
 package com.aizeek.newsnook;
 
+import android.net.Network;
 import android.util.Base64;
 import java.io.BufferedInputStream;
 import java.io.BufferedOutputStream;
@@ -71,13 +72,17 @@ final class CastMediaProxy implements Closeable {
         return INSTANCE;
     }
 
-    SessionHandle openSession(String targetUrl, String rendererHost) throws IOException {
+    SessionHandle openSession(
+        String targetUrl,
+        String rendererHost,
+        Network lanNetwork
+    ) throws IOException {
         if (!isHttpUrl(targetUrl)) {
             throw new IOException("Only HTTP(S) media can be cast");
         }
 
         int localPort = ensureStarted();
-        String publicHost = resolveReachableLocalHost(rendererHost);
+        String publicHost = resolveReachableLocalHost(rendererHost, lanNetwork);
         String token = newToken();
         String publicBase = "http://" + hostForUrl(publicHost) + ":" + localPort + "/cast/" + token;
         MediaSnifferPlugin.PlaybackContext playbackContext =
@@ -498,9 +503,13 @@ final class CastMediaProxy implements Closeable {
         output.write((value + "\r\n").getBytes(StandardCharsets.ISO_8859_1));
     }
 
-    private static String resolveReachableLocalHost(String rendererHost) throws IOException {
-        InetAddress renderer = InetAddress.getByName(rendererHost);
+    private static String resolveReachableLocalHost(String rendererHost, Network lanNetwork)
+        throws IOException {
+        InetAddress[] rendererAddresses = lanNetwork.getAllByName(rendererHost);
+        if (rendererAddresses.length == 0) throw new IOException("无法解析投屏设备地址");
+        InetAddress renderer = rendererAddresses[0];
         try (DatagramSocket routeProbe = new DatagramSocket()) {
+            lanNetwork.bindSocket(routeProbe);
             routeProbe.connect(renderer, 9);
             InetAddress local = routeProbe.getLocalAddress();
             if (isUsableLocalAddress(local)) return local.getHostAddress();

@@ -2,9 +2,15 @@ package com.aizeek.newsnook;
 
 import android.Manifest;
 import android.content.Context;
+import android.net.ConnectivityManager;
+import android.net.LinkAddress;
+import android.net.LinkProperties;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.PowerManager;
+import android.util.Log;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
@@ -19,10 +25,14 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.MulticastSocket;
+import java.net.NetworkInterface;
+import java.net.Proxy;
 import java.net.SocketTimeoutException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -67,6 +77,12 @@ public class DlnaCastPlugin extends Plugin {
     private static final int MIN_DISCOVERY_MS = 800;
     private static final int MAX_DISCOVERY_MS = 6000;
     private static final int MAX_DISCOVERY_LOCATIONS = 64;
+    private static final int SSDP_RETRY_DELAY_MS = 500;
+    private static final String TAG = "NewsNookDlna";
+    private static final String LOCAL_NETWORK_PERMISSION_MESSAGE =
+        "局域网访问被系统阻止。请在系统设置 > 应用 > NewsNook > 权限中允许“附近的设备”，然后重试";
+    private static final String NO_LAN_MESSAGE =
+        "未连接可用于投屏的 Wi-Fi 或有线网络，请先连接电视所在的局域网";
 
     private final ExecutorService executor = Executors.newCachedThreadPool(runnable -> {
         Thread thread = new Thread(runnable, "newsnook-dlna-" + System.nanoTime());
@@ -119,9 +135,13 @@ public class DlnaCastPlugin extends Plugin {
                 result.put("devices", resultDevices);
                 call.resolve(result);
             } catch (SecurityException error) {
-                call.reject("没有局域网访问权限，请允许“附近的设备”权限", error);
+                rejectLocalNetworkPermission(call, error);
             } catch (Exception error) {
-                call.reject("搜索投屏设备失败：" + safeMessage(error), error);
+                if (isLocalNetworkPermissionError(error)) {
+                    rejectLocalNetworkPermission(call, error);
+                } else {
+                    call.reject("搜索投屏设备失败：" + safeMessage(error), error);
+                }
             }
         });
     }
@@ -160,7 +180,7 @@ public class DlnaCastPlugin extends Plugin {
         executor.execute(() -> {
             CastMediaProxy.SessionHandle relay = null;
             try {
-                relay = mediaProxy.openSession(url, device.host);
+                relay = mediaProxy.openSession(url, device.host, device.network);
                 acquireCastLocks();
                 setTransportUri(device, relay.url, title, format);
                 playWithRetry(device);
@@ -301,6 +321,9 @@ public class DlnaCastPlugin extends Plugin {
     }
 
     private List<RendererDevice> discoverRenderers(int timeoutMs) throws IOException {
+        Network lanNetwork = resolveLanNetwork();
+        NetworkInterface multicastInterface = resolveMulticastInterface(lanNetwork);
+        OkHttpClient lanHttp = httpForNetwork(lanNetwork);
         WifiManager.MulticastLock multicastLock = null;
         Context context = getContext();
         if (context != null) {
@@ -314,18 +337,52 @@ public class DlnaCastPlugin extends Plugin {
         }
 
         try {
-            Map<String, String> locations = collectSsdpLocations(timeoutMs);
+            Log.i(
+                TAG,
+                "Discovery start interface=" + multicastInterface.getName() + " timeoutMs=" + timeoutMs
+            );
+            Map<String, String> locations = collectSsdpLocations(
+                timeoutMs,
+                lanNetwork,
+                multicastInterface
+            );
             LinkedHashMap<String, RendererDevice> found = new LinkedHashMap<>();
+            String lastDescriptionError = null;
             for (Map.Entry<String, String> entry : locations.entrySet()) {
                 try {
-                    RendererDevice device = readRendererDescription(entry.getKey(), entry.getValue());
-                    if (device == null || device.avTransport == null) continue;
+                    RendererDevice device = readRendererDescription(
+                        entry.getKey(),
+                        entry.getValue(),
+                        lanNetwork,
+                        lanHttp
+                    );
+                    if (device == null || device.avTransport == null) {
+                        Log.d(TAG, "Ignoring UPnP response without AVTransport: " + entry.getKey());
+                        continue;
+                    }
                     found.put(device.id, device);
-                } catch (Exception ignored) {
+                } catch (SecurityException error) {
+                    throw error;
+                } catch (Exception error) {
+                    if (isLocalNetworkPermissionError(error)) {
+                        throw new IOException(LOCAL_NETWORK_PERMISSION_MESSAGE, error);
+                    }
+                    lastDescriptionError = safeMessage(error);
+                    Log.w(TAG, "Failed to read UPnP device description: " + entry.getKey(), error);
                     // One malformed/offline UPnP device must not hide other TVs.
                 }
             }
 
+            if (!locations.isEmpty() && found.isEmpty()) {
+                String detail = lastDescriptionError == null ? "设备描述无效或缺少 AVTransport"
+                    : lastDescriptionError;
+                throw new IOException("已发现局域网设备，但无法读取投屏信息：" + detail);
+            }
+
+            Log.i(
+                TAG,
+                "Discovery finished responses=" + locations.size() + " renderers=" + found.size()
+            );
             devices.clear();
             devices.putAll(found);
             return new ArrayList<>(found.values());
@@ -334,28 +391,130 @@ public class DlnaCastPlugin extends Plugin {
         }
     }
 
-    private Map<String, String> collectSsdpLocations(int timeoutMs) throws IOException {
+    private Network resolveLanNetwork() throws IOException {
+        Context context = getContext();
+        if (context == null) throw new IOException("无法访问系统网络服务");
+
+        ConnectivityManager connectivity = (ConnectivityManager) context.getSystemService(
+            Context.CONNECTIVITY_SERVICE
+        );
+        if (connectivity == null) throw new IOException("无法访问系统网络服务");
+
+        Network active = connectivity.getActiveNetwork();
+        if (
+            active != null
+                && isLanNetworkCapabilities(connectivity.getNetworkCapabilities(active))
+        ) {
+            return active;
+        }
+
+        for (Network network : connectivity.getAllNetworks()) {
+            if (isLanNetworkCapabilities(connectivity.getNetworkCapabilities(network))) {
+                return network;
+            }
+        }
+        throw new IOException(NO_LAN_MESSAGE);
+    }
+
+    private NetworkInterface resolveMulticastInterface(Network network) throws IOException {
+        Context context = getContext();
+        if (context == null) throw new IOException("无法访问系统网络服务");
+
+        ConnectivityManager connectivity = (ConnectivityManager) context.getSystemService(
+            Context.CONNECTIVITY_SERVICE
+        );
+        if (connectivity == null) throw new IOException("无法访问系统网络服务");
+
+        LinkProperties properties = connectivity.getLinkProperties(network);
+        if (properties == null) throw new IOException("无法读取局域网接口信息");
+
+        String interfaceName = properties.getInterfaceName();
+        if (interfaceName != null && !interfaceName.trim().isEmpty()) {
+            NetworkInterface byName = NetworkInterface.getByName(interfaceName);
+            if (isUsableMulticastInterface(byName)) return byName;
+        }
+
+        for (LinkAddress linkAddress : properties.getLinkAddresses()) {
+            InetAddress address = linkAddress.getAddress();
+            if (address == null || address.isLoopbackAddress()) continue;
+            NetworkInterface byAddress = NetworkInterface.getByInetAddress(address);
+            if (isUsableMulticastInterface(byAddress)) return byAddress;
+        }
+
+        throw new IOException("无法确定局域网投屏接口");
+    }
+
+    private static boolean isUsableMulticastInterface(NetworkInterface networkInterface)
+        throws IOException {
+        return networkInterface != null
+            && networkInterface.isUp()
+            && !networkInterface.isLoopback();
+    }
+
+    static boolean isLanNetworkCapabilities(NetworkCapabilities capabilities) {
+        if (capabilities == null) return false;
+        boolean lanTransport =
+            capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+                || capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET);
+        return lanTransport
+            && capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_VPN);
+    }
+
+    private OkHttpClient httpForNetwork(Network network) {
+        return http.newBuilder()
+            .socketFactory(network.getSocketFactory())
+            .dns(hostname -> Arrays.asList(network.getAllByName(hostname)))
+            .proxy(Proxy.NO_PROXY)
+            .build();
+    }
+
+    private Map<String, String> collectSsdpLocations(
+        int timeoutMs,
+        Network lanNetwork,
+        NetworkInterface multicastInterface
+    ) throws IOException {
         LinkedHashMap<String, String> locations = new LinkedHashMap<>();
         InetAddress group = InetAddress.getByName(SSDP_ADDRESS);
-        long deadline = System.currentTimeMillis() + timeoutMs;
+        long startedAt = System.currentTimeMillis();
+        long deadline = startedAt + timeoutMs;
+        long retryAt = startedAt + Math.min(SSDP_RETRY_DELAY_MS, Math.max(250, timeoutMs / 2));
+        boolean retried = false;
+        int responseCount = 0;
 
-        try (DatagramSocket socket = new DatagramSocket(null)) {
+        try (MulticastSocket socket = new MulticastSocket(null)) {
             socket.setReuseAddress(true);
+            // Keep the socket on the LAN even when Android's process default is VPN/cellular.
+            lanNetwork.bindSocket(socket);
             socket.bind(new InetSocketAddress(0));
-            socket.setSoTimeout(Math.min(350, timeoutMs));
+            // Network.bindSocket selects an Android Network, but multicast also needs
+            // IP_MULTICAST_IF. Some OEM stacks otherwise send on Wi-Fi but do not receive
+            // the unicast SSDP replies on the expected interface.
+            socket.setNetworkInterface(multicastInterface);
+            socket.setTimeToLive(2);
+            socket.setSoTimeout(Math.min(200, timeoutMs));
 
-            sendSearch(socket, group, "urn:schemas-upnp-org:device:MediaRenderer:1");
-            sendSearch(socket, group, "urn:schemas-upnp-org:service:AVTransport:1");
-            sendSearch(socket, group, "urn:schemas-upnp-org:service:AVTransport:2");
+            sendSearchBurst(socket, group);
 
             byte[] buffer = new byte[16 * 1024];
             while (System.currentTimeMillis() < deadline && locations.size() < MAX_DISCOVERY_LOCATIONS) {
+                long now = System.currentTimeMillis();
+                if (!retried && now >= retryAt) {
+                    sendSearchBurst(socket, group);
+                    if (locations.isEmpty()) {
+                        // Some consumer renderers only answer broad discovery even though their
+                        // device description exposes the standard MediaRenderer/AVTransport types.
+                        sendSearch(socket, group, "ssdp:all");
+                    }
+                    retried = true;
+                }
+
                 DatagramPacket packet = new DatagramPacket(buffer, buffer.length);
                 try {
                     socket.receive(packet);
                 } catch (SocketTimeoutException timeout) {
                     continue;
                 }
+                responseCount++;
                 String response = new String(
                     packet.getData(),
                     packet.getOffset(),
@@ -368,7 +527,22 @@ public class DlnaCastPlugin extends Plugin {
                 locations.putIfAbsent(location, headers.get("usn"));
             }
         }
+
+        Log.i(
+            TAG,
+            "SSDP finished interface=" + multicastInterface.getName()
+                + " packets=" + responseCount
+                + " locations=" + locations.size()
+        );
         return locations;
+    }
+
+    private static void sendSearchBurst(DatagramSocket socket, InetAddress group)
+        throws IOException {
+        sendSearch(socket, group, "urn:schemas-upnp-org:device:MediaRenderer:1");
+        sendSearch(socket, group, "urn:schemas-upnp-org:device:MediaRenderer:2");
+        sendSearch(socket, group, "urn:schemas-upnp-org:service:AVTransport:1");
+        sendSearch(socket, group, "urn:schemas-upnp-org:service:AVTransport:2");
     }
 
     private static void sendSearch(DatagramSocket socket, InetAddress group, String searchTarget)
@@ -397,9 +571,14 @@ public class DlnaCastPlugin extends Plugin {
         return headers;
     }
 
-    private RendererDevice readRendererDescription(String location, String usn) throws Exception {
+    private RendererDevice readRendererDescription(
+        String location,
+        String usn,
+        Network lanNetwork,
+        OkHttpClient lanHttp
+    ) throws Exception {
         Request request = new Request.Builder().url(location).get().build();
-        try (Response response = http.newCall(request).execute()) {
+        try (Response response = lanHttp.newCall(request).execute()) {
             if (!response.isSuccessful()) return null;
             ResponseBody body = response.body();
             if (body == null) return null;
@@ -432,9 +611,9 @@ public class DlnaCastPlugin extends Plugin {
 
                 String resolved = new URL(new URL(location), controlUrl).toString();
                 if (serviceType.contains(":service:AVTransport:")) {
-                    avTransport = new ServiceEndpoint(serviceType, resolved);
+                    avTransport = new ServiceEndpoint(serviceType, resolved, lanHttp);
                 } else if (serviceType.contains(":service:RenderingControl:")) {
-                    renderingControl = new ServiceEndpoint(serviceType, resolved);
+                    renderingControl = new ServiceEndpoint(serviceType, resolved, lanHttp);
                 }
             }
             if (avTransport == null) return null;
@@ -448,6 +627,7 @@ public class DlnaCastPlugin extends Plugin {
                 emptyToNull(manufacturer),
                 emptyToNull(model),
                 descriptionUrl.getHost(),
+                lanNetwork,
                 location,
                 avTransport,
                 renderingControl
@@ -617,7 +797,7 @@ public class DlnaCastPlugin extends Plugin {
             .header("SOAPACTION", "\"" + endpoint.serviceType + "#" + action + "\"")
             .build();
 
-        try (Response response = http.newCall(request).execute()) {
+        try (Response response = endpoint.http.newCall(request).execute()) {
             ResponseBody body = response.body();
             String responseText = body == null ? "" : body.string();
             if (!response.isSuccessful()) {
@@ -696,8 +876,8 @@ public class DlnaCastPlugin extends Plugin {
     private static Document parseXml(String xml) throws Exception {
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
-        factory.setXIncludeAware(false);
-        factory.setExpandEntityReferences(false);
+        trySetParserOption(factory, () -> factory.setXIncludeAware(false));
+        trySetParserOption(factory, () -> factory.setExpandEntityReferences(false));
         trySetFeature(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
         trySetFeature(factory, "http://xml.org/sax/features/external-general-entities", false);
         trySetFeature(factory, "http://xml.org/sax/features/external-parameter-entities", false);
@@ -731,6 +911,14 @@ public class DlnaCastPlugin extends Plugin {
             factory.setFeature(feature, value);
         } catch (Exception ignored) {
             // Harden where supported without dropping compatibility with older Android XML parsers.
+        }
+    }
+
+    private static void trySetParserOption(DocumentBuilderFactory factory, Runnable option) {
+        try {
+            option.run();
+        } catch (Exception ignored) {
+            // Android's bundled parser often reports spec "Unknown" and rejects XInclude toggles.
         }
     }
 
@@ -790,6 +978,32 @@ public class DlnaCastPlugin extends Plugin {
         return trimmed.isEmpty() ? null : trimmed;
     }
 
+    static boolean isLocalNetworkPermissionError(Throwable error) {
+        Throwable current = error;
+        while (current != null) {
+            String message = current.getMessage();
+            if (message != null) {
+                String lower = message.toLowerCase(Locale.ROOT);
+                boolean operationBlocked =
+                    lower.contains("operation not permitted")
+                        || lower.contains("permission denied");
+                boolean localSocketFailure =
+                    lower.contains("sendto")
+                        || lower.contains("connect failed")
+                        || lower.contains("eperm")
+                        || lower.contains("econnaborted")
+                        || lower.contains("eacces");
+                if (operationBlocked && localSocketFailure) return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private static void rejectLocalNetworkPermission(PluginCall call, Exception error) {
+        call.reject(LOCAL_NETWORK_PERMISSION_MESSAGE, error);
+    }
+
     private static String safeMessage(Throwable error) {
         String message = error == null ? null : error.getMessage();
         return message == null || message.trim().isEmpty() ? "未知错误" : message.trim();
@@ -810,10 +1024,12 @@ public class DlnaCastPlugin extends Plugin {
     private static final class ServiceEndpoint {
         final String serviceType;
         final String controlUrl;
+        final OkHttpClient http;
 
-        ServiceEndpoint(String serviceType, String controlUrl) {
+        ServiceEndpoint(String serviceType, String controlUrl, OkHttpClient http) {
             this.serviceType = serviceType;
             this.controlUrl = controlUrl;
+            this.http = http;
         }
     }
 
@@ -823,6 +1039,7 @@ public class DlnaCastPlugin extends Plugin {
         final String manufacturer;
         final String model;
         final String host;
+        final Network network;
         final String descriptionUrl;
         final ServiceEndpoint avTransport;
         final ServiceEndpoint renderingControl;
@@ -833,6 +1050,7 @@ public class DlnaCastPlugin extends Plugin {
             String manufacturer,
             String model,
             String host,
+            Network network,
             String descriptionUrl,
             ServiceEndpoint avTransport,
             ServiceEndpoint renderingControl
@@ -842,6 +1060,7 @@ public class DlnaCastPlugin extends Plugin {
             this.manufacturer = manufacturer;
             this.model = model;
             this.host = host;
+            this.network = network;
             this.descriptionUrl = descriptionUrl;
             this.avTransport = avTransport;
             this.renderingControl = renderingControl;

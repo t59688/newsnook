@@ -1,10 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   网易列表/正文/图片/视频仍有大量 http:// 直链。
-  Android 9+ 默认禁明文；配置了 networkSecurityConfig 后 usesCleartextTraffic 会被忽略，
-  因此必须在此显式放行。只对上游域名 + 本地调试主机放开，不全局打开 cleartext。
+  DLNA/UPnP 电视通过 SSDP 返回 http://192.168.x.x/... 等 LAN 明文地址；Android
+  domain-config 无法表达 RFC1918 网段，只能在此放行 cleartext（与常见投屏 App 一致）。
+  配置了 networkSecurityConfig 后 manifest 的 usesCleartextTraffic 会被忽略。
 -->
 <network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+    <!-- 主要 http 上游（base 已放行；保留作说明） -->
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">163.com</domain>
         <domain includeSubdomains="true">126.net</domain>
