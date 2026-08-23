@@ -16,10 +16,13 @@ export type DlnaCastState =
   | 'transitioning'
   | 'unknown'
 
+export type DlnaCastMode = 'direct' | 'proxy'
+
 export interface DlnaCastSession {
   id: string
   deviceId: string
   deviceName: string
+  mode: DlnaCastMode
 }
 
 export interface DlnaCastStatus {
@@ -28,6 +31,11 @@ export interface DlnaCastStatus {
   duration: number
   volume?: number
   deviceName: string
+}
+
+export interface DlnaCastRestoreResult {
+  session?: DlnaCastSession
+  status?: DlnaCastStatus
 }
 
 type CastFormat = 'progressive' | 'hls' | 'dash'
@@ -42,6 +50,7 @@ interface DlnaCastPlugin {
     format: CastFormat
     positionSeconds?: number
   }): Promise<DlnaCastSession>
+  restore(): Promise<DlnaCastRestoreResult>
   getStatus(options: { sessionId: string }): Promise<DlnaCastStatus>
   control(options: {
     sessionId: string
@@ -78,6 +87,11 @@ export async function startDlnaCast(options: {
 }): Promise<DlnaCastSession> {
   requireNativeCast()
   return NativeDlnaCast.start(options)
+}
+
+export async function restoreDlnaCast(): Promise<DlnaCastRestoreResult> {
+  if (!isDlnaCastAvailable()) return {}
+  return NativeDlnaCast.restore()
 }
 
 export async function getDlnaCastStatus(sessionId: string): Promise<DlnaCastStatus> {

@@ -1,7 +1,7 @@
 {
   "name": "web",
   "private": true,
-  "version": "1.6.1",
+  "version": "1.6.2",
   "type": "module",
   "scripts": {
     "dev": "vite --host",
@@ -34,6 +34,7 @@
     "test:reader-images": "rolldown scripts/reader-image-role.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/reader-image-role.test.mjs && node node_modules/.cache/newsnook/reader-image-role.test.mjs",
     "test:inline-video": "rolldown scripts/inline-video.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/inline-video.test.mjs && node node_modules/.cache/newsnook/inline-video.test.mjs",
     "test:media-sniffer": "rolldown scripts/media-sniffer.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/media-sniffer.test.mjs && node node_modules/.cache/newsnook/media-sniffer.test.mjs",
+    "test:dlna-cast": "npx tsx scripts/dlna-cast-lifecycle.test.ts",
     "test:origin-player-live-sniff": "npx tsx scripts/origin-player-live-sniff.test.ts",
     "test:podcast": "npx tsx scripts/podcast-audio.test.ts",
     "test:huxiu-video": "rolldown scripts/huxiu-video.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/huxiu-video.test.mjs && node node_modules/.cache/newsnook/huxiu-video.test.mjs",

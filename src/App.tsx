@@ -3,6 +3,7 @@ import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 
 import { AppShell } from './components/AppShell'
+import { DlnaCastBanner } from './components/DlnaCastBanner'
 import { DesktopSidebar } from './components/DesktopSidebar'
 import { TabBar, type TabKey } from './components/TabBar'
 import { useFeeds } from './hooks/useFeeds'
@@ -1110,6 +1111,8 @@ export default function App() {
           {renderSettings()}
         </main>
       </div>
+
+      <DlnaCastBanner />
 
       <EasterEggShell open={eggOpen} onClose={() => setEggOpen(false)}>
         <CurrentEasterEgg onClose={() => setEggOpen(false)} />

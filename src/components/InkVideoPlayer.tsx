@@ -44,16 +44,19 @@ import {
   type LevelControl,
 } from '../lib/deviceMediaControls'
 import {
-  controlDlnaCast,
   discoverDlnaDevices,
-  getDlnaCastStatus,
   isDlnaCastAvailable,
   startDlnaCast,
-  stopDlnaCast,
   type DlnaCastDevice,
   type DlnaCastSession,
   type DlnaCastStatus,
 } from '../lib/dlnaCast'
+import {
+  controlActiveDlnaCast,
+  setActiveDlnaCast,
+  stopActiveDlnaCast,
+  useDlnaCastSession,
+} from '../features/cast/session'
 import {
   clampLevel,
   clampSeekTarget,
@@ -377,8 +380,11 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
   const [castSearching, setCastSearching] = useState(false)
   const [castConnectingId, setCastConnectingId] = useState<string | null>(null)
   const [castError, setCastError] = useState<string | null>(null)
-  const [castSession, setCastSession] = useState<DlnaCastSession | null>(null)
-  const [castStatus, setCastStatus] = useState<DlnaCastStatus | null>(null)
+  const {
+    session: castSession,
+    status: castStatus,
+    error: castSessionError,
+  } = useDlnaCastSession()
   const [playerToast, setPlayerToast] = useState<string | null>(null)
   const [boosting, setBoosting] = useState(false)
   const [gestureHud, setGestureHud] = useState<GestureHud | null>(null)
@@ -501,14 +507,14 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
         positionSeconds,
       })
 
-      castSessionRef.current = session
-      setCastSession(session)
-      setCastStatus({
+      const initialStatus: DlnaCastStatus = {
         state: 'playing',
         current: positionSeconds,
         duration,
         deviceName: session.deviceName,
-      })
+      }
+      castSessionRef.current = session
+      setActiveDlnaCast(session, initialStatus)
       video?.pause()
       if (immersive) toggleFullscreenRef.current()
     } catch (error) {
@@ -522,68 +528,25 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
     action: 'play' | 'pause' | 'seek' | 'volume',
     value?: number,
   ) => {
-    const session = castSessionRef.current
-    if (!session) return
+    if (!castSessionRef.current) return
     setCastError(null)
-
-    // Keep the remote responsive while the renderer handles SOAP in the background.
-    setCastStatus((previous) => {
-      if (!previous) return previous
-      if (action === 'play') return { ...previous, state: 'playing' }
-      if (action === 'pause') return { ...previous, state: 'paused' }
-      if (action === 'seek' && value != null) return { ...previous, current: value }
-      if (action === 'volume' && value != null) return { ...previous, volume: value }
-      return previous
-    })
-
-    try {
-      await controlDlnaCast(session.id, action, value)
-    } catch (error) {
-      setCastError(error instanceof Error ? error.message : '投屏控制失败')
-    }
+    await controlActiveDlnaCast(action, value)
   }, [])
 
   const endCast = useCallback(async () => {
-    const session = castSessionRef.current
     castSessionRef.current = null
-    setCastSession(null)
-    setCastStatus(null)
     setCastError(null)
     setCastOpen(false)
-    if (session) {
-      try {
-        await stopDlnaCast(session.id)
-      } catch {
-        // The renderer may already be offline; the native side still releases
-        // its local relay when possible.
-      }
+    try {
+      await stopActiveDlnaCast()
+    } catch {
+      // The renderer may already be offline; native cleanup still runs when possible.
     }
     showPlayerToast('已结束投屏')
   }, [showPlayerToast])
 
   useEffect(() => {
     castSessionRef.current = castSession
-  }, [castSession])
-
-  useEffect(() => {
-    if (!castSession) return
-    let cancelled = false
-
-    const update = async () => {
-      try {
-        const next = await getDlnaCastStatus(castSession.id)
-        if (!cancelled) setCastStatus(next)
-      } catch {
-        // Keep the remote available across one-off TV/network polling failures.
-      }
-    }
-
-    void update()
-    const timer = window.setInterval(update, 1500)
-    return () => {
-      cancelled = true
-      window.clearInterval(timer)
-    }
   }, [castSession])
 
   const syncBoostIndicator = useCallback((video: HTMLVideoElement) => {
@@ -1045,9 +1008,9 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
       if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
       activePointersRef.current.clear()
       pinchRef.current = null
-      const activeCast = castSessionRef.current
+      // Leaving the player only detaches this UI. Television playback belongs to
+      // the renderer (direct) or the foreground relay service (compatibility mode).
       castSessionRef.current = null
-      if (activeCast) void stopDlnaCast(activeCast.id).catch(() => undefined)
       // 卸载时若仍在全屏，窗口亮度必须归还系统，否则整个应用会一直停在调暗状态
       brightnessControl.release()
       volumeControl.release()
@@ -1981,7 +1944,7 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
         devices={castDevices}
         searching={castSearching}
         connectingId={castConnectingId}
-        error={castError}
+        error={castError || castSessionError}
         session={castSession}
         status={castStatus}
         fallbackDuration={duration}
@@ -2285,6 +2248,17 @@ function CastOverlay({
           </div>
         ) : (
           <div className="px-5 py-5">
+            <div className="mb-4 rounded-2xl border border-paper/10 bg-paper/5 px-3.5 py-3">
+              <div className="text-[12px] font-medium text-paper/90">
+                {session.mode === 'direct' ? '电视独立播放' : '兼容模式'}
+              </div>
+              <p className="mt-1 text-[11px] leading-relaxed text-paper/55">
+                {session.mode === 'direct'
+                  ? '电视已直接连接视频源。手机可以熄屏、退出应用或关机，不影响电视继续播放。'
+                  : '当前视频需要手机兼容中转。可以熄屏或退出应用，请保持手机开机并连接当前 Wi-Fi。'}
+              </p>
+            </div>
+
             <div className="rounded-2xl bg-black/25 px-4 py-4">
               <input
                 type="range"

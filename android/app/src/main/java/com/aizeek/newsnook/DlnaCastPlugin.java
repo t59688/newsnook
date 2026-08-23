@@ -2,6 +2,7 @@ package com.aizeek.newsnook;
 
 import android.Manifest;
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
 import android.net.LinkAddress;
 import android.net.LinkProperties;
@@ -9,7 +10,6 @@ import android.net.Network;
 import android.net.NetworkCapabilities;
 import android.net.wifi.WifiManager;
 import android.os.Build;
-import android.os.PowerManager;
 import android.util.Log;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -78,7 +78,13 @@ public class DlnaCastPlugin extends Plugin {
     private static final int MAX_DISCOVERY_MS = 6000;
     private static final int MAX_DISCOVERY_LOCATIONS = 64;
     private static final int SSDP_RETRY_DELAY_MS = 500;
+    private static final int DIRECT_PROBE_MS = 3200;
+    private static final int RESTORE_DISCOVERY_MS = 2000;
+    private static final long SAVED_CAST_TTL_MS = 12L * 60L * 60L * 1000L;
     private static final String TAG = "NewsNookDlna";
+    private static final String MODE_DIRECT = "direct";
+    private static final String MODE_PROXY = "proxy";
+    private static final String CAST_PREFS = "newsnook_dlna_cast";
     private static final String LOCAL_NETWORK_PERMISSION_MESSAGE =
         "局域网访问被系统阻止。请在系统设置 > 应用 > NewsNook > 权限中允许“附近的设备”，然后重试";
     private static final String NO_LAN_MESSAGE =
@@ -92,8 +98,6 @@ public class DlnaCastPlugin extends Plugin {
     private final Map<String, RendererDevice> devices = new ConcurrentHashMap<>();
     private final Map<String, CastSession> sessions = new ConcurrentHashMap<>();
     private final CastMediaProxy mediaProxy = CastMediaProxy.getInstance();
-    private PowerManager.WakeLock castWakeLock;
-    private WifiManager.WifiLock castWifiLock;
 
     private final OkHttpClient http = new OkHttpClient.Builder()
         .connectTimeout(3, TimeUnit.SECONDS)
@@ -179,11 +183,45 @@ public class DlnaCastPlugin extends Plugin {
 
         executor.execute(() -> {
             CastMediaProxy.SessionHandle relay = null;
+            boolean relayRegistered = false;
+            String mode = MODE_DIRECT;
+            String transportUrl = url;
             try {
-                relay = mediaProxy.openSession(url, device.host, device.network);
-                acquireCastLocks();
-                setTransportUri(device, relay.url, title, format);
-                playWithRetry(device);
+                boolean directReady = false;
+                try {
+                    setTransportUri(device, url, title, format);
+                    playWithRetry(device);
+                    directReady = confirmDirectPlayback(device);
+                } catch (Exception directError) {
+                    Log.i(TAG, "Direct cast unavailable for " + device.id + "; falling back to relay");
+                }
+
+                if (directReady) {
+                    Context context = getContext();
+                    if (context != null) {
+                        DlnaCastForegroundService.releaseRelay(context, device.id);
+                    }
+                } else {
+                    try {
+                        soap(device.avTransport, "Stop", instanceBody());
+                    } catch (IOException ignored) {
+                        // The renderer may already be stopped or may reject Stop before media exists.
+                    }
+                    relay = mediaProxy.openSession(url, device.host, device.network);
+                    Context context = getContext();
+                    if (context == null) throw new IOException("无法启动投屏后台服务");
+                    DlnaCastForegroundService.registerRelay(
+                        context,
+                        device.id,
+                        device.name,
+                        relay
+                    );
+                    relayRegistered = true;
+                    mode = MODE_PROXY;
+                    transportUrl = relay.url;
+                    setTransportUri(device, transportUrl, title, format);
+                    playWithRetry(device);
+                }
 
                 if (startPosition >= 1d) {
                     try {
@@ -193,19 +231,131 @@ public class DlnaCastPlugin extends Plugin {
                     }
                 }
 
+                CastMediaProxy.SessionHandle activeRelay = MODE_PROXY.equals(mode)
+                    ? DlnaCastForegroundService.findRelay(device.id, transportUrl)
+                    : null;
                 String sessionId = UUID.randomUUID().toString();
-                CastSession session = new CastSession(sessionId, device, relay);
+                CastSession session = new CastSession(
+                    sessionId,
+                    device,
+                    activeRelay,
+                    mode,
+                    url,
+                    transportUrl
+                );
+                sessions.put(sessionId, session);
+                saveCastResume(session);
+
+                Log.i(TAG, "Cast started renderer=" + device.id + " mode=" + mode);
+                call.resolve(sessionToJson(session));
+            } catch (Exception error) {
+                Context context = getContext();
+                if (relayRegistered && context != null) {
+                    DlnaCastForegroundService.releaseRelay(context, device.id);
+                } else if (relay != null) {
+                    mediaProxy.closeSession(relay.token);
+                }
+                call.reject("无法开始投屏：" + safeMessage(error), error);
+            }
+        });
+    }
+
+    @PluginMethod
+    public void restore(PluginCall call) {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && getPermissionState("nearbyWifi") != PermissionState.GRANTED
+        ) {
+            call.resolve(new JSObject());
+            return;
+        }
+
+        executor.execute(() -> {
+            SavedCast saved = loadCastResume();
+            if (saved == null) {
+                call.resolve(new JSObject());
+                return;
+            }
+            if (System.currentTimeMillis() - saved.savedAt > SAVED_CAST_TTL_MS) {
+                clearCastResume(saved.rendererId);
+                call.resolve(new JSObject());
+                return;
+            }
+
+            CastMediaProxy.SessionHandle relay = null;
+            if (MODE_PROXY.equals(saved.mode)) {
+                relay = DlnaCastForegroundService.findRelay(saved.rendererId, saved.transportUrl);
+                if (relay == null) {
+                    clearCastResume(saved.rendererId);
+                    call.resolve(new JSObject());
+                    return;
+                }
+            }
+
+            try {
+                RendererDevice device = null;
+                for (RendererDevice candidate : discoverRenderers(RESTORE_DISCOVERY_MS)) {
+                    if (saved.rendererId.equals(candidate.id)) {
+                        device = candidate;
+                        break;
+                    }
+                }
+                if (device == null) {
+                    call.resolve(new JSObject());
+                    return;
+                }
+
+                String state = readTransportState(device);
+                if ("stopped".equals(state)) {
+                    clearCastResume(saved.rendererId);
+                    call.resolve(new JSObject());
+                    return;
+                }
+                if (
+                    !"playing".equals(state)
+                        && !"paused".equals(state)
+                        && !"transitioning".equals(state)
+                ) {
+                    call.resolve(new JSObject());
+                    return;
+                }
+
+                String currentUri = readCurrentTransportUri(device);
+                if (currentUri == null) {
+                    call.resolve(new JSObject());
+                    return;
+                }
+                if (!sameTransportUri(saved.transportUrl, currentUri)) {
+                    clearCastResume(saved.rendererId);
+                    call.resolve(new JSObject());
+                    return;
+                }
+
+                String sessionId = UUID.randomUUID().toString();
+                CastSession session = new CastSession(
+                    sessionId,
+                    device,
+                    relay,
+                    saved.mode,
+                    saved.sourceUrl,
+                    saved.transportUrl
+                );
                 sessions.put(sessionId, session);
 
+                TransportStatus transport;
+                try {
+                    transport = readTransportStatus(device);
+                } catch (IOException statusError) {
+                    transport = new TransportStatus(state, 0d, 0d);
+                }
+
                 JSObject result = new JSObject();
-                result.put("id", sessionId);
-                result.put("deviceId", device.id);
-                result.put("deviceName", device.name);
+                result.put("session", sessionToJson(session));
+                result.put("status", statusToJson(session, transport));
                 call.resolve(result);
             } catch (Exception error) {
-                if (relay != null) mediaProxy.closeSession(relay.token);
-                releaseCastLocksIfIdle();
-                call.reject("无法开始投屏：" + safeMessage(error), error);
+                Log.d(TAG, "Cast restore deferred: " + safeMessage(error));
+                call.resolve(new JSObject());
             }
         });
     }
@@ -300,11 +450,18 @@ public class DlnaCastPlugin extends Plugin {
                 try {
                     soap(session.device.avTransport, "Stop", instanceBody());
                 } catch (IOException ignored) {
-                    // Renderer might already be offline. Always release the relay.
+                    // Renderer might already be offline. Always release local state.
                 }
             } finally {
-                mediaProxy.closeSession(session.relay.token);
-                releaseCastLocksIfIdle();
+                if (MODE_PROXY.equals(session.mode)) {
+                    Context context = getContext();
+                    if (context != null) {
+                        DlnaCastForegroundService.releaseRelay(context, session.device.id);
+                    } else if (session.relay != null) {
+                        mediaProxy.closeSession(session.relay.token);
+                    }
+                }
+                clearCastResume(session.device.id);
                 call.resolve();
             }
         });
@@ -660,45 +817,63 @@ public class DlnaCastPlugin extends Plugin {
         }
     }
 
-    @SuppressWarnings("deprecation")
-    private synchronized void acquireCastLocks() {
-        Context context = getContext();
-        if (context == null) return;
+    private boolean confirmDirectPlayback(RendererDevice device) throws IOException {
+        long deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(DIRECT_PROBE_MS);
+        long playingSince = -1L;
+        boolean observedPlaying = false;
+        IOException lastError = null;
 
-        if (castWakeLock == null) {
-            PowerManager power = (PowerManager) context.getSystemService(Context.POWER_SERVICE);
-            if (power != null) {
-                castWakeLock = power.newWakeLock(
-                    PowerManager.PARTIAL_WAKE_LOCK,
-                    "NewsNook:DlnaCast"
-                );
-                castWakeLock.setReferenceCounted(false);
+        while (System.nanoTime() < deadline) {
+            try {
+                String state = readTransportState(device);
+                if ("playing".equals(state)) {
+                    observedPlaying = true;
+                    if (playingSince < 0L) playingSince = System.nanoTime();
+                    if (
+                        System.nanoTime() - playingSince
+                            >= TimeUnit.MILLISECONDS.toNanos(1800L)
+                    ) {
+                        return true;
+                    }
+                } else if ("stopped".equals(state) && observedPlaying) {
+                    return false;
+                } else if (!"transitioning".equals(state)) {
+                    playingSince = -1L;
+                }
+            } catch (IOException error) {
+                lastError = error;
+            }
+
+            try {
+                Thread.sleep(300L);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new IOException("投屏连接被中断", interrupted);
             }
         }
-        if (castWakeLock != null && !castWakeLock.isHeld()) castWakeLock.acquire();
 
-        if (castWifiLock == null) {
-            WifiManager wifi = (WifiManager) context.getApplicationContext()
-                .getSystemService(Context.WIFI_SERVICE);
-            if (wifi != null) {
-                castWifiLock = wifi.createWifiLock(
-                    WifiManager.WIFI_MODE_FULL_HIGH_PERF,
-                    "NewsNook:DlnaCast"
-                );
-                castWifiLock.setReferenceCounted(false);
-            }
-        }
-        if (castWifiLock != null && !castWifiLock.isHeld()) castWifiLock.acquire();
+        if (!observedPlaying && lastError != null) throw lastError;
+        return false;
     }
 
-    private synchronized void releaseCastLocksIfIdle() {
-        if (!sessions.isEmpty()) return;
-        releaseCastLocks();
+    private String readTransportState(RendererDevice device) throws IOException {
+        String xml = soap(device.avTransport, "GetTransportInfo", instanceBody());
+        return normalizeTransportState(textFromXml(xml, "CurrentTransportState"));
     }
 
-    private synchronized void releaseCastLocks() {
-        if (castWifiLock != null && castWifiLock.isHeld()) castWifiLock.release();
-        if (castWakeLock != null && castWakeLock.isHeld()) castWakeLock.release();
+    private String readCurrentTransportUri(RendererDevice device) throws IOException {
+        String positionXml = soap(device.avTransport, "GetPositionInfo", instanceBody());
+        String trackUri = emptyToNull(textFromXml(positionXml, "TrackURI"));
+        if (trackUri != null) return trackUri;
+
+        String mediaXml = soap(device.avTransport, "GetMediaInfo", instanceBody());
+        return emptyToNull(textFromXml(mediaXml, "CurrentURI"));
+    }
+
+    private static boolean sameTransportUri(String expected, String actual) {
+        String left = emptyToNull(expected);
+        String right = emptyToNull(actual);
+        return left != null && left.equals(right);
     }
 
     private void setTransportUri(
@@ -1009,15 +1184,89 @@ public class DlnaCastPlugin extends Plugin {
         return message == null || message.trim().isEmpty() ? "未知错误" : message.trim();
     }
 
+    private JSObject sessionToJson(CastSession session) {
+        JSObject result = new JSObject();
+        result.put("id", session.id);
+        result.put("deviceId", session.device.id);
+        result.put("deviceName", session.device.name);
+        result.put("mode", session.mode);
+        return result;
+    }
+
+    private JSObject statusToJson(CastSession session, TransportStatus transport) {
+        JSObject result = new JSObject();
+        result.put("state", transport.state);
+        result.put("current", transport.currentSeconds);
+        result.put("duration", transport.durationSeconds);
+        result.put("deviceName", session.device.name);
+        if (session.device.renderingControl != null) {
+            try {
+                result.put("volume", readVolume(session.device));
+            } catch (IOException ignored) {
+                // Volume support is optional.
+            }
+        }
+        return result;
+    }
+
+    private SharedPreferences castPreferences() {
+        Context context = getContext();
+        if (context == null) return null;
+        return context.getApplicationContext().getSharedPreferences(CAST_PREFS, Context.MODE_PRIVATE);
+    }
+
+    private void saveCastResume(CastSession session) {
+        SharedPreferences preferences = castPreferences();
+        if (preferences == null) return;
+        preferences.edit()
+            .putString("rendererId", session.device.id)
+            .putString("deviceName", session.device.name)
+            .putString("mode", session.mode)
+            .putString("sourceUrl", session.sourceUrl)
+            .putString("transportUrl", session.transportUrl)
+            .putLong("savedAt", System.currentTimeMillis())
+            .apply();
+    }
+
+    private SavedCast loadCastResume() {
+        SharedPreferences preferences = castPreferences();
+        if (preferences == null) return null;
+        String rendererId = emptyToNull(preferences.getString("rendererId", null));
+        String deviceName = emptyToNull(preferences.getString("deviceName", null));
+        String mode = emptyToNull(preferences.getString("mode", null));
+        String sourceUrl = emptyToNull(preferences.getString("sourceUrl", null));
+        String transportUrl = emptyToNull(preferences.getString("transportUrl", null));
+        long savedAt = preferences.getLong("savedAt", 0L);
+        if (
+            rendererId == null
+                || deviceName == null
+                || (!MODE_DIRECT.equals(mode) && !MODE_PROXY.equals(mode))
+                || sourceUrl == null
+                || transportUrl == null
+                || savedAt <= 0L
+        ) {
+            preferences.edit().clear().apply();
+            return null;
+        }
+        return new SavedCast(rendererId, deviceName, mode, sourceUrl, transportUrl, savedAt);
+    }
+
+    private void clearCastResume(String rendererId) {
+        SharedPreferences preferences = castPreferences();
+        if (preferences == null) return;
+        String savedRenderer = preferences.getString("rendererId", null);
+        if (rendererId == null || rendererId.equals(savedRenderer)) {
+            preferences.edit().clear().apply();
+        }
+    }
+
     @Override
     protected void handleOnDestroy() {
-        for (CastSession session : sessions.values()) {
-            mediaProxy.closeSession(session.relay.token);
-        }
+        // Activity/WebView lifetime is intentionally independent from TV playback.
+        // Direct casts live entirely on the renderer; proxy casts are owned by the
+        // foreground service. Destroying the Capacitor plugin only detaches control.
         sessions.clear();
-        releaseCastLocks();
         executor.shutdownNow();
-        mediaProxy.close();
         super.handleOnDestroy();
     }
 
@@ -1082,11 +1331,49 @@ public class DlnaCastPlugin extends Plugin {
         final String id;
         final RendererDevice device;
         final CastMediaProxy.SessionHandle relay;
+        final String mode;
+        final String sourceUrl;
+        final String transportUrl;
 
-        CastSession(String id, RendererDevice device, CastMediaProxy.SessionHandle relay) {
+        CastSession(
+            String id,
+            RendererDevice device,
+            CastMediaProxy.SessionHandle relay,
+            String mode,
+            String sourceUrl,
+            String transportUrl
+        ) {
             this.id = id;
             this.device = device;
             this.relay = relay;
+            this.mode = mode;
+            this.sourceUrl = sourceUrl;
+            this.transportUrl = transportUrl;
+        }
+    }
+
+    private static final class SavedCast {
+        final String rendererId;
+        final String deviceName;
+        final String mode;
+        final String sourceUrl;
+        final String transportUrl;
+        final long savedAt;
+
+        SavedCast(
+            String rendererId,
+            String deviceName,
+            String mode,
+            String sourceUrl,
+            String transportUrl,
+            long savedAt
+        ) {
+            this.rendererId = rendererId;
+            this.deviceName = deviceName;
+            this.mode = mode;
+            this.sourceUrl = sourceUrl;
+            this.transportUrl = transportUrl;
+            this.savedAt = savedAt;
         }
     }
 
