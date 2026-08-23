@@ -20,6 +20,7 @@ import {
   allRegisteredSources,
   batchImportSourcesAndCategories,
   deleteCustomSource,
+  deleteCustomSources,
   normalizePreferences,
   sourceIdsForCategoryWithPrefs,
   updateCustomSource,
@@ -189,5 +190,24 @@ assert.equal(afterDeletePrefs.customSources?.length, 2)
 // Custom category should have deleted source removed from its sourceIds
 const catAfterDelete = afterDeletePrefs.customCategories?.[0]
 assert.equal(catAfterDelete?.sourceIds.length, 1)
+
+// 10. Batch delete is atomic and cleans every category reference in one update
+const batchDeleteIds = [...importedCategory.sourceIds]
+const afterBatchDeletePrefs = deleteCustomSources(batchPrefs, batchDeleteIds)
+assert.equal(afterBatchDeletePrefs.customSources?.length, 1)
+assert.equal(afterBatchDeletePrefs.customCategories?.length, 0)
+assert.ok(
+  afterBatchDeletePrefs.customSources?.some(
+    (source) => source.url === 'https://news.ycombinator.com/rss',
+  ),
+)
+assert.ok(
+  Object.values(afterBatchDeletePrefs.categorySources).every((sourceIds) =>
+    sourceIds.every((sourceId) => !batchDeleteIds.includes(sourceId)),
+  ),
+)
+
+// Unknown ids are a no-op, so callers can safely submit a stale selection snapshot.
+assert.strictEqual(deleteCustomSources(batchPrefs, ['custom_missing']), batchPrefs)
 
 console.log('Custom Sources & OPML tests: ALL PASSED SUCCESSFULLY!')

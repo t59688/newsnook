@@ -593,14 +593,18 @@ html[data-eink='1'] .preset-switcher-sheet {
     );
   }
 
-  /* 头条标题：断行取平衡，字距按视觉而非度量收一点 */
+  /* 信息流/稍后读等条目标题：跟随用户阅读字体，断行与字距单独调 */
   .lead-title {
+    font-family: var(--reader-font-family);
+    font-synthesis: none;
     text-wrap: balance;
     letter-spacing: 0.005em;
     font-feature-settings: 'palt' 1;
   }
 
   .row-title {
+    font-family: var(--reader-font-family);
+    font-synthesis: none;
     text-wrap: pretty;
     letter-spacing: 0.01em;
     font-feature-settings: 'palt' 1;
@@ -678,7 +682,7 @@ html[data-eink='1'] .preset-switcher-sheet {
 .reader-prose h1,
 .reader-prose h2,
 .reader-prose h3 {
-  font-family: var(--font-display);
+  font-family: var(--reader-font-family);
   font-weight: 400;
   font-size: calc(var(--reader-font-size) * 1.3);
   line-height: 1.4;
@@ -776,9 +780,9 @@ html[data-eink='1'] .preset-switcher-sheet {
   color: var(--color-paper);
 }
 
-/* 阅读页大标题跟随正文字号缩放 */
+/* 阅读页标题与正文内标题统一跟随用户选择的阅读字体，字号层级保持独立。 */
 .reader-title {
-  font-family: var(--font-display);
+  font-family: var(--reader-font-family);
   font-size: calc(var(--reader-font-size) * 1.74);
   line-height: 1.28;
 }

@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import { normalizeParagraphTypography, sanitizeArticleHtml } from '../src/lib/sanitize'
 
@@ -49,5 +50,24 @@ const cleanedMixed = sanitizeArticleHtml(mixedArticle)
 assert.match(cleanedMixed, /<p data-cjk="true">这是第一段中文正文，讲述设计理念。<\/p>/)
 assert.match(cleanedMixed, /<p data-cjk="false">"Simplicity is the ultimate sophistication."<\/p>/)
 assert.match(cleanedMixed, /<p data-cjk="true">上面这句名言很好地阐述了这一观点。<\/p>/)
+
+// 6. 阅读字体设置必须覆盖阅读页与信息流标题，避免标题绕过用户字体偏好。
+const readerCss = readFileSync('src/index.css', 'utf8')
+assert.match(
+  readerCss,
+  /\.reader-title\s*\{[^}]*font-family:\s*var\(--reader-font-family\)[^}]*\}/s,
+)
+assert.match(
+  readerCss,
+  /\.reader-prose h1,\s*\.reader-prose h2,\s*\.reader-prose h3\s*\{[^}]*font-family:\s*var\(--reader-font-family\)[^}]*\}/s,
+)
+assert.match(
+  readerCss,
+  /\.row-title\s*\{[^}]*font-family:\s*var\(--reader-font-family\)[^}]*\}/s,
+)
+assert.match(
+  readerCss,
+  /\.lead-title\s*\{[^}]*font-family:\s*var\(--reader-font-family\)[^}]*\}/s,
+)
 
 console.log('paragraph-typography tests passed successfully')

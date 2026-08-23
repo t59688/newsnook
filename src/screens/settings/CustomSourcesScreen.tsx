@@ -58,6 +58,7 @@ interface Props {
     patch: Partial<Pick<NewsSource, 'name' | 'label' | 'url' | 'siteUrl' | 'kind'>>,
   ) => void
   onDeleteCustomSource: (sourceId: string) => void
+  onDeleteCustomSources: (sourceIds: string[]) => void
   onBatchImport: (sources: NewsSource[], categories?: NewsCategory[]) => void
   onBack: () => void
 }
@@ -67,6 +68,7 @@ export function CustomSourcesScreen({
   onAddCustomSource,
   onUpdateCustomSource,
   onDeleteCustomSource,
+  onDeleteCustomSources,
   onBatchImport,
   onBack,
 }: Props) {
@@ -105,8 +107,11 @@ export function CustomSourcesScreen({
   const [showExportModal, setShowExportModal] = useState(false)
   const [exportIncludeBuiltin, setExportIncludeBuiltin] = useState(false)
 
-  // 删除确认弹窗
+  // 删除与批量管理状态
   const [sourceToDelete, setSourceToDelete] = useState<NewsSource | null>(null)
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedSourceIds, setSelectedSourceIds] = useState<Set<string>>(() => new Set())
+  const [confirmBatchDelete, setConfirmBatchDelete] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
 
@@ -138,6 +143,23 @@ export function CustomSourcesScreen({
         (s.siteUrl && s.siteUrl.toLowerCase().includes(q)),
     )
   }, [prefs.customSources, searchQuery])
+  const filteredSourceIds = useMemo(
+    () => filteredCustomSources.map((source) => source.id),
+    [filteredCustomSources],
+  )
+  const selectedSourceCount = selectedSourceIds.size
+  const allFilteredSelected =
+    filteredSourceIds.length > 0 &&
+    filteredSourceIds.every((sourceId) => selectedSourceIds.has(sourceId))
+  const selectedSourcePreview = useMemo(
+    () =>
+      customSources
+        .filter((source) => selectedSourceIds.has(source.id))
+        .slice(0, 3)
+        .map((source) => `「${source.name}」`)
+        .join('、'),
+    [customSources, selectedSourceIds],
+  )
 
   const urlInputId = useId()
   const nameInputId = useId()
@@ -157,7 +179,51 @@ export function CustomSourcesScreen({
     setShowAddModal(false)
   }
 
-  // 监听键盘 Escape 键关闭活动弹窗
+  const enterSelectionMode = () => {
+    setSelectionMode(true)
+    setSelectedSourceIds(new Set())
+    setSourceToDelete(null)
+  }
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false)
+    setSelectedSourceIds(new Set())
+    setConfirmBatchDelete(false)
+  }
+
+  const toggleSourceSelection = (sourceId: string) => {
+    setSelectedSourceIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(sourceId)) next.delete(sourceId)
+      else next.add(sourceId)
+      return next
+    })
+  }
+
+  const toggleAllFilteredSources = () => {
+    setSelectedSourceIds((prev) => {
+      const next = new Set(prev)
+      const clearFiltered =
+        filteredSourceIds.length > 0 && filteredSourceIds.every((sourceId) => next.has(sourceId))
+      filteredSourceIds.forEach((sourceId) => {
+        if (clearFiltered) next.delete(sourceId)
+        else next.add(sourceId)
+      })
+      return next
+    })
+  }
+
+  // 如果数据在选择期间发生变化，只保留仍然存在的选中项。
+  useEffect(() => {
+    if (!selectionMode) return
+    const validIds = new Set(customSources.map((source) => source.id))
+    setSelectedSourceIds((prev) => {
+      const retained = [...prev].filter((sourceId) => validIds.has(sourceId))
+      return retained.length === prev.size ? prev : new Set(retained)
+    })
+  }, [customSources, selectionMode])
+
+  // 监听键盘 Escape 键关闭活动弹窗；无弹窗时退出批量管理。
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -166,10 +232,18 @@ export function CustomSourcesScreen({
       else if (showOpmlTextEditor) setShowOpmlTextEditor(false)
       else if (showOpmlImportChooser) setShowOpmlImportChooser(false)
       else if (showExportModal) setShowExportModal(false)
+      else if (selectionMode) exitSelectionMode()
     }
     window.addEventListener('keydown', handleKeyDown)
     return () => window.removeEventListener('keydown', handleKeyDown)
-  }, [showAddModal, opmlResult, showOpmlTextEditor, showOpmlImportChooser, showExportModal])
+  }, [
+    selectionMode,
+    showAddModal,
+    opmlResult,
+    showOpmlTextEditor,
+    showOpmlImportChooser,
+    showExportModal,
+  ])
 
   const openAddModal = () => {
     resetForm()
@@ -433,17 +507,31 @@ export function CustomSourcesScreen({
   return (
     <SettingsShell
       title="自定义订阅"
-      caption={`${customSources.length} 个自建信源 · 支持 OPML 导入导出`}
-      onBack={onBack}
+      caption={
+        selectionMode
+          ? `批量管理 · 已选 ${selectedSourceCount} / ${customSources.length}`
+          : `${customSources.length} 个自建信源 · 支持 OPML 导入导出`
+      }
+      onBack={selectionMode ? exitSelectionMode : onBack}
       action={
-        <button
-          type="button"
-          onClick={openAddModal}
-          className="flex items-center gap-1 shrink-0 rounded-full border border-cinnabar bg-cinnabar/20 px-3.5 py-1.5 font-mono text-[10.5px] font-medium tracking-[0.1em] text-cinnabar-soft transition-colors hover:bg-cinnabar/30"
-        >
-          <Plus size={13} strokeWidth={2.4} />
-          添加订阅
-        </button>
+        selectionMode ? (
+          <button
+            type="button"
+            onClick={exitSelectionMode}
+            className="shrink-0 rounded-full border border-haze px-3.5 py-1.5 font-mono text-[10.5px] tracking-[0.1em] text-paper-muted transition-colors hover:text-paper"
+          >
+            完成
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={openAddModal}
+            className="flex items-center gap-1 shrink-0 rounded-full border border-cinnabar bg-cinnabar/20 px-3.5 py-1.5 font-mono text-[10.5px] font-medium tracking-[0.1em] text-cinnabar-soft transition-colors hover:bg-cinnabar/30"
+          >
+            <Plus size={13} strokeWidth={2.4} />
+            添加订阅
+          </button>
+        )
       }
     >
       {/* 隐藏的 OPML 文件上传 input */}
@@ -538,10 +626,9 @@ export function CustomSourcesScreen({
           </div>
         ) : (
           <div className="space-y-3">
-            {/* 搜索框 */}
-            {customSources.length > 5 && (
-              <div className="page-x">
-                <div className="relative flex items-center">
+            <div className="page-x flex items-center gap-2">
+              {customSources.length > 5 ? (
+                <div className="relative flex min-w-0 flex-1 items-center">
                   <Search
                     size={14}
                     className="pointer-events-none absolute left-3.5 text-paper-faint"
@@ -564,6 +651,61 @@ export function CustomSourcesScreen({
                     </button>
                   )}
                 </div>
+              ) : (
+                <span className="min-w-0 flex-1 font-mono text-[10.5px] text-paper-faint">
+                  {selectionMode
+                    ? '点击条目选择；可一次删除多个订阅'
+                    : customSources.length > 1
+                      ? '支持批量选择与删除'
+                      : '点击订阅可编辑，右侧可删除'}
+                </span>
+              )}
+
+              {!selectionMode && customSources.length > 1 && (
+                <button
+                  type="button"
+                  onClick={enterSelectionMode}
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-haze bg-paper/5 px-3 py-2 font-mono text-[10.5px] text-paper-muted transition-colors hover:border-cinnabar/40 hover:text-paper"
+                >
+                  <Check size={12} strokeWidth={2.2} />
+                  批量管理
+                </button>
+              )}
+            </div>
+
+            {selectionMode && (
+              <div className="page-x sticky top-0 z-10 bg-ink py-1">
+                <div className="flex items-center gap-2 rounded-xl border border-cinnabar/30 bg-ink-raised px-3 py-2 shadow-sm">
+                  <span
+                    role="status"
+                    aria-live="polite"
+                    className="min-w-0 flex-1 font-mono text-[10.5px] text-paper-muted"
+                  >
+                    已选 <strong className="font-semibold text-paper">{selectedSourceCount}</strong> /{' '}
+                    {customSources.length}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={filteredSourceIds.length === 0}
+                    onClick={toggleAllFilteredSources}
+                    className="shrink-0 rounded-full border border-haze px-2.5 py-1.5 font-mono text-[10px] text-paper-muted transition-colors hover:text-paper disabled:opacity-35"
+                  >
+                    {allFilteredSelected
+                      ? '取消全选'
+                      : searchQuery.trim()
+                        ? `全选结果 ${filteredSourceIds.length}`
+                        : '全选'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={selectedSourceCount === 0}
+                    onClick={() => setConfirmBatchDelete(true)}
+                    className="flex shrink-0 items-center gap-1 rounded-full border border-rose-500/35 bg-rose-500/5 px-2.5 py-1.5 font-mono text-[10px] text-rose-400 transition-colors hover:bg-rose-500/10 disabled:opacity-35"
+                  >
+                    <Trash2 size={12} />
+                    删除{selectedSourceCount > 0 ? ` ${selectedSourceCount}` : ''}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -582,52 +724,82 @@ export function CustomSourcesScreen({
                         day: 'numeric',
                       })
                     : ''
+                  const selected = selectedSourceIds.has(source.id)
 
                   return (
                     <li
                       key={source.id}
-                      className="page-x flex items-center justify-between gap-3 bg-ink py-4 transition-colors hover:bg-ink-raised/40"
+                      className={`page-x flex items-center gap-3 py-4 transition-colors ${
+                        selectionMode && selected
+                          ? 'bg-cinnabar/5'
+                          : 'bg-ink hover:bg-ink-raised/40'
+                      }`}
                     >
-                      <div className="min-w-0 flex-1 cursor-pointer" onClick={() => openEditModal(source)}>
-                        <div className="flex items-center gap-2">
-                          <span className="rounded-md border border-cinnabar/30 bg-cinnabar/10 px-1.5 py-0.5 font-mono text-[9.5px] font-medium text-cinnabar-soft">
-                            {source.kind === 'web-catalog' ? '目录' : source.label || '自定义'}
-                          </span>
-                          <span className="truncate text-[14.5px] font-medium text-paper">
-                            {source.name}
-                          </span>
-                        </div>
-                        <span className="mt-1 block truncate font-mono text-[10.5px] text-paper-faint">
-                          {source.url.replace(/^https?:\/\//, '')}
-                        </span>
-                        {timeStr && (
-                          <span className="mt-0.5 block font-mono text-[9.5px] text-paper-faint/60">
-                            添加于 {timeStr}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex shrink-0 items-center gap-1">
-                        {source.siteUrl && (
-                          <a
-                            href={source.siteUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="rounded-lg p-2 text-paper-faint transition-colors hover:bg-paper/5 hover:text-paper"
-                            title="打开站点"
+                      <button
+                        type="button"
+                        onClick={() =>
+                          selectionMode
+                            ? toggleSourceSelection(source.id)
+                            : openEditModal(source)
+                        }
+                        aria-pressed={selectionMode ? selected : undefined}
+                        className="flex min-w-0 flex-1 items-start gap-3 text-left"
+                      >
+                        {selectionMode && (
+                          <span
+                            aria-hidden
+                            className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-md border transition-colors ${
+                              selected
+                                ? 'border-cinnabar bg-cinnabar text-ink'
+                                : 'border-haze bg-paper/5 text-transparent'
+                            }`}
                           >
-                            <ExternalLink size={15} />
-                          </a>
+                            <Check size={13} strokeWidth={2.5} />
+                          </span>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => setSourceToDelete(source)}
-                          className="rounded-lg p-2 text-paper-faint transition-colors hover:bg-rose-500/10 hover:text-rose-400"
-                          title="删除订阅"
-                        >
-                          <Trash2 size={15} />
-                        </button>
-                      </div>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-2">
+                            <span className="rounded-md border border-cinnabar/30 bg-cinnabar/10 px-1.5 py-0.5 font-mono text-[9.5px] font-medium text-cinnabar-soft">
+                              {source.kind === 'web-catalog' ? '目录' : source.label || '自定义'}
+                            </span>
+                            <span className="truncate text-[14.5px] font-medium text-paper">
+                              {source.name}
+                            </span>
+                          </span>
+                          <span className="mt-1 block truncate font-mono text-[10.5px] text-paper-faint">
+                            {source.url.replace(/^https?:\/\//, '')}
+                          </span>
+                          {timeStr && (
+                            <span className="mt-0.5 block font-mono text-[9.5px] text-paper-faint/60">
+                              添加于 {timeStr}
+                            </span>
+                          )}
+                        </span>
+                      </button>
+
+                      {!selectionMode && (
+                        <div className="flex shrink-0 items-center gap-1">
+                          {source.siteUrl && (
+                            <a
+                              href={source.siteUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="rounded-lg p-2 text-paper-faint transition-colors hover:bg-paper/5 hover:text-paper"
+                              title="打开站点"
+                            >
+                              <ExternalLink size={15} />
+                            </a>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => setSourceToDelete(source)}
+                            className="rounded-lg p-2 text-paper-faint transition-colors hover:bg-rose-500/10 hover:text-rose-400"
+                            title="删除订阅"
+                          >
+                            <Trash2 size={15} />
+                          </button>
+                        </div>
+                      )}
                     </li>
                   )
                 })}
@@ -1157,6 +1329,24 @@ export function CustomSourcesScreen({
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmBatchDelete && selectedSourceCount > 0}
+        title={`删除已选的 ${selectedSourceCount} 个订阅？`}
+        message={`将删除 ${selectedSourceCount} 个自建订阅${
+          selectedSourcePreview
+            ? `（${selectedSourcePreview}${selectedSourceCount > 3 ? ' 等' : ''}）`
+            : ''
+        }，并从所有分类中移除。此操作无法撤销。`}
+        confirmLabel={`删除 ${selectedSourceCount} 个`}
+        danger
+        onCancel={() => setConfirmBatchDelete(false)}
+        onConfirm={() => {
+          if (selectedSourceCount === 0) return
+          onDeleteCustomSources([...selectedSourceIds])
+          exitSelectionMode()
+        }}
+      />
 
       {/* 删除单个自定义源确认对话框 */}
       <ConfirmDialog

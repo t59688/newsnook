@@ -43,7 +43,7 @@ export function LaterScreen({ later, onOpen, onRemoveLater, onBack }: Props) {
                 <span className="font-mono text-[10px] tracking-[0.12em] text-paper-faint">
                   <span className="font-medium text-paper-muted">{article.sourceLabel}</span> · {articleRelativeTime(article)}
                 </span>
-                <span className="mt-1 block font-display font-medium text-[16px] leading-snug text-paper md:text-[17px]">
+                <span className="row-title mt-1 block font-medium text-[16px] leading-snug text-paper md:text-[17px]">
                   {article.title}
                 </span>
               </button>

@@ -132,7 +132,7 @@ export const ArticleRow = memo(function ArticleRow({
 
             {/* 文章标题 */}
             <span
-              className={`row-title mt-1.5 block font-display text-[17px] leading-[1.46] tracking-[0.005em] transition-colors ${
+              className={`row-title mt-1.5 block text-[17px] leading-[1.46] tracking-[0.005em] transition-colors ${
                 read
                   ? 'font-normal text-paper-muted/75'
                   : 'font-medium text-paper group-hover:text-cinnabar'
@@ -250,7 +250,7 @@ export const ArticleRow = memo(function ArticleRow({
 
             {/* 文章标题 */}
             <h2
-              className={`row-title mt-2 font-display text-[18px] xl:text-[19px] leading-[1.42] tracking-[0.005em] transition-colors duration-200 ${
+              className={`row-title mt-2 text-[18px] xl:text-[19px] leading-[1.42] tracking-[0.005em] transition-colors duration-200 ${
                 read
                   ? 'font-normal text-paper-muted/80'
                   : 'font-medium text-paper group-hover:text-cinnabar'
@@ -400,7 +400,7 @@ export const LeadStory = memo(function LeadStory({
               )}
               {renderTranslateBadge()}
             </span>
-            <span className="lead-title mt-1.5 block font-display text-[20px] font-medium leading-[1.32] sm:text-[22px]">
+            <span className="lead-title mt-1.5 block text-[20px] font-medium leading-[1.32] sm:text-[22px]">
               {activeTitle}
             </span>
             {isTranslated && displayMode === 'compare' && (
@@ -482,7 +482,7 @@ export const LeadStory = memo(function LeadStory({
                 </div>
 
                 <h1
-                  className={`lead-title mt-4 font-display text-[26px] xl:text-[30px] leading-[1.32] font-medium transition-colors duration-200 ${
+                  className={`lead-title mt-4 text-[26px] xl:text-[30px] leading-[1.32] font-medium transition-colors duration-200 ${
                     read
                       ? 'text-paper-muted/90'
                       : 'text-paper group-hover:text-cinnabar'

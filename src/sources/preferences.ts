@@ -804,41 +804,67 @@ export function updateCustomSource(
   }
 }
 
-/** 删除自定义 RSS 信源，并自动从相关分类中移除 */
-export function deleteCustomSource(prefs: Preferences, sourceId: string): Preferences {
-  const nextCustomSources = (prefs.customSources ?? []).filter((s) => s.id !== sourceId)
+/**
+ * 批量删除自定义 RSS / 网页目录信源，并一次性清理关联分类。
+ * 批量管理必须走单次不可变更新，避免循环删除触发重复持久化与中间态。
+ */
+export function deleteCustomSources(
+  prefs: Preferences,
+  sourceIds: readonly string[],
+): Preferences {
+  const requestedIds = new Set(sourceIds)
+  if (!requestedIds.size) return prefs
 
-  // 清理 categorySources
+  const customSources = prefs.customSources ?? []
+  const deletedIds = new Set(
+    customSources
+      .filter((source) => requestedIds.has(source.id))
+      .map((source) => source.id),
+  )
+  if (!deletedIds.size) return prefs
+
+  const nextCustomSources = customSources.filter((source) => !deletedIds.has(source.id))
+
+  // 自定义分类直接持有 sourceIds；删除后同步更新摘要，并移除已无信源的分类。
+  const nextCustomCategories = (prefs.customCategories ?? [])
+    .map((category) => {
+      const nextSourceIds = (category.sourceIds ?? []).filter((id) => !deletedIds.has(id))
+      return {
+        ...category,
+        sourceIds: nextSourceIds,
+        caption: describeSources(nextSourceIds, nextCustomSources),
+      }
+    })
+    .filter((category) => (category.sourceIds ?? []).length > 0)
+
+  const validCategoryIds = new Set([
+    ...CATEGORIES.map((category) => category.id),
+    ...nextCustomCategories.map((category) => category.id),
+  ])
+
+  // 清理分类覆盖；自定义分类若因删除变空，也一并去掉其残留覆盖。
   const nextCategorySources: Record<CategoryId, string[]> = {}
-  Object.entries(prefs.categorySources).forEach(([catId, ids]) => {
-    const filtered = ids.filter((id) => id !== sourceId)
+  Object.entries(prefs.categorySources).forEach(([categoryId, ids]) => {
+    if (!validCategoryIds.has(categoryId)) return
+    const filtered = ids.filter((id) => !deletedIds.has(id))
     if (filtered.length) {
-      nextCategorySources[catId] = filtered
+      nextCategorySources[categoryId] = filtered
     }
   })
-
-  // 清理 customCategories
-  const nextCustomCategories = (prefs.customCategories ?? []).map((cat) => ({
-    ...cat,
-    sourceIds: (cat.sourceIds ?? []).filter((id) => id !== sourceId),
-  })).filter((cat) => (cat.sourceIds ?? []).length > 0)
-
-  // 清理分类排序
-  const validCategoryIds = new Set([
-    ...CATEGORIES.map((c) => c.id),
-    ...nextCustomCategories.map((c) => c.id),
-  ])
-  const nextOrder = prefs.categoryOrder.filter((id) => validCategoryIds.has(id))
-  const nextHidden = prefs.hiddenCategoryIds.filter((id) => validCategoryIds.has(id))
 
   return {
     ...prefs,
     customSources: nextCustomSources,
     categorySources: nextCategorySources,
     customCategories: nextCustomCategories,
-    categoryOrder: nextOrder,
-    hiddenCategoryIds: nextHidden,
+    categoryOrder: prefs.categoryOrder.filter((id) => validCategoryIds.has(id)),
+    hiddenCategoryIds: prefs.hiddenCategoryIds.filter((id) => validCategoryIds.has(id)),
   }
+}
+
+/** 删除单个自定义信源；与批量删除共享同一套关联清理语义。 */
+export function deleteCustomSource(prefs: Preferences, sourceId: string): Preferences {
+  return deleteCustomSources(prefs, [sourceId])
 }
 
 /** 批量导入信源与分类（支持 OPML 导入） */

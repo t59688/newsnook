@@ -74,7 +74,7 @@ export function TypographyScreen({ prefs, onChange, onReset, onBack }: Props) {
       <SettingsSection title="字体">
         <div className="page-x">
           <SegmentedControl
-            label="正文字体"
+            label="阅读字体"
             options={FONT_FAMILY_OPTIONS.map((option) => ({
               label: option.label,
               value: option.id,
