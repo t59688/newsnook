@@ -3,6 +3,7 @@
 [![License](https://img.shields.io/github/license/t59688/newsnook)](./LICENSE)
 [![Release](https://img.shields.io/github/v/release/t59688/newsnook)](https://github.com/t59688/newsnook/releases)
 [![Issues](https://img.shields.io/github/issues/t59688/newsnook)](https://github.com/t59688/newsnook/issues)
+[![爱发电](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E6%94%AF%E6%8C%81%E5%BC%80%E5%8F%91-946CE6)](https://ifdian.net/a/t59688)
 
 本地优先的 Android 新闻阅读客户端：无账号、无后端、无推荐算法。订阅源由你配置，列表与正文由客户端直连上游获取，并在应用内阅读。
 
@@ -10,17 +11,27 @@
 
 ## 目录
 
-- [界面预览](#界面预览)
-- [特性](#特性)
-- [安装](#安装)
-- [快速开始](#快速开始)
-- [理念](#理念)
-- [功能详解](#功能详解)
-- [用户操作手册](./docs/user-guide.md)
-- [架构](#架构)
-- [贡献](#贡献)
-- [许可与声明](#许可与声明)
-- [致谢](#致谢)
+- [NewsNook（有所闻）](#newsnook有所闻)
+  - [目录](#目录)
+  - [界面预览](#界面预览)
+  - [特性](#特性)
+  - [安装](#安装)
+  - [快速开始](#快速开始)
+  - [理念](#理念)
+  - [功能详解](#功能详解)
+    - [源与类别](#源与类别)
+    - [场景预设](#场景预设)
+    - [站内阅读](#站内阅读)
+    - [翻译](#翻译)
+    - [稍后读与缓存](#稍后读与缓存)
+    - [阅读字体与外观](#阅读字体与外观)
+    - [网络与代理](#网络与代理)
+    - [关于与更新](#关于与更新)
+  - [架构](#架构)
+  - [贡献](#贡献)
+  - [支持项目](#支持项目)
+  - [许可与声明](#许可与声明)
+  - [致谢](#致谢)
 
 ## 界面预览
 
@@ -180,6 +191,16 @@ npm run android:run         # 轻量 Android（需 Android SDK）
 请尽量附上：Android 版本、应用版本、设备型号、信源名称、文章链接、截图或日志、复现步骤。
 
 开发与 PR 约定见 [`CONTRIBUTING.md`](./CONTRIBUTING.md)。安全问题见 [`SECURITY.md`](./SECURITY.md)。
+
+## 支持项目
+
+NewsNook 是一个免费、开源并持续维护的个人项目。
+
+如果 NewsNook 对你有帮助，欢迎通过爱发电支持项目的持续开发与维护。
+
+[![爱发电](https://img.shields.io/badge/%E7%88%B1%E5%8F%91%E7%94%B5-%E6%94%AF%E6%8C%81_NewsNook-946CE6?style=for-the-badge)](https://ifdian.net/a/t59688)
+
+赞助完全自愿，不影响软件功能、版本获取，以及 Issue / PR 的处理优先级。
 
 ## 许可与声明
 
