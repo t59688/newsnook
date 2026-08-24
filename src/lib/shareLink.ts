@@ -27,6 +27,7 @@ import type { Article } from './types'
 
 export {
   MAX_SHARE_TOKEN_LENGTH,
+  MAX_TOKEN_SUMMARY_LENGTH,
   MAX_TOKEN_TITLE_LENGTH,
   SHARE_LINK_HOST,
   SHARE_LINK_ORIGIN,
@@ -38,7 +39,7 @@ export {
   shareTokenFromPath,
 } from './shareToken'
 export type { SharePayload } from './shareToken'
-/** v2 不带标题；正文抽取补回真标题前，阅读器与列表先用这个占位 */
+/** 链接没带标题时（旧链接 / 超长标题），正文抽取补回真标题前先用这个占位 */
 export const SHARE_PENDING_TITLE = '加载中…'
 /** 正文抽取失败时的标题兜底，免得「加载中…」一直挂在顶上 */
 export const SHARE_FALLBACK_TITLE = '分享的文章'
@@ -52,19 +53,73 @@ function clip(value: string, max: number): string {
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed
 }
 
+/** 导语只取正文开头一小段，整篇 HTML 没必要全扫一遍 */
+const LEAD_SCAN_LIMIT = 4000
+
+const LEAD_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  hellip: '…',
+  mdash: '—',
+  ndash: '–',
+  ldquo: '“',
+  rdquo: '”',
+}
+
+/**
+ * 把摘要或正文片段压成一行纯文本导语：去标签、还原常见实体、折叠空白。
+ * 列表摘要通常已是纯文本，正文 HTML 则要先剥一层标签才拿得到「【IT之家】…」这样的开头。
+ */
+export function shareLeadText(input?: string): string | undefined {
+  if (!input) return undefined
+  const text = input
+    .slice(0, LEAD_SCAN_LIMIT)
+    .replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, ' ')
+    // 段落级标签换成空格（否则相邻段落会黏成一个词），行内标签直接去掉，
+    // 免得中文句子里被塞进「界面 新闻」这样的空隙
+    .replace(/<\/?(?:p|br|div|li|tr|h[1-6]|section|article|blockquote|figcaption)\b[^>]*>/gi, ' ')
+    .replace(/<[^>]*>/g, '')
+    .replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (match: string, body: string) => {
+      if (body.startsWith('#')) {
+        const code =
+          body[1] === 'x' || body[1] === 'X' ? parseInt(body.slice(2), 16) : Number(body.slice(1))
+        return Number.isFinite(code) && code > 0 && code <= 0x10ffff
+          ? String.fromCodePoint(code)
+          : match
+      }
+      return LEAD_ENTITIES[body.toLowerCase()] ?? match
+    })
+    .replace(/\s+/g, ' ')
+    .trim()
+  return text || undefined
+}
+
 /**
  * 从当前文章取出可分享的最小字段。
- * 标题也带上：聊天预览卡靠它显示「这篇文章」的名字，边缘抓不到原文时不至于
- * 退回通用文案（占位标题不算真标题，超长标题由 encodeShareToken 自行丢弃）。
+ * 标题与导语也带上：聊天预览卡靠它们显示「这是哪一篇、大概讲什么」，
+ * 边缘抓不到原文时不至于退回通用文案（占位标题不算真标题，
+ * 超长标题由 encodeShareToken 自行丢弃，导语则按上限截断）。
+ *
+ * `bodyHtml` 是可选的正文兜底：分享深链打开的文章列表摘要为空，
+ * 这时从已抽好的正文开头取一段，卡片小字才不会落回「点击在有所闻中阅读全文」。
  */
-export function sharePayloadFromArticle(article: Article): SharePayload {
+export function sharePayloadFromArticle(
+  article: Article,
+  options?: { bodyHtml?: string },
+): SharePayload {
   const id = clip(article.id, MAX_ID_LENGTH)
   const title = usableShareTitle(article.title)
+  const summary = shareLeadText(article.summary) ?? shareLeadText(options?.bodyHtml)
   return {
     originUrl: article.originUrl,
     sourceId: clip(article.sourceId, MAX_ID_LENGTH),
     ...(id ? { id } : {}),
     ...(title ? { title } : {}),
+    ...(summary ? { summary } : {}),
   }
 }
 
@@ -127,7 +182,7 @@ export function clearShareLocation(): void {
  * 把 payload 还原成 Article：本机认识该信源时以注册表为准（名称/分组/标签更完整），
  * 不认识就退回链接里带的信源名，正文仍走通用 Readability 抽取。
  *
- * v2 链接不带标题与时间，先给占位值；正文抽取就绪后由 withResolvedShareTitle 补齐。
+ * 链接不带标题时先给占位值；正文抽取就绪后由 withResolvedShareTitle 补齐。时间同理不入链。
  */
 export function articleFromSharePayload(
   payload: SharePayload,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { feedArticleId } from '../src/lib/articleId'
 import {
   MAX_SHARE_TOKEN_LENGTH,
+  MAX_TOKEN_SUMMARY_LENGTH,
   MAX_TOKEN_TITLE_LENGTH,
   SHARE_LINK_ORIGIN,
   SHARE_FALLBACK_TITLE,
@@ -17,6 +18,7 @@ import {
   newShareSalt,
   parseShareUrl,
   shareTargetFromLocation,
+  shareLeadText,
   shareTokenFromPath,
   shareUrlDisplay,
   sharePayloadFromArticle,
@@ -40,7 +42,7 @@ const article: Article = {
   originUrl: 'https://sspai.com/post/12345',
 }
 
-// 1. v2 往返：打开阅读器需要原文地址与信源 id，标题供聊天预览卡使用
+// 1. v2 往返：打开阅读器需要原文地址与信源 id，标题与导语供聊天预览卡使用
 const payload = sharePayloadFromArticle(article)
 const token = encodeShareToken(payload)
 const decoded = decodeShareToken(token)
@@ -48,30 +50,42 @@ assert.ok(decoded, '正常 token 应能解码')
 assert.equal(decoded.originUrl, article.originUrl)
 assert.equal(decoded.sourceId, article.sourceId)
 assert.equal(decoded.title, article.title, '标题应原样往返，边缘据此拼 og:title')
+assert.equal(decoded.summary, article.summary, '导语应原样往返，边缘据此拼 og:description')
 
-// 2. 只有标题进 token：摘要、信源名仍然不编码
+// 2. 标题与导语进 token：信源名仍然不编码（接收端查 registry）
 const plain = Buffer.from(token.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
 assert.ok(plain.includes(`\n!${article.title}`), '标题以 ! 行编进载荷')
-assert.ok(!plain.includes(article.summary), '摘要不得编进 token')
+assert.ok(plain.includes(`\n$${article.summary}`), '导语以 $ 行编进载荷')
 assert.ok(!plain.includes(article.sourceName), '信源名不得编进 token（接收端查 registry）')
 assert.ok(/^2\.[0-9a-z]{1,4}\n/.test(plain), 'v2 载荷第一行是版本号加校验位')
 
-// 2b. 标题行排在 id 槽之后：没有 inline id 时补一行空串，
-//     旧版客户端按位置解码时才不会把标题当成 id（id 错了已读/缓存都对不上）
+// 2b. 标记行排在 id 槽之后：没有 inline id 时补一行空串，
+//     旧版客户端按位置解码时才不会把标题或导语当成 id（id 错了已读/缓存都对不上）
 assert.equal(
   plain.split('\n')[3],
   '',
-  '标题前应留一行空的 id 槽，保证旧客户端解码出的文章 id 不变',
+  '标记行前应留一行空的 id 槽，保证旧客户端解码出的文章 id 不变',
 )
 assert.equal(plain.split('\n')[4], `!${article.title}`, '标题行紧跟在 id 槽之后')
+assert.equal(plain.split('\n')[5], `$${article.summary}`, '导语行紧跟在标题行之后')
 
-// 2c. 超长标题宁可不编：截断的标题会被接收端当成真标题存进缓存
+// 2c. 中文新闻标题动辄 30～40 字，这个长度必须稳定进 token：
+//     进不去就意味着聊天预览卡退回「<信源名> · 一篇文章」
+const realisticTitle = '消息称原 OPPO 海外营销服总裁张洲川已入职大疆，负责海外市场相关业务'
+assert.ok(realisticTitle.length >= 30 && realisticTitle.length <= 40)
+assert.equal(
+  decodeShareToken(encodeShareToken({ ...payload, title: realisticTitle }))?.title,
+  realisticTitle,
+  '常见长度的中文标题应原样进 token',
+)
+
+// 2d. 超长标题宁可不编：截断的标题会被接收端当成真标题存进缓存
 const longTitle = '标'.repeat(MAX_TOKEN_TITLE_LENGTH + 1)
 const longTitleToken = encodeShareToken({ ...payload, title: longTitle })
 assert.equal(decodeShareToken(longTitleToken)?.title, undefined, '超长标题不进 token')
 assert.equal(longTitleToken, encodeShareToken({ ...payload, title: undefined }))
 
-// 2d. 占位标题不进 token：卡片上不能出现「加载中…」
+// 2e. 占位标题不进 token：卡片上不能出现「加载中…」
 assert.equal(
   sharePayloadFromArticle({ ...article, title: SHARE_PENDING_TITLE }).title,
   undefined,
@@ -79,13 +93,116 @@ assert.equal(
 )
 assert.equal(sharePayloadFromArticle({ ...article, title: SHARE_FALLBACK_TITLE }).title, undefined)
 
-// 2e. 标题里的换行会打乱行格式，编码前折成空格
+// 2f. 标题里的换行会打乱行格式，编码前折成空格
 assert.equal(
   decodeShareToken(encodeShareToken({ ...payload, title: '两行\n标题' }))?.title,
   '两行 标题',
 )
 
-// 3. 长度上限：常见站点的分享 token 要留在一行放得下的范围内
+// 2g. 导语是节选，超长按上限截断（末尾补省略号）而不是整段丢弃：
+//     卡片小字宁可短一点，也不该退回「点击在有所闻中阅读全文」
+const longSummary = '导'.repeat(MAX_TOKEN_SUMMARY_LENGTH + 40)
+const longSummaryDecoded = decodeShareToken(encodeShareToken({ ...payload, summary: longSummary }))
+assert.equal(longSummaryDecoded?.summary?.length, MAX_TOKEN_SUMMARY_LENGTH, '导语应截到上限')
+assert.ok(longSummaryDecoded?.summary?.endsWith('…'), '截断的导语末尾补省略号')
+assert.equal(
+  decodeShareToken(encodeShareToken({ ...payload, summary: '   ' }))?.summary,
+  undefined,
+  '空白导语不写进 token',
+)
+assert.equal(
+  decodeShareToken(encodeShareToken({ ...payload, summary: '两行\n导语' }))?.summary,
+  '两行 导语',
+)
+
+// 2h. 只有导语没有标题时同样要占住 id 槽，否则旧解码器会把 '$导语' 当成文章 id
+{
+  const summaryOnly = encodeShareToken({
+    originUrl: article.originUrl,
+    sourceId: article.sourceId,
+    summary: '只有导语的分享',
+  })
+  const summaryOnlyPlain = Buffer.from(
+    summaryOnly.replace(/-/g, '+').replace(/_/g, '/'),
+    'base64',
+  ).toString('utf8')
+  assert.equal(summaryOnlyPlain.split('\n')[3], '', '只有导语时也要补空 id 槽')
+  assert.equal(decodeShareToken(summaryOnly)?.summary, '只有导语的分享')
+}
+
+// 2i. 旧解码器（#15 那版，只认 '~' 与 '!' 标记行）读新 token：
+//     丢掉导语，但 sourceId / 原文地址 / id 槽必须完全对齐
+{
+  /** 复刻加导语行之前的 v2 位置解析，验证向后兼容 */
+  function decodeLikeLegacyV2(value: string): {
+    sourceId: string
+    originUrl: string
+    id: string
+  } | null {
+    const text = Buffer.from(value.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
+    const body = text.slice(text.indexOf('\n') + 1)
+    const lines = body.split('\n').filter((line) => !line.startsWith('~') && !line.startsWith('!'))
+    if (!lines[0] || !lines[1]) return null
+    const rawId = lines[2]?.trim() ?? ''
+    return {
+      sourceId: lines[0],
+      originUrl: `https://${lines[1]}`,
+      id: rawId.startsWith(':') ? `${lines[0]}${rawId}` : rawId,
+    }
+  }
+
+  const legacyRead = decodeLikeLegacyV2(token)
+  assert.ok(legacyRead, '旧解码器仍应解出新 token')
+  assert.equal(legacyRead.sourceId, article.sourceId)
+  assert.equal(legacyRead.originUrl, article.originUrl)
+  assert.equal(legacyRead.id, '', '导语行不得被旧解码器当成文章 id')
+
+  const legacyWithId = decodeLikeLegacyV2(
+    encodeShareToken({ ...payload, id: 'sspai:post-12345' }, { salt: 'ab12' }),
+  )
+  assert.equal(legacyWithId?.id, 'sspai:post-12345', 'inline id 仍在原来的位置槽上')
+}
+
+// 2j. 旧 token（没有导语行、甚至没有标题行）仍能解码打开同一篇
+{
+  const noMarkers = encodeShareToken({
+    originUrl: article.originUrl,
+    sourceId: article.sourceId,
+  })
+  const old = decodeShareToken(noMarkers)
+  assert.ok(old, '不带标记行的旧 token 仍应解码')
+  assert.equal(old.originUrl, article.originUrl)
+  assert.equal(old.summary, undefined)
+  assert.equal(old.title, undefined)
+  assert.equal(articleFromSharePayload(old).id, article.id, '旧 token 算出的文章 id 不变')
+}
+
+// 2k. 摘要 / 正文都能压成一行纯文本导语：去标签、还原实体、折叠空白
+assert.equal(shareLeadText('  一段  摘要\n第二行 '), '一段 摘要 第二行')
+assert.equal(
+  shareLeadText('<p>【IT之家】8 月 24 日消息，<strong>界面新闻</strong>获悉&hellip;</p>'),
+  '【IT之家】8 月 24 日消息，界面新闻获悉…',
+  '行内标签不该在中文句子里塞出空格',
+)
+assert.equal(shareLeadText('<p>第一段</p><p>第二段</p>'), '第一段 第二段', '段落之间要留空隙')
+assert.equal(shareLeadText('<script>var a = "x"</script><p>正文开头</p>'), '正文开头')
+assert.equal(shareLeadText('<div><img src="x"></div>'), undefined, '只有标签时没有导语')
+assert.equal(shareLeadText(''), undefined)
+assert.equal(shareLeadText(undefined), undefined)
+
+// 2l. 列表摘要为空时（分享深链打开的文章）用正文开头兜底
+assert.equal(
+  sharePayloadFromArticle({ ...article, summary: '' }, { bodyHtml: '<p>正文的第一句话。</p>' })
+    .summary,
+  '正文的第一句话。',
+)
+assert.equal(
+  sharePayloadFromArticle(article, { bodyHtml: '<p>不该覆盖列表摘要</p>' }).summary,
+  article.summary,
+  '有列表摘要就不必读正文',
+)
+
+// 3. 长度上限：常见站点的分享 token（含标题与导语）要留在可控范围内
 const lengthCases: Array<{ label: string; article: Article }> = [
   {
     label: '网易新闻',
@@ -93,6 +210,7 @@ const lengthCases: Array<{ label: string; article: Article }> = [
       ...article,
       id: feedArticleId('netease-news', 'https://m.163.com/news/article/KJ8H2M9P0512B7QK.html'),
       title: '中国空间站完成第三次舱外作业，航天员在轨工作超过六小时',
+      summary: '两名航天员于今日凌晨结束出舱活动，完成设备安装与舱外巡检，全程超过六小时。',
       sourceId: 'netease-news',
       originUrl: 'https://m.163.com/news/article/KJ8H2M9P0512B7QK.html',
     },
@@ -103,8 +221,21 @@ const lengthCases: Array<{ label: string; article: Article }> = [
       ...article,
       id: feedArticleId('wechat-renwu', 'https://mp.weixin.qq.com/s/AbCdEfGhIjKlMnOpQrStUv'),
       title: '一位县城中学老师的十年：把三千个孩子送出大山',
+      summary: '他在县城中学教了十年书，送走三千多个学生，也送走了自己关于大城市的全部想象。',
       sourceId: 'wechat-renwu',
       originUrl: 'https://mp.weixin.qq.com/s/AbCdEfGhIjKlMnOpQrStUv',
+    },
+  },
+  {
+    label: 'IT 之家',
+    article: {
+      ...article,
+      id: feedArticleId('ithome', 'https://www.ithome.com/0/889/012.htm'),
+      title: '消息称原 OPPO 海外营销服总裁张洲川已入职大疆',
+      summary:
+        '【IT之家】8 月 24 日消息，界面新闻今天（24 日）晚间独家获悉，原 OPPO 海外营销服务中心总裁张洲川已于近期入职大疆。',
+      sourceId: 'ithome',
+      originUrl: 'https://www.ithome.com/0/889/012.htm',
     },
   },
   { label: '少数派', article },

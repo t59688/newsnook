@@ -31,6 +31,8 @@ const SPA_SHELL = `<!doctype html><html lang="zh-CN"><head>
     <meta name="twitter:card" content="summary_large_image" />
     <title>${SITE_SHELL_TITLE}</title>
   </head><body><div id="root"></div><script type="module" src="/assets/main.js"></script></body></html>`
+/** 与 shareCard.ts 的 FALLBACK_DESCRIPTION 一致：没有任何摘要来源时的兜底小字 */
+const FALLBACK_DESCRIPTION = '点击在有所闻中阅读全文'
 /** 品牌兜底图的假字节，静态资产 mock 用 */
 const BRAND_PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
 
@@ -63,6 +65,15 @@ const titledToken = encodeShareToken({
   sourceId: 'sspai',
   originUrl: 'https://sspai.com/post/12345',
   title: TITLED_ARTICLE,
+})
+/** 带标题 + 导语的链接：上游一个字都抓不到时，卡片仍要有真标题与一段小字 */
+const LEAD_ARTICLE = '消息称原 OPPO 海外营销服总裁张洲川已入职大疆'
+const LEAD_SUMMARY = '【IT之家】8 月 24 日消息，界面新闻今天（24 日）晚间独家获悉…'
+const leadToken = encodeShareToken({
+  sourceId: 'sspai',
+  originUrl: 'https://sspai.com/post/12345',
+  title: LEAD_ARTICLE,
+  summary: LEAD_SUMMARY,
 })
 /** 上游没图时卡片应指向的同域图片端点（品牌兜底在端点内回落） */
 const OG_IMAGE_ENDPOINT = `https://news.aizeek.com/a/${token}/og.png`
@@ -141,6 +152,10 @@ function assertSpaDelivered(html: string, context: string): void {
 
 function ogTitle(html: string): string | undefined {
   return /<meta property="og:title" content="([^"]*)">/.exec(html)?.[1]
+}
+
+function ogDescription(html: string): string | undefined {
+  return /<meta property="og:description" content="([^"]*)">/.exec(html)?.[1]
 }
 
 console.log('--- 测试 1: 爬虫 UA 拿到带文章信息的 OG 卡片 ---')
@@ -538,6 +553,7 @@ await withUpstream(
   },
 )
 
+
 console.log('--- 测试 5d: 抓得到原文时以原文标题为准（链接里的标题可能已过时）---')
 await withUpstream(
   () => htmlPage('<html><head><meta property="og:title" content="原文改过的标题"></head></html>'),
@@ -549,6 +565,63 @@ await withUpstream(
   },
 )
 console.log('✓ 链接标题优先级测试通过')
+
+console.log('--- 测试 5e: 上游一个字都抓不到时，标题与小字全部来自 token ---')
+await withUpstream(
+  () => {
+    throw new Error('upstream down')
+  },
+  async () => {
+    // 两条出卡路径：① 判定为爬虫的卡片页；② 抓取端带 Sec-Fetch 伪装成导航时的 SPA 改写
+    const paths: Array<[string, string, Record<string, string>]> = [
+      ['爬虫卡片页', WHATSAPP_UA, {}],
+      [
+        '微信带 Sec-Fetch 走 SPA',
+        'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 MicroMessenger/8.0.42',
+        { 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' },
+      ],
+    ]
+    const rendered: Array<{ title?: string; description?: string }> = []
+    for (const [context, ua, headers] of paths) {
+      const html = await worker
+        .fetch(request(`/a/${leadToken}`, ua, { headers }), env, ctx)
+        .then((r) => r.text())
+      assert.equal(ogTitle(html), LEAD_ARTICLE, `${context}: og:title 应是真标题`)
+      const description = ogDescription(html) ?? ''
+      assert.ok(
+        description.startsWith('【IT之家】8 月 24 日消息'),
+        `${context}: og:description 应以链接里带的导语开头，实际「${description}」`,
+      )
+      assert.ok(
+        !description.startsWith(FALLBACK_DESCRIPTION),
+        `${context}: 有导语时不该再拿「${FALLBACK_DESCRIPTION}」当主文案`,
+      )
+      assert.ok(!html.includes('一篇文章'), `${context}: 有标题时不得出现「一篇文章」`)
+      assert.match(html, /原文来自 少数派/, `${context}: 出处仍要带上`)
+      assertNoSiteShellMeta(html, context)
+      rendered.push({ title: ogTitle(html), description })
+    }
+    assert.deepEqual(rendered[0], rendered[1], '两条出卡路径的预览必须一致')
+  },
+)
+console.log('✓ token 导语兜底测试通过')
+
+console.log('--- 测试 5f: 上游有摘要时以上游为准，链接导语只是兜底 ---')
+await withUpstream(
+  () =>
+    htmlPage(`<html><head>
+      <meta property="og:title" content="原文标题">
+      <meta property="og:description" content="原文自己的摘要">
+    </head></html>`),
+  async () => {
+    const html = await worker
+      .fetch(request(`/a/${leadToken}`, WHATSAPP_UA), env, ctx)
+      .then((r) => r.text())
+    assert.equal(ogTitle(html), '原文标题')
+    assert.ok(ogDescription(html)?.startsWith('原文自己的摘要'))
+  },
+)
+console.log('✓ 上游摘要优先测试通过')
 
 console.log('--- 测试 6: 上游注入的 XSS 载荷被转义 ---')
 await withUpstream(
@@ -575,12 +648,13 @@ await withUpstream(
 )
 console.log('✓ XSS 转义测试通过')
 
-console.log('--- 测试 6b: 链接里带的标题同样只当文本，卡片与 SPA 都要转义 ---')
+console.log('--- 测试 6b: 链接里带的标题与导语同样只当文本，卡片与 SPA 都要转义 ---')
 {
   const evilToken = encodeShareToken({
     sourceId: 'sspai',
     originUrl: 'https://sspai.com/post/12345',
     title: '"><script>alert(1)</script>',
+    summary: '"><img src=x onerror=alert(2)>',
   })
   await withUpstream(
     () => {
@@ -595,14 +669,18 @@ console.log('--- 测试 6b: 链接里带的标题同样只当文本，卡片与 
           .fetch(request(`/a/${evilToken}`, ua, { headers }), env, ctx)
           .then((r) => r.text())
         assert.ok(!html.includes('<script>alert(1)'), `${context}: 链接标题里的脚本必须被转义`)
+        assert.ok(!html.includes('<img src=x'), `${context}: 链接导语里的标签必须被转义`)
         const titleMeta = /<meta property="og:title" content="([^"]*)">/.exec(html)
         assert.ok(titleMeta, `${context}: og:title 仍应是一条完整的 meta`)
         assert.ok(!titleMeta[1].includes('<'), `${context}: content 里不得残留原始尖括号`)
+        const description = ogDescription(html)
+        assert.ok(description, `${context}: og:description 仍应是一条完整的 meta`)
+        assert.ok(!description.includes('<'), `${context}: 导语里不得残留原始尖括号`)
       }
     },
   )
 }
-console.log('✓ 链接标题转义测试通过')
+console.log('✓ 链接标题与导语转义测试通过')
 
 console.log('--- 测试 7: GBK 页面标题不乱码，非 HTML 上游直接放弃 ---')
 {

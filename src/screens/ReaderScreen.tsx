@@ -931,15 +931,17 @@ export function ReaderScreen({
 
   /**
    * 分享主链接：站内短链，对方点开在网页版里读全文。
-   * token 带原文地址、信源 id 与标题（标题供聊天预览卡使用；深链进来的文章
-   * 用正文抽取补齐后的真标题，不把「加载中…」编进链接）。
+   * token 带原文地址、信源 id、标题与一段导语（后两者供聊天预览卡使用；深链进来的
+   * 文章用正文抽取补齐后的真标题，不把「加载中…」编进链接）。
+   * 列表摘要为空时（深链打开的文章）用已抽好的正文开头当导语。
    */
   const shareUrl = useMemo(() => {
     if (!originUrl) return ''
-    return buildShareUrl(sharePayloadFromArticle({ ...laterArticle, originUrl }), {
-      salt: shareSalt,
-    })
-  }, [laterArticle, originUrl, shareSalt])
+    return buildShareUrl(
+      sharePayloadFromArticle({ ...laterArticle, originUrl }, { bodyHtml: html }),
+      { salt: shareSalt },
+    )
+  }, [html, laterArticle, originUrl, shareSalt])
 
   const originHost = useMemo(() => {
     if (!originUrl) return undefined
