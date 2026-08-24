@@ -241,10 +241,6 @@ export function saveReadingPositions(map: unknown): void {
   write(READING_POSITION_KEY, map, { localOnly: true })
 }
 
-export function clearReadingPositions(): void {
-  removeKeys([READING_POSITION_KEY])
-}
-
 /**
  * 备份恢复专用：把一组已校验过的业务键整段写回（同步落 localStorage 并镜像原生 Preferences）。
  * 恢复是整体覆盖语义，不做增量合并；调用方写完后需重载应用让内存态跟上。

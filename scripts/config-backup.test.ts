@@ -1,5 +1,25 @@
 import assert from 'node:assert/strict'
 
+import {
+  BACKUP_FORMAT,
+  BACKUP_SECTIONS,
+  BACKUP_VERSION,
+  backupFileName,
+  collectBackup,
+  parseBackup,
+  restoreBackup,
+  serializeBackup,
+  summarizeBackup,
+} from '../src/lib/backup'
+import {
+  READING_POSITION_LIMIT,
+  normalizeReadingPositions,
+  resetReadingPositionCache,
+  resolveScrollTop,
+  withPosition,
+} from '../src/lib/readingPosition'
+import { DEFAULT_PREFERENCES, addCustomSource } from '../src/sources/preferences'
+
 class MemoryStorage implements Storage {
   private readonly values = new Map<string, string>()
 
@@ -30,26 +50,6 @@ class MemoryStorage implements Storage {
 
 const memory = new MemoryStorage()
 Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: memory })
-
-const {
-  BACKUP_FORMAT,
-  BACKUP_SECTIONS,
-  BACKUP_VERSION,
-  backupFileName,
-  collectBackup,
-  parseBackup,
-  restoreBackup,
-  serializeBackup,
-  summarizeBackup,
-} = await import('../src/lib/backup')
-const {
-  READING_POSITION_LIMIT,
-  normalizeReadingPositions,
-  resetReadingPositionCache,
-  resolveScrollTop,
-  withPosition,
-} = await import('../src/lib/readingPosition')
-const { DEFAULT_PREFERENCES, addCustomSource } = await import('../src/sources/preferences')
 
 console.log('Testing config backup & reading position...')
 

@@ -33,6 +33,7 @@ import { shouldAutoLoadMedia } from '../lib/mediaLoadPolicy'
 import { revealReader } from '../lib/motion'
 import {
   flushReadingPositions,
+  forgetReadingPosition,
   readingPositionOf,
   rememberReadingPosition,
   resolveScrollTop,
@@ -1512,6 +1513,7 @@ export function ReaderScreen({
                 onClick={() => {
                   const el = rootRef.current
                   if (el) el.scrollTop = 0
+                  forgetReadingPosition(article.id)
                   setResumedPosition(false)
                 }}
                 className="text-cinnabar-soft underline-offset-2 hover:underline"

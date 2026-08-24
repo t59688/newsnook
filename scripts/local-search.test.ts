@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import {
   LOCAL_SEARCH_ORIGIN_LABELS,
   buildLocalSearchCorpus,
+  loadCachedListArticles,
   normalizeSearchQuery,
   searchLocalArticles,
 } from '../src/lib/localSearch'
@@ -102,5 +103,43 @@ assert.equal(bulkResults.length, 25)
 // 10. 查询归一化
 assert.equal(normalizeSearchQuery('  大  模型 '), '大 模型')
 assert.equal(LOCAL_SEARCH_ORIGIN_LABELS.later, '稍后读')
+
+// 11. 列表缓存覆盖全部信源，且跳过过期条目
+const store = new Map<string, string>()
+Object.defineProperty(globalThis, 'localStorage', {
+  configurable: true,
+  value: {
+    get length() {
+      return store.size
+    },
+    clear: () => store.clear(),
+    getItem: (key: string) => store.get(key) ?? null,
+    key: (index: number) => [...store.keys()][index] ?? null,
+    removeItem: (key: string) => void store.delete(key),
+    setItem: (key: string, value: string) => void store.set(key, String(value)),
+  } satisfies Storage,
+})
+
+const WEEK = 1000 * 60 * 60 * 24 * 7
+store.set(
+  'newsnook:cache:v3:sspai',
+  JSON.stringify({ at: Date.now(), items: [article({ id: 'c1', title: '缓存里的一篇' })] }),
+)
+store.set(
+  'newsnook:cache:v3:ithome',
+  JSON.stringify({ at: Date.now(), items: [article({ id: 'c2', title: '另一个信源的一篇' })] }),
+)
+store.set(
+  'newsnook:cache:v3:stale',
+  JSON.stringify({ at: Date.now() - WEEK - 1000, items: [article({ id: 'c3', title: '过期条目' })] }),
+)
+
+const cached = loadCachedListArticles()
+assert.deepEqual(
+  cached.map((item) => item.id).sort(),
+  ['c1', 'c2'],
+)
+assert.equal(searchLocalArticles(buildLocalSearchCorpus({ feed: cached }), '过期').length, 0)
+assert.equal(searchLocalArticles(buildLocalSearchCorpus({ feed: cached }), '另一个').length, 1)
 
 console.log('Local offline search tests: ALL PASSED')

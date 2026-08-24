@@ -8,6 +8,7 @@
  * 标题 / 摘要 / 信源名里命中（AND），子串匹配对中英文都成立。
  */
 
+import { LIST_CACHE_PREFIX, listKeys, loadCachedList } from './storage'
 import type { Article } from './types'
 
 export type LocalSearchOrigin = 'feed' | 'later' | 'history'
@@ -48,6 +49,19 @@ const ORIGIN_PRIORITY: Record<LocalSearchOrigin, number> = {
   later: 3,
   history: 2,
   feed: 1,
+}
+
+/**
+ * 读出本机所有信源的列表缓存，不限于当前预设与分类。
+ * 过期条目由 loadCachedList 自行淘汰，这里只负责摊平。
+ */
+export function loadCachedListArticles(): Article[] {
+  const articles: Article[] = []
+  listKeys(LIST_CACHE_PREFIX).forEach((key) => {
+    const cached = loadCachedList(key.slice(LIST_CACHE_PREFIX.length))
+    if (cached) articles.push(...cached.items)
+  })
+  return articles
 }
 
 /**

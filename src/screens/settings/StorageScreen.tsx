@@ -163,10 +163,12 @@ export function StorageScreen({ laterCount: _laterCount, usage, prestore, onCach
 
   return (
     <SettingsShell
-      title="离线存储"
+      title="离线存储与备份"
       caption={`可管理缓存约 ${formatBytes(total)}`}
       onBack={onBack}
     >
+      <BackupPanel />
+
       <PrestoreControls prestore={prestore} />
 
       <SettingsSection title="缓存用量">
@@ -228,8 +230,6 @@ export function StorageScreen({ laterCount: _laterCount, usage, prestore, onCach
           清除全部可管理缓存
         </button>
       </div>
-
-      <BackupPanel />
 
       <ConfirmDialog
         open={confirmClearAll}

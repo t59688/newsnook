@@ -6,13 +6,14 @@ import { SettingsShell } from '../../components/SettingsShell'
 import {
   LOCAL_SEARCH_ORIGIN_LABELS,
   buildLocalSearchCorpus,
+  loadCachedListArticles,
   searchLocalArticles,
   type LocalSearchOrigin,
 } from '../../lib/localSearch'
 import type { Article } from '../../lib/types'
 
 interface Props {
-  /** 当前可见的列表内容（含列表缓存与预存元数据） */
+  /** 当前已加载进内存的列表内容；本机其余信源的列表缓存由本页自行读出 */
   feedArticles: Article[]
   later: Article[]
   history: Article[]
@@ -46,9 +47,12 @@ export function LocalSearchScreen({
     inputRef.current?.focus()
   }, [])
 
+  // 只在进入本页时读一次列表缓存：几十个信源的解析开销不该跟着每次按键跑
+  const cachedListArticles = useMemo(() => loadCachedListArticles(), [])
+
   const corpus = useMemo(
-    () => buildLocalSearchCorpus({ feed: feedArticles, later, history }),
-    [feedArticles, later, history],
+    () => buildLocalSearchCorpus({ feed: [...cachedListArticles, ...feedArticles], later, history }),
+    [cachedListArticles, feedArticles, later, history],
   )
 
   // 打字时先渲染上一版结果，避免大语料下每个按键都卡住输入框
