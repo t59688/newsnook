@@ -13,6 +13,20 @@
     <meta name="theme-color" content="#0E0F12" />
     <meta name="referrer" content="no-referrer" />
     <meta name="description" content="有所闻 News Nook，直连原发媒体的沉浸式阅读器。" />
+    <!--
+      首页的默认社交卡片。仅当爬虫抓站点根等普通页面时生效；
+      /a/* 分享深链在边缘 worker 就被接走（functions/lib/shareCard.ts），
+      社交爬虫拿到的是文章级卡片，永远不会落到这份站点壳 meta 上。
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="有所闻" />
+    <meta property="og:title" content="有所闻 · News Nook" />
+    <meta property="og:description" content="有所闻 News Nook，直连原发媒体的沉浸式阅读器。" />
+    <meta property="og:url" content="https://news.aizeek.com/" />
+    <meta property="og:image" content="https://news.aizeek.com/og-default.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta name="twitter:card" content="summary_large_image" />
     <style>
       :root {
         /* fallback for Chrome < 79 where max() is unsupported */
