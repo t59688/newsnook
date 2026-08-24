@@ -72,6 +72,8 @@ interface Props {
   onBack?: () => void
   /** 仅主今日流品牌名「有所闻」时传入；单源标题不启用 */
   onBrandTap?: () => void
+  /** 打开本地离线搜索；与 searchTemplate 的站内联网搜索是两回事 */
+  onOpenLocalSearch?: () => void
   /** 递增时触发与下拉相同的刷新动画与加载（底栏双击速闻） */
   pullRefreshSeq?: number
   /** 站内搜索模板（仅 web-catalog 源有 frameworkHint.searchTemplate 时传入） */
@@ -204,6 +206,7 @@ export const FeedScreen = memo(function FeedScreen({
   onOpen,
   onBack,
   onBrandTap,
+  onOpenLocalSearch,
   pullRefreshSeq = 0,
   searchTemplate,
   frameworkCategories,
@@ -830,6 +833,17 @@ export const FeedScreen = memo(function FeedScreen({
             <span className="hidden lg:inline-block font-mono text-[11px] text-paper-faint">
               {lastUpdated ? `更新于 ${relativeTime(lastUpdated)}` : ''}
             </span>
+
+            {onOpenLocalSearch && (
+              <button
+                type="button"
+                onClick={onOpenLocalSearch}
+                aria-label="本地搜索已缓存内容"
+                className="flex h-7.5 w-7.5 lg:h-8 lg:w-8 shrink-0 items-center justify-center rounded-lg border border-transparent lg:border-haze/70 lg:bg-ink-raised/50 lg:hover:bg-ink-raised lg:hover:border-paper-faint/30 transition-all text-paper-muted hover:text-paper"
+              >
+                <Search size={14} strokeWidth={1.6} />
+              </button>
+            )}
 
             {presetSwitcher && (
               <div className="lg:hidden">

@@ -1,10 +1,12 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
-import { ArrowLeft, BookmarkCheck, BookmarkPlus, Globe, Languages, LoaderCircle, MessageSquare, RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, BookmarkCheck, BookmarkPlus, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, X } from 'lucide-react'
 
 import { ImageLightbox } from '../components/ImageLightbox'
 import { EinkReaderMenu } from '../components/EinkReaderMenu'
+import { ReaderMoreMenu } from '../components/ReaderMoreMenu'
+import { ShareArticleSheet } from '../components/ShareArticleSheet'
 import { InkAudioPlayer } from '../components/InkAudioPlayer'
 import { InkImage } from '../components/InkImage'
 import { InkVideoPlayer } from '../components/InkVideoPlayer'
@@ -30,6 +32,22 @@ import { deferMediaInHtml, DEFERRED_SRC_ATTR, type DeferredHostPhase } from '../
 import { stageYoutubeEmbedsInHtml } from '../lib/youtubeEmbeds'
 import { shouldAutoLoadMedia } from '../lib/mediaLoadPolicy'
 import { revealReader } from '../lib/motion'
+import {
+  flushReadingPositions,
+  forgetReadingPosition,
+  readingPositionOf,
+  rememberReadingPosition,
+  resolveScrollTop,
+} from '../lib/readingPosition'
+import { buildClipboardText, copyShareText, shareArticle } from '../lib/shareArticle'
+import {
+  SHARE_FALLBACK_TITLE,
+  buildShareUrl,
+  isPendingShareTitle,
+  sharePayloadFromArticle,
+  usableShareTitle,
+  withResolvedShareTitle,
+} from '../lib/shareLink'
 import { resolveArticleBody, type BodySource } from '../lib/resolveBody'
 import { articleCoverUrl } from '../lib/articleAudio'
 import { articleRelativeTime } from '../lib/time'
@@ -149,9 +167,35 @@ export function ReaderScreen({
   const [pillVisible, setPillVisible] = useState(true)
   const [chromeVisible, setChromeVisible] = useState(true)
   const [einkMenuOpen, setEinkMenuOpen] = useState(false)
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [shareSheetOpen, setShareSheetOpen] = useState(false)
+  const [toast, setToast] = useState<string | null>(null)
+  const [resumedPosition, setResumedPosition] = useState(false)
   const lastScrollTopRef = useRef(0)
   const scrollTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const scrollRafRef = useRef(0)
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 已为哪篇文章恢复过位置，避免重排或重新测量时把人反复弹回去 */
+  const restoredForRef = useRef<string | null>(null)
+
+  const showToast = useCallback((message: string) => {
+    setToast(message)
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    toastTimerRef.current = setTimeout(() => setToast(null), 2200)
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!resumedPosition) return
+    const timer = setTimeout(() => setResumedPosition(false), 5000)
+    return () => clearTimeout(timer)
+  }, [resumedPosition])
 
   const pinchEnabled =
     !einkMode && loadState === 'ready' && !lightbox && !commentsOpen
@@ -183,10 +227,30 @@ export function ReaderScreen({
 
   useEffect(() => {
     if (!overlayCloserRef) return
+    if (shareSheetOpen) {
+      const prev = overlayCloserRef.current
+      overlayCloserRef.current = () => {
+        setShareSheetOpen(false)
+        return true
+      }
+      return () => {
+        overlayCloserRef.current = prev
+      }
+    }
     if (einkMenuOpen) {
       const prev = overlayCloserRef.current
       overlayCloserRef.current = () => {
         setEinkMenuOpen(false)
+        return true
+      }
+      return () => {
+        overlayCloserRef.current = prev
+      }
+    }
+    if (moreMenuOpen) {
+      const prev = overlayCloserRef.current
+      overlayCloserRef.current = () => {
+        setMoreMenuOpen(false)
         return true
       }
       return () => {
@@ -203,7 +267,7 @@ export function ReaderScreen({
         overlayCloserRef.current = prev
       }
     }
-  }, [commentsOpen, einkMenuOpen, overlayCloserRef])
+  }, [commentsOpen, einkMenuOpen, moreMenuOpen, overlayCloserRef, shareSheetOpen])
 
   const handleScroll = useCallback(() => {
     if (einkMode) return
@@ -221,13 +285,21 @@ export function ReaderScreen({
         setPillVisible(false)
       }
       lastScrollTopRef.current = currentScrollTop
+
+      // 位置记忆只更新内存表，落盘由 readingPosition 自行节流
+      if (restoredForRef.current === article.id) {
+        rememberReadingPosition(article.id, {
+          scrollTop: currentScrollTop,
+          scrollRange: Math.max(el.scrollHeight - el.clientHeight, 0),
+        })
+      }
     })
 
     if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current)
     scrollTimeoutRef.current = setTimeout(() => {
       setPillVisible(true)
     }, 450)
-  }, [einkMode])
+  }, [article.id, einkMode])
 
   useEffect(() => {
     return () => {
@@ -237,8 +309,64 @@ export function ReaderScreen({
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current)
       }
+      flushReadingPositions()
     }
   }, [])
+
+  useEffect(() => {
+    restoredForRef.current = null
+    setResumedPosition(false)
+    setMoreMenuOpen(false)
+  }, [article.id])
+
+  /**
+   * 跨会话恢复滚动位置：正文就绪后内容高度还会随图片加载增长，
+   * 这里轮询几次直到可滚动区域出现，再按比例落回上次读到的位置。
+   */
+  useEffect(() => {
+    if (einkMode || loadState !== 'ready') return
+    if (restoredForRef.current === article.id) return
+
+    const position = readingPositionOf(article.id)
+    if (!position || position.scrollTop <= 0) {
+      restoredForRef.current = article.id
+      return
+    }
+
+    let attempts = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
+
+    const attempt = () => {
+      timer = null
+      const el = rootRef.current
+      if (!el || restoredForRef.current === article.id) return
+
+      // 用户已经自己滚起来了就别再抢位置
+      if (el.scrollTop > 8) {
+        restoredForRef.current = article.id
+        return
+      }
+
+      const range = Math.max(el.scrollHeight - el.clientHeight, 0)
+      const target = range > 0 ? resolveScrollTop(position, range) : 0
+      if (target > 0) {
+        el.scrollTop = target
+        lastScrollTopRef.current = target
+        restoredForRef.current = article.id
+        setResumedPosition(true)
+        return
+      }
+
+      attempts += 1
+      if (attempts < 12) timer = setTimeout(attempt, 140)
+      else restoredForRef.current = article.id
+    }
+
+    attempt()
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
+  }, [article.id, einkMode, html.length, loadState])
 
   // 屏幕右侧边缘向左滑动手势拉出跟贴
   useEffect(() => {
@@ -296,7 +424,7 @@ export function ReaderScreen({
   useEdgeSwipeBack({
     containerRef: shellRef,
     onBack: onClose,
-    disabled: Boolean(lightbox || commentsOpen || einkMenuOpen),
+    disabled: Boolean(lightbox || commentsOpen || einkMenuOpen || moreMenuOpen || shareSheetOpen),
     reduced,
   })
 
@@ -394,6 +522,12 @@ export function ReaderScreen({
     const controller = new AbortController()
     setError(null)
 
+    /** 分享深链的标题是占位符；缓存里若存过真标题，命中时直接顶上，不必等联网 */
+    const restoreTitle = (cachedArticle?: Article) => {
+      if (!isPendingShareTitle(article.title)) return
+      setResolvedTitle(usableShareTitle(cachedArticle?.title))
+    }
+
     // 正文内容是静态的，命中缓存直接出，断网也能重读；重新抽取时才绕过
     if (retryToken === 0 && article.contentType !== 'video') {
       const cached = loadCachedBody(article.id)
@@ -402,6 +536,7 @@ export function ReaderScreen({
         setBodySource(cached.bodySource)
         setFromCache(true)
         setLoadState('ready')
+        restoreTitle(cached.article)
         if (!cached.article) {
           saveCachedBody(article, {
             html: cached.html,
@@ -433,7 +568,7 @@ export function ReaderScreen({
           setHtml(resolved.contentHtml)
           setResolvedTitle(resolved.title)
           if (resolved.bodySource !== 'video') {
-            const cached = saveCachedBody(article, {
+            const cached = saveCachedBody(withResolvedShareTitle(article, resolved.title), {
               html: resolved.contentHtml,
               bodySource: resolved.bodySource,
             })
@@ -450,7 +585,7 @@ export function ReaderScreen({
           setLoadState('ready')
           // 视频稿正文只是占位文案，缓存没有意义
           if (resolved.bodySource !== 'video') {
-            const cached = saveCachedBody(article, {
+            const cached = saveCachedBody(withResolvedShareTitle(article, resolved.title), {
               html: resolved.contentHtml,
               bodySource: resolved.bodySource,
             })
@@ -473,6 +608,7 @@ export function ReaderScreen({
           setBodySource(prestored.bodySource)
           setFromCache(true)
           setLoadState('ready')
+          restoreTitle(prestored.article)
           return
         }
         loadFromNetwork()
@@ -550,10 +686,22 @@ export function ReaderScreen({
   const comparing = Boolean(
     showTranslation && translated && translationPrefs.displayMode === 'compare',
   )
+  /** 分享深链没带标题，靠正文抽取补；抽取失败就换个中性说法，别一直显示占位 */
+  const pendingTitle =
+    isPendingShareTitle(article.title) && loadState === 'error'
+      ? SHARE_FALLBACK_TITLE
+      : article.title
+
   const displayedTitle =
     showTranslation && translated && !comparing
       ? translated.title
-      : resolvedTitle || article.title
+      : resolvedTitle || pendingTitle
+
+  /** 分享深链进来的文章标题只是占位；收藏时存正文抽取补回的真标题 */
+  const laterArticle = useMemo(
+    () => withResolvedShareTitle(article, resolvedTitle),
+    [article, resolvedTitle],
+  )
 
   const paged = usePagedReader({
     enabled: einkMode,
@@ -575,8 +723,8 @@ export function ReaderScreen({
   pagedSyncRef.current = paged.syncFromScrollTop
   pagedOffsetRef.current = paged.currentStartOffset
 
-  const einkGateRef = useRef({ lightbox, commentsOpen, einkMenuOpen })
-  einkGateRef.current = { lightbox, commentsOpen, einkMenuOpen }
+  const einkGateRef = useRef({ lightbox, commentsOpen, einkMenuOpen, moreMenuOpen, shareSheetOpen })
+  einkGateRef.current = { lightbox, commentsOpen, einkMenuOpen, moreMenuOpen, shareSheetOpen }
 
   useEffect(() => {
     const wasEink = prevEinkRef.current
@@ -616,7 +764,7 @@ export function ReaderScreen({
 
     const onCaptureClick = (event: MouseEvent) => {
       const gate = einkGateRef.current
-      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen) return
+      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen || gate.shareSheetOpen) return
       const target = event.target
       if (!(target instanceof Element)) return
 
@@ -653,7 +801,7 @@ export function ReaderScreen({
     void setVolumePageTurnEnabled(true)
     void addVolumePageTurnListener((direction) => {
       const gate = einkGateRef.current
-      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen) return
+      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen || gate.shareSheetOpen) return
       if (direction === 'prev') pagedGoPrevRef.current()
       else pagedGoNextRef.current()
     }).then((dispose) => {
@@ -666,7 +814,7 @@ export function ReaderScreen({
 
     const onKeyDown = (event: KeyboardEvent) => {
       const gate = einkGateRef.current
-      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen) return
+      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen || gate.shareSheetOpen) return
       const target = event.target
       if (
         target instanceof HTMLElement &&
@@ -765,11 +913,74 @@ export function ReaderScreen({
 
   const isBlockedBody = bodySource === 'blocked'
 
+  /** 出版社地址：只用于「浏览器核对原文」与分享 token 里的正文来源 */
+  const originUrl = resolvedOriginUrl || article.originUrl
+
   const openOriginal = async () => {
-    const url = resolvedOriginUrl || article.originUrl
-    if (!url) return
-    await Browser.open({ url })
+    if (!originUrl) return
+    await Browser.open({ url: originUrl })
   }
+
+  /**
+   * 分享主链接：站内短链，对方点开在网页版里读全文。
+   * token 只带原文地址与信源 id，标题由对方抽取正文时自己补。
+   */
+  const shareUrl = useMemo(() => {
+    if (!originUrl) return ''
+    return buildShareUrl(sharePayloadFromArticle({ ...article, originUrl }))
+  }, [article, originUrl])
+
+  const originHost = useMemo(() => {
+    if (!originUrl) return undefined
+    try {
+      return new URL(originUrl).hostname.replace(/^www\./, '')
+    } catch {
+      return undefined
+    }
+  }, [originUrl])
+
+  /** 顶栏「⋯」与墨水屏菜单都收敛到这里：先展示应用内卡片，再交给系统面板 */
+  const openShareSheet = useCallback(() => {
+    setMoreMenuOpen(false)
+    setEinkMenuOpen(false)
+    if (!shareUrl) {
+      showToast('这篇没有可分享的地址')
+      return
+    }
+    setShareSheetOpen(true)
+  }, [shareUrl, showToast])
+
+  const shareClipboardText = useCallback(
+    () =>
+      buildClipboardText({
+        title: displayedTitle || article.title,
+        url: shareUrl,
+        sourceName: article.sourceName,
+      }),
+    [article.sourceName, article.title, displayedTitle, shareUrl],
+  )
+
+  const handleShare = useCallback(async () => {
+    setShareSheetOpen(false)
+    const result = await shareArticle({
+      title: displayedTitle || article.title,
+      url: shareUrl,
+      sourceName: article.sourceName,
+    })
+    if (result === 'copied') showToast('系统分享不可用，已复制站内链接')
+    else if (result === 'unsupported') showToast('当前环境无法分享，请手动复制链接')
+  }, [article.sourceName, article.title, displayedTitle, shareUrl, showToast])
+
+  const handleCopyLink = useCallback(async () => {
+    setMoreMenuOpen(false)
+    setShareSheetOpen(false)
+    if (!shareUrl) return
+    showToast(
+      (await copyShareText(shareClipboardText()))
+        ? '已复制站内分享链接'
+        : '复制失败，请手动选中链接',
+    )
+  }, [shareClipboardText, shareUrl, showToast])
 
   const cancelTranslation = useCallback(() => {
     translationAbortRef.current?.abort()
@@ -941,7 +1152,7 @@ export function ReaderScreen({
               </button>
               <button
                 type="button"
-                onClick={() => onToggleLater(article)}
+                onClick={() => onToggleLater(laterArticle)}
                 aria-pressed={saved}
                 aria-label={saved ? '取消收藏' : '收藏'}
                 className="flex h-9 items-center gap-1 px-1 transition-colors duration-200"
@@ -970,12 +1181,16 @@ export function ReaderScreen({
               )}
               <button
                 type="button"
-                onClick={() => void openOriginal()}
-                disabled={!resolvedOriginUrl && !article.originUrl}
-                aria-label="在浏览器核对原文"
-                className="flex h-9 w-9 shrink-0 items-center justify-center disabled:opacity-40 hover:text-paper"
+                onClick={() => setMoreMenuOpen(true)}
+                aria-label="更多操作：分享、复制链接、浏览器核对原文"
+                aria-expanded={moreMenuOpen}
+                className="flex h-9 w-9 shrink-0 items-center justify-center hover:text-paper"
               >
-                <Globe size={14} strokeWidth={1.7} className="text-paper-muted" />
+                <MoreHorizontal
+                  size={16}
+                  strokeWidth={1.7}
+                  className={moreMenuOpen ? 'text-cinnabar' : 'text-paper-muted'}
+                />
               </button>
             </div>
           </div>
@@ -1327,7 +1542,8 @@ export function ReaderScreen({
           onFontScale={(next) => onTypographyChange?.({ fontScale: next })}
           onJumpPage={(index) => paged.setPageIndex(index)}
           onToggleTranslation={() => void toggleTranslation()}
-          onToggleLater={() => onToggleLater(article)}
+          onToggleLater={() => onToggleLater(laterArticle)}
+          onShare={openShareSheet}
           onBackToList={onClose}
           onOpenSettings={() => {
             setEinkMenuOpen(false)
@@ -1336,8 +1552,77 @@ export function ReaderScreen({
         />
       )}
 
+      <ReaderMoreMenu
+        open={moreMenuOpen}
+        hasOriginUrl={Boolean(originUrl)}
+        onClose={() => setMoreMenuOpen(false)}
+        onShare={openShareSheet}
+        onCopyLink={() => void handleCopyLink()}
+        onOpenOriginal={() => {
+          setMoreMenuOpen(false)
+          void openOriginal()
+        }}
+        onReextract={() => {
+          setMoreMenuOpen(false)
+          setRetryToken((token) => token + 1)
+        }}
+      />
+
+      <ShareArticleSheet
+        open={shareSheetOpen}
+        title={displayedTitle || article.title}
+        sourceName={article.sourceName}
+        summary={article.summary}
+        publishedAt={article.publishedAt}
+        hasRealDate={article.hasRealDate}
+        shareUrl={shareUrl}
+        originHost={originHost}
+        onClose={() => setShareSheetOpen(false)}
+        onShare={() => void handleShare()}
+        onCopy={() => void handleCopyLink()}
+      />
+
+      {/* 分享卡片占满底部，reader 级悬浮件一律让位，避免压住「复制链接 / 分享」 */}
+      {(toast || resumedPosition) && !shareSheetOpen && (
+        <div
+          className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4 safe-bottom-20"
+          role="status"
+          aria-live="polite"
+        >
+          {toast ? (
+            <span className="rounded-full border border-haze bg-ink/95 px-3.5 py-2 font-mono text-[11.5px] text-paper shadow-xl backdrop-blur-md">
+              {toast}
+            </span>
+          ) : (
+            <span className="pointer-events-auto flex items-center gap-2 rounded-full border border-haze bg-ink/95 px-3.5 py-2 font-mono text-[11.5px] text-paper shadow-xl backdrop-blur-md">
+              已回到上次阅读位置
+              <button
+                type="button"
+                onClick={() => {
+                  const el = rootRef.current
+                  if (el) el.scrollTop = 0
+                  forgetReadingPosition(article.id)
+                  setResumedPosition(false)
+                }}
+                className="text-cinnabar-soft underline-offset-2 hover:underline"
+              >
+                回到开头
+              </button>
+              <button
+                type="button"
+                onClick={() => setResumedPosition(false)}
+                aria-label="关闭提示"
+                className="text-paper-faint hover:text-paper"
+              >
+                <X size={13} strokeWidth={2} />
+              </button>
+            </span>
+          )}
+        </div>
+      )}
+
       {/* 底部右下角悬浮跟贴胶囊（随时一触即达） */}
-      {canComment && !commentsOpen && !einkMode && (
+      {canComment && !commentsOpen && !shareSheetOpen && !einkMode && (
         <div
           className={`fixed right-4 z-40 transition-all duration-300 pointer-events-auto safe-bottom-20 ${
             (einkMode ? chromeVisible : pillVisible)

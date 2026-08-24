@@ -1,4 +1,4 @@
-import { BookmarkCheck, BookmarkPlus, Languages, List, Settings2, Type, X } from 'lucide-react'
+import { BookmarkCheck, BookmarkPlus, Languages, List, Settings2, Share2, Type, X } from 'lucide-react'
 
 import { FONT_SCALE_OPTIONS } from '../sources/preferences'
 
@@ -15,6 +15,7 @@ interface Props {
   onJumpPage: (index: number) => void
   onToggleTranslation: () => void
   onToggleLater: () => void
+  onShare: () => void
   onBackToList: () => void
   onOpenSettings: () => void
 }
@@ -44,6 +45,7 @@ export function EinkReaderMenu({
   onJumpPage,
   onToggleTranslation,
   onToggleLater,
+  onShare,
   onBackToList,
   onOpenSettings,
 }: Props) {
@@ -137,7 +139,7 @@ export function EinkReaderMenu({
             {pageIndex + 1} / {safeCount}
           </p>
 
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-5 gap-2">
             <button
               type="button"
               disabled={translating}
@@ -164,6 +166,14 @@ export function EinkReaderMenu({
                 <BookmarkPlus size={15} strokeWidth={1.7} className="text-paper-muted" />
               )}
               <span className="font-mono text-[11px] text-paper">{saved ? '已藏' : '稍后'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onShare}
+              className="flex flex-col items-center gap-1 rounded-xl border border-haze px-2 py-2.5"
+            >
+              <Share2 size={15} strokeWidth={1.7} className="text-paper-muted" />
+              <span className="font-mono text-[11px] text-paper">分享</span>
             </button>
             <button
               type="button"

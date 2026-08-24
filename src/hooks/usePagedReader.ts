@@ -7,27 +7,7 @@ import {
   resolvePageTapZone,
   type PageSlice,
 } from '../lib/readerPagination'
-
-const PAGE_STORAGE_PREFIX = 'newsnook:eink-page:'
-
-function readStoredPage(articleId: string): number | null {
-  try {
-    const raw = sessionStorage.getItem(`${PAGE_STORAGE_PREFIX}${articleId}`)
-    if (raw == null) return null
-    const n = Number(raw)
-    return Number.isFinite(n) ? n : null
-  } catch {
-    return null
-  }
-}
-
-function writeStoredPage(articleId: string, pageIndex: number): void {
-  try {
-    sessionStorage.setItem(`${PAGE_STORAGE_PREFIX}${articleId}`, String(pageIndex))
-  } catch {
-    /* ignore quota */
-  }
-}
+import { readingPositionOf, rememberReadingPosition } from '../lib/readingPosition'
 
 function isPlaceholderPages(pages: PageSlice[]): boolean {
   return pages.length === 1 && pages[0]!.startOffset === 0 && pages[0]!.endOffset === 0
@@ -70,6 +50,32 @@ export function usePagedReader({
   const [pageHeight, setPageHeight] = useState(0)
   const pagesRef = useRef(pages)
   pagesRef.current = pages
+  const pageHeightRef = useRef(pageHeight)
+  pageHeightRef.current = pageHeight
+
+  /**
+   * 页码与滚动位置共用一张跨会话的表：这里同时写下该页的内容偏移，
+   * 关掉墨水屏改回滚动阅读时才能落在同一段文字上。
+   */
+  const writeStoredPage = useCallback(
+    (index: number, nextPages: PageSlice[] = pagesRef.current) => {
+      const clamped = clampPageIndex(index, nextPages.length)
+      const startOffset = nextPages[clamped]?.startOffset ?? 0
+      const contentEnd = nextPages[nextPages.length - 1]?.endOffset ?? 0
+      const scrollRange = Math.max(contentEnd - pageHeightRef.current, 0)
+      rememberReadingPosition(articleId, {
+        scrollTop: startOffset,
+        ...(scrollRange > 0 ? { scrollRange } : {}),
+        pageIndex: clamped,
+      })
+    },
+    [articleId],
+  )
+
+  const readStoredPage = useCallback(
+    () => readingPositionOf(articleId)?.pageIndex ?? null,
+    [articleId],
+  )
 
   const collectBlockEnds = useCallback((content: HTMLElement, height: number): number[] => {
     const rootBox = content.getBoundingClientRect()
@@ -124,6 +130,7 @@ export function usePagedReader({
       if (!viewport || !content) return
 
       const height = Math.max(viewport.clientHeight, 1)
+      pageHeightRef.current = height
       setPageHeight(height)
 
       const blockEnds = collectBlockEnds(content, height)
@@ -133,7 +140,7 @@ export function usePagedReader({
       setPageIndexState((prev) => {
         if (typeof opts?.scrollAnchor === 'number') {
           const idx = findPageIndex(nextPages, opts.scrollAnchor)
-          writeStoredPage(articleId, idx)
+          writeStoredPage(idx, nextPages)
           return idx
         }
 
@@ -142,17 +149,17 @@ export function usePagedReader({
           const anchor = prevPages[clampPageIndex(prev, prevPages.length)]?.startOffset
           if (typeof anchor === 'number') {
             const idx = findPageIndex(nextPages, anchor)
-            writeStoredPage(articleId, idx)
+            writeStoredPage(idx, nextPages)
             return idx
           }
         }
 
-        const stored = readStoredPage(articleId)
+        const stored = readStoredPage()
         if (stored != null) return clampPageIndex(stored, nextPages.length)
         return clampPageIndex(prev, nextPages.length)
       })
     },
-    [articleId, collectBlockEnds, contentRef, viewportRef],
+    [collectBlockEnds, contentRef, readStoredPage, viewportRef, writeStoredPage],
   )
 
   useLayoutEffect(() => {
@@ -173,34 +180,34 @@ export function usePagedReader({
 
   useEffect(() => {
     if (!enabled) return
-    writeStoredPage(articleId, pageIndex)
-  }, [articleId, enabled, pageIndex])
+    writeStoredPage(pageIndex)
+  }, [enabled, pageIndex, writeStoredPage])
 
   const goPrev = useCallback(() => {
     setPageIndexState((prev) => {
       const next = clampPageIndex(prev - 1, pagesRef.current.length)
-      writeStoredPage(articleId, next)
+      writeStoredPage(next)
       return next
     })
-  }, [articleId])
+  }, [writeStoredPage])
 
   const goNext = useCallback(() => {
     setPageIndexState((prev) => {
       const next = clampPageIndex(prev + 1, pagesRef.current.length)
-      writeStoredPage(articleId, next)
+      writeStoredPage(next)
       return next
     })
-  }, [articleId])
+  }, [writeStoredPage])
 
   const setPageIndex = useCallback(
     (index: number) => {
       setPageIndexState(() => {
         const next = clampPageIndex(index, pagesRef.current.length)
-        writeStoredPage(articleId, next)
+        writeStoredPage(next)
         return next
       })
     },
-    [articleId],
+    [writeStoredPage],
   )
 
   const handleTap = useCallback((clientX: number, width: number) => {

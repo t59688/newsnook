@@ -758,6 +758,8 @@ async function resolveNetEaseArticleBody(
       return {
         contentHtml: await absolutizeHtml(body, article.originUrl || api),
         bodySource: 'netease',
+        // 分享短链不带标题，靠这里把接口给的标题回填进阅读器
+        title: typeof record.title === 'string' ? record.title : undefined,
       }
     } catch {
       // 尝试下一个候选 id

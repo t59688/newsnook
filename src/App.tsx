@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 
 import { AppShell } from './components/AppShell'
 import { DlnaCastBanner } from './components/DlnaCastBanner'
+import { OpenInAppBanner } from './components/OpenInAppBanner'
 import { DesktopSidebar } from './components/DesktopSidebar'
 import { TabBar, type TabKey } from './components/TabBar'
 import { useFeeds } from './hooks/useFeeds'
@@ -18,7 +19,20 @@ import {
   syncBodyPins,
 } from './lib/bodyCache'
 import { sortArticles } from './lib/feedPagination'
+import { log } from './lib/logger'
 import { resolveArticleBody } from './lib/resolveBody'
+import {
+  isAndroidBrowser,
+  preferredOpenInAppUrl,
+  shareTokenFromAppUrl,
+} from './lib/appDeepLink'
+import {
+  articleFromSharePayload,
+  clearShareLocation,
+  decodeShareToken,
+  shareTokenFromPath,
+  type SharePayload,
+} from './lib/shareLink'
 import {
   listCacheStats,
   loadEnabledSources,
@@ -46,6 +60,7 @@ import { CategoryEditScreen } from './screens/settings/CategoryEditScreen'
 import { CustomSourcesScreen } from './screens/settings/CustomSourcesScreen'
 import { HistoryScreen } from './screens/settings/HistoryScreen'
 import { LaterScreen } from './screens/settings/LaterScreen'
+import { LocalSearchScreen } from './screens/settings/LocalSearchScreen'
 import { PresetListScreen } from './screens/settings/PresetListScreen'
 import { StorageScreen } from './screens/settings/StorageScreen'
 import { TypographyScreen } from './screens/settings/TypographyScreen'
@@ -140,6 +155,7 @@ type SettingsRoute =
   | { name: 'proxy' }
   | { name: 'later' }
   | { name: 'history' }
+  | { name: 'local-search' }
   | { name: 'about' }
   | { name: 'changelog' }
   | { name: 'licenses' }
@@ -219,7 +235,32 @@ export default function App() {
     updatePrefs: update,
     setEnabledIds,
   })
-  const [reading, setReading] = useState<Article | null>(null)
+  /**
+   * 冷启动深链 `/a/<token>`：本地解码后直接进阅读器（正文仍走 resolveBody 站内抽取）。
+   * 显式写成 lazy initializer，token 也留一份给「在 App 中打开」引导条拼深链。
+   * `sharedEntry` 为 null = 普通访问；`payload` 为 null = token 损坏，
+   * 给中文提示后停在首页。query（如卡片页逃生门的 `?app=1`）不影响 pathname 解码。
+   */
+  const [sharedEntry] = useState<{ token: string; payload: SharePayload | null } | null>(() => {
+    const pathname = typeof window === 'undefined' ? '' : window.location.pathname
+    const token = shareTokenFromPath(pathname)
+    if (!token) return null
+    return { token, payload: decodeShareToken(token) }
+  })
+  const [reading, setReading] = useState<Article | null>(() => {
+    if (!sharedEntry?.payload) return null
+    return articleFromSharePayload(sharedEntry.payload, prefs.customSources)
+  })
+  const [deepLinkError, setDeepLinkError] = useState(sharedEntry?.payload === null)
+
+  useEffect(() => {
+    if (!sharedEntry) return
+    if (sharedEntry.payload === null) {
+      log.app.warn('share deep link rejected: token corrupted or truncated')
+    } else {
+      log.app.info('share deep link opened', sharedEntry.payload.sourceId)
+    }
+  }, [sharedEntry])
   /** 墨水屏中区进设置时暂存文章，从「我的」返回时恢复阅读 */
   const [readerReturnArticle, setReaderReturnArticle] = useState<Article | null>(null)
   const readerOverlayCloserRef = useRef<(() => boolean) | null>(null)
@@ -248,7 +289,8 @@ export default function App() {
       tab === 'me' ||
       settingsRoute?.name === 'storage' ||
       settingsRoute?.name === 'history' ||
-      settingsRoute?.name === 'later'
+      settingsRoute?.name === 'later' ||
+      settingsRoute?.name === 'local-search'
     if (!needsSnapshot) return
     refreshCacheSnapshot()
   }, [tab, settingsRoute, refreshCacheSnapshot])
@@ -322,6 +364,16 @@ export default function App() {
     }
   }, [focusReturnRoute])
 
+  const closeReader = useCallback(() => {
+    setReading(null)
+    clearShareLocation()
+  }, [])
+
+  const dismissDeepLinkError = useCallback(() => {
+    setDeepLinkError(false)
+    clearShareLocation()
+  }, [])
+
   const restoreReaderFromSettings = useCallback(() => {
     if (!readerReturnArticle) return
     setSettingsRoute(null)
@@ -344,7 +396,7 @@ export default function App() {
         return
       }
       if (reading) {
-        setReading(null)
+        closeReader()
         return
       }
       if (settingsRoute?.name === 'category-sources' || settingsRoute?.name === 'category-edit') {
@@ -396,7 +448,7 @@ export default function App() {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [closeSourceFeed, eggOpen, focusSourceId, readerReturnArticle, reading, restoreReaderFromSettings, settingsRoute, tab])
+  }, [closeReader, closeSourceFeed, eggOpen, focusSourceId, readerReturnArticle, reading, restoreReaderFromSettings, settingsRoute, tab])
 
   const {
     articles: fetchedArticles,
@@ -501,6 +553,79 @@ export default function App() {
     setReading(article)
     setReadIds((prev) => new Set(prev).add(article.id))
   }, [])
+
+  const customSourcesRef = useRef(prefs.customSources)
+  customSourcesRef.current = prefs.customSources
+
+  /**
+   * App 唤起深链：Android 的 https App Links 与 `newsnook://` 自定义 scheme
+   * 都经 Capacitor 的 launchUrl（冷启动）/ appUrlOpen（运行中）送进来，
+   * 与 Web 冷启动共用同一套 token 解码，直接进阅读器。
+   * 同一 URL 只处理一次——冷启动时两个入口可能重复上报。
+   */
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let disposed = false
+    let removeListener: (() => Promise<void>) | undefined
+    const handledUrls = new Set<string>()
+
+    const openFromUrl = (url: string) => {
+      if (!url || handledUrls.has(url)) return
+      handledUrls.add(url)
+      const token = shareTokenFromAppUrl(url)
+      if (!token) return
+      const payload = decodeShareToken(token)
+      if (!payload) {
+        log.app.warn('app deep link rejected: token corrupted or truncated')
+        setDeepLinkError(true)
+        return
+      }
+      log.app.info('app deep link opened', payload.sourceId)
+      openArticle(articleFromSharePayload(payload, customSourcesRef.current))
+    }
+
+    void CapacitorApp.getLaunchUrl()
+      .then((launch) => {
+        if (!disposed && launch?.url) openFromUrl(launch.url)
+      })
+      .catch(() => {})
+
+    void CapacitorApp.addListener('appUrlOpen', (event) => {
+      if (!disposed) openFromUrl(event.url)
+    }).then((handle) => {
+      if (disposed) {
+        void handle.remove()
+        return
+      }
+      removeListener = () => handle.remove()
+    })
+
+    return () => {
+      disposed = true
+      if (removeListener) void removeListener()
+    }
+  }, [openArticle])
+
+  /**
+   * 「在 App 中打开」引导条：网页版打开分享深链、且是 Android 浏览器时才给。
+   * 链接由 lib/appDeepLink 按浏览器选 intent:// 或 newsnook://，
+   * 未安装 App 时点击无事发生，网页阅读不受影响。
+   */
+  const [openInAppDismissed, setOpenInAppDismissed] = useState(false)
+  const openInAppUrl = useMemo(() => {
+    if (!sharedEntry?.payload) return null
+    if (Capacitor.isNativePlatform()) return null
+    if (typeof navigator === 'undefined' || !isAndroidBrowser(navigator.userAgent)) return null
+    return preferredOpenInAppUrl(sharedEntry.token, navigator.userAgent)
+  }, [sharedEntry])
+  const showOpenInAppBanner = Boolean(
+    openInAppUrl &&
+      !openInAppDismissed &&
+      reading &&
+      sharedEntry?.payload &&
+      reading.originUrl === sharedEntry.payload.originUrl,
+  )
 
   const toggleLater = useCallback((article: Article) => {
     if (laterRef.current.some((item) => item.id === article.id)) {
@@ -858,6 +983,23 @@ export default function App() {
       )
     }
 
+    if (settingsRoute.name === 'local-search') {
+      return (
+        <LocalSearchScreen
+          feedArticles={availableArticles}
+          later={later}
+          history={cachedHistory}
+          readIds={readIds}
+          laterIds={laterIds}
+          onOpen={(article) => {
+            setSettingsRoute(null)
+            openArticle(article)
+          }}
+          onBack={() => setSettingsRoute(null)}
+        />
+      )
+    }
+
     if (settingsRoute.name === 'about') {
       return (
         <AboutScreen
@@ -973,6 +1115,7 @@ export default function App() {
           onBackToReading={readerReturnArticle ? restoreReaderFromSettings : undefined}
           onOpenLater={() => setSettingsRoute({ name: 'later' })}
           onOpenHistory={() => setSettingsRoute({ name: 'history' })}
+          onOpenLocalSearch={() => setSettingsRoute({ name: 'local-search' })}
           onOpenCustomSources={() => setSettingsRoute({ name: 'custom-sources' })}
           onOpenCategories={() => setSettingsRoute({ name: 'categories', returnTo: 'me' })}
           onOpenPresets={() => setSettingsRoute({ name: 'presets' })}
@@ -1041,6 +1184,7 @@ export default function App() {
         onLoadMore={() => void loadMore(listScopeIds)}
         onOpen={openArticle}
         onBrandTap={onBrandTap}
+        onOpenLocalSearch={() => setSettingsRoute({ name: 'local-search' })}
         pullRefreshSeq={todayPullRefreshSeq}
         searchTemplate={activeFilterSource?.frameworkHint?.searchTemplate}
         frameworkCategories={activeFilterSource?.frameworkHint?.categories}
@@ -1128,15 +1272,22 @@ export default function App() {
             <div
               role="status"
               aria-label="正在打开文章"
-              className="absolute inset-0 z-30 bg-ink"
+              className="absolute inset-0 z-30 flex items-center justify-center bg-ink"
               style={{ paddingTop: 'var(--sat)' }}
-            />
+            >
+              {/* 分享深链落地时明示状态，避免看起来像闪了一下首页 */}
+              {sharedEntry?.payload ? (
+                <span className="font-mono text-[12px] tracking-[0.12em] text-paper-muted">
+                  正在打开分享的文章…
+                </span>
+              ) : null}
+            </div>
           }
         >
           <ReaderScreen
             article={reading}
             saved={laterIds.has(reading.id)}
-            onClose={() => setReading(null)}
+            onClose={closeReader}
             onToggleLater={toggleLater}
             onCacheChange={notifyCacheChange}
             overlayCloserRef={readerOverlayCloserRef}
@@ -1157,6 +1308,19 @@ export default function App() {
         </Suspense>
       )}
 
+      {showOpenInAppBanner && openInAppUrl && (
+        <OpenInAppBanner href={openInAppUrl} onDismiss={() => setOpenInAppDismissed(true)} />
+      )}
+
+      <ConfirmDialog
+        open={deepLinkError}
+        title="打不开这条分享"
+        message="链接可能已损坏或被截断。请让分享的人重新发一次，或先在首页看看今天的更新。"
+        confirmLabel="知道了"
+        cancelLabel="关闭"
+        onConfirm={dismissDeepLinkError}
+        onCancel={dismissDeepLinkError}
+      />
       <UpdateDialog
         open={appUpdate.dialogOpen}
         release={appUpdate.dialogRelease}

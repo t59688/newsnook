@@ -66,10 +66,15 @@ newsnook/
 | 新增或修复内置源 | `src/sources/registry.ts` → `lib/parseFeed.ts` / `lib/resolveBody.ts`；探测笔记 `docs/news-sources.md` |
 | 分类 / 场景预设 | `sources/categories.ts` · `presets.ts` · `hooks/usePresets.ts` |
 | 列表拉取与缓存 | `hooks/useFeeds.ts` · `lib/http.ts` · `lib/storage.ts` |
+| 配置备份与恢复 | `lib/backup.ts` · `components/BackupPanel.tsx`（入口在 `screens/settings/StorageScreen.tsx`） |
+| 阅读位置记忆 | `lib/readingPosition.ts`（`newsnook:reading-pos`；滚动与墨水屏分页共用一张表） |
+| 分享 / 阅读器溢出菜单 | `lib/shareToken.ts`（v2 token 编解码，App 与边缘 worker 共用） · `lib/shareLink.ts`（站内短链 `news.aizeek.com/a/<token>` 组装 + 深链冷启动） · `lib/articleId.ts`（收发两端共用的条目 id 规则） · `lib/shareArticle.ts` · `components/ShareArticleSheet.tsx` · `components/ReaderMoreMenu.tsx` · `components/EinkReaderMenu.tsx` · `functions/lib/shareCard.ts`（爬虫抓 `/a/*` 时的 Open Graph 卡片） |
+| 本地离线搜索 | `lib/localSearch.ts` · `screens/settings/LocalSearchScreen.tsx`（与 `web-catalog` 的联网站内搜索无关） |
 | 站内正文 | `lib/resolveBody.ts` · `lib/sanitize.ts` · `lib/bodyCache.ts` · `screens/ReaderScreen.tsx` |
 | 翻译 | `features/translation/`（稳定边界：`types.ts`；新增引擎实现 Provider 并注册） |
 | 代理 / 网络 | `features/proxy/` · `lib/http.ts` · `vite.config.ts` · `functions/` |
 | 跟贴 | `features/comments/` |
+| 分享短链 / App 唤起深链 | `lib/shareToken.ts`（token 编解码） · `lib/shareLink.ts` · `lib/appDeepLink.ts` · `functions/lib/shareCard.ts`（爬虫 OG 卡片） · `wrangler.jsonc`（`run_worker_first`） |
 | 墨水屏 | `lib/eink.ts` · `hooks/usePagedReader.ts` · `index.css` 中 `[data-eink]` |
 | 主题 / 排版 | `lib/theme.ts`（明暗 + 风格方案注册表） · `lib/customScheme.ts`（自定义配色推导） · `sources/preferences.ts` · `index.css`（`data-scheme` 方案块） |
 | 应用更新 | `features/appUpdate/` |
@@ -121,6 +126,7 @@ newsnook/
 | 新跟贴源 | 实现 `CommentProvider`，在 `comments/service` 注册 |
 | UI 文案 | 与现有「我的 / 设置」语气一致；避免营销腔与平台化话术 |
 | 墨水屏 | 行为叠加在 `einkMode` 上，不是第三套主题色；关闭后须零残留 |
+| 分享链接 | 主链接必须是站内 `/a/<token>` 深链（`lib/shareLink.ts`），原站地址只用于「打开原文」；token 自解释，不得为此新增服务端存储或短链服务。v2 载荷只放原文地址 + 信源 id，别再往里塞中文（标题打开后由 `resolveBody` 补） |
 | 调试日志 | 见 **5.4**；新增模块优先复用已有命名空间，必要时在 `LogNamespace` 扩展 |
 
 ### 5.4 日志（`lib/logger.ts`）
@@ -159,8 +165,14 @@ npm run test:resolve-body
 npm run test:translation
 npm run test:proxy
 npm run test:custom-sources
+npm run test:share-article
+npm run test:share-link
 npm run test:eink
 npm run test:logger
+npm run test:share-og
+npm run test:config-backup
+npm run test:local-search
+npm run test:share-article
 
 npm run android:run         # 轻量 cloud
 npm run android:run:local   # 完整 local（Bergamot 需先 bergamot:init）

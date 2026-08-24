@@ -6,6 +6,7 @@ import {
 } from '../features/mediaSniffer/core'
 import { catalogHtmlToArticles } from '../features/catalogEngine/toArticles'
 import { collectAudioSrc, isAudioMediaUrl } from './articleAudio'
+import { feedArticleId } from './articleId'
 import { cleanSummaryText } from './cleanSummary'
 import type { NewsSource, SourceKind } from '../sources/registry'
 import type { Article } from './types'
@@ -301,14 +302,6 @@ export async function enrichPaulGrahamDates(
   return next
 }
 
-function hashId(input: string): string {
-  let hash = 5381
-  for (let i = 0; i < input.length; i += 1) {
-    hash = ((hash << 5) + hash + input.charCodeAt(i)) >>> 0
-  }
-  return hash.toString(36)
-}
-
 function linkOfAtomEntry(node: Unknown): string {
   const links = toArray(node.link)
   const records = links.map(asRecord).filter(Boolean) as Unknown[]
@@ -411,7 +404,7 @@ function buildArticle(
   const summary = (cleaned || raw.summaryText).slice(0, 220)
 
   return {
-    id: `${source.id}:${hashId(raw.link || title)}`,
+    id: feedArticleId(source.id, raw.link || title),
     title,
     summary,
     contentHtml: raw.html && raw.html.includes('<') ? raw.html : undefined,

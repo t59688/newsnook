@@ -23,8 +23,8 @@ News Nook（有所闻）是**无后端**移动新闻阅读客户端：静态源�
 newsnook/
 ├── src/                      # React 应用
 ├── android/                  # Capacitor 原生工程（入库）
-├── functions/                # Cloudflare Pages Functions（生产边缘代理）
-├── public/                   # favicon、品牌 SVG、字体等静态资源
+├── functions/                # 生产边缘：/api/* 反向代理 + /a/* 社交分享卡片
+├── public/                   # favicon、品牌 SVG、字体
 ├── assets/                   # 启动图 / Android 图标源图
 ├── scripts/                  # 构建、探针与单元测试脚本
 ├── dist/                     # Vite 产物（capacitor webDir）
@@ -82,11 +82,11 @@ newsnook/
 | 界面 | 职责 |
 |---|---|
 | 速闻 `FeedScreen` | 分类轨 + 多源混合时间线 + 下拉刷新 + 场景预设切换 |
-| 我的 `MeScreen` | 稍后读、最近阅读、设置入口 |
-| 阅读器 `ReaderScreen`（lazy） | 站内全文 / 视频 / 墨水屏分页 / 翻译 / 跟贴 / 错误重试 |
-| 设置栈 | 自定义订阅、分类与信源、场景预设、排版、外观、翻译、代理、存储、关于 |
+| 我的 `MeScreen` | 稍后读、最近阅读、本地搜索、设置入口 |
+| 阅读器 `ReaderScreen`（lazy） | 站内全文 / 视频 / 墨水屏分页 / 翻译 / 跟贴 / 分享 / 错误重试 |
+| 设置栈 | 自定义订阅、分类与信源、场景预设、排版、外观、翻译、代理、存储与备份、本地搜索、关于 |
 
-设置路由（`SettingsRoute`）包括：`typography`、`appearance`、`translation`、`proxy`、`presets`、`custom-sources`、`categories`、`channels`、`category-sources`、`category-edit`、`later`、`history`、`storage`、`about`、`changelog`、`licenses`。
+设置路由（`SettingsRoute`）包括：`typography`、`appearance`、`translation`、`proxy`、`presets`、`custom-sources`、`categories`、`channels`、`category-sources`、`category-edit`、`later`、`history`、`local-search`、`storage`、`about`、`changelog`、`licenses`。
 
 Android 物理返回键由 `@capacitor/app` 在 `App.tsx` 统一处理：阅读器 → 设置栈 → 单源焦点 → 退出确认。
 
@@ -229,7 +229,118 @@ ReaderScreen / CommentsDrawer
 
 仅部分源实现 `CommentProvider`；不支持时隐藏跟贴入口。
 
-### 8.6 持久化键
+### 8.6 阅读位置、分享与本地搜索
+
+三者都只读写本机数据，不新增任何网络路径：
+
+```text
+阅读位置  ReaderScreen 滚动 / usePagedReader 翻页
+            → lib/readingPosition（内存表 + 800ms 节流落盘）
+            → newsnook:reading-pos（单键整表，按 updatedAt 保留最近 240 篇）
+          重开文章：正文就绪后按「记录时可滚动高度 → 当前可滚动高度」等比折算回落
+          顶部附近（<120px）与读到结尾（≥97%）视为无需记忆，会清掉旧记录
+
+分享      ReaderMoreMenu / EinkReaderMenu（两个入口同一流程）
+            → ShareArticleSheet（应用内预览卡片，只用主题变量着色）
+            → lib/shareLink.buildShareUrl（站内短链，v2 只带原文地址 + 信源 id，见 8.6.1）
+            → lib/shareArticle
+                 Android：@capacitor/share（标题 + text + url）
+                 Web：navigator.share，不支持时降级 navigator.clipboard
+
+本地搜索  LocalSearchScreen
+            → lib/localSearch.loadCachedListArticles（枚举 cache:v3:* 列表缓存）
+              + 稍后读 + 最近阅读（正文缓存元数据）
+            → buildLocalSearchCorpus（按 id 去重，稍后读 > 最近阅读 > 列表缓存）
+            → searchLocalArticles（空格切片 AND 子串匹配，标题/摘要/信源名加权，默认取前 80 条）
+```
+
+本地搜索与 `web-catalog` 源的 `searchTemplate`（站内联网搜索）是两条独立路径：前者零请求，只覆盖本机已有内容。
+
+#### 8.6.1 分享深链 `/a/<token>`
+
+分享出去的主链接固定指向站内：`https://news.aizeek.com/a/<token>`（常量集中在 `lib/shareLink.ts` 的 `SHARE_LINK_HOST` / `SHARE_PATH_PREFIX`）。**没有任何服务端参与**——token 自带打开阅读器所需的全部字段，接收端本地解码后照常走 `resolveBody` 抽正文。出版社地址只是 token 里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，不作为分享主链接。
+
+token 载荷当前是 **v2**：只留「能打开这篇」的两个必需字段，中文一律不进链接。v1 的短键 JSON（带标题、摘要、信源名、时间）仍然可解码，旧链接不失效。
+
+```text
+v2 明文（换行分隔，比 JSON 再省掉键名与引号）
+  第 1 行  "2.<校验位>"      版本号 + 其余内容的 4 位 djb2 短哈希
+  第 2 行  sourceId
+  第 3 行  原文地址          https:// 前缀省略不写
+  第 4 行  可选 id           以 ':' 开头表示补回 `<sourceId>:` 前缀
+
+编码  Article ─ sharePayloadFromArticle ─→ { originUrl, sourceId, id? }
+                                            ↓ 上述明文 + UTF-8 + URL-safe base64
+                    buildShareUrl ─→ https://news.aizeek.com/a/<token>
+                    （开发态 resolveShareOrigin 用 window.location.origin，原生壳与生产固定 news.aizeek.com）
+
+解码  冷启动 App.tsx（lazy initializer，query 如卡片逃生门的 ?app=1 不参与）
+        → shareTokenFromPath()       读 location.pathname，只认单段 /a/<token>；token 另存给「在 App 中打开」引导条
+        → decodeShareToken()         按首行分流 v2 / v1，校验位、字段、长度与 http(s) 协议校验，失败返回 null
+        → articleFromSharePayload()  本机认识该 sourceId 就用注册表元数据，否则退回「分享来源」
+        → 直接进 ReaderScreen（正文仍是站内抽取），token 坏了则弹中文提示并停在首页
+      Android App 唤起（launchUrl / appUrlOpen）由 lib/appDeepLink.shareTokenFromAppUrl 还原 token 后走同一条链
+```
+
+- **为什么砍字段**：中文在 UTF-8 + base64 下膨胀三倍，v1 把标题、摘要、信源名全编进去，典型条目要 450～550 字符，聊天工具里折行、被截断就打不开。v2 网易稿 86 字符、公众号稿 82 字符（完整 URL 112 / 108）。
+- **标题与信源名从哪来**：标题不编码，打开后先显示 `SHARE_PENDING_TITLE`（「加载中…」），`resolveBody` 抽完正文由 `ResolvedBody.title` 顶掉；抽取失败退到 `SHARE_FALLBACK_TITLE`（「分享的文章」）。信源名查 `sources/registry`，不认识就写「分享来源」。`withResolvedShareTitle` 保证落进正文缓存与稍后读的是补齐后的标题，不是占位符。
+- **id 怎么省的**：列表侧的条目 id 是 `lib/articleId.feedArticleId(sourceId, link)`（`<sourceId>:<djb2 哈希>`）。接收端用同一函数按原文地址算，绝大多数条目算出的 id 与发送端完全一致，已读 / 正文缓存 / 稍后读因此能对上，第 4 行也就不用出现。算不出来（例如 Google News 解码后换过地址）才写进去，且去掉冗余的 `<sourceId>:` 前缀、超过 40 字符就宁可丢掉。
+- **校验位**：紧凑载荷被截断后仍可能解出一个「看着合法」的短地址，会静默打开错误页面。首行 4 位校验对不上就当损坏处理，弹中文 `ConfirmDialog`。
+- **拒绝面**：token 超过 2048 字符、非 base64url 字符、校验位不符、版本不匹配、缺 `sourceId` / `originUrl`、`originUrl` 非 http(s) 一律返回 `null`，不抛异常打断冷启动。`safeHttpUrl` 校验后原样返回，不做归一化——归一化会改动哈希输入，接收端就算不出发送端的 id。
+- **深链可刷新**：Workers 侧通过 `wrangler.jsonc` 的 `not_found_handling: single-page-application` 统一兜底，`/a/<token>` 和普通前端路径都能直接回到 SPA；同时 `run_worker_first: ["/api/*", "/a/*"]` 显式声明这两类路径**先进 worker**——SPA 模式默认按 `Sec-Fetch-Mode` 隐式分流，`compatibility_date` 一旦升到 2025-04-01 之后导航请求会完全绕过 worker，社交爬虫抓 `/a/*` 就只能拿到通用 `index.html`。开发态由 Vite 自带的 history fallback 兜底（base64url 不含 `.`，不会被当成静态文件）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根（打开时不清，刷新仍能回到同一篇）。不要再额外放 `_redirects` 的 `/a/* → /index.html 200`，否则 Cloudflare 会把它判成回到同一 SPA 入口的死循环并拒绝部署。
+- **与「打开原文」的区别**：分享出去的主链接永远是站内 `/a/<token>`；出版社地址只是载荷里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，任何情况下都不会把原站 URL 当成分享结果。
+- **UI 层次**：`ShareArticleSheet` 是 `z-50`，且分享卡片打开时 `ReaderScreen` 会收起跟贴悬浮胶囊与「已回到上次阅读位置」提示（两者都是 `z-40` 且在 DOM 里排在卡片之后，否则会压住卡片底部的「复制链接 / 分享」）。卡片里的链接是可点的 `<a target="_blank">`，方便自测深链。
+- **Android App 唤起**：`AndroidManifest.xml` 为 MainActivity 注册了两条 VIEW intent-filter——`https://news.aizeek.com/a/*`（App Links，带 `autoVerify`）与自定义 scheme `newsnook://a/<token>`。App 侧经 Capacitor `getLaunchUrl()`（冷启动）/ `appUrlOpen`（运行中）拿到 URL，由 `lib/appDeepLink.shareTokenFromAppUrl` 还原成同一个 token 直接进阅读器（同一 URL 去重，token 损坏弹既有中文提示）。网页落地页对 Android 浏览器出「在有所闻 App 中打开」引导条（`components/OpenInAppBanner`）：Chromium 系用 `intent://…;package=com.aizeek.newsnook;end`（**不带商店 fallback**，未安装时点击无事发生、继续网页阅读），其余浏览器退回 `newsnook://`；微信 / 企业微信内置浏览器禁止唤起第三方 App，引导条不出现；iOS 无对应 App，同样不出现。注意：`autoVerify` 的自动接管要等站点提供 `/.well-known/assetlinks.json`（含正式签名 SHA-256 指纹）后才生效，此前系统只把 App 列进「用应用打开」候选；指纹不入库，该文件需在部署侧补。
+- **模块划分**：token 的编解码与 `SHARE_LINK_HOST` 单独放在 `lib/shareToken.ts`（纯函数，无 Capacitor / window 依赖），边缘 worker 也 import 同一份（见 8.6.2）；`lib/shareLink.ts` 只留浏览器侧的链接组装、深链识别与 Article 还原，并原样 re-export token API，调用方不受影响；`lib/appDeepLink.ts` 负责 App 唤起 URL 的拼装与还原，同样不带 Capacitor 依赖，测试走 `npm run test:app-deep-link`。
+
+#### 8.6.2 社交分享卡片（边缘 worker 动态 OG 标签）
+
+微信、WhatsApp、Telegram 这类客户端是按抓到的 HTML 里的 Open Graph 标签渲染链接卡片的，而 `/a/<token>` 走 SPA 回退给出的 `index.html` 只有通用空壳标签，链接在聊天里就是一串裸地址。**卡片由 `functions/lib/shareCard.ts` 在边缘现拼**，仍然不建库、不建 API：
+
+```text
+GET /a/<token>
+  │
+  ├─ 爬虫（UA 命中 facebookexternalhit / Twitterbot / WhatsApp / TelegramBot / Baiduspider … ）
+  │    → decodeShareToken 拿 originUrl + sourceId
+  │    → fetch 原文（3s 超时，只读前 128KB，认 content-type / meta 里的 charset）
+  │    → 正则取 og:title | twitter:title | <title>、og:description | description、og:image
+  │    → 返回一页只有 OG / twitter meta 的极简 HTML（Cache-Control 600s + Vary: User-Agent）
+  │
+  └─ 真人 → env.ASSETS.fetch(request)，SPA 回退不变
+```
+
+- **判定方式**：`wantsShareCard()` 先匹配明确的爬虫 UA。微信抓卡片与微信内置浏览器共用 `MicroMessenger` UA（抓取端还有企业微信 `wxwork`、`WeChat`、`Weixin` 变体，一并匹配），只能再看 `Sec-Fetch-Mode`——真实导航带（内置浏览器基于 Chromium），抓取端不带；真人微信内置浏览器因此仍进 SPA。
+- **误判兜底**：卡片页带 `<meta http-equiv="refresh">` 指向 `?app=1`；worker 见到这个参数直接放行到 SPA，所以被误判成爬虫的真人只多一跳就回到阅读页，不会来回打转。`?app=1` 只是 query，前端仍按 pathname 解码 token，不影响打开文章；卡片自身的 `og:url` 指向不带该参数的规范地址。
+- **路由前提**：卡片能出现在聊天里的前提是 `/a/*` 请求真的进了 worker——见 8.6.1「深链可刷新」里的 `run_worker_first` 说明。若 Cloudflare WAF / Bot 拦截对微信、WhatsApp 抓取端 IP 弹质询页，爬虫同样拿不到 OG，需在仪表盘为 `/a/*` 放行已知抓取端。
+- **平台缓存**：聊天预览完全依赖边缘返回的 OG；微信、WhatsApp 会按 URL 缓存抓取结果，卡片修好之前发过的链接可能还显示旧的纯文本预览，换一篇文章（新 token）即可验证。
+- **兜底文案**：token 解不出来、上游超时 / 非 200 / 非 HTML，一律退到「有所闻分享」+「点击在有所闻中阅读全文」，并尽量补上「原文来自 xxx」（认识的 `sourceId` 用注册表中文名，否则用原文域名）。`og:image` 只在上游确有首图时输出，不塞占位图。
+- **安全**：上游标题、摘要先按 HTML 实体还原再统一 `escapeHtml`，属性边界不会被 `">` 顶开；`og:image` 只接受 http(s)，`javascript:` 之类直接丢掉。
+- **只影响 Workers 部署**：`/api/*` 的边缘代理逻辑不变；Vite 开发态没有这条路径（爬虫不会来爬 localhost），本机验证请直接跑 `npm run test:share-og`。
+
+### 8.7 配置备份与恢复
+
+`lib/backup.ts` 把本机关键配置导出成一个 JSON 文件，导入时按分区整段覆盖：
+
+```json
+{
+  "format": "newsnook-backup",
+  "version": 1,
+  "exportedAt": 1756000000000,
+  "appVersion": "1.6.4",
+  "data": {
+    "preferences": {}, "presets": {}, "enabledSources": [],
+    "laterItems": [], "readIds": [], "readingPositions": {}
+  }
+}
+```
+
+- **校验与迁移**：`parseBackup` 检查 `format` / `version` / `data` 形状，逐分区做与运行态相同的 normalize；版本高于当前会拒绝导入，低版本走 `migrate` 补齐（当前仅 v1，新增字段一律「缺省即默认」以保持可逆）。
+- **范围**：只搬配置，不搬缓存——正文缓存、列表缓存、预存正文都可再生，稍后读只留元数据（`contentHtml` 被剥掉）。
+- **与 OPML 的分工**：`lib/opml.ts` 只覆盖自建订阅源，可与其它阅读器互通；备份是「有所闻」自有格式，覆盖偏好、预设、启用信源、稍后读、已读与阅读位置。
+- **落地方式**：Android 写入 `Directory.Cache` 后交给系统分享面板；Web 走 Blob 下载。导入两端都用 `<input type="file">`。全程本地文件，无账号、无云同步。
+- 恢复通过 `storage.writeRestoredKeys` 整段写回；该函数会等原生 Preferences 也落盘再 resolve（否则冷启动的 `hydrateNativeStorage` 会用旧值盖回来），随后由 UI 重载应用让内存态跟上。
+
+### 8.8 持久化键
 
 前缀 `newsnook:`（`lib/storage.ts`）：
 
@@ -241,6 +352,7 @@ ReaderScreen / CommentsDrawer
 | `custom-sources` | 用户自建源 |
 | `later-items` | 稍后读文章 |
 | `read` | 已读 ID 集合 |
+| `reading-pos` | 阅读位置表 `{ [articleId]: { scrollTop, scrollRange?, pageIndex?, updatedAt } }`（仅 localStorage，上限 240 条） |
 | `cache:v3:{sourceId}` | 列表元数据（约 7 天过期 / 12 小时标 stale） |
 | `body:v1:{id}` + `body:index` | 正文缓存（约 3MB 预算，稍后读 pin） |
 | `feed-translation:*` | 列表标题译文缓存 |
@@ -271,6 +383,8 @@ einkMode=true
   → ReaderScreen：usePagedReader 分页阅读
        左区 ~28% 上一页 · 中区 ~44% 打开 EinkReaderMenu · 右区 ~28% 下一页
        音量键翻页（VolumePageTurn 原生插件）
+       页码与内容偏移一起写入 newsnook:reading-pos，跨会话恢复，
+       且与滚动模式共用同一张表（关掉墨水屏仍落在同一段文字）
   → 翻译/跟贴/图片/视频策略与正常模式相同
 einkMode=false → 完全恢复现有上下滚动阅读，零残留
 ```
@@ -286,15 +400,25 @@ einkMode=false → 完全恢复现有上下滚动阅读，零残留
 | `components/AppShell.tsx` | 墨砚壳 + safe-area |
 | `components/TabBar.tsx` | 底栏 |
 | `components/InkImage.tsx` / `InkVideoPlayer.tsx` | 图片渐进加载 / Progressive·HLS·DASH 播放 / 缩放、全屏与系统级横竖屏 |
-| `components/EinkReaderMenu.tsx` | 墨水屏阅读菜单（字号、页码、翻译、收藏） |
+| `components/EinkReaderMenu.tsx` | 墨水屏阅读菜单（字号、页码、翻译、收藏、分享） |
+| `components/ReaderMoreMenu.tsx` | 滚动模式阅读器溢出菜单（分享、复制链接、浏览器核对、重新抽取） |
+| `components/ShareArticleSheet.tsx` | 分享预览卡片（标题、信源、摘要、品牌与站内短链） |
+| `components/BackupPanel.tsx` | 「离线存储与备份」里的配置导出/导入面板 |
 | `lib/videoGestures.ts` / `lib/deviceMediaControls.ts` | 播放器手势 / 系统亮度、媒体音量与 Activity 方向控制 |
 | `features/mediaSniffer/*` | 媒体观察、候选评分、Manifest 解析、播放会话上下文 |
 | `hooks/useFeeds.ts` | 多源并行拉取与合并 |
 | `lib/http.ts` | 平台分流 GET + 代理隧道 |
 | `lib/parseFeed.ts` | 多 kind 列表 → `Article[]` |
+| `lib/articleId.ts` | 条目 id 生成规则（列表解析与分享短链共用，见 8.6.1） |
 | `lib/resolveBody.ts` | 站内全文策略 |
 | `lib/bodyCache.ts` | 正文 LRU + pin |
 | `lib/opml.ts` | OPML 导入导出与 Feed 探测 |
+| `lib/backup.ts` | 配置备份 JSON 的采集、校验、迁移与恢复 |
+| `lib/readingPosition.ts` | 阅读位置表（节流落盘、容量淘汰、按比例还原） |
+| `lib/shareToken.ts` | 分享 token 的编解码（纯函数，边缘 worker 共用，见 8.6.2） |
+| `lib/shareLink.ts` | 站内分享短链组装、深链识别与 Article 还原 |
+| `lib/shareArticle.ts` | 系统分享面板与剪贴板降级 |
+| `lib/localSearch.ts` | 本地语料合并与离线检索 |
 | `lib/sanitize.ts` | DOMPurify |
 | `features/translation/*` | 翻译领域模型与可替换提供商 |
 | `features/proxy/*` | 代理配置、路由与原生隧道 |
@@ -368,6 +492,10 @@ npm run android:apk | android:aab
 | 正文 | `src/lib/resolveBody.ts` |
 | 正文缓存 | `src/lib/bodyCache.ts` |
 | 持久化 | `src/lib/storage.ts` |
+| 配置备份 | `src/lib/backup.ts` · `src/components/BackupPanel.tsx` |
+| 阅读位置 | `src/lib/readingPosition.ts` |
+| 分享 | `src/lib/shareLink.ts` · `src/lib/shareToken.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` · `functions/lib/shareCard.ts` |
+| 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
 | 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/index.css` |
 | HTTP / 代理 | `src/lib/http.ts` · `src/features/proxy/` |
 | 翻译 | `src/features/translation/` |

@@ -38,3 +38,6 @@ artifacts/
 third-party/
 logs/
 *.patch
+
+# wrangler dev 本地状态
+.wrangler/
