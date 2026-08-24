@@ -5,9 +5,9 @@
  * 渲染链接卡片的，而 SPA 回退给出的 `index.html` 只有通用的空壳标签，
  * 于是链接在聊天里就是一串裸地址、或者一张写着站点名的通用卡。
  *
- * 这里的做法仍然是无后端的：token 里已经有原文地址、信源 id 与标题，
+ * 这里的做法仍然是无后端的：token 里已经有原文地址、信源 id、标题与一段导语，
  * 边缘节点再现抓一次原文、只从 `<head>` 里取标题/摘要/首图，
- * 拼出一页极简的 OG HTML。不落库、不建 API，抓不到就用 token 里的标题。
+ * 拼出一页极简的 OG HTML。不落库、不建 API，抓不到就用 token 里的标题与导语。
  *
  * 两条路都会带上文章级 OG，**不把卡片绑死在爬虫 UA 判定上**：
  * - 判定为爬虫 → 这份现拼的卡片 HTML（真人误判了也只多一跳 meta refresh）；
@@ -369,7 +369,8 @@ ${renderShareMetaTags(card)}
 
 /**
  * 拼出这篇文章的一组 OG 值。`meta` 是现抓原文的结果，抓不到就传空对象——
- * 标题会退到 token 里带的标题，再退到「<信源名> · 一篇文章」，
+ * 标题会退到 token 里带的标题，再退到「<信源名> · 一篇文章」；
+ * 小字会退到 token 里带的导语，再退到「点击在有所闻中阅读全文」。
  * 任何情况下都不会落回站点通用文案。
  */
 function composeShareMeta(
@@ -404,9 +405,13 @@ function composeShareMeta(
     ? `${sourceName ? `${sourceName} · ` : ''}${FALLBACK_ARTICLE_TITLE}`
     : FALLBACK_TITLE
 
+  // 小字同样三级：现抓的 og:description > 链接里带的导语 > 「点击在有所闻中阅读全文」。
+  // 上游抓取成不成功不该决定对方看不看得出这篇讲什么。
+  const linkSummary = normalizeText(payload?.summary, MAX_DESCRIPTION_LENGTH)
+
   return {
     title: meta.title || linkTitle || fallbackTitle,
-    description: composeDescription(meta.description, sourceName),
+    description: composeDescription(meta.description || linkSummary, sourceName),
     shareUrl: `${url.origin}${SHARE_PATH_PREFIX}${canonicalToken}`,
     image,
     ...dimensions,
