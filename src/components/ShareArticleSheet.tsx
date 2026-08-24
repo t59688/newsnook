@@ -47,7 +47,7 @@ export function ShareArticleSheet({
   const time = articleRelativeTime({ publishedAt, hasRealDate })
 
   return (
-    <div className="absolute inset-0 z-40 flex flex-col justify-end" data-no-page-tap>
+    <div className="absolute inset-0 z-50 flex flex-col justify-end" data-no-page-tap>
       <button
         type="button"
         aria-label="关闭分享卡片"
@@ -103,9 +103,16 @@ export function ShareArticleSheet({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-[12px] text-paper">有所闻 · NewsNook</span>
-                  <span className="mt-0.5 block truncate font-mono text-[10px] text-paper-faint">
+                  {/* 卡片里的链接可直接点开，方便自己确认这条分享是通的 */}
+                  <a
+                    href={shareUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={shareUrl}
+                    className="mt-0.5 block truncate font-mono text-[10px] text-paper-faint underline-offset-2 hover:text-cinnabar-soft hover:underline"
+                  >
                     {shareUrlDisplay(shareUrl)}
-                  </span>
+                  </a>
                 </span>
               </div>
             </div>

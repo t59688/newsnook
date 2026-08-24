@@ -40,7 +40,13 @@ import {
   resolveScrollTop,
 } from '../lib/readingPosition'
 import { buildClipboardText, copyShareText, shareArticle } from '../lib/shareArticle'
-import { buildShareUrl, sharePayloadFromArticle } from '../lib/shareLink'
+import {
+  SHARE_FALLBACK_TITLE,
+  buildShareUrl,
+  isPendingShareTitle,
+  sharePayloadFromArticle,
+  withResolvedShareTitle,
+} from '../lib/shareLink'
 import { resolveArticleBody, type BodySource } from '../lib/resolveBody'
 import { articleCoverUrl } from '../lib/articleAudio'
 import { articleRelativeTime } from '../lib/time'
@@ -554,7 +560,7 @@ export function ReaderScreen({
           setHtml(resolved.contentHtml)
           setResolvedTitle(resolved.title)
           if (resolved.bodySource !== 'video') {
-            const cached = saveCachedBody(article, {
+            const cached = saveCachedBody(withResolvedShareTitle(article, resolved.title), {
               html: resolved.contentHtml,
               bodySource: resolved.bodySource,
             })
@@ -571,7 +577,7 @@ export function ReaderScreen({
           setLoadState('ready')
           // 视频稿正文只是占位文案，缓存没有意义
           if (resolved.bodySource !== 'video') {
-            const cached = saveCachedBody(article, {
+            const cached = saveCachedBody(withResolvedShareTitle(article, resolved.title), {
               html: resolved.contentHtml,
               bodySource: resolved.bodySource,
             })
@@ -671,10 +677,22 @@ export function ReaderScreen({
   const comparing = Boolean(
     showTranslation && translated && translationPrefs.displayMode === 'compare',
   )
+  /** 分享深链没带标题，靠正文抽取补；抽取失败就换个中性说法，别一直显示占位 */
+  const pendingTitle =
+    isPendingShareTitle(article.title) && loadState === 'error'
+      ? SHARE_FALLBACK_TITLE
+      : article.title
+
   const displayedTitle =
     showTranslation && translated && !comparing
       ? translated.title
-      : resolvedTitle || article.title
+      : resolvedTitle || pendingTitle
+
+  /** 分享深链进来的文章标题只是占位；收藏时存正文抽取补回的真标题 */
+  const laterArticle = useMemo(
+    () => withResolvedShareTitle(article, resolvedTitle),
+    [article, resolvedTitle],
+  )
 
   const paged = usePagedReader({
     enabled: einkMode,
@@ -894,13 +912,14 @@ export function ReaderScreen({
     await Browser.open({ url: originUrl })
   }
 
-  /** 分享主链接：站内短链，对方点开在网页版里读全文 */
+  /**
+   * 分享主链接：站内短链，对方点开在网页版里读全文。
+   * token 只带原文地址与信源 id，标题由对方抽取正文时自己补。
+   */
   const shareUrl = useMemo(() => {
     if (!originUrl) return ''
-    return buildShareUrl(
-      sharePayloadFromArticle({ ...article, originUrl }, { title: displayedTitle || article.title }),
-    )
-  }, [article, displayedTitle, originUrl])
+    return buildShareUrl(sharePayloadFromArticle({ ...article, originUrl }))
+  }, [article, originUrl])
 
   const originHost = useMemo(() => {
     if (!originUrl) return undefined
@@ -1124,7 +1143,7 @@ export function ReaderScreen({
               </button>
               <button
                 type="button"
-                onClick={() => onToggleLater(article)}
+                onClick={() => onToggleLater(laterArticle)}
                 aria-pressed={saved}
                 aria-label={saved ? '取消收藏' : '收藏'}
                 className="flex h-9 items-center gap-1 px-1 transition-colors duration-200"
@@ -1514,7 +1533,7 @@ export function ReaderScreen({
           onFontScale={(next) => onTypographyChange?.({ fontScale: next })}
           onJumpPage={(index) => paged.setPageIndex(index)}
           onToggleTranslation={() => void toggleTranslation()}
-          onToggleLater={() => onToggleLater(article)}
+          onToggleLater={() => onToggleLater(laterArticle)}
           onShare={openShareSheet}
           onBackToList={onClose}
           onOpenSettings={() => {
@@ -1554,7 +1573,8 @@ export function ReaderScreen({
         onCopy={() => void handleCopyLink()}
       />
 
-      {(toast || resumedPosition) && (
+      {/* 分享卡片占满底部，reader 级悬浮件一律让位，避免压住「复制链接 / 分享」 */}
+      {(toast || resumedPosition) && !shareSheetOpen && (
         <div
           className="pointer-events-none absolute inset-x-0 z-40 flex justify-center px-4 safe-bottom-20"
           role="status"
@@ -1593,7 +1613,7 @@ export function ReaderScreen({
       )}
 
       {/* 底部右下角悬浮跟贴胶囊（随时一触即达） */}
-      {canComment && !commentsOpen && !einkMode && (
+      {canComment && !commentsOpen && !shareSheetOpen && !einkMode && (
         <div
           className={`fixed right-4 z-40 transition-all duration-300 pointer-events-auto safe-bottom-20 ${
             (einkMode ? chromeVisible : pillVisible)

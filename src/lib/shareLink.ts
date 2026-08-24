@@ -7,11 +7,34 @@
  *
  * 与「打开原文」的区别：这里的主链接始终指向站内阅读，
  * 出版社地址只作为 payload 里的字段，用于抽取正文与用户主动核对。
+ *
+ * ## v2 载荷（当前版本）
+ *
+ * 中文标题、摘要、信源名在 UTF-8 + base64 下膨胀到三倍，v1 的 JSON 载荷
+ * 动辄 400～600 字符，粘进聊天工具容易被折行或截断。v2 只留「能打开这篇」
+ * 的两个必需字段，明文改成换行分隔的紧凑格式（比 JSON 再省掉键名与引号）：
+ *
+ * ```text
+ * 第 1 行  "2.<校验位>"：版本号 + 其余内容的短哈希
+ * 第 2 行  sourceId
+ * 第 3 行  原文地址，https:// 前缀省略不写
+ * 第 4 行  可选 id；以 ':' 开头表示补回 `<sourceId>:` 前缀
+ * ```
+ *
+ * 校验位存在的理由：紧凑载荷被聊天工具截断后仍可能解出一个「看着合法」的
+ * 短地址，那会静默打开错误的页面。校验不过就当损坏处理，弹中文提示。
+ *
+ * 标题打开后由正文抽取补上（在此之前显示占位），信源名从 registry 查。
+ * 绝大多数条目的 id 就是 `<sourceId>:<原文地址哈希>`（见 lib/articleId），
+ * 接收端能自己算出来，第 4 行因此通常不出现。
+ *
+ * v1 的 JSON 载荷仍然可解码，旧链接不会失效。
  */
 
 import { Capacitor } from '@capacitor/core'
 
 import { findSource, type NewsSource } from '../sources/registry'
+import { feedArticleId, hashId } from './articleId'
 import type { Article } from './types'
 
 /** 生产 Web 站点 host；App 内分享出去的链接一律指向这里 */
@@ -20,30 +43,46 @@ export const SHARE_LINK_ORIGIN = `https://${SHARE_LINK_HOST}`
 /** 深链路径前缀，SPA 回退规则与 App 冷启动都按它匹配 */
 export const SHARE_PATH_PREFIX = '/a/'
 
-const SHARE_TOKEN_VERSION = 1
+const SHARE_TOKEN_VERSION = 2
+const LEGACY_TOKEN_VERSION = 1
 
-/** 正常中文标题编完在 600 字符内；超出一律视为被篡改或被拼接，直接拒绝 */
+/** 超出一律视为被篡改或被拼接，直接拒绝；仍按 v1 的宽度留着，旧链接才打得开 */
 export const MAX_SHARE_TOKEN_LENGTH = 2048
+/** 常见文章（网易 / 公众号 / RSS）编出来的 v2 token 应落在这个长度内 */
+export const SHARE_TOKEN_TYPICAL_LIMIT = 120
+/** v2 不带标题；正文抽取补回真标题前，阅读器与列表先用这个占位 */
+export const SHARE_PENDING_TITLE = '加载中…'
+/** 正文抽取失败时的标题兜底，免得「加载中…」一直挂在顶上 */
+export const SHARE_FALLBACK_TITLE = '分享的文章'
+
 const MAX_TITLE_LENGTH = 200
 const MAX_SUMMARY_LENGTH = 90
 const MAX_ID_LENGTH = 256
 const MAX_NAME_LENGTH = 60
 const MAX_ORIGIN_URL_LENGTH = 800
+/** 算不出来的 id 才写进链接，且必须足够短，否则宁可让接收端自己算 */
+const MAX_INLINE_ID_LENGTH = 40
+/** 校验位长度：只用来发现截断与手抖改字，不作防篡改用途 */
+const CHECKSUM_LENGTH = 4
 
-/** 分享 token 里真正被编码的字段 */
+/**
+ * 分享 token 里可能出现的字段。
+ * v2 只保证 `originUrl` 与 `sourceId`；其余都是 v1 链接的遗留信息。
+ */
 export interface SharePayload {
-  id: string
-  title: string
   /** 出版社地址：接收方抽取正文与「浏览器核对原文」都用它 */
   originUrl: string
   sourceId: string
-  sourceName: string
+  /** 无法由 sourceId + 原文地址推出时才带 */
+  id?: string
+  title?: string
+  sourceName?: string
   summary?: string
   publishedAt?: number
 }
 
-/** 线上格式用短键，避免中文标题之外再多出无谓字节 */
-interface ShareWire {
+/** v1 线上格式：短键 JSON */
+interface LegacyShareWire {
   v: number
   i: string
   t: string
@@ -83,7 +122,10 @@ function fromBase64Url(token: string): Uint8Array | null {
   }
 }
 
-/** 只认 http/https，挡掉 javascript: / data: 之类的注入面 */
+/**
+ * 只认 http/https，挡掉 javascript: / data: 之类的注入面。
+ * 校验通过后原样返回：归一化会改动哈希输入，导致接收端算不出发送端的 id。
+ */
 function safeHttpUrl(value: unknown): string | null {
   if (typeof value !== 'string') return null
   const trimmed = value.trim()
@@ -91,7 +133,7 @@ function safeHttpUrl(value: unknown): string | null {
   try {
     const parsed = new URL(trimmed)
     if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null
-    return parsed.toString()
+    return trimmed
   } catch {
     return null
   }
@@ -104,54 +146,80 @@ function nonEmptyString(value: unknown, max: number): string | null {
   return trimmed
 }
 
-/** 从当前文章取出可分享的最小字段；标题允许传入译文等界面上真正显示的那一版 */
-export function sharePayloadFromArticle(
-  article: Article,
-  options?: { title?: string },
-): SharePayload {
-  const title = clip(options?.title || article.title, MAX_TITLE_LENGTH) || '一篇文章'
-  const summary = clip(article.summary ?? '', MAX_SUMMARY_LENGTH)
+/** https 是绝大多数情况，前缀省掉能少占 11 个 base64 字符 */
+function compactOriginUrl(url: string): string {
+  return url.startsWith('https://') ? url.slice('https://'.length) : url
+}
+
+function expandOriginUrl(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`
+}
+
+/** id 能由 sourceId + 原文地址算出来就不写进链接；写的话也去掉冗余的 `<sourceId>:` 前缀 */
+function compactArticleId(payload: SharePayload): string | null {
+  const id = payload.id?.trim()
+  if (!id) return null
+  if (id === feedArticleId(payload.sourceId, payload.originUrl)) return null
+  const prefix = `${payload.sourceId}:`
+  const short = id.startsWith(prefix) ? `:${id.slice(prefix.length)}` : id
+  return short.length > MAX_INLINE_ID_LENGTH ? null : short
+}
+
+/** 从当前文章取出可分享的最小字段 */
+export function sharePayloadFromArticle(article: Article): SharePayload {
+  const id = clip(article.id, MAX_ID_LENGTH)
   return {
-    id: clip(article.id, MAX_ID_LENGTH),
-    title,
     originUrl: article.originUrl,
     sourceId: clip(article.sourceId, MAX_ID_LENGTH),
-    sourceName: clip(article.sourceName || article.sourceLabel || '', MAX_NAME_LENGTH),
-    ...(summary ? { summary } : {}),
-    ...(article.publishedAt ? { publishedAt: Math.round(article.publishedAt) } : {}),
+    ...(id ? { id } : {}),
   }
+}
+
+function checksum(body: string): string {
+  return hashId(body).slice(0, CHECKSUM_LENGTH)
 }
 
 export function encodeShareToken(payload: SharePayload): string {
-  const wire: ShareWire = {
-    v: SHARE_TOKEN_VERSION,
-    i: payload.id,
-    t: payload.title,
-    u: payload.originUrl,
-    s: payload.sourceId,
-    n: payload.sourceName,
-    ...(payload.summary ? { d: payload.summary } : {}),
-    ...(payload.publishedAt ? { p: payload.publishedAt } : {}),
-  }
-  return toBase64Url(new TextEncoder().encode(JSON.stringify(wire)))
+  const lines = [payload.sourceId, compactOriginUrl(payload.originUrl)]
+  const inlineId = compactArticleId(payload)
+  if (inlineId) lines.push(inlineId)
+  const body = lines.join('\n')
+  return toBase64Url(
+    new TextEncoder().encode(`${SHARE_TOKEN_VERSION}.${checksum(body)}\n${body}`),
+  )
 }
 
-/** 解码失败一律返回 null，由调用方给中文提示并降级，不抛异常打断冷启动 */
-export function decodeShareToken(token: string): SharePayload | null {
-  if (!token || token.length > MAX_SHARE_TOKEN_LENGTH) return null
-  const bytes = fromBase64Url(token)
-  if (!bytes) return null
+function decodeV2(text: string): SharePayload | null {
+  const headerEnd = text.indexOf('\n')
+  if (headerEnd < 0) return null
+  const body = text.slice(headerEnd + 1)
+  if (text.slice(1, headerEnd) !== `.${checksum(body)}`) return null
 
+  const lines = body.split('\n')
+  const sourceId = nonEmptyString(lines[0], MAX_ID_LENGTH)
+  const originUrl = safeHttpUrl(expandOriginUrl((lines[1] ?? '').trim()))
+  if (!sourceId || !originUrl) return null
+
+  const rawId = lines[2]?.trim()
+  const id = rawId ? (rawId.startsWith(':') ? `${sourceId}${rawId}` : rawId) : ''
+  return {
+    originUrl,
+    sourceId,
+    ...(id && id.length <= MAX_ID_LENGTH ? { id } : {}),
+  }
+}
+
+function decodeV1(text: string): SharePayload | null {
   let wire: unknown
   try {
-    wire = JSON.parse(new TextDecoder().decode(bytes))
+    wire = JSON.parse(text)
   } catch {
     return null
   }
   if (!wire || typeof wire !== 'object' || Array.isArray(wire)) return null
 
-  const raw = wire as Partial<ShareWire>
-  if (raw.v !== SHARE_TOKEN_VERSION) return null
+  const raw = wire as Partial<LegacyShareWire>
+  if (raw.v !== LEGACY_TOKEN_VERSION) return null
 
   const id = nonEmptyString(raw.i, MAX_ID_LENGTH)
   const title = nonEmptyString(raw.t, MAX_TITLE_LENGTH)
@@ -165,14 +233,26 @@ export function decodeShareToken(token: string): SharePayload | null {
     typeof raw.p === 'number' && Number.isFinite(raw.p) && raw.p > 0 ? Math.round(raw.p) : undefined
 
   return {
-    id,
-    title,
     originUrl,
     sourceId,
+    id,
+    title,
     sourceName: sourceName ?? '',
     ...(summary ? { summary } : {}),
     ...(publishedAt ? { publishedAt } : {}),
   }
+}
+
+/** 解码失败一律返回 null，由调用方给中文提示并降级，不抛异常打断冷启动 */
+export function decodeShareToken(token: string): SharePayload | null {
+  const trimmed = token.trim()
+  if (!trimmed || trimmed.length > MAX_SHARE_TOKEN_LENGTH) return null
+  const bytes = fromBase64Url(trimmed)
+  if (!bytes) return null
+
+  const text = new TextDecoder().decode(bytes)
+  if (text.startsWith(`${SHARE_TOKEN_VERSION}.`)) return decodeV2(text)
+  return decodeV1(text)
 }
 
 /**
@@ -233,6 +313,8 @@ export function clearShareLocation(): void {
 /**
  * 把 payload 还原成 Article：本机认识该信源时以注册表为准（名称/分组/标签更完整），
  * 不认识就退回链接里带的信源名，正文仍走通用 Readability 抽取。
+ *
+ * v2 链接不带标题与时间，先给占位值；正文抽取就绪后由 withResolvedShareTitle 补齐。
  */
 export function articleFromSharePayload(
   payload: SharePayload,
@@ -241,8 +323,8 @@ export function articleFromSharePayload(
   const source = findSource(payload.sourceId, extraSources)
   const name = source?.name || payload.sourceName || '分享来源'
   return {
-    id: payload.id,
-    title: payload.title,
+    id: payload.id || feedArticleId(payload.sourceId, payload.originUrl),
+    title: payload.title || SHARE_PENDING_TITLE,
     summary: payload.summary ?? '',
     publishedAt: payload.publishedAt ?? Date.now(),
     hasRealDate: payload.publishedAt != null,
@@ -252,4 +334,15 @@ export function articleFromSharePayload(
     sourceGroup: source?.group ?? 'custom',
     originUrl: payload.originUrl,
   }
+}
+
+export function isPendingShareTitle(title: string): boolean {
+  return title === SHARE_PENDING_TITLE
+}
+
+/** 正文抽取拿到真标题后，用它替换占位标题；正文缓存、稍后读都存补齐后的这份 */
+export function withResolvedShareTitle(article: Article, title?: string): Article {
+  const resolved = title?.trim()
+  if (!resolved || !isPendingShareTitle(article.title)) return article
+  return { ...article, title: resolved }
 }
