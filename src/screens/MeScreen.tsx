@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   LayoutTemplate,
   Rss,
+  Search,
   Type,
 } from 'lucide-react'
 
@@ -35,6 +36,7 @@ interface Props {
   availableVersion?: string
   onOpenLater: () => void
   onOpenHistory: () => void
+  onOpenLocalSearch: () => void
   onOpenCustomSources: () => void
   onOpenCategories: () => void
   onOpenPresets: () => void
@@ -100,6 +102,7 @@ export function MeScreen({
   availableVersion,
   onOpenLater,
   onOpenHistory,
+  onOpenLocalSearch,
   onOpenCustomSources,
   onOpenCategories,
   onOpenPresets,
@@ -167,6 +170,12 @@ export function MeScreen({
             caption={history.length ? `${history.length} 篇` : '打开过的文章会出现在这里'}
             onClick={onOpenHistory}
           />
+          <SettingsRow
+            icon={Search}
+            title="本地搜索"
+            caption="在已缓存的列表、稍后读与历史里查找 · 不联网"
+            onClick={onOpenLocalSearch}
+          />
         </ul>
 
         <div className="page-x flex items-center gap-3 pt-8 pb-2">
@@ -219,7 +228,7 @@ export function MeScreen({
           />
           <SettingsRow
             icon={Database}
-            title="离线存储"
+            title="离线存储与备份"
             caption={storageSummary}
             onClick={onOpenStorageSettings}
           />

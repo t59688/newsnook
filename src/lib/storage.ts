@@ -27,6 +27,9 @@ const BOOTSTRAP_MIRROR_KEYS = [
   'appUpdate',
 ] as const
 
+/** 阅读位置：条目多但每条很小，只落 localStorage，避免每次滚动都写原生 Preferences */
+export const READING_POSITION_KEY = 'reading-pos'
+
 function reportNativeStorageError(operation: string, error: unknown): void {
   log.storage.warn(`Native Preferences ${operation} failed`, error)
 }
@@ -228,6 +231,28 @@ export function loadPresetsState(): unknown {
 
 export function savePresetsState(state: unknown): void {
   write('presets', state)
+}
+
+export function loadReadingPositions(): unknown {
+  return read<unknown>(READING_POSITION_KEY, null)
+}
+
+export function saveReadingPositions(map: unknown): void {
+  write(READING_POSITION_KEY, map, { localOnly: true })
+}
+
+export function clearReadingPositions(): void {
+  removeKeys([READING_POSITION_KEY])
+}
+
+/**
+ * 备份恢复专用：把一组已校验过的业务键整段写回（同步落 localStorage 并镜像原生 Preferences）。
+ * 恢复是整体覆盖语义，不做增量合并；调用方写完后需重载应用让内存态跟上。
+ */
+export function writeRestoredKeys(entries: [string, unknown][]): void {
+  entries.forEach(([key, value]) => {
+    write(key, value, key === READING_POSITION_KEY ? { localOnly: true } : undefined)
+  })
 }
 
 export interface CachedList {

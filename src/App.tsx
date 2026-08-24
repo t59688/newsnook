@@ -46,6 +46,7 @@ import { CategoryEditScreen } from './screens/settings/CategoryEditScreen'
 import { CustomSourcesScreen } from './screens/settings/CustomSourcesScreen'
 import { HistoryScreen } from './screens/settings/HistoryScreen'
 import { LaterScreen } from './screens/settings/LaterScreen'
+import { LocalSearchScreen } from './screens/settings/LocalSearchScreen'
 import { PresetListScreen } from './screens/settings/PresetListScreen'
 import { StorageScreen } from './screens/settings/StorageScreen'
 import { TypographyScreen } from './screens/settings/TypographyScreen'
@@ -140,6 +141,7 @@ type SettingsRoute =
   | { name: 'proxy' }
   | { name: 'later' }
   | { name: 'history' }
+  | { name: 'local-search' }
   | { name: 'about' }
   | { name: 'changelog' }
   | { name: 'licenses' }
@@ -248,7 +250,8 @@ export default function App() {
       tab === 'me' ||
       settingsRoute?.name === 'storage' ||
       settingsRoute?.name === 'history' ||
-      settingsRoute?.name === 'later'
+      settingsRoute?.name === 'later' ||
+      settingsRoute?.name === 'local-search'
     if (!needsSnapshot) return
     refreshCacheSnapshot()
   }, [tab, settingsRoute, refreshCacheSnapshot])
@@ -858,6 +861,23 @@ export default function App() {
       )
     }
 
+    if (settingsRoute.name === 'local-search') {
+      return (
+        <LocalSearchScreen
+          feedArticles={availableArticles}
+          later={later}
+          history={cachedHistory}
+          readIds={readIds}
+          laterIds={laterIds}
+          onOpen={(article) => {
+            setSettingsRoute(null)
+            openArticle(article)
+          }}
+          onBack={() => setSettingsRoute(null)}
+        />
+      )
+    }
+
     if (settingsRoute.name === 'about') {
       return (
         <AboutScreen
@@ -973,6 +993,7 @@ export default function App() {
           onBackToReading={readerReturnArticle ? restoreReaderFromSettings : undefined}
           onOpenLater={() => setSettingsRoute({ name: 'later' })}
           onOpenHistory={() => setSettingsRoute({ name: 'history' })}
+          onOpenLocalSearch={() => setSettingsRoute({ name: 'local-search' })}
           onOpenCustomSources={() => setSettingsRoute({ name: 'custom-sources' })}
           onOpenCategories={() => setSettingsRoute({ name: 'categories', returnTo: 'me' })}
           onOpenPresets={() => setSettingsRoute({ name: 'presets' })}
@@ -1041,6 +1062,7 @@ export default function App() {
         onLoadMore={() => void loadMore(listScopeIds)}
         onOpen={openArticle}
         onBrandTap={onBrandTap}
+        onOpenLocalSearch={() => setSettingsRoute({ name: 'local-search' })}
         pullRefreshSeq={todayPullRefreshSeq}
         searchTemplate={activeFilterSource?.frameworkHint?.searchTemplate}
         frameworkCategories={activeFilterSource?.frameworkHint?.categories}

@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Cloud, FileText, ListTree, RefreshCw, Trash2 } from 'lucide-react'
 
+import { BackupPanel } from '../../components/BackupPanel'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { SettingsHint, SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { ToggleSwitch } from '../../components/ToggleSwitch'
@@ -227,6 +228,8 @@ export function StorageScreen({ laterCount: _laterCount, usage, prestore, onCach
           清除全部可管理缓存
         </button>
       </div>
+
+      <BackupPanel />
 
       <ConfirmDialog
         open={confirmClearAll}
