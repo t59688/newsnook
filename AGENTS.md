@@ -74,6 +74,7 @@ newsnook/
 | 翻译 | `features/translation/`（稳定边界：`types.ts`；新增引擎实现 Provider 并注册） |
 | 代理 / 网络 | `features/proxy/` · `lib/http.ts` · `vite.config.ts` · `functions/` |
 | 跟贴 | `features/comments/` |
+| 分享短链 / App 唤起深链 | `lib/shareToken.ts`（token 编解码） · `lib/shareLink.ts` · `lib/appDeepLink.ts` · `functions/lib/shareCard.ts`（爬虫 OG 卡片） · `wrangler.jsonc`（`run_worker_first`） |
 | 墨水屏 | `lib/eink.ts` · `hooks/usePagedReader.ts` · `index.css` 中 `[data-eink]` |
 | 主题 / 排版 | `lib/theme.ts`（明暗 + 风格方案注册表） · `lib/customScheme.ts`（自定义配色推导） · `sources/preferences.ts` · `index.css`（`data-scheme` 方案块） |
 | 应用更新 | `features/appUpdate/` |

@@ -286,11 +286,11 @@ v2 明文（换行分隔，比 JSON 再省掉键名与引号）
 - **id 怎么省的**：列表侧的条目 id 是 `lib/articleId.feedArticleId(sourceId, link)`（`<sourceId>:<djb2 哈希>`）。接收端用同一函数按原文地址算，绝大多数条目算出的 id 与发送端完全一致，已读 / 正文缓存 / 稍后读因此能对上，第 4 行也就不用出现。算不出来（例如 Google News 解码后换过地址）才写进去，且去掉冗余的 `<sourceId>:` 前缀、超过 40 字符就宁可丢掉。
 - **校验位**：紧凑载荷被截断后仍可能解出一个「看着合法」的短地址，会静默打开错误页面。首行 4 位校验对不上就当损坏处理，弹中文 `ConfirmDialog`。
 - **拒绝面**：token 超过 2048 字符、非 base64url 字符、校验位不符、版本不匹配、缺 `sourceId` / `originUrl`、`originUrl` 非 http(s) 一律返回 `null`，不抛异常打断冷启动。`safeHttpUrl` 校验后原样返回，不做归一化——归一化会改动哈希输入，接收端就算不出发送端的 id。
-- **深链可刷新**：Workers 侧已经通过 `wrangler.jsonc` 的 `not_found_handling: single-page-application` 统一兜底，`/a/<token>` 和普通前端路径都能直接回到 SPA；开发态由 Vite 自带的 history fallback 兜底（base64url 不含 `.`，不会被当成静态文件）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根。不要再额外放 `_redirects` 的 `/a/* → /index.html 200`，否则 Cloudflare 会把它判成回到同一 SPA 入口的死循环并拒绝部署。
+- **深链可刷新**：Workers 侧通过 `wrangler.jsonc` 的 `not_found_handling: single-page-application` 统一兜底，`/a/<token>` 和普通前端路径都能直接回到 SPA；同时 `run_worker_first: ["/api/*", "/a/*"]` 显式声明这两类路径**先进 worker**——SPA 模式默认按 `Sec-Fetch-Mode` 隐式分流，`compatibility_date` 一旦升到 2025-04-01 之后导航请求会完全绕过 worker，社交爬虫抓 `/a/*` 就只能拿到通用 `index.html`。开发态由 Vite 自带的 history fallback 兜底（base64url 不含 `.`，不会被当成静态文件）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根（打开时不清，刷新仍能回到同一篇）。不要再额外放 `_redirects` 的 `/a/* → /index.html 200`，否则 Cloudflare 会把它判成回到同一 SPA 入口的死循环并拒绝部署。
 - **与「打开原文」的区别**：分享出去的主链接永远是站内 `/a/<token>`；出版社地址只是载荷里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，任何情况下都不会把原站 URL 当成分享结果。
 - **UI 层次**：`ShareArticleSheet` 是 `z-50`，且分享卡片打开时 `ReaderScreen` 会收起跟贴悬浮胶囊与「已回到上次阅读位置」提示（两者都是 `z-40` 且在 DOM 里排在卡片之后，否则会压住卡片底部的「复制链接 / 分享」）。卡片里的链接是可点的 `<a target="_blank">`，方便自测深链。
-- **Android**：暂未配置 App Links，分享出去的 https 链接由对方浏览器打开网页版站内阅读；不会偷偷回退成原站 URL。
-- **模块划分**：token 的编解码单独放在 `lib/shareToken.ts`（纯函数，无 Capacitor / window 依赖），边缘 worker 也 import 同一份（见 8.6.2）；`lib/shareLink.ts` 只留浏览器侧的链接组装、深链识别与 Article 还原，并原样 re-export token API，调用方不受影响。
+- **Android App 唤起**：`AndroidManifest.xml` 为 MainActivity 注册了两条 VIEW intent-filter——`https://news.aizeek.com/a/*`（App Links，带 `autoVerify`）与自定义 scheme `newsnook://a/<token>`。App 侧经 Capacitor `getLaunchUrl()`（冷启动）/ `appUrlOpen`（运行中）拿到 URL，由 `lib/appDeepLink.shareTokenFromAppUrl` 还原成同一个 token 直接进阅读器（同一 URL 去重，token 损坏弹既有中文提示）。网页落地页对 Android 浏览器出「在有所闻 App 中打开」引导条（`components/OpenInAppBanner`）：Chromium 系用 `intent://…;package=com.aizeek.newsnook;end`（**不带商店 fallback**，未安装时点击无事发生、继续网页阅读），其余浏览器退回 `newsnook://`；微信 / 企业微信内置浏览器禁止唤起第三方 App，引导条不出现；iOS 无对应 App，同样不出现。注意：`autoVerify` 的自动接管要等站点提供 `/.well-known/assetlinks.json`（含正式签名 SHA-256 指纹）后才生效，此前系统只把 App 列进「用应用打开」候选；指纹不入库，该文件需在部署侧补。
+- **模块划分**：token 的编解码与 `SHARE_LINK_HOST` 单独放在 `lib/shareToken.ts`（纯函数，无 Capacitor / window 依赖），边缘 worker 也 import 同一份（见 8.6.2）；`lib/shareLink.ts` 只留浏览器侧的链接组装、深链识别与 Article 还原，并原样 re-export token API，调用方不受影响；`lib/appDeepLink.ts` 负责 App 唤起 URL 的拼装与还原，同样不带 Capacitor 依赖，测试走 `npm run test:app-deep-link`。
 
 #### 8.6.2 社交分享卡片（边缘 worker 动态 OG 标签）
 
@@ -308,8 +308,10 @@ GET /a/<token>
   └─ 真人 → env.ASSETS.fetch(request)，SPA 回退不变
 ```
 
-- **判定方式**：`wantsShareCard()` 先匹配明确的爬虫 UA。微信抓卡片与微信内置浏览器共用 `MicroMessenger` UA，只能再看 `Sec-Fetch-Mode`——真实导航带（内置浏览器基于 Chromium），抓取端不带。
-- **误判兜底**：卡片页带 `<meta http-equiv="refresh">` 指向 `?app=1`；worker 见到这个参数直接放行到 SPA，所以被误判成爬虫的真人只多一跳就回到阅读页，不会来回打转。
+- **判定方式**：`wantsShareCard()` 先匹配明确的爬虫 UA。微信抓卡片与微信内置浏览器共用 `MicroMessenger` UA（抓取端还有企业微信 `wxwork`、`WeChat`、`Weixin` 变体，一并匹配），只能再看 `Sec-Fetch-Mode`——真实导航带（内置浏览器基于 Chromium），抓取端不带；真人微信内置浏览器因此仍进 SPA。
+- **误判兜底**：卡片页带 `<meta http-equiv="refresh">` 指向 `?app=1`；worker 见到这个参数直接放行到 SPA，所以被误判成爬虫的真人只多一跳就回到阅读页，不会来回打转。`?app=1` 只是 query，前端仍按 pathname 解码 token，不影响打开文章；卡片自身的 `og:url` 指向不带该参数的规范地址。
+- **路由前提**：卡片能出现在聊天里的前提是 `/a/*` 请求真的进了 worker——见 8.6.1「深链可刷新」里的 `run_worker_first` 说明。若 Cloudflare WAF / Bot 拦截对微信、WhatsApp 抓取端 IP 弹质询页，爬虫同样拿不到 OG，需在仪表盘为 `/a/*` 放行已知抓取端。
+- **平台缓存**：聊天预览完全依赖边缘返回的 OG；微信、WhatsApp 会按 URL 缓存抓取结果，卡片修好之前发过的链接可能还显示旧的纯文本预览，换一篇文章（新 token）即可验证。
 - **兜底文案**：token 解不出来、上游超时 / 非 200 / 非 HTML，一律退到「有所闻分享」+「点击在有所闻中阅读全文」，并尽量补上「原文来自 xxx」（认识的 `sourceId` 用注册表中文名，否则用原文域名）。`og:image` 只在上游确有首图时输出，不塞占位图。
 - **安全**：上游标题、摘要先按 HTML 实体还原再统一 `escapeHtml`，属性边界不会被 `">` 顶开；`og:image` 只接受 http(s)，`javascript:` 之类直接丢掉。
 - **只影响 Workers 部署**：`/api/*` 的边缘代理逻辑不变；Vite 开发态没有这条路径（爬虫不会来爬 localhost），本机验证请直接跑 `npm run test:share-og`。
