@@ -24,7 +24,7 @@ newsnook/
 ├── src/                      # React 应用
 ├── android/                  # Capacitor 原生工程（入库）
 ├── functions/                # Cloudflare Pages Functions（生产边缘代理）
-├── public/                   # favicon、品牌 SVG、字体等静态资源
+├── public/                   # favicon、品牌 SVG、字体，以及 _redirects（/a/* 深链回退）
 ├── assets/                   # 启动图 / Android 图标源图
 ├── scripts/                  # 构建、探针与单元测试脚本
 ├── dist/                     # Vite 产物（capacitor webDir）
@@ -240,7 +240,9 @@ ReaderScreen / CommentsDrawer
           重开文章：正文就绪后按「记录时可滚动高度 → 当前可滚动高度」等比折算回落
           顶部附近（<120px）与读到结尾（≥97%）视为无需记忆，会清掉旧记录
 
-分享      ReaderMoreMenu / EinkReaderMenu
+分享      ReaderMoreMenu / EinkReaderMenu（两个入口同一流程）
+            → ShareArticleSheet（应用内预览卡片，只用主题变量着色）
+            → lib/shareLink.buildShareUrl（站内短链，见 8.6.1）
             → lib/shareArticle
                  Android：@capacitor/share（标题 + text + url）
                  Web：navigator.share，不支持时降级 navigator.clipboard
@@ -253,6 +255,27 @@ ReaderScreen / CommentsDrawer
 ```
 
 本地搜索与 `web-catalog` 源的 `searchTemplate`（站内联网搜索）是两条独立路径：前者零请求，只覆盖本机已有内容。
+
+#### 8.6.1 分享深链 `/a/<token>`
+
+分享出去的主链接固定指向站内：`https://news.aizeek.com/a/<token>`（常量集中在 `lib/shareLink.ts` 的 `SHARE_LINK_HOST` / `SHARE_PATH_PREFIX`）。**没有任何服务端参与**——token 自带打开阅读器所需的全部字段，接收端本地解码后照常走 `resolveBody` 抽正文。出版社地址只是 token 里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，不作为分享主链接。
+
+```text
+编码  Article ─ sharePayloadFromArticle ─→ { id, title, originUrl, sourceId, sourceName, summary?, publishedAt? }
+                                            ↓ 短键 JSON（v=1）+ UTF-8 + URL-safe base64
+                    buildShareUrl ─→ https://news.aizeek.com/a/<token>
+                    （开发态 resolveShareOrigin 用 window.location.origin，原生壳与生产固定 news.aizeek.com）
+
+解码  冷启动 App.tsx
+        → shareTargetFromLocation()  读 location.pathname，只认单段 /a/<token>
+        → decodeShareToken()         版本、字段、长度与 http(s) 协议校验，失败返回 null
+        → articleFromSharePayload()  本机认识该 sourceId 就用注册表元数据，否则退回 token 里的信源名
+        → 直接进 ReaderScreen（正文仍是站内抽取），token 坏了则弹中文提示并停在首页
+```
+
+- **拒绝面**：token 超过 2048 字符、非 base64url 字符、版本不匹配、缺 `id`/`title`/`originUrl`/`sourceId`、标题超 200 字、`originUrl` 非 http(s) 一律返回 `null`，不抛异常打断冷启动。编码侧同样先裁剪标题与摘要。
+- **深链可刷新**：Workers 侧靠 `wrangler.jsonc` 的 `not_found_handling: single-page-application`；Cloudflare Pages 侧靠 `public/_redirects` 里 `/a/* → /index.html 200` 这一条（只放行该前缀，`/api/*` 仍归边缘代理）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根。
+- **Android**：暂未配置 App Links，分享出去的 https 链接由对方浏览器打开网页版站内阅读；不会偷偷回退成原站 URL。
 
 ### 8.7 配置备份与恢复
 
@@ -339,6 +362,7 @@ einkMode=false → 完全恢复现有上下滚动阅读，零残留
 | `components/InkImage.tsx` / `InkVideoPlayer.tsx` | 图片渐进加载 / Progressive·HLS·DASH 播放 / 缩放、全屏与系统级横竖屏 |
 | `components/EinkReaderMenu.tsx` | 墨水屏阅读菜单（字号、页码、翻译、收藏、分享） |
 | `components/ReaderMoreMenu.tsx` | 滚动模式阅读器溢出菜单（分享、复制链接、浏览器核对、重新抽取） |
+| `components/ShareArticleSheet.tsx` | 分享预览卡片（标题、信源、摘要、品牌与站内短链） |
 | `components/BackupPanel.tsx` | 「离线存储与备份」里的配置导出/导入面板 |
 | `lib/videoGestures.ts` / `lib/deviceMediaControls.ts` | 播放器手势 / 系统亮度、媒体音量与 Activity 方向控制 |
 | `features/mediaSniffer/*` | 媒体观察、候选评分、Manifest 解析、播放会话上下文 |
@@ -350,6 +374,7 @@ einkMode=false → 完全恢复现有上下滚动阅读，零残留
 | `lib/opml.ts` | OPML 导入导出与 Feed 探测 |
 | `lib/backup.ts` | 配置备份 JSON 的采集、校验、迁移与恢复 |
 | `lib/readingPosition.ts` | 阅读位置表（节流落盘、容量淘汰、按比例还原） |
+| `lib/shareLink.ts` | 站内分享短链编解码、深链识别与 Article 还原 |
 | `lib/shareArticle.ts` | 系统分享面板与剪贴板降级 |
 | `lib/localSearch.ts` | 本地语料合并与离线检索 |
 | `lib/sanitize.ts` | DOMPurify |
@@ -427,7 +452,7 @@ npm run android:apk | android:aab
 | 持久化 | `src/lib/storage.ts` |
 | 配置备份 | `src/lib/backup.ts` · `src/components/BackupPanel.tsx` |
 | 阅读位置 | `src/lib/readingPosition.ts` |
-| 分享 | `src/lib/shareArticle.ts` · `src/components/ReaderMoreMenu.tsx` |
+| 分享 | `src/lib/shareLink.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` |
 | 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
 | 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/index.css` |
 | HTTP / 代理 | `src/lib/http.ts` · `src/features/proxy/` |
