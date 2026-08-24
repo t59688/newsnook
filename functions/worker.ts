@@ -1,4 +1,5 @@
 import { onRequest } from './api/[[path]].ts'
+import { shareCardResponse } from './lib/shareCard.ts'
 
 export interface Env {
   ASSETS?: {
@@ -32,7 +33,11 @@ export default {
       })
     }
 
-    // 2. 其余静态资源和前端 SPA 页面由 dist 静态资产服务
+    // 2. /a/* 分享深链：社交爬虫拿带 Open Graph 标签的卡片，真人继续走 SPA
+    const card = await shareCardResponse(request, url)
+    if (card) return card
+
+    // 3. 其余静态资源和前端 SPA 页面由 dist 静态资产服务
     if (env.ASSETS) {
       return env.ASSETS.fetch(request)
     }
