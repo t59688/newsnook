@@ -27,6 +27,7 @@ import type { Article } from './types'
 
 export {
   MAX_SHARE_TOKEN_LENGTH,
+  MAX_TOKEN_TITLE_LENGTH,
   SHARE_LINK_HOST,
   SHARE_LINK_ORIGIN,
   SHARE_PATH_PREFIX,

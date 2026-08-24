@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { feedArticleId } from '../src/lib/articleId'
 import {
   MAX_SHARE_TOKEN_LENGTH,
+  MAX_TOKEN_TITLE_LENGTH,
   SHARE_LINK_ORIGIN,
   SHARE_FALLBACK_TITLE,
   SHARE_PATH_PREFIX,
@@ -65,7 +66,7 @@ assert.equal(
 assert.equal(plain.split('\n')[4], `!${article.title}`, '标题行紧跟在 id 槽之后')
 
 // 2c. 超长标题宁可不编：截断的标题会被接收端当成真标题存进缓存
-const longTitle = '标'.repeat(120)
+const longTitle = '标'.repeat(MAX_TOKEN_TITLE_LENGTH + 1)
 const longTitleToken = encodeShareToken({ ...payload, title: longTitle })
 assert.equal(decodeShareToken(longTitleToken)?.title, undefined, '超长标题不进 token')
 assert.equal(longTitleToken, encodeShareToken({ ...payload, title: undefined }))

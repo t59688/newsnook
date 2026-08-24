@@ -480,7 +480,11 @@ function withVaryUserAgent(headers: Headers): Headers {
  * 只用 token 里已有的信息，不抓上游：真人打开分享链接的这一跳不能为了卡片变慢。
  * 非 `/a/<token>`、token 解不出、不是 HTML 一律原样返回。
  */
-export async function injectShareMeta(request: Request, url: URL, asset: Response): Promise<Response> {
+export async function injectShareMeta(
+  request: Request,
+  url: URL,
+  asset: Response,
+): Promise<Response> {
   if (request.method !== 'GET') return asset
   if (!url.pathname.startsWith(SHARE_PATH_PREFIX)) return asset
   const token = shareTokenFromPath(url.pathname)
