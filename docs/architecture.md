@@ -24,7 +24,7 @@ newsnook/
 ├── src/                      # React 应用
 ├── android/                  # Capacitor 原生工程（入库）
 ├── functions/                # 生产边缘：/api/* 反向代理 + /a/* 社交分享卡片
-├── public/                   # favicon、品牌 SVG、字体，以及 _redirects（/a/* 深链回退）
+├── public/                   # favicon、品牌 SVG、字体
 ├── assets/                   # 启动图 / Android 图标源图
 ├── scripts/                  # 构建、探针与单元测试脚本
 ├── dist/                     # Vite 产物（capacitor webDir）
@@ -286,7 +286,7 @@ v2 明文（换行分隔，比 JSON 再省掉键名与引号）
 - **id 怎么省的**：列表侧的条目 id 是 `lib/articleId.feedArticleId(sourceId, link)`（`<sourceId>:<djb2 哈希>`）。接收端用同一函数按原文地址算，绝大多数条目算出的 id 与发送端完全一致，已读 / 正文缓存 / 稍后读因此能对上，第 4 行也就不用出现。算不出来（例如 Google News 解码后换过地址）才写进去，且去掉冗余的 `<sourceId>:` 前缀、超过 40 字符就宁可丢掉。
 - **校验位**：紧凑载荷被截断后仍可能解出一个「看着合法」的短地址，会静默打开错误页面。首行 4 位校验对不上就当损坏处理，弹中文 `ConfirmDialog`。
 - **拒绝面**：token 超过 2048 字符、非 base64url 字符、校验位不符、版本不匹配、缺 `sourceId` / `originUrl`、`originUrl` 非 http(s) 一律返回 `null`，不抛异常打断冷启动。`safeHttpUrl` 校验后原样返回，不做归一化——归一化会改动哈希输入，接收端就算不出发送端的 id。
-- **深链可刷新**：Workers 侧靠 `wrangler.jsonc` 的 `not_found_handling: single-page-application`；Cloudflare Pages 侧靠 `public/_redirects` 里 `/a/* → /index.html 200` 这一条（只放行该前缀，`/api/*` 仍归边缘代理）；开发态由 Vite 自带的 SPA history fallback 兜底（base64url 不含 `.`，不会被当成静态文件）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根。
+- **深链可刷新**：Workers 侧已经通过 `wrangler.jsonc` 的 `not_found_handling: single-page-application` 统一兜底，`/a/<token>` 和普通前端路径都能直接回到 SPA；开发态由 Vite 自带的 history fallback 兜底（base64url 不含 `.`，不会被当成静态文件）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根。不要再额外放 `_redirects` 的 `/a/* → /index.html 200`，否则 Cloudflare 会把它判成回到同一 SPA 入口的死循环并拒绝部署。
 - **与「打开原文」的区别**：分享出去的主链接永远是站内 `/a/<token>`；出版社地址只是载荷里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，任何情况下都不会把原站 URL 当成分享结果。
 - **UI 层次**：`ShareArticleSheet` 是 `z-50`，且分享卡片打开时 `ReaderScreen` 会收起跟贴悬浮胶囊与「已回到上次阅读位置」提示（两者都是 `z-40` 且在 DOM 里排在卡片之后，否则会压住卡片底部的「复制链接 / 分享」）。卡片里的链接是可点的 `<a target="_blank">`，方便自测深链。
 - **Android**：暂未配置 App Links，分享出去的 https 链接由对方浏览器打开网页版站内阅读；不会偷偷回退成原站 URL。

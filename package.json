@@ -75,6 +75,7 @@
     "test:share-article": "rolldown scripts/share-article.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/share-article.test.mjs && node node_modules/.cache/newsnook/share-article.test.mjs",
     "test:share-link": "rolldown scripts/share-link.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/share-link.test.mjs && node node_modules/.cache/newsnook/share-link.test.mjs",
     "test:share-og": "npx tsx scripts/share-og.test.ts",
+    "test:cloudflare-routing": "npx tsx scripts/cloudflare-routing.test.ts",
     "test:config-backup": "rolldown scripts/config-backup.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/config-backup.test.mjs && node node_modules/.cache/newsnook/config-backup.test.mjs",
     "test:webview-css-compat": "npx tsx scripts/webview-css-compat.test.ts",
     "bergamot:init": "node scripts/bergamot-init.mjs",
