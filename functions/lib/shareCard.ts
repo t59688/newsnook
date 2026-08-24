@@ -28,8 +28,11 @@ const CRAWLER_UA =
  * 微信抓卡片与微信内置浏览器共用同一个 UA，只能靠请求头再分一次：
  * 真实导航会带 Sec-Fetch-*（内置浏览器基于 Chromium），抓取端不带。
  * 判错的代价也只是多一跳——卡片页里的 meta refresh 会把人送回 SPA。
+ *
+ * 抓取端的 UA 变体不止 `MicroMessenger`：企业微信是 `wxwork`，
+ * 部分抓取链路上报 `WeChat` / `Weixin`，一并放进来。真人分流仍靠 Sec-Fetch。
  */
-const WECHAT_UA = /MicroMessenger|wxwork/i
+const WECHAT_UA = /MicroMessenger|wxwork|WeChat|Weixin/i
 
 /**
  * 卡片页给真人看时的逃生门：带上这个参数即回到 SPA，

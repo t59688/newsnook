@@ -117,9 +117,45 @@ await withUpstream(
       ctx,
     )
     assert.equal(await navigated.text(), SPA_SHELL, '微信内置浏览器的真实导航应进 SPA')
+
+    // 抓取端 UA 变体：企业微信 / WeChat / Weixin 也要能拿到文章级卡片
+    for (const variant of [
+      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 wxwork/4.1.20',
+      'Mozilla/5.0 (compatible; WeChat Crawler)',
+      'Weixin Link Preview',
+    ]) {
+      const res = await worker.fetch(request(`/a/${token}`, variant), env, ctx)
+      assert.match(
+        await res.text(),
+        /og:title" content="微信抓到的标题"/,
+        `UA 变体应拿到文章级 og:title：${variant}`,
+      )
+    }
+
+    // 真人在微信里被误判成爬虫后，逃生门 ?app=1 必须直达 SPA，pathname 上仍有 token
+    const escaped = await worker.fetch(request(`/a/${token}?app=1`, WECHAT_UA), env, ctx)
+    assert.equal(await escaped.text(), SPA_SHELL, '?app=1 必须直达 SPA，由前端解码 token 进阅读器')
   },
 )
 console.log('✓ 微信 UA 分流测试通过')
+
+console.log('--- 测试 3b: WhatsApp 桌面端 UA 变体也拿到文章级卡片 ---')
+await withUpstream(
+  () => htmlPage('<html><head><meta property="og:title" content="WhatsApp 抓到的标题"></head></html>'),
+  async () => {
+    for (const variant of [
+      'WhatsApp/2.2409.2 W',
+      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 WhatsApp/2.23.20.0',
+    ]) {
+      const res = await worker.fetch(request(`/a/${token}`, variant), env, ctx)
+      const html = await res.text()
+      assert.match(html, /og:title" content="WhatsApp 抓到的标题"/, `UA 变体应命中卡片：${variant}`)
+      // 卡片自身的 og:url 指向不带 ?app=1 的规范地址，平台缓存的是可分享的原链
+      assert.match(html, /<meta property="og:url" content="https:\/\/news\.aizeek\.com\/a\/[\w-]+">/)
+    }
+  },
+)
+console.log('✓ WhatsApp UA 变体测试通过')
 
 console.log('--- 测试 4: 卡片页的 meta refresh 不会打转 ---')
 await withUpstream(

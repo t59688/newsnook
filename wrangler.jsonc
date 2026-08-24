@@ -6,6 +6,11 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "not_found_handling": "single-page-application"
+    "not_found_handling": "single-page-application",
+    // /a/*（社交爬虫要拿文章级 OG 卡片）与 /api/*（边缘代理）必须先进 worker。
+    // 不显式声明的话，SPA 模式按 Sec-Fetch-Mode 隐式分流；一旦 compatibility_date
+    // 升到 2025-04-01 之后，导航请求会完全绕过 worker，/a/* 的爬虫就只能抓到
+    // 通用 index.html，聊天里的分享链接会退化成纯文本。需要 wrangler >= 4.20。
+    "run_worker_first": ["/api/*", "/a/*"]
   }
 }
