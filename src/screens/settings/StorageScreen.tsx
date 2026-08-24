@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Cloud, FileText, ListTree, RefreshCw, Trash2 } from 'lucide-react'
+import { ChevronDown, Cloud, FileText, ListTree, RefreshCw, Trash2 } from 'lucide-react'
 
 import { BackupPanel } from '../../components/BackupPanel'
-import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { ConfirmDialog, OptionPickerDialog, type OptionPickerItem } from '../../components/ConfirmDialog'
 import { SettingsHint, SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { ToggleSwitch } from '../../components/ToggleSwitch'
 import { clearBodyCache, type BodyCacheStats } from '../../lib/bodyCache'
@@ -11,6 +11,11 @@ import { relativeTime } from '../../lib/time'
 import type { PrestoreProgress } from '../../features/prestore/service'
 import type { PrestoreStats } from '../../features/prestore/store'
 import { PRESTORE_PER_SOURCE_OPTIONS } from '../../sources/preferences'
+
+const PRESTORE_LIMIT_OPTIONS: OptionPickerItem[] = PRESTORE_PER_SOURCE_OPTIONS.map((count) => ({
+  id: String(count),
+  label: `${count} 篇`,
+}))
 
 interface PrestoreStorageState {
   enabled: boolean
@@ -87,12 +92,16 @@ function CacheRow({
 }
 
 function PrestoreControls({ prestore }: { prestore: PrestoreStorageState }) {
+  const [limitPickerOpen, setLimitPickerOpen] = useState(false)
   const progress = prestore.progress
   const progressText = prestore.syncing && progress
     ? `${progress.sourceName} · ${progress.storedInSource}/${progress.targetPerSource} 篇 · ${progress.completedSources}/${progress.totalSources} 源`
     : prestore.stats.updatedAt
       ? `上次完成于 ${relativeTime(prestore.stats.updatedAt)}`
       : '开启后联网自动补齐，也可手动更新'
+  const limitLabel =
+    PRESTORE_LIMIT_OPTIONS.find((option) => option.id === String(prestore.perSourceLimit))?.label
+    ?? `${prestore.perSourceLimit} 篇`
 
   return (
     <SettingsSection title="预存阅读">
@@ -113,23 +122,24 @@ function PrestoreControls({ prestore }: { prestore: PrestoreStorageState }) {
           </div>
 
           <div className="mt-4 flex items-center justify-between gap-4 border-t border-haze pt-4">
-            <label htmlFor="prestore-limit" className="min-w-0 flex-1">
+            <div className="min-w-0 flex-1">
               <span className="block text-[13px] text-paper">每个信源预存</span>
               <span className="mt-0.5 block truncate font-mono text-[10px] text-paper-faint">
                 {prestore.presetName} · {prestore.sourceCount} 个信源
               </span>
-            </label>
-            <select
-              id="prestore-limit"
-              value={prestore.perSourceLimit}
+            </div>
+            <button
+              type="button"
+              aria-haspopup="dialog"
+              aria-expanded={limitPickerOpen}
+              aria-label={`每个信源预存 ${limitLabel}`}
               disabled={prestore.syncing}
-              onChange={(event) => prestore.onPerSourceLimitChange(Number(event.target.value))}
-              className="rounded-xl border border-haze bg-ink px-3 py-2 text-[12.5px] text-paper outline-none disabled:opacity-50"
+              onClick={() => setLimitPickerOpen(true)}
+              className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-haze bg-ink px-3 py-2 text-[12.5px] text-paper outline-none transition-colors hover:border-cinnabar/40 disabled:opacity-50"
             >
-              {PRESTORE_PER_SOURCE_OPTIONS.map((count) => (
-                <option key={count} value={count}>{count} 篇</option>
-              ))}
-            </select>
+              <span>{limitLabel}</span>
+              <ChevronDown size={14} strokeWidth={1.8} className="shrink-0 text-paper-faint" />
+            </button>
           </div>
 
           {prestore.enabled && (
@@ -153,6 +163,18 @@ function PrestoreControls({ prestore }: { prestore: PrestoreStorageState }) {
       <SettingsHint>
         关闭只停止后续自动补齐，不会删除已经预存的正文。新文章成功落盘后才会滚动淘汰旧文章。
       </SettingsHint>
+
+      <OptionPickerDialog
+        open={limitPickerOpen}
+        title="每个信源预存"
+        value={String(prestore.perSourceLimit)}
+        options={PRESTORE_LIMIT_OPTIONS}
+        onCancel={() => setLimitPickerOpen(false)}
+        onChange={(value) => {
+          prestore.onPerSourceLimitChange(Number(value))
+          setLimitPickerOpen(false)
+        }}
+      />
     </SettingsSection>
   )
 }
