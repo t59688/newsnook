@@ -102,6 +102,8 @@ export function usePrestore({
         activeControllerRef.current?.abort()
         return
       }
+      // 正在同步时不要因为一次网络切换重启整轮：当前进度还在跑，打断只会丢进度。
+      if (activeControllerRef.current) return
       requestAutoSync()
     }).then((handle) => {
       if (disposed) void handle.remove()
@@ -115,6 +117,8 @@ export function usePrestore({
           activeControllerRef.current?.abort()
           return
         }
+        // 回前台本身会通过 foreground 依赖重跑 effect；同步中就别再多推一次。
+        if (activeControllerRef.current) return
         requestAutoSync()
       }).then((handle) => {
         if (disposed) void handle.remove()
@@ -128,6 +132,7 @@ export function usePrestore({
           activeControllerRef.current?.abort()
           return
         }
+        if (activeControllerRef.current) return
         requestAutoSync()
       }
       document.addEventListener('visibilitychange', onVisibility)
@@ -168,8 +173,11 @@ export function usePrestore({
         manifest?.planKey !== plan.key ||
         manifest?.perSourceLimit !== prefs.prestore.perSourceLimit ||
         manifest?.presetId !== presetId
+      // 上一轮被中断时清单里留有断点游标，恢复前台/网络后立刻续传，
+      // 不必等下一个 4 小时窗口。计划变了则本来就要整轮重来。
+      const resumable = !planChanged && Boolean(manifest?.sync)
       const stale = !manifest || Date.now() - manifest.updatedAt >= AUTO_SYNC_INTERVAL_MS
-      if (!manualPending && !planChanged && !stale) return
+      if (!manualPending && !planChanged && !stale && !resumable) return
 
       if (manualPending) handledManualSequenceRef.current = manualTriggerSequence
       const connected = await networkAvailable()
