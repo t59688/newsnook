@@ -242,7 +242,7 @@ ReaderScreen / CommentsDrawer
 
 分享      ReaderMoreMenu / EinkReaderMenu（两个入口同一流程）
             → ShareArticleSheet（应用内预览卡片，只用主题变量着色）
-            → lib/shareLink.buildShareUrl（站内短链，v2 只带原文地址 + 信源 id，见 8.6.1）
+            → lib/shareLink.buildShareUrl（站内短链，v2 带原文地址 + 信源 id + 标题，见 8.6.1）
             → lib/shareArticle
                  Android：@capacitor/share（只传 title + url，不传 text）
                  Web：navigator.share，不支持时降级 navigator.clipboard
@@ -250,7 +250,8 @@ ReaderScreen / CommentsDrawer
           拼成一段 EXTRA_TEXT（"text url"），微信把这种消息当**纯文本**、根本不去抓
           OG——这正是「新链接也出不了卡片」最常见的根因，与预览缓存无关。
           EXTRA_TEXT 恰好是一条裸 URL 时才按链接消息处理，边缘 OG 卡片才有机会展示。
-          标题、摘要、首图都由 8.6.2 的卡片承载，不需要写进消息正文。
+          摘要与首图都由 8.6.2 的卡片承载，不需要写进消息正文；标题另外编进 token，
+          边缘抓不到原文时卡片也说得出这是哪一篇（见 8.6.1）。
 
 本地搜索  LocalSearchScreen
             → lib/localSearch.loadCachedListArticles（枚举 cache:v3:* 列表缓存）
@@ -265,7 +266,7 @@ ReaderScreen / CommentsDrawer
 
 分享出去的主链接固定指向站内：`https://news.aizeek.com/a/<token>`（常量集中在 `lib/shareLink.ts` 的 `SHARE_LINK_HOST` / `SHARE_PATH_PREFIX`）。**没有任何服务端参与**——token 自带打开阅读器所需的全部字段，接收端本地解码后照常走 `resolveBody` 抽正文。出版社地址只是 token 里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，不作为分享主链接。
 
-token 载荷当前是 **v2**：只留「能打开这篇」的两个必需字段，中文一律不进链接。v1 的短键 JSON（带标题、摘要、信源名、时间）仍然可解码，旧链接不失效。
+token 载荷当前是 **v2**：只留「能打开这篇」的必需字段，外加一行供聊天预览卡使用的标题。v1 的短键 JSON（带标题、摘要、信源名、时间）仍然可解码，旧链接不失效。
 
 ```text
 v2 明文（换行分隔，比 JSON 再省掉键名与引号）
@@ -273,9 +274,11 @@ v2 明文（换行分隔，比 JSON 再省掉键名与引号）
   第 2 行  sourceId
   第 3 行  原文地址          https:// 前缀省略不写
   第 4 行  可选 id           以 ':' 开头表示补回 `<sourceId>:` 前缀
+                            有标题而无 id 时写一行空串占位（见「标题为什么又进链接」）
+  第 5 行  可选标题          以 '!' 开头，不超过 50 字，解码时摘出来不占位置槽
   末   行  可选 salt         以 '~' 开头，解码时整行忽略（见「换新链接」）
 
-编码  Article ─ sharePayloadFromArticle ─→ { originUrl, sourceId, id? }
+编码  Article ─ sharePayloadFromArticle ─→ { originUrl, sourceId, id?, title? }
                                             ↓ 上述明文 + UTF-8 + URL-safe base64
                     buildShareUrl ─→ https://news.aizeek.com/a/<token>
                     （开发态 resolveShareOrigin 用 window.location.origin，原生壳与生产固定 news.aizeek.com）
@@ -288,8 +291,10 @@ v2 明文（换行分隔，比 JSON 再省掉键名与引号）
       Android App 唤起（launchUrl / appUrlOpen）由 lib/appDeepLink.shareTokenFromAppUrl 还原 token 后走同一条链
 ```
 
-- **为什么砍字段**：中文在 UTF-8 + base64 下膨胀三倍，v1 把标题、摘要、信源名全编进去，典型条目要 450～550 字符，聊天工具里折行、被截断就打不开。v2 网易稿 86 字符、公众号稿 82 字符（完整 URL 112 / 108）。
-- **标题与信源名从哪来**：标题不编码，打开后先显示 `SHARE_PENDING_TITLE`（「加载中…」），`resolveBody` 抽完正文由 `ResolvedBody.title` 顶掉；抽取失败退到 `SHARE_FALLBACK_TITLE`（「分享的文章」）。信源名查 `sources/registry`，不认识就写「分享来源」。`withResolvedShareTitle` 保证落进正文缓存与稍后读的是补齐后的标题，不是占位符。
+- **为什么砍字段**：中文在 UTF-8 + base64 下膨胀三倍，v1 把标题、摘要、信源名全编进去，典型条目要 450～550 字符，聊天工具里折行、被截断就打不开。v2 只留必需字段时网易稿 86 字符、公众号稿 82 字符；带上标题后是 198 / 174（带 salt 206 / 182，完整 URL 232 / 208），仍不到 v1 的一半。摘要与信源名依旧不编码。
+- **标题为什么又进链接**：聊天预览卡的标题由边缘现拼（见 8.6.2），原本只能靠边缘现抓一次原文——被反爬拦住、或抓取端被误判成真人时，卡片就只剩「一篇文章」甚至站点通用文案，对方看不出分享的是哪一篇。分享时 App 手里本来就有真标题，编进 token 后边缘零依赖也能给出正确的 `og:title`。代价是链接变长，因此**只在标题不超过 50 字时才写入**（`MAX_TOKEN_TITLE_LENGTH`），超长的宁可留给边缘抓取——截断后的标题会被接收端当成真标题存进缓存。占位标题（「加载中…」「分享的文章」）由 `usableShareTitle` 挡掉，不会被编进链接。
+- **标题行为什么排在 id 槽之后**：旧版客户端（已安装的 App 会通过 App Links 接管 `/a/*`）按位置解码，标题行若落在 id 槽会被当成文章 id，已读 / 正文缓存 / 稍后读就对不上。因此有标题而无 inline id 时补一行空串占位：旧解码器读到空串等于「没有 id」，自己算出的 id 与从前完全一致，只是丢掉标题。
+- **标题与信源名从哪来**：链接带标题时打开即显示；不带（旧链接、超长标题）先显示 `SHARE_PENDING_TITLE`（「加载中…」），`resolveBody` 抽完正文由 `ResolvedBody.title` 顶掉，抽取失败退到 `SHARE_FALLBACK_TITLE`（「分享的文章」）。信源名查 `sources/registry`，不认识就写「分享来源」。`withResolvedShareTitle` 只顶替占位标题，保证落进正文缓存与稍后读的不是占位符。链接里的标题是发送方给的一段文本，仅用于展示与卡片，正文与出处仍以 `originUrl` 抽取结果为准。
 - **id 怎么省的**：列表侧的条目 id 是 `lib/articleId.feedArticleId(sourceId, link)`（`<sourceId>:<djb2 哈希>`）。接收端用同一函数按原文地址算，绝大多数条目算出的 id 与发送端完全一致，已读 / 正文缓存 / 稍后读因此能对上，第 4 行也就不用出现。算不出来（例如 Google News 解码后换过地址）才写进去，且去掉冗余的 `<sourceId>:` 前缀、超过 40 字符就宁可丢掉。
 - **校验位**：紧凑载荷被截断后仍可能解出一个「看着合法」的短地址，会静默打开错误页面。首行 4 位校验对不上就当损坏处理，弹中文 `ConfirmDialog`。
 - **换新链接（salt 行）**：微信、WhatsApp 都**按 URL 缓存链接预览**，同一条链接一旦抓到过旧卡片（例如边缘卡片部署前的通用文案），之后无论怎么重发都不刷新，平台也没有公开的强制刷新入口。因此 `ReaderScreen` 每次打开分享卡片都用 `newShareSalt()`（4 位 base36 随机数）重新编 token：salt 以 `~` 行进入载荷并参与校验位，token 与 URL 随之变化，平台被迫按新 URL 重新抓取。接收端 `decodeShareToken` 直接跳过 `~` 行，文章 id 仍由 sourceId + 原文地址算出，已读 / 正文缓存 / 稍后读完全不受影响；不合规 salt（非 base36、超长）在编码时整个丢掉。**已发出的旧消息预览不会更新**，只有新发的链接才带新预览。
@@ -302,13 +307,15 @@ v2 明文（换行分隔，比 JSON 再省掉键名与引号）
 
 #### 8.6.2 社交分享卡片（边缘 worker 动态 OG 标签）
 
-微信、WhatsApp、Telegram 这类客户端是按抓到的 HTML 里的 Open Graph 标签渲染链接卡片的，而 `/a/<token>` 走 SPA 回退给出的 `index.html` 只有通用空壳标签，链接在聊天里就是一串裸地址。**卡片由 `functions/lib/shareCard.ts` 在边缘现拼**，仍然不建库、不建 API：
+微信、WhatsApp、Telegram 这类客户端是按抓到的 HTML 里的 Open Graph 标签渲染链接卡片的，而 `/a/<token>` 走 SPA 回退给出的 `index.html` 只有通用空壳标签，链接在聊天里就是一串裸地址、或者一张写着站点名的通用卡。**卡片由 `functions/lib/shareCard.ts` 在边缘现拼**，仍然不建库、不建 API。
+
+**文章级 OG 不绑死在爬虫 UA 判定上**：判定为爬虫走现拼的卡片页，判定为真人照常走 SPA，但 `index.html` 里的站点壳 meta 会按 token 改写成这篇文章的标签（`injectShareMeta`）。抓取端伪装成真实导航（微信一类客户端会带 `Sec-Fetch-*`）时因此仍拿得到文章标题，而不是「有所闻 · News Nook」。
 
 ```text
 GET /a/<token>
   │
   ├─ 爬虫（UA 命中 facebookexternalhit / Twitterbot / WhatsApp / TelegramBot / Baiduspider … ）
-  │    → decodeShareToken 拿 originUrl + sourceId
+  │    → decodeShareToken 拿 originUrl + sourceId（+ 链接里带的标题）
   │    → fetch 原文（每次 3s 超时，只读前 128KB，认 content-type / meta 里的 charset）
   │       先用浏览器 UA + 同站 Referer；没拿到标题（被拦 / 质询页）换 Googlebot UA 再试一次
   │    → 正则取 og:title | twitter:title | <title>、og:description | description、
@@ -322,7 +329,12 @@ GET /a/<token>
   │       文章卡（抓到标题）Cache-Control 3600s；
   │       兜底卡 max-age=0 + CDN-Cache-Control: no-store，失败态不被缓存钉住
   │
-  └─ 真人 → env.ASSETS.fetch(request)，SPA 回退不变
+  └─ 真人（含被误判成真人的抓取端）
+       → env.ASSETS.fetch(request)，SPA 回退不变
+       → injectShareMeta 摘掉 index.html 的 og:* / twitter:* / description / <title>，
+         按 token 补上同一组文章级标签（og:type=article、og:image 指同域端点、Vary: User-Agent）
+         只用链接里已有的信息，**不为这一跳抓上游**——真人打开分享链接不能变慢
+         token 解不出 / 不是 HTML / 多段路径 → 原样返回，站点壳 meta 不动
 
 GET /a/<token>/og.png[?src=<上游首图>]   ← 卡片首图的同域端点（任何 UA）
   │    token 可解且带 src → 转发上游首图（跟随重定向、只收 image/*、5s 超时）
@@ -330,7 +342,8 @@ GET /a/<token>/og.png[?src=<上游首图>]   ← 卡片首图的同域端点（�
   └─   Cache-Control: public, max-age=86400
 ```
 
-- **判定方式**：`wantsShareCard()` 先匹配明确的爬虫 UA。微信抓卡片与微信内置浏览器共用 `MicroMessenger` UA（抓取端还有企业微信 `wxwork`、`WeChat`、`Weixin` 变体；微博 / QQ / 钉钉的内置浏览器同理带各自 App 标识），只能再看 `Sec-Fetch-Mode`——真实导航带（内置浏览器基于 Chromium），抓取端不带；真人聊天 App 内置浏览器因此仍进 SPA。
+- **判定方式**：`wantsShareCard()` 先匹配明确的爬虫 UA。微信抓卡片与微信内置浏览器共用 `MicroMessenger` UA（抓取端还有企业微信 `wxwork`、`WeChat`、`Weixin` 变体；微博 / QQ / 钉钉的内置浏览器同理带各自 App 标识），只能再看 `Sec-Fetch-Mode`——真实导航带（内置浏览器基于 Chromium），抓取端**通常**不带；真人聊天 App 内置浏览器因此仍进 SPA。这套判定只决定「给卡片页还是给 SPA」，**不再决定预览里有没有文章标题**：抓取端带上 `Sec-Fetch-*` 或换个没见过的 UA 时，SPA 那条路的 `injectShareMeta` 兜住。改 UA 名单仍有价值（卡片页能现抓摘要与首图），但它不再是卡片正确与否的唯一开关。
+- **SPA 改写的边界**：`SHELL_META_PATTERN` 按 `property="og:*"` / `name="twitter:*"` / `name="description"` 匹配 `index.html` 里的站点级标签，连同 `<title>` 一起摘掉再补新的；`viewport`、`theme-color` 这类无关 meta 不动，`#root` 与入口脚本原样保留，SPA 行为零变化。改写后删掉 `Content-Length` / `ETag`（内容已变），并补 `Vary: User-Agent`（同址对爬虫给的是卡片页）。`index.html` 里那几行 og 标签的写法与这个正则是配套的，改一边要看另一边——`npm run test:share-og` 里有一条用**仓库真实 `index.html`** 跑的回归。
 - **社交大图卡依赖「必须带图」**：微信、WhatsApp 对没有 `og:image` 的页面几乎只出小字纯文本卡甚至不出卡。因此卡片**任何情况下都输出 og:image**：上游有首图时经同域 `GET /a/<token>/og.png?src=…` 转发（微信对跨域、防盗链、http 明文图经常直接放弃渲染；端点内跟随重定向、只收 `image/*`，失败回落品牌图）；上游没图、token 坏、抓取失败时直接给 `public/og-default.png`（1200×630 品牌图，`scripts/generate-og-default.mjs` 生成并入库）并声明 `og:image:width/height`。图片端点与卡片同在 `/a/*` 路径下，WAF 的按路径 Skip 规则一并覆盖。
 - **误判兜底**：卡片页带 `<meta http-equiv="refresh">` 指向 `?app=1`；worker 见到这个参数直接放行到 SPA，所以被误判成爬虫的真人只多一跳就回到阅读页，不会来回打转。`?app=1` 只是 query，前端仍按 pathname 解码 token，不影响打开文章；卡片自身的 `og:url` 指向不带该参数的规范地址。
 - **路由前提**：卡片能出现在聊天里的前提是 `/a/*` 请求真的进了 worker——见 8.6.1「深链可刷新」里的 `run_worker_first` 说明。若 Cloudflare WAF / Bot 拦截对微信、WhatsApp 抓取端 IP 弹质询页，爬虫同样拿不到 OG，需在仪表盘为 `/a/*` 放行已知抓取端。
@@ -348,11 +361,12 @@ GET /a/<token>/og.png[?src=<上游首图>]   ← 卡片首图的同域端点（�
   ```
 
   不要写成对 `/a/*` 全 UA 放行（真人流量也会绕过防护），更不要以为「Googlebot 已跳过 = 修好了」。
-- **「新链接也没卡」先查消息形态，别都归因缓存**：平台预览缓存只解释「旧链接刷不动」；一条**全新** URL 发出去仍没有卡片时，最常见的根因是分享面板把标题 + URL 拼成了一条**纯文本消息**（见 8.6「分享」流程里的 EXTRA_TEXT 说明），其次是卡片没有 `og:image`（微信不出大图卡）或 WAF 把社交抓取端拦在质询页。排查顺序：消息是不是裸链接 → 爬虫 UA 能否拿到带图完整卡 → WAF 事件按 UA 过滤核对。
+- **「新链接也没卡」先查消息形态，别都归因缓存**：平台预览缓存只解释「旧链接刷不动」；一条**全新** URL 发出去仍没有卡片时，最常见的根因是分享面板把标题 + URL 拼成了一条**纯文本消息**（见 8.6「分享」流程里的 EXTRA_TEXT 说明），其次是卡片没有 `og:image`（微信不出大图卡）或 WAF 把社交抓取端拦在质询页。排查顺序：消息是不是裸链接 → 爬虫 UA 能否拿到带图完整卡 → **带上 `Sec-Fetch-Mode: navigate` 再抓一次**（抓取端伪装成导航时走的是 SPA 那条路，`injectShareMeta` 必须把文章标题写进去）→ WAF 事件按 UA 过滤核对。
+- **卡片标题是站点名（「有所闻 · News Nook」）说明抓到了站点壳**：这两句与 `index.html` 的站点级 og 逐字相同，既不是「有所闻分享」也不是「<信源名> · 一篇文章」这两套兜底，说明请求根本没拿到文章级 OG——要么没进 worker（见「路由前提」），要么进了 SPA 那条路而改写没生效。
 - **平台缓存与强制刷新**：聊天预览完全依赖边缘返回的 OG；微信、WhatsApp 都按 **URL** 缓存抓取结果，且没有官方的预览刷新调试器（Facebook 的 Sharing Debugger 只服务 Facebook 家族的 og 缓存，对 WhatsApp 个人聊天不保证生效）。**已发出的旧消息卡片永远不会更新**——修好部署、改好 WAF 都救不了旧气泡，只能新发一条。App 侧的解法见 8.6.1「换新链接（salt 行）」：每次分享都是一条新 URL，平台按新 URL 重新抓取；卡片里的 `og:url` 与首图端点仍用不带 salt 的规范 token，平台按规范地址归并，不会把缓存键打散。
-- **兜底文案**：token 解不出来退到「有所闻分享」+「点击在有所闻中阅读全文」；token 可解但上游超时 / 非 200 / 非 HTML / 质询页时，标题用「<信源名> · <v1 链接里的短标题，没有则“一篇文章”>」（认识的 `sourceId` 用注册表中文名，否则用原文域名），描述补「原文来自 xxx」——观感仍是一篇文章而不是站点广告。两种兜底都带品牌图，**仍是一张完整大图卡**。兜底卡 `max-age=0` + `CDN-Cache-Control: no-store`，上游恢复后爬虫重抓立即拿到文章卡。
-- **安全**：上游标题、摘要先按 HTML 实体还原再统一 `escapeHtml`，属性边界不会被 `">` 顶开；`og:image` 与 `og.png` 端点的 `src` 只接受 http(s)，`javascript:` 之类直接丢掉；`og.png` 要求 token 可解才代转上游图，避免被当成任意图片代理。
-- **只影响 Workers 部署**：`/api/*` 的边缘代理逻辑不变；Vite 开发态没有这条路径（爬虫不会来爬 localhost），本机验证请直接跑 `npm run test:share-og`。`index.html` 里另有一套站点级默认 og 标签，只服务首页等普通页面——`/a/*` 的爬虫请求在 worker 就被接走，永远不会落到这份站点壳 meta 上。
+- **标题三级、兜底文案**：卡片标题依次取 ① 现抓到的原文 `og:title`（最新，链接里的标题可能已过时）→ ② 链接 token 里带的标题（上游超时 / 非 200 / 非 HTML / 质询页时兜住，见 8.6.1）→ ③「<信源名> · 一篇文章」（旧链接或超长标题；认识的 `sourceId` 用注册表中文名，否则用原文域名）。token 整个解不出来才退到「有所闻分享」+「点击在有所闻中阅读全文」。描述取上游摘要，没有就用「点击在有所闻中阅读全文」，再补「· 原文来自 xxx」。任何一级都**不会**落回站点通用文案。两种兜底都带品牌图，**仍是一张完整大图卡**；抓不到原文标题的卡 `max-age=0` + `CDN-Cache-Control: no-store`，上游恢复后爬虫重抓立即拿到带摘要与首图的完整卡。
+- **安全**：上游标题、摘要与**链接里带的标题**都先按 HTML 实体还原再统一 `escapeHtml`，属性边界不会被 `">` 顶开（token 是发送方可控输入，卡片页与改写后的 SPA 两条路都有转义回归）；`og:image` 与 `og.png` 端点的 `src` 只接受 http(s)，`javascript:` 之类直接丢掉；`og.png` 要求 token 可解才代转上游图，避免被当成任意图片代理。
+- **只影响 Workers 部署**：`/api/*` 的边缘代理逻辑不变；Vite 开发态没有这条路径（爬虫不会来爬 localhost），本机验证请直接跑 `npm run test:share-og`。`index.html` 里另有一套站点级默认 og 标签，只服务首页等普通页面——`/a/*` 的请求要么在 worker 就被接走，要么被 `injectShareMeta` 改写，抓取端不会落到这份站点壳 meta 上。
 
 ### 8.7 配置备份与恢复
 
