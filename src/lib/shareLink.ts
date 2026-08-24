@@ -33,6 +33,7 @@ export {
   SHARE_TOKEN_TYPICAL_LIMIT,
   decodeShareToken,
   encodeShareToken,
+  newShareSalt,
   shareTokenFromPath,
 } from './shareToken'
 export type { SharePayload } from './shareToken'
@@ -72,9 +73,17 @@ export function resolveShareOrigin(): string {
   return origin
 }
 
-export function buildShareUrl(payload: SharePayload, options?: { origin?: string }): string {
+/**
+ * 组装站内短链。`salt` 用于「再次分享换一条新 URL」：
+ * 微信、WhatsApp 按 URL 缓存预览，旧链接的卡片刷不动，只有换 URL 才会重抓。
+ * salt 编进 token 的 '~' 行，接收端解码时忽略，打开的仍是同一篇。
+ */
+export function buildShareUrl(
+  payload: SharePayload,
+  options?: { origin?: string; salt?: string },
+): string {
   const origin = (options?.origin ?? resolveShareOrigin()).replace(/\/+$/, '')
-  return `${origin}${SHARE_PATH_PREFIX}${encodeShareToken(payload)}`
+  return `${origin}${SHARE_PATH_PREFIX}${encodeShareToken(payload, { salt: options?.salt })}`
 }
 
 /** 展示用短链：去掉协议，卡片上一行放得下 */

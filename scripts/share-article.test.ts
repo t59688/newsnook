@@ -34,6 +34,19 @@ assert.equal(
 )
 assert.equal(buildClipboardText({ title: '没有原文地址' }), '没有原文地址')
 
+// 4b. 分享正文（text 字段）任何情况下不得混入 URL：
+// WhatsApp 会把正文原样放进气泡，URL 只该出现在系统的 url 字段里一次
+assert.ok(
+  !/https?:\/\//.test(
+    buildShareText({
+      title: '国产大模型价格战再起',
+      sourceName: '少数派',
+      url: 'https://news.aizeek.com/a/abc123',
+    }),
+  ),
+  'buildShareText 不得把链接拼进正文',
+)
+
 // 5. 分享出去的主链接是站内短链：剪贴板兜底也不能退回出版社地址
 const article: Article = {
   id: 'sspai:0xdeadbeef',

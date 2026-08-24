@@ -17,10 +17,17 @@
  * 第 2 行  sourceId
  * 第 3 行  原文地址，https:// 前缀省略不写
  * 第 4 行  可选 id；以 ':' 开头表示补回 `<sourceId>:` 前缀
+ * 末   行  可选 salt；以 '~' 开头，解码时忽略
  * ```
  *
  * 校验位存在的理由：紧凑载荷被聊天工具截断后仍可能解出一个「看着合法」的
  * 短地址，那会静默打开错误的页面。校验不过就当损坏处理，弹中文提示。
+ *
+ * salt 行存在的理由：微信、WhatsApp 都按 URL 缓存链接预览，同一条链接
+ * 一旦抓到过旧卡片（例如部署修复前的通用文案），之后怎么发都不刷新。
+ * 每次分享时带一个新 salt，token 与 URL 就换了一条，平台被迫重新抓取。
+ * salt 不参与打开文章——接收端解码时直接跳过 '~' 行，文章 id 仍由
+ * sourceId + 原文地址算出，已读、缓存、稍后读都对得上。
  *
  * 标题打开后由正文抽取补上（在此之前显示占位），信源名从 registry 查。
  * 绝大多数条目的 id 就是 `<sourceId>:<原文地址哈希>`（见 lib/articleId），
@@ -56,6 +63,10 @@ const MAX_ORIGIN_URL_LENGTH = 800
 const MAX_INLINE_ID_LENGTH = 40
 /** 校验位长度：只用来发现截断与手抖改字，不作防篡改用途 */
 const CHECKSUM_LENGTH = 4
+/** salt 行前缀：以它开头的行在解码时整行跳过 */
+const SALT_LINE_PREFIX = '~'
+/** salt 只是换 URL 用的随机数，太长白占字符 */
+const MAX_SALT_LENGTH = 8
 
 /**
  * 分享 token 里可能出现的字段。
@@ -145,6 +156,8 @@ function compactArticleId(payload: SharePayload): string | null {
   if (id === feedArticleId(payload.sourceId, payload.originUrl)) return null
   const prefix = `${payload.sourceId}:`
   const short = id.startsWith(prefix) ? `:${id.slice(prefix.length)}` : id
+  // '~' 开头的行是 salt 的记号，撞上的 id 宁可丢掉让接收端自己算
+  if (short.startsWith(SALT_LINE_PREFIX)) return null
   return short.length > MAX_INLINE_ID_LENGTH ? null : short
 }
 
@@ -152,10 +165,26 @@ function checksum(body: string): string {
   return hashId(body).slice(0, CHECKSUM_LENGTH)
 }
 
-export function encodeShareToken(payload: SharePayload): string {
+/** 「再次分享换新链接」用的短随机数；不作安全用途，撞了也无妨 */
+export function newShareSalt(): string {
+  return Math.floor(Math.random() * 36 ** 4)
+    .toString(36)
+    .padStart(4, '0')
+}
+
+/** salt 只允许 base36 字符且限长；不合规的整个丢掉，别让链接变脏 */
+function sanitizeSalt(salt: string | undefined): string | null {
+  const value = salt?.trim().toLowerCase()
+  if (!value || value.length > MAX_SALT_LENGTH) return null
+  return /^[0-9a-z]+$/.test(value) ? value : null
+}
+
+export function encodeShareToken(payload: SharePayload, options?: { salt?: string }): string {
   const lines = [payload.sourceId, compactOriginUrl(payload.originUrl)]
   const inlineId = compactArticleId(payload)
   if (inlineId) lines.push(inlineId)
+  const salt = sanitizeSalt(options?.salt)
+  if (salt) lines.push(`${SALT_LINE_PREFIX}${salt}`)
   const body = lines.join('\n')
   return toBase64Url(
     new TextEncoder().encode(`${SHARE_TOKEN_VERSION}.${checksum(body)}\n${body}`),
@@ -168,7 +197,8 @@ function decodeV2(text: string): SharePayload | null {
   const body = text.slice(headerEnd + 1)
   if (text.slice(1, headerEnd) !== `.${checksum(body)}`) return null
 
-  const lines = body.split('\n')
+  // salt 行只为换 URL 而存在，校验完整性之后就与打开文章无关
+  const lines = body.split('\n').filter((line) => !line.startsWith(SALT_LINE_PREFIX))
   const sourceId = nonEmptyString(lines[0], MAX_ID_LENGTH)
   const originUrl = safeHttpUrl(expandOriginUrl((lines[1] ?? '').trim()))
   if (!sourceId || !originUrl) return null

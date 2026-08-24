@@ -15,6 +15,7 @@
 import {
   SHARE_PATH_PREFIX,
   decodeShareToken,
+  encodeShareToken,
   shareTokenFromPath,
   type SharePayload,
 } from '../../src/lib/shareToken.ts'
@@ -52,6 +53,24 @@ const MAX_DESCRIPTION_LENGTH = 200
 
 const BROWSER_UA =
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+/**
+ * 第二把钥匙：InfoQ 这类站点对陌生 UA 出拦截页，但通常放行搜索引擎爬虫。
+ * 第一次用浏览器 UA + Referer 没拿到标题时，换这个 UA 再试一次。
+ */
+const SEARCHBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)'
+
+/** 上游抓取的两套请求头，按序尝试，拿到标题即停 */
+const FETCH_PROFILES: Array<{ userAgent: string; sendReferer: boolean }> = [
+  { userAgent: BROWSER_UA, sendReferer: true },
+  { userAgent: SEARCHBOT_UA, sendReferer: false },
+]
+
+/**
+ * 反爬质询页的标题不能当文章标题写进卡片，
+ * 否则聊天里会出现「Just a moment...」这种莫名其妙的预览。
+ */
+const CHALLENGE_TITLE =
+  /^(just a moment|attention required|access denied|please verify|security check|checking your browser|请稍候|安全验证|访问验证|验证码|人机验证)/i
 
 interface PageMeta {
   title?: string
@@ -212,16 +231,19 @@ async function readCapped(response: Response, limit: number): Promise<Uint8Array
   return merged
 }
 
-/** 抓一次原文；超时、非 HTML、上游报错都当作「没抓到」，由调用方退回通用文案 */
-async function fetchPageMeta(originUrl: string): Promise<PageMeta> {
+/** 单次抓取；超时、非 HTML、上游报错、质询页都当作「没抓到」 */
+async function fetchPageMetaOnce(
+  originUrl: string,
+  profile: { userAgent: string; sendReferer: boolean },
+): Promise<PageMeta> {
   try {
     const target = new URL(originUrl)
     const response = await fetch(originUrl, {
       headers: {
-        'User-Agent': BROWSER_UA,
+        'User-Agent': profile.userAgent,
         Accept: 'text/html,application/xhtml+xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8',
-        Referer: `${target.origin}/`,
+        ...(profile.sendReferer ? { Referer: `${target.origin}/` } : {}),
       },
       redirect: 'follow',
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
@@ -232,10 +254,24 @@ async function fetchPageMeta(originUrl: string): Promise<PageMeta> {
     if (contentType && !/text\/html|application\/xhtml/i.test(contentType)) return {}
 
     const bytes = await readCapped(response, UPSTREAM_READ_LIMIT)
-    return extractPageMeta(decodeHtml(bytes, contentType), response.url || originUrl)
+    const meta = extractPageMeta(decodeHtml(bytes, contentType), response.url || originUrl)
+    // 质询页整页都是拦截器吐的，摘要与首图同样不可信，一起丢掉
+    if (meta.title && CHALLENGE_TITLE.test(meta.title)) return {}
+    return meta
   } catch {
     return {}
   }
+}
+
+/** 抓原文：浏览器 UA 拿不到标题就换搜索引擎 UA 重试；两把都失败由调用方退回兜底文案 */
+async function fetchPageMeta(originUrl: string): Promise<PageMeta> {
+  let partial: PageMeta = {}
+  for (const profile of FETCH_PROFILES) {
+    const meta = await fetchPageMetaOnce(originUrl, profile)
+    if (meta.title) return { ...partial, ...meta }
+    partial = { ...meta, ...partial }
+  }
+  return partial
 }
 
 /** 卡片副标题里的「原文来自 xxx」：认识的信源用注册表里的中文名，否则退回域名 */
@@ -309,10 +345,18 @@ export async function shareCardResponse(request: Request, url: URL): Promise<Res
   const meta = payload ? await fetchPageMeta(payload.originUrl) : {}
   const sourceName = payload ? describeSource(payload) : ''
 
-  const shareUrl = `${url.origin}${url.pathname}`
-  const bounceUrl = `${shareUrl}?${SHARE_CARD_BYPASS_PARAM}=1`
+  // og:url 用不带 salt 的规范 token：salt 只为换 URL 打破平台预览缓存，
+  // 规范地址才是这篇文章的稳定身份，平台按 og:url 归并时不会把缓存键打散。
+  const canonicalToken = payload ? encodeShareToken(payload) : token
+  const shareUrl = `${url.origin}${SHARE_PATH_PREFIX}${canonicalToken}`
+  // 逃生门要回到用户实际点开的地址（可能带 salt），token 在 pathname 上原样保留
+  const bounceUrl = `${url.origin}${url.pathname}?${SHARE_CARD_BYPASS_PARAM}=1`
+
+  // 抓到文章标题才算「文章卡」；抓不到时兜底标题也尽量带上信源名，
+  // 不能让聊天里只剩一句与内容无关的空话
+  const articleTitle = meta.title
   const html = renderShareCard({
-    title: meta.title || FALLBACK_TITLE,
+    title: articleTitle || (sourceName ? `${sourceName} · ${FALLBACK_TITLE}` : FALLBACK_TITLE),
     description: composeDescription(meta.description, sourceName),
     shareUrl,
     bounceUrl,
@@ -323,8 +367,10 @@ export async function shareCardResponse(request: Request, url: URL): Promise<Res
     status: 200,
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      // 爬虫常常重复抓同一条链接，短缓存足够挡住抖动，又不会长期钉住旧标题
-      'Cache-Control': 'public, max-age=600',
+      // 文章卡可以多缓存一会儿（标题不会变）；兜底卡不缓存，
+      // 上游恢复后爬虫重抓立即能拿到文章级卡片，失败态不该被钉住十分钟
+      'Cache-Control': articleTitle ? 'public, max-age=3600' : 'public, max-age=0, must-revalidate',
+      ...(articleTitle ? {} : { 'CDN-Cache-Control': 'no-store' }),
       // 同一地址对真人给的是 SPA，中间缓存不能把卡片复用过去
       Vary: 'User-Agent',
     },

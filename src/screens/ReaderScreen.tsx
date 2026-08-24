@@ -44,6 +44,7 @@ import {
   SHARE_FALLBACK_TITLE,
   buildShareUrl,
   isPendingShareTitle,
+  newShareSalt,
   sharePayloadFromArticle,
   usableShareTitle,
   withResolvedShareTitle,
@@ -922,13 +923,20 @@ export function ReaderScreen({
   }
 
   /**
+   * 每次打开分享卡片都换一个 salt：微信、WhatsApp 按 URL 缓存链接预览，
+   * 同一条链接抓到过旧卡片后不再刷新；换 salt 即换 URL，平台被迫重新抓。
+   * 接收端解码时忽略 salt，打开的仍是同一篇。
+   */
+  const [shareSalt, setShareSalt] = useState(() => newShareSalt())
+
+  /**
    * 分享主链接：站内短链，对方点开在网页版里读全文。
    * token 只带原文地址与信源 id，标题由对方抽取正文时自己补。
    */
   const shareUrl = useMemo(() => {
     if (!originUrl) return ''
-    return buildShareUrl(sharePayloadFromArticle({ ...article, originUrl }))
-  }, [article, originUrl])
+    return buildShareUrl(sharePayloadFromArticle({ ...article, originUrl }), { salt: shareSalt })
+  }, [article, originUrl, shareSalt])
 
   const originHost = useMemo(() => {
     if (!originUrl) return undefined
@@ -947,6 +955,8 @@ export function ReaderScreen({
       showToast('这篇没有可分享的地址')
       return
     }
+    // 再次分享给一条新链接，对方聊天里的预览才会重新抓取
+    setShareSalt(newShareSalt())
     setShareSheetOpen(true)
   }, [shareUrl, showToast])
 

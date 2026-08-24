@@ -121,6 +121,8 @@ export function ShareArticleSheet({
           <p className="font-mono text-[10px] leading-relaxed text-paper-faint">
             链接打开后在「有所闻」网页版站内读全文
             {originHost ? ` · 原文来自 ${originHost}` : ''}
+            <br />
+            每次分享都是一条新链接，聊天里已发出的旧消息预览不会更新
           </p>
 
           <div className="flex items-center gap-2.5">
