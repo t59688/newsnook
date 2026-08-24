@@ -23,7 +23,7 @@ News Nook（有所闻）是**无后端**移动新闻阅读客户端：静态源�
 newsnook/
 ├── src/                      # React 应用
 ├── android/                  # Capacitor 原生工程（入库）
-├── functions/                # Cloudflare Pages Functions（生产边缘代理）
+├── functions/                # 生产边缘：/api/* 反向代理 + /a/* 社交分享卡片
 ├── public/                   # favicon、品牌 SVG、字体，以及 _redirects（/a/* 深链回退）
 ├── assets/                   # 启动图 / Android 图标源图
 ├── scripts/                  # 构建、探针与单元测试脚本
@@ -290,6 +290,29 @@ v2 明文（换行分隔，比 JSON 再省掉键名与引号）
 - **与「打开原文」的区别**：分享出去的主链接永远是站内 `/a/<token>`；出版社地址只是载荷里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，任何情况下都不会把原站 URL 当成分享结果。
 - **UI 层次**：`ShareArticleSheet` 是 `z-50`，且分享卡片打开时 `ReaderScreen` 会收起跟贴悬浮胶囊与「已回到上次阅读位置」提示（两者都是 `z-40` 且在 DOM 里排在卡片之后，否则会压住卡片底部的「复制链接 / 分享」）。卡片里的链接是可点的 `<a target="_blank">`，方便自测深链。
 - **Android**：暂未配置 App Links，分享出去的 https 链接由对方浏览器打开网页版站内阅读；不会偷偷回退成原站 URL。
+- **模块划分**：token 的编解码单独放在 `lib/shareToken.ts`（纯函数，无 Capacitor / window 依赖），边缘 worker 也 import 同一份（见 8.6.2）；`lib/shareLink.ts` 只留浏览器侧的链接组装、深链识别与 Article 还原，并原样 re-export token API，调用方不受影响。
+
+#### 8.6.2 社交分享卡片（边缘 worker 动态 OG 标签）
+
+微信、WhatsApp、Telegram 这类客户端是按抓到的 HTML 里的 Open Graph 标签渲染链接卡片的，而 `/a/<token>` 走 SPA 回退给出的 `index.html` 只有通用空壳标签，链接在聊天里就是一串裸地址。**卡片由 `functions/lib/shareCard.ts` 在边缘现拼**，仍然不建库、不建 API：
+
+```text
+GET /a/<token>
+  │
+  ├─ 爬虫（UA 命中 facebookexternalhit / Twitterbot / WhatsApp / TelegramBot / Baiduspider … ）
+  │    → decodeShareToken 拿 originUrl + sourceId
+  │    → fetch 原文（3s 超时，只读前 128KB，认 content-type / meta 里的 charset）
+  │    → 正则取 og:title | twitter:title | <title>、og:description | description、og:image
+  │    → 返回一页只有 OG / twitter meta 的极简 HTML（Cache-Control 600s + Vary: User-Agent）
+  │
+  └─ 真人 → env.ASSETS.fetch(request)，SPA 回退不变
+```
+
+- **判定方式**：`wantsShareCard()` 先匹配明确的爬虫 UA。微信抓卡片与微信内置浏览器共用 `MicroMessenger` UA，只能再看 `Sec-Fetch-Mode`——真实导航带（内置浏览器基于 Chromium），抓取端不带。
+- **误判兜底**：卡片页带 `<meta http-equiv="refresh">` 指向 `?app=1`；worker 见到这个参数直接放行到 SPA，所以被误判成爬虫的真人只多一跳就回到阅读页，不会来回打转。
+- **兜底文案**：token 解不出来、上游超时 / 非 200 / 非 HTML，一律退到「有所闻分享」+「点击在有所闻中阅读全文」，并尽量补上「原文来自 xxx」（认识的 `sourceId` 用注册表中文名，否则用原文域名）。`og:image` 只在上游确有首图时输出，不塞占位图。
+- **安全**：上游标题、摘要先按 HTML 实体还原再统一 `escapeHtml`，属性边界不会被 `">` 顶开；`og:image` 只接受 http(s)，`javascript:` 之类直接丢掉。
+- **只影响 Workers 部署**：`/api/*` 的边缘代理逻辑不变；Vite 开发态没有这条路径（爬虫不会来爬 localhost），本机验证请直接跑 `npm run test:share-og`。
 
 ### 8.7 配置备份与恢复
 
@@ -389,7 +412,8 @@ einkMode=false → 完全恢复现有上下滚动阅读，零残留
 | `lib/opml.ts` | OPML 导入导出与 Feed 探测 |
 | `lib/backup.ts` | 配置备份 JSON 的采集、校验、迁移与恢复 |
 | `lib/readingPosition.ts` | 阅读位置表（节流落盘、容量淘汰、按比例还原） |
-| `lib/shareLink.ts` | 站内分享短链编解码、深链识别与 Article 还原 |
+| `lib/shareToken.ts` | 分享 token 的编解码（纯函数，边缘 worker 共用，见 8.6.2） |
+| `lib/shareLink.ts` | 站内分享短链组装、深链识别与 Article 还原 |
 | `lib/shareArticle.ts` | 系统分享面板与剪贴板降级 |
 | `lib/localSearch.ts` | 本地语料合并与离线检索 |
 | `lib/sanitize.ts` | DOMPurify |
@@ -467,7 +491,7 @@ npm run android:apk | android:aab
 | 持久化 | `src/lib/storage.ts` |
 | 配置备份 | `src/lib/backup.ts` · `src/components/BackupPanel.tsx` |
 | 阅读位置 | `src/lib/readingPosition.ts` |
-| 分享 | `src/lib/shareLink.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` |
+| 分享 | `src/lib/shareLink.ts` · `src/lib/shareToken.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` · `functions/lib/shareCard.ts` |
 | 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
 | 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/index.css` |
 | HTTP / 代理 | `src/lib/http.ts` · `src/features/proxy/` |
