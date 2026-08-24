@@ -14,6 +14,7 @@ import {
   encodeShareToken,
   isPendingShareTitle,
   parseShareUrl,
+  shareTargetFromLocation,
   shareTokenFromPath,
   shareUrlDisplay,
   sharePayloadFromArticle,
@@ -114,6 +115,26 @@ assert.equal(shareTokenFromPath('/'), null)
 assert.equal(shareTokenFromPath('/about'), null)
 assert.equal(shareTokenFromPath('/a/'), null)
 assert.equal(shareTokenFromPath('/a/abc/def'), null)
+
+// 8b. 冷启动入口：合法深链解出 payload，普通访问是 undefined，损坏 token 是 null
+assert.equal(shareTargetFromLocation('/'), undefined, '首页不是深链')
+assert.equal(shareTargetFromLocation('/about'), undefined)
+const landed = shareTargetFromLocation(`${SHARE_PATH_PREFIX}${token}`)
+assert.ok(landed, '合法 /a/<token> 应解出 payload')
+assert.equal(landed.originUrl, article.originUrl)
+assert.equal(landed.sourceId, article.sourceId)
+const landedArticle = articleFromSharePayload(landed)
+assert.equal(landedArticle.originUrl, article.originUrl, '落地文章应指向同一原文')
+assert.equal(landedArticle.sourceId, 'sspai')
+assert.equal(
+  shareTargetFromLocation(`${SHARE_PATH_PREFIX}broken*token`),
+  null,
+  '损坏 token 应返回 null（首页 + 中文错误提示）',
+)
+
+// 8c. 卡片页逃生门 ?app=1 只是 query，不影响 pathname 上 token 的解码
+assert.equal(parseShareUrl(`${url}?app=1`)?.originUrl, article.originUrl)
+assert.equal(parseShareUrl(`${url}?app=1#frag`)?.sourceId, article.sourceId)
 
 // 9. 恶意与损坏 token 一律拒绝，不能抛异常打断冷启动
 assert.equal(decodeShareToken(''), null)

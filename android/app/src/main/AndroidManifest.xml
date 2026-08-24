@@ -20,6 +20,27 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!--
+                分享深链 https://news.aizeek.com/a/<token>：
+                autoVerify 需要站点提供 /.well-known/assetlinks.json（含签名指纹）才会
+                自动接管链接；在此之前系统至少会把 App 列进「用应用打开」的候选，
+                网页引导条的 intent:// 也按这条 filter 唤起。
+            -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="news.aizeek.com" android:pathPrefix="/a/" />
+            </intent-filter>
+
+            <!-- 自定义 scheme newsnook://a/<token>：无需域名验证，网页引导条的兜底唤起方式 -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="newsnook" android:host="a" />
+            </intent-filter>
         </activity>
 
         <service

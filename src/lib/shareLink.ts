@@ -16,6 +16,7 @@ import { findSource, type NewsSource } from '../sources/registry'
 import { feedArticleId } from './articleId'
 import {
   MAX_ID_LENGTH,
+  SHARE_LINK_ORIGIN,
   SHARE_PATH_PREFIX,
   decodeShareToken,
   encodeShareToken,
@@ -26,6 +27,8 @@ import type { Article } from './types'
 
 export {
   MAX_SHARE_TOKEN_LENGTH,
+  SHARE_LINK_HOST,
+  SHARE_LINK_ORIGIN,
   SHARE_PATH_PREFIX,
   SHARE_TOKEN_TYPICAL_LIMIT,
   decodeShareToken,
@@ -33,10 +36,6 @@ export {
   shareTokenFromPath,
 } from './shareToken'
 export type { SharePayload } from './shareToken'
-
-/** 生产 Web 站点 host；App 内分享出去的链接一律指向这里 */
-export const SHARE_LINK_HOST = 'news.aizeek.com'
-export const SHARE_LINK_ORIGIN = `https://${SHARE_LINK_HOST}`
 /** v2 不带标题；正文抽取补回真标题前，阅读器与列表先用这个占位 */
 export const SHARE_PENDING_TITLE = '加载中…'
 /** 正文抽取失败时的标题兜底，免得「加载中…」一直挂在顶上 */

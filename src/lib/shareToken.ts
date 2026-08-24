@@ -34,6 +34,10 @@ import { feedArticleId, hashId } from './articleId'
 /** 深链路径前缀，SPA 回退规则、边缘 worker 与 App 冷启动都按它匹配 */
 export const SHARE_PATH_PREFIX = '/a/'
 
+/** 生产 Web 站点 host；App 内分享出去的链接与 Android App Links 都指向这里 */
+export const SHARE_LINK_HOST = 'news.aizeek.com'
+export const SHARE_LINK_ORIGIN = `https://${SHARE_LINK_HOST}`
+
 const SHARE_TOKEN_VERSION = 2
 const LEGACY_TOKEN_VERSION = 1
 

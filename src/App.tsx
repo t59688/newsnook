@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 
 import { AppShell } from './components/AppShell'
 import { DlnaCastBanner } from './components/DlnaCastBanner'
+import { OpenInAppBanner } from './components/OpenInAppBanner'
 import { DesktopSidebar } from './components/DesktopSidebar'
 import { TabBar, type TabKey } from './components/TabBar'
 import { useFeeds } from './hooks/useFeeds'
@@ -21,9 +22,16 @@ import { sortArticles } from './lib/feedPagination'
 import { log } from './lib/logger'
 import { resolveArticleBody } from './lib/resolveBody'
 import {
+  isAndroidBrowser,
+  preferredOpenInAppUrl,
+  shareTokenFromAppUrl,
+} from './lib/appDeepLink'
+import {
   articleFromSharePayload,
   clearShareLocation,
-  shareTargetFromLocation,
+  decodeShareToken,
+  shareTokenFromPath,
+  type SharePayload,
 } from './lib/shareLink'
 import {
   listCacheStats,
@@ -229,17 +237,30 @@ export default function App() {
   })
   /**
    * 冷启动深链 `/a/<token>`：本地解码后直接进阅读器（正文仍走 resolveBody 站内抽取）。
-   * `undefined` = 普通访问，`null` = token 损坏，给中文提示后停在首页。
+   * 显式写成 lazy initializer，token 也留一份给「在 App 中打开」引导条拼深链。
+   * `sharedEntry` 为 null = 普通访问；`payload` 为 null = token 损坏，
+   * 给中文提示后停在首页。query（如卡片页逃生门的 `?app=1`）不影响 pathname 解码。
    */
-  const [sharedTarget] = useState(shareTargetFromLocation)
-  const [reading, setReading] = useState<Article | null>(() => {
-    if (!sharedTarget) {
-      if (sharedTarget === null) log.app.warn('share deep link rejected')
-      return null
-    }
-    return articleFromSharePayload(sharedTarget, prefs.customSources)
+  const [sharedEntry] = useState<{ token: string; payload: SharePayload | null } | null>(() => {
+    const pathname = typeof window === 'undefined' ? '' : window.location.pathname
+    const token = shareTokenFromPath(pathname)
+    if (!token) return null
+    return { token, payload: decodeShareToken(token) }
   })
-  const [deepLinkError, setDeepLinkError] = useState(sharedTarget === null)
+  const [reading, setReading] = useState<Article | null>(() => {
+    if (!sharedEntry?.payload) return null
+    return articleFromSharePayload(sharedEntry.payload, prefs.customSources)
+  })
+  const [deepLinkError, setDeepLinkError] = useState(sharedEntry?.payload === null)
+
+  useEffect(() => {
+    if (!sharedEntry) return
+    if (sharedEntry.payload === null) {
+      log.app.warn('share deep link rejected: token corrupted or truncated')
+    } else {
+      log.app.info('share deep link opened', sharedEntry.payload.sourceId)
+    }
+  }, [sharedEntry])
   /** 墨水屏中区进设置时暂存文章，从「我的」返回时恢复阅读 */
   const [readerReturnArticle, setReaderReturnArticle] = useState<Article | null>(null)
   const readerOverlayCloserRef = useRef<(() => boolean) | null>(null)
@@ -532,6 +553,79 @@ export default function App() {
     setReading(article)
     setReadIds((prev) => new Set(prev).add(article.id))
   }, [])
+
+  const customSourcesRef = useRef(prefs.customSources)
+  customSourcesRef.current = prefs.customSources
+
+  /**
+   * App 唤起深链：Android 的 https App Links 与 `newsnook://` 自定义 scheme
+   * 都经 Capacitor 的 launchUrl（冷启动）/ appUrlOpen（运行中）送进来，
+   * 与 Web 冷启动共用同一套 token 解码，直接进阅读器。
+   * 同一 URL 只处理一次——冷启动时两个入口可能重复上报。
+   */
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return
+
+    let disposed = false
+    let removeListener: (() => Promise<void>) | undefined
+    const handledUrls = new Set<string>()
+
+    const openFromUrl = (url: string) => {
+      if (!url || handledUrls.has(url)) return
+      handledUrls.add(url)
+      const token = shareTokenFromAppUrl(url)
+      if (!token) return
+      const payload = decodeShareToken(token)
+      if (!payload) {
+        log.app.warn('app deep link rejected: token corrupted or truncated')
+        setDeepLinkError(true)
+        return
+      }
+      log.app.info('app deep link opened', payload.sourceId)
+      openArticle(articleFromSharePayload(payload, customSourcesRef.current))
+    }
+
+    void CapacitorApp.getLaunchUrl()
+      .then((launch) => {
+        if (!disposed && launch?.url) openFromUrl(launch.url)
+      })
+      .catch(() => {})
+
+    void CapacitorApp.addListener('appUrlOpen', (event) => {
+      if (!disposed) openFromUrl(event.url)
+    }).then((handle) => {
+      if (disposed) {
+        void handle.remove()
+        return
+      }
+      removeListener = () => handle.remove()
+    })
+
+    return () => {
+      disposed = true
+      if (removeListener) void removeListener()
+    }
+  }, [openArticle])
+
+  /**
+   * 「在 App 中打开」引导条：网页版打开分享深链、且是 Android 浏览器时才给。
+   * 链接由 lib/appDeepLink 按浏览器选 intent:// 或 newsnook://，
+   * 未安装 App 时点击无事发生，网页阅读不受影响。
+   */
+  const [openInAppDismissed, setOpenInAppDismissed] = useState(false)
+  const openInAppUrl = useMemo(() => {
+    if (!sharedEntry?.payload) return null
+    if (Capacitor.isNativePlatform()) return null
+    if (typeof navigator === 'undefined' || !isAndroidBrowser(navigator.userAgent)) return null
+    return preferredOpenInAppUrl(sharedEntry.token, navigator.userAgent)
+  }, [sharedEntry])
+  const showOpenInAppBanner = Boolean(
+    openInAppUrl &&
+      !openInAppDismissed &&
+      reading &&
+      sharedEntry?.payload &&
+      reading.originUrl === sharedEntry.payload.originUrl,
+  )
 
   const toggleLater = useCallback((article: Article) => {
     if (laterRef.current.some((item) => item.id === article.id)) {
@@ -1178,9 +1272,16 @@ export default function App() {
             <div
               role="status"
               aria-label="正在打开文章"
-              className="absolute inset-0 z-30 bg-ink"
+              className="absolute inset-0 z-30 flex items-center justify-center bg-ink"
               style={{ paddingTop: 'var(--sat)' }}
-            />
+            >
+              {/* 分享深链落地时明示状态，避免看起来像闪了一下首页 */}
+              {sharedEntry?.payload ? (
+                <span className="font-mono text-[12px] tracking-[0.12em] text-paper-muted">
+                  正在打开分享的文章…
+                </span>
+              ) : null}
+            </div>
           }
         >
           <ReaderScreen
@@ -1205,6 +1306,10 @@ export default function App() {
             onOpenRelated={openArticle}
           />
         </Suspense>
+      )}
+
+      {showOpenInAppBanner && openInAppUrl && (
+        <OpenInAppBanner href={openInAppUrl} onDismiss={() => setOpenInAppDismissed(true)} />
       )}
 
       <ConfirmDialog
