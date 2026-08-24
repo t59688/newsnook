@@ -242,7 +242,7 @@ ReaderScreen / CommentsDrawer
 
 分享      ReaderMoreMenu / EinkReaderMenu（两个入口同一流程）
             → ShareArticleSheet（应用内预览卡片，只用主题变量着色）
-            → lib/shareLink.buildShareUrl（站内短链，见 8.6.1）
+            → lib/shareLink.buildShareUrl（站内短链，v2 只带原文地址 + 信源 id，见 8.6.1）
             → lib/shareArticle
                  Android：@capacitor/share（标题 + text + url）
                  Web：navigator.share，不支持时降级 navigator.clipboard
@@ -260,21 +260,35 @@ ReaderScreen / CommentsDrawer
 
 分享出去的主链接固定指向站内：`https://news.aizeek.com/a/<token>`（常量集中在 `lib/shareLink.ts` 的 `SHARE_LINK_HOST` / `SHARE_PATH_PREFIX`）。**没有任何服务端参与**——token 自带打开阅读器所需的全部字段，接收端本地解码后照常走 `resolveBody` 抽正文。出版社地址只是 token 里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，不作为分享主链接。
 
+token 载荷当前是 **v2**：只留「能打开这篇」的两个必需字段，中文一律不进链接。v1 的短键 JSON（带标题、摘要、信源名、时间）仍然可解码，旧链接不失效。
+
 ```text
-编码  Article ─ sharePayloadFromArticle ─→ { id, title, originUrl, sourceId, sourceName, summary?, publishedAt? }
-                                            ↓ 短键 JSON（v=1）+ UTF-8 + URL-safe base64
+v2 明文（换行分隔，比 JSON 再省掉键名与引号）
+  第 1 行  "2.<校验位>"      版本号 + 其余内容的 4 位 djb2 短哈希
+  第 2 行  sourceId
+  第 3 行  原文地址          https:// 前缀省略不写
+  第 4 行  可选 id           以 ':' 开头表示补回 `<sourceId>:` 前缀
+
+编码  Article ─ sharePayloadFromArticle ─→ { originUrl, sourceId, id? }
+                                            ↓ 上述明文 + UTF-8 + URL-safe base64
                     buildShareUrl ─→ https://news.aizeek.com/a/<token>
                     （开发态 resolveShareOrigin 用 window.location.origin，原生壳与生产固定 news.aizeek.com）
 
 解码  冷启动 App.tsx
         → shareTargetFromLocation()  读 location.pathname，只认单段 /a/<token>
-        → decodeShareToken()         版本、字段、长度与 http(s) 协议校验，失败返回 null
-        → articleFromSharePayload()  本机认识该 sourceId 就用注册表元数据，否则退回 token 里的信源名
+        → decodeShareToken()         按首行分流 v2 / v1，校验位、字段、长度与 http(s) 协议校验，失败返回 null
+        → articleFromSharePayload()  本机认识该 sourceId 就用注册表元数据，否则退回「分享来源」
         → 直接进 ReaderScreen（正文仍是站内抽取），token 坏了则弹中文提示并停在首页
 ```
 
-- **拒绝面**：token 超过 2048 字符、非 base64url 字符、版本不匹配、缺 `id`/`title`/`originUrl`/`sourceId`、标题超 200 字、`originUrl` 非 http(s) 一律返回 `null`，不抛异常打断冷启动。编码侧同样先裁剪标题与摘要。
-- **深链可刷新**：Workers 侧靠 `wrangler.jsonc` 的 `not_found_handling: single-page-application`；Cloudflare Pages 侧靠 `public/_redirects` 里 `/a/* → /index.html 200` 这一条（只放行该前缀，`/api/*` 仍归边缘代理）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根。
+- **为什么砍字段**：中文在 UTF-8 + base64 下膨胀三倍，v1 把标题、摘要、信源名全编进去，典型条目要 450～550 字符，聊天工具里折行、被截断就打不开。v2 网易稿 86 字符、公众号稿 82 字符（完整 URL 112 / 108）。
+- **标题与信源名从哪来**：标题不编码，打开后先显示 `SHARE_PENDING_TITLE`（「加载中…」），`resolveBody` 抽完正文由 `ResolvedBody.title` 顶掉；抽取失败退到 `SHARE_FALLBACK_TITLE`（「分享的文章」）。信源名查 `sources/registry`，不认识就写「分享来源」。`withResolvedShareTitle` 保证落进正文缓存与稍后读的是补齐后的标题，不是占位符。
+- **id 怎么省的**：列表侧的条目 id 是 `lib/articleId.feedArticleId(sourceId, link)`（`<sourceId>:<djb2 哈希>`）。接收端用同一函数按原文地址算，绝大多数条目算出的 id 与发送端完全一致，已读 / 正文缓存 / 稍后读因此能对上，第 4 行也就不用出现。算不出来（例如 Google News 解码后换过地址）才写进去，且去掉冗余的 `<sourceId>:` 前缀、超过 40 字符就宁可丢掉。
+- **校验位**：紧凑载荷被截断后仍可能解出一个「看着合法」的短地址，会静默打开错误页面。首行 4 位校验对不上就当损坏处理，弹中文 `ConfirmDialog`。
+- **拒绝面**：token 超过 2048 字符、非 base64url 字符、校验位不符、版本不匹配、缺 `sourceId` / `originUrl`、`originUrl` 非 http(s) 一律返回 `null`，不抛异常打断冷启动。`safeHttpUrl` 校验后原样返回，不做归一化——归一化会改动哈希输入，接收端就算不出发送端的 id。
+- **深链可刷新**：Workers 侧靠 `wrangler.jsonc` 的 `not_found_handling: single-page-application`；Cloudflare Pages 侧靠 `public/_redirects` 里 `/a/* → /index.html 200` 这一条（只放行该前缀，`/api/*` 仍归边缘代理）；开发态由 Vite 自带的 SPA history fallback 兜底（base64url 不含 `.`，不会被当成静态文件）。关闭阅读器时 `clearShareLocation()` 把地址换回站点根。
+- **与「打开原文」的区别**：分享出去的主链接永远是站内 `/a/<token>`；出版社地址只是载荷里的一个字段，供正文抽取与用户主动「在浏览器核对原文」使用，任何情况下都不会把原站 URL 当成分享结果。
+- **UI 层次**：`ShareArticleSheet` 是 `z-50`，且分享卡片打开时 `ReaderScreen` 会收起跟贴悬浮胶囊与「已回到上次阅读位置」提示（两者都是 `z-40` 且在 DOM 里排在卡片之后，否则会压住卡片底部的「复制链接 / 分享」）。卡片里的链接是可点的 `<a target="_blank">`，方便自测深链。
 - **Android**：暂未配置 App Links，分享出去的 https 链接由对方浏览器打开网页版站内阅读；不会偷偷回退成原站 URL。
 
 ### 8.7 配置备份与恢复
@@ -369,6 +383,7 @@ einkMode=false → 完全恢复现有上下滚动阅读，零残留
 | `hooks/useFeeds.ts` | 多源并行拉取与合并 |
 | `lib/http.ts` | 平台分流 GET + 代理隧道 |
 | `lib/parseFeed.ts` | 多 kind 列表 → `Article[]` |
+| `lib/articleId.ts` | 条目 id 生成规则（列表解析与分享短链共用，见 8.6.1） |
 | `lib/resolveBody.ts` | 站内全文策略 |
 | `lib/bodyCache.ts` | 正文 LRU + pin |
 | `lib/opml.ts` | OPML 导入导出与 Feed 探测 |
@@ -452,7 +467,7 @@ npm run android:apk | android:aab
 | 持久化 | `src/lib/storage.ts` |
 | 配置备份 | `src/lib/backup.ts` · `src/components/BackupPanel.tsx` |
 | 阅读位置 | `src/lib/readingPosition.ts` |
-| 分享 | `src/lib/shareLink.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` |
+| 分享 | `src/lib/shareLink.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` |
 | 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
 | 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/index.css` |
 | HTTP / 代理 | `src/lib/http.ts` · `src/features/proxy/` |

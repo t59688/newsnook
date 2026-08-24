@@ -68,7 +68,7 @@ newsnook/
 | 列表拉取与缓存 | `hooks/useFeeds.ts` · `lib/http.ts` · `lib/storage.ts` |
 | 配置备份与恢复 | `lib/backup.ts` · `components/BackupPanel.tsx`（入口在 `screens/settings/StorageScreen.tsx`） |
 | 阅读位置记忆 | `lib/readingPosition.ts`（`newsnook:reading-pos`；滚动与墨水屏分页共用一张表） |
-| 分享 / 阅读器溢出菜单 | `lib/shareLink.ts`（站内短链 `news.aizeek.com/a/<token>` 编解码 + 深链冷启动） · `lib/shareArticle.ts` · `components/ShareArticleSheet.tsx` · `components/ReaderMoreMenu.tsx` · `components/EinkReaderMenu.tsx` |
+| 分享 / 阅读器溢出菜单 | `lib/shareLink.ts`（站内短链 `news.aizeek.com/a/<token>` v2 编解码 + 深链冷启动） · `lib/articleId.ts`（收发两端共用的条目 id 规则） · `lib/shareArticle.ts` · `components/ShareArticleSheet.tsx` · `components/ReaderMoreMenu.tsx` · `components/EinkReaderMenu.tsx` |
 | 本地离线搜索 | `lib/localSearch.ts` · `screens/settings/LocalSearchScreen.tsx`（与 `web-catalog` 的联网站内搜索无关） |
 | 站内正文 | `lib/resolveBody.ts` · `lib/sanitize.ts` · `lib/bodyCache.ts` · `screens/ReaderScreen.tsx` |
 | 翻译 | `features/translation/`（稳定边界：`types.ts`；新增引擎实现 Provider 并注册） |
@@ -125,7 +125,7 @@ newsnook/
 | 新跟贴源 | 实现 `CommentProvider`，在 `comments/service` 注册 |
 | UI 文案 | 与现有「我的 / 设置」语气一致；避免营销腔与平台化话术 |
 | 墨水屏 | 行为叠加在 `einkMode` 上，不是第三套主题色；关闭后须零残留 |
-| 分享链接 | 主链接必须是站内 `/a/<token>` 深链（`lib/shareLink.ts`），原站地址只用于「打开原文」；token 自解释，不得为此新增服务端存储 |
+| 分享链接 | 主链接必须是站内 `/a/<token>` 深链（`lib/shareLink.ts`），原站地址只用于「打开原文」；token 自解释，不得为此新增服务端存储或短链服务。v2 载荷只放原文地址 + 信源 id，别再往里塞中文（标题打开后由 `resolveBody` 补） |
 | 调试日志 | 见 **5.4**；新增模块优先复用已有命名空间，必要时在 `LogNamespace` 扩展 |
 
 ### 5.4 日志（`lib/logger.ts`）
