@@ -184,13 +184,13 @@ assert.throws(
 // 11. 只恢复所选分区，其它键保持原样
 memory.setItem('newsnook:enabled', JSON.stringify(['changed']))
 memory.setItem('newsnook:read', JSON.stringify([]))
-const result = restoreBackup(parsed, ['enabledSources'])
+const result = await restoreBackup(parsed, ['enabledSources'])
 assert.deepEqual(result.restored, ['enabledSources'])
 assert.deepEqual(JSON.parse(memory.getItem('newsnook:enabled')!), ['sspai', 'ithome'])
 assert.deepEqual(JSON.parse(memory.getItem('newsnook:read')!), [])
 
 // 12. 全量恢复覆盖所有存在的分区
-const full = restoreBackup(parsed, BACKUP_SECTIONS)
+const full = await restoreBackup(parsed, BACKUP_SECTIONS)
 assert.ok(full.restored.includes('preferences'))
 assert.ok(full.restored.includes('readIds'))
 assert.ok(full.restored.includes('readingPositions'))
@@ -211,7 +211,7 @@ const dirty = parseBackup(
     data: { preferences: { categoryOrder: 'nope', hiddenCategoryIds: [1, 2], typography: null } },
   }),
 )
-restoreBackup(dirty, ['preferences'])
+await restoreBackup(dirty, ['preferences'])
 const healed = JSON.parse(memory.getItem('newsnook:preferences')!)
 assert.ok(Array.isArray(healed.categoryOrder))
 assert.equal(typeof healed.typography.fontScale, 'number')

@@ -106,16 +106,19 @@ interface WriteOptions {
   localOnly?: boolean
 }
 
+function mirrorToNative(storageKey: string, serialized: string): Promise<void> | null {
+  if (!useNativePreferences) return null
+  return Preferences.set({ key: storageKey, value: serialized }).catch((error: unknown) => {
+    reportNativeStorageError('write', error)
+  })
+}
+
 function write(key: string, value: unknown, options?: WriteOptions): void {
   const storageKey = PREFIX + key
   try {
     const serialized = JSON.stringify(value)
     localStorage.setItem(storageKey, serialized)
-    if (useNativePreferences && !options?.localOnly) {
-      void Preferences.set({ key: storageKey, value: serialized }).catch((error: unknown) => {
-        reportNativeStorageError('write', error)
-      })
-    }
+    if (!options?.localOnly) void mirrorToNative(storageKey, serialized)
   } catch (error) {
     // 存储写满或被禁用时静默降级，不影响阅读
     log.storage.warn('localStorage write failed', error)
@@ -242,13 +245,28 @@ export function saveReadingPositions(map: unknown): void {
 }
 
 /**
- * 备份恢复专用：把一组已校验过的业务键整段写回（同步落 localStorage 并镜像原生 Preferences）。
- * 恢复是整体覆盖语义，不做增量合并；调用方写完后需重载应用让内存态跟上。
+ * 备份恢复专用：把一组已校验过的业务键整段写回。恢复是整体覆盖语义，不做增量合并。
+ *
+ * 返回的 Promise 要等原生 Preferences 也落盘才 resolve：调用方随后会重载应用，
+ * 不等待的话冷启动的 hydrateNativeStorage 可能拿旧值把刚恢复的配置盖回去。
  */
-export function writeRestoredKeys(entries: [string, unknown][]): void {
+export async function writeRestoredKeys(entries: [string, unknown][]): Promise<void> {
+  const mirrored: Promise<void>[] = []
+
   entries.forEach(([key, value]) => {
-    write(key, value, key === READING_POSITION_KEY ? { localOnly: true } : undefined)
+    const storageKey = PREFIX + key
+    try {
+      const serialized = JSON.stringify(value)
+      localStorage.setItem(storageKey, serialized)
+      if (key === READING_POSITION_KEY) return
+      const pending = mirrorToNative(storageKey, serialized)
+      if (pending) mirrored.push(pending)
+    } catch (error) {
+      log.storage.warn('restore write failed', key, error)
+    }
   })
+
+  await Promise.all(mirrored)
 }
 
 export interface CachedList {

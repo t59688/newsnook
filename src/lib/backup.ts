@@ -260,13 +260,13 @@ export interface RestoreResult {
  * 整段覆盖所选分区。写盘前先跑一遍各自的 normalize，
  * 保证脏备份不会把运行态带进无法启动的形状。
  *
- * 调用方需要在成功后重载应用：偏好、预设等运行态都在 React state 里，
+ * 调用方需要在 await 之后重载应用：偏好、预设等运行态都在 React state 里，
  * 只写存储不会让当前界面跟上。
  */
-export function restoreBackup(
+export async function restoreBackup(
   payload: BackupPayload,
   sections: BackupSection[] = BACKUP_SECTIONS,
-): RestoreResult {
+): Promise<RestoreResult> {
   const wanted = new Set(sections)
   const entries: [string, unknown][] = []
   const restored: BackupSection[] = []
@@ -292,7 +292,7 @@ export function restoreBackup(
   push('readingPositions', Object.keys(positions).length ? positions : null)
 
   if (entries.length) {
-    writeRestoredKeys(entries)
+    await writeRestoredKeys(entries)
     resetReadingPositionCache()
     log.storage.info('backup restored', { sections: restored })
   }

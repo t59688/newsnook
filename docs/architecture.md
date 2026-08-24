@@ -275,7 +275,7 @@ ReaderScreen / CommentsDrawer
 - **范围**：只搬配置，不搬缓存——正文缓存、列表缓存、预存正文都可再生，稍后读只留元数据（`contentHtml` 被剥掉）。
 - **与 OPML 的分工**：`lib/opml.ts` 只覆盖自建订阅源，可与其它阅读器互通；备份是「有所闻」自有格式，覆盖偏好、预设、启用信源、稍后读、已读与阅读位置。
 - **落地方式**：Android 写入 `Directory.Cache` 后交给系统分享面板；Web 走 Blob 下载。导入两端都用 `<input type="file">`。全程本地文件，无账号、无云同步。
-- 恢复通过 `storage.writeRestoredKeys` 整段写回，完成后由 UI 重载应用让内存态跟上。
+- 恢复通过 `storage.writeRestoredKeys` 整段写回；该函数会等原生 Preferences 也落盘再 resolve（否则冷启动的 `hydrateNativeStorage` 会用旧值盖回来），随后由 UI 重载应用让内存态跟上。
 
 ### 8.8 持久化键
 

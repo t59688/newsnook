@@ -94,12 +94,20 @@ export function BackupPanel() {
     })
   }
 
-  const commitImport = () => {
+  const commitImport = async () => {
     if (!pending || selected.size === 0) return
-    restoreBackup(pending.payload, [...selected])
-    setPending(null)
-    // 偏好、预设等运行态都在内存里，重载才能让界面与刚写回的配置一致
-    window.location.reload()
+    setBusy(true)
+    try {
+      // 等原生存储也落盘再重载，否则冷启动可能用旧值把恢复结果盖回去
+      await restoreBackup(pending.payload, [...selected])
+      setPending(null)
+      // 偏好、预设等运行态都在内存里，重载才能让界面与刚写回的配置一致
+      window.location.reload()
+    } catch (err) {
+      setBusy(false)
+      setPending(null)
+      setError(err instanceof Error ? err.message : '恢复失败，配置未改动。')
+    }
   }
 
   const availableSections = pending
@@ -240,8 +248,8 @@ export function BackupPanel() {
               </button>
               <button
                 type="button"
-                disabled={selected.size === 0}
-                onClick={commitImport}
+                disabled={busy || selected.size === 0}
+                onClick={() => void commitImport()}
                 className="flex items-center gap-1.5 rounded-full border border-cinnabar bg-cinnabar/25 px-5 py-2 font-mono text-[12px] font-medium text-cinnabar-soft hover:bg-cinnabar/35 disabled:opacity-40"
               >
                 <ArrowDownToLine size={14} />
