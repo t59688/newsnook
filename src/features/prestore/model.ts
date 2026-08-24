@@ -21,6 +21,19 @@ export interface PrestorePlan {
 }
 
 /**
+ * 未跑完一轮时写进清单的断点游标：记录本轮已处理过的信源，
+ * 供下次（前台恢复、网络恢复、手动更新）从中断处继续，而不是从 0 重来。
+ */
+export interface PrestoreSyncCursor {
+  planKey: string
+  presetId: string
+  perSourceLimit: number
+  /** 本轮已处理过的信源 id，顺序即计划顺序 */
+  visitedSourceIds: string[]
+  updatedAt: number
+}
+
+/**
  * Resolve the exact source traversal order for the active preset/runtime layout.
  * A source is visited once at its first concrete visible category; mix-only sources are appended last.
  */
@@ -65,6 +78,64 @@ export function buildPrestorePlan(
       .join('|')}`,
     sources,
   }
+}
+
+/** 清单里每个信源保留的滚动窗口；与 store 的 PrestoreSourceEntry 同形。 */
+export interface PrestoreWindow {
+  categoryId: CategoryId
+  articleIds: string[]
+}
+
+/** 铺底只需要读清单的窗口与条目两张表，正文条目形状由 store 决定。 */
+export interface PrestoreWindowSnapshot<Entry> {
+  sources: Record<string, PrestoreWindow>
+  articles: Record<string, Entry>
+}
+
+/**
+ * 只有计划、预设与每源篇数完全一致时，上一轮中断的游标才能续传；
+ * 任何一项变化都意味着窗口目标变了，必须整轮重来。
+ */
+export function resumableVisitedSources(
+  cursor: PrestoreSyncCursor | null | undefined,
+  plan: PrestorePlan,
+  perSourceLimit: number,
+): Set<string> {
+  if (!cursor) return new Set()
+  if (cursor.planKey !== plan.key || cursor.presetId !== plan.presetId) return new Set()
+  if (cursor.perSourceLimit !== Math.max(1, Math.floor(perSourceLimit))) return new Set()
+  const planned = new Set(plan.sources.map((target) => target.source.id))
+  return new Set(cursor.visitedSourceIds.filter((sourceId) => planned.has(sourceId)))
+}
+
+/**
+ * 用上一轮内容按当前计划铺底，作为本轮草稿的初始状态。
+ * 有了它，任何一次中途提交都是上一轮的超集：既不会让已有通勤内容消失，
+ * 也不会把仍被引用的正文误判成孤儿。计划里已删除的信源不会被带入。
+ */
+export function seedPrestoreWindows<Entry>(
+  plan: PrestorePlan,
+  previous: PrestoreWindowSnapshot<Entry> | null | undefined,
+  limit: number,
+): { sources: Record<string, PrestoreWindow>; articles: Record<string, Entry> } {
+  const target = Math.max(1, Math.floor(limit))
+  const sources: Record<string, PrestoreWindow> = {}
+  const articles: Record<string, Entry> = {}
+  if (!previous) return { sources, articles }
+
+  for (const item of plan.sources) {
+    const ids = previous.sources[item.source.id]?.articleIds ?? []
+    const kept: string[] = []
+    for (const id of ids) {
+      const entry = previous.articles[id]
+      if (!entry) continue
+      articles[id] = entry
+      kept.push(id)
+      if (kept.length >= target) break
+    }
+    if (kept.length) sources[item.source.id] = { categoryId: item.categoryId, articleIds: kept }
+  }
+  return { sources, articles }
 }
 
 /**

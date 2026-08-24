@@ -5,7 +5,7 @@ import { log } from '../../lib/logger'
 import type { BodySource } from '../../lib/resolveBody'
 import type { Article } from '../../lib/types'
 import type { CategoryId } from '../../sources/categories'
-import { compactPrestoreArticle } from './model'
+import { compactPrestoreArticle, type PrestoreSyncCursor } from './model'
 
 const ROOT_DIRECTORY = 'prestore/v1'
 const BODY_DIRECTORY = `${ROOT_DIRECTORY}/articles`
@@ -37,7 +37,10 @@ export interface PrestoreManifest {
   presetId: string
   planKey: string
   perSourceLimit: number
+  /** 上一次完整跑完一轮的时间；仅有断点检查点时保持上一轮的值（从未完成为 0）。 */
   updatedAt: number
+  /** 存在即表示上一轮被中断，可从游标续传；跑完一轮后清空。 */
+  sync?: PrestoreSyncCursor | null
   sources: Record<string, PrestoreSourceEntry>
   articles: Record<string, PrestoreArticleEntry>
 }
@@ -103,6 +106,23 @@ function normalizeArticle(articleId: string, raw: unknown): Article | null {
   return raw as unknown as Article
 }
 
+function normalizeSyncCursor(raw: unknown): PrestoreSyncCursor | null {
+  if (!isRecord(raw)) return null
+  if (typeof raw.planKey !== 'string' || typeof raw.presetId !== 'string') return null
+  if (typeof raw.perSourceLimit !== 'number' || !Number.isFinite(raw.perSourceLimit)) return null
+  if (typeof raw.updatedAt !== 'number' || !Number.isFinite(raw.updatedAt)) return null
+  if (!Array.isArray(raw.visitedSourceIds)) return null
+  return {
+    planKey: raw.planKey,
+    presetId: raw.presetId,
+    perSourceLimit: Math.max(1, Math.floor(raw.perSourceLimit)),
+    visitedSourceIds: [
+      ...new Set(raw.visitedSourceIds.filter((id): id is string => typeof id === 'string' && Boolean(id))),
+    ],
+    updatedAt: raw.updatedAt,
+  }
+}
+
 function normalizeManifest(raw: unknown): PrestoreManifest | null {
   if (!isRecord(raw) || raw.version !== MANIFEST_VERSION) return null
   if (typeof raw.revision !== 'number' || !Number.isFinite(raw.revision) || raw.revision < 1) return null
@@ -148,6 +168,7 @@ function normalizeManifest(raw: unknown): PrestoreManifest | null {
     planKey: raw.planKey,
     perSourceLimit: Math.max(1, Math.floor(raw.perSourceLimit)),
     updatedAt: raw.updatedAt,
+    sync: normalizeSyncCursor(raw.sync),
     sources,
     articles,
   }
@@ -282,10 +303,9 @@ export async function writePrestoredBody(
   }
 }
 
-export async function loadPrestoredBody(articleId: string): Promise<PrestoredBody | null> {
-  const manifest = await loadPrestoreManifest()
-  if (!manifest?.articles[articleId]) return null
-
+async function readBodyFile(
+  articleId: string,
+): Promise<{ record: PrestoreBodyFile; bytes: number } | null> {
   try {
     const result = await Filesystem.readFile({
       path: bodyPath(articleId),
@@ -304,15 +324,42 @@ export async function loadPrestoredBody(articleId: string): Promise<PrestoredBod
     ) {
       return null
     }
-    return {
-      article: parsed.article,
-      html: parsed.html,
-      bodySource: parsed.bodySource as BodySource,
-      savedAt: parsed.savedAt,
-    }
-  } catch (error) {
-    log.storage.debug('Prestore body read failed', articleId, error)
+    return { record: parsed as PrestoreBodyFile, bytes: encodedBytes(result.data) }
+  } catch {
+    // 认领遗留正文时“文件不存在”是常态，是否值得记日志交给调用方判断。
     return null
+  }
+}
+
+export async function loadPrestoredBody(articleId: string): Promise<PrestoredBody | null> {
+  const manifest = await loadPrestoreManifest()
+  if (!manifest?.articles[articleId]) return null
+
+  const file = await readBodyFile(articleId)
+  if (!file) {
+    log.storage.debug('Prestore body read failed', articleId)
+    return null
+  }
+  return {
+    article: file.record.article,
+    html: file.record.html,
+    bodySource: file.record.bodySource,
+    savedAt: file.record.savedAt,
+  }
+}
+
+/**
+ * 认领上一轮中断时已落盘、但还没写进清单的正文。
+ * 命中即可跳过一次网络抓取与正文解析，中断重来的代价被限制在本地读盘。
+ */
+export async function claimPrestoredBody(article: Article): Promise<PrestoreArticleEntry | null> {
+  const file = await readBodyFile(article.id)
+  if (!file || file.record.article.sourceId !== article.sourceId) return null
+  return {
+    sourceId: file.record.article.sourceId,
+    bytes: file.bytes,
+    savedAt: file.record.savedAt,
+    article: file.record.article,
   }
 }
 
@@ -354,7 +401,10 @@ async function cleanupUnreferencedBodies(
  * 双清单提交：永远写非活动槽，完整写入后才把它作为新活动版本。
  * 进程在 writeFile 中途退出时，上一槽仍然完整；下次启动会选择 revision 更高的有效清单。
  */
-export async function commitPrestoreManifest(manifest: PrestoreManifest): Promise<void> {
+export async function commitPrestoreManifest(
+  manifest: PrestoreManifest,
+  options: { cleanupOrphans?: boolean } = {},
+): Promise<void> {
   const previousState = await loadManifestState()
   const targetSlot: ManifestSlot = previousState.manifest
     ? previousState.activeSlot === 'a' ? 'b' : 'a'
@@ -374,7 +424,9 @@ export async function commitPrestoreManifest(manifest: PrestoreManifest): Promis
     backup: previous,
   }
   manifestStatePromise = null
-  await cleanupUnreferencedBodies(manifest, previous)
+  // 断点检查点不清理孤儿：本轮已落盘、尚未入清单的正文要留给续传认领，
+  // 统一等整轮跑完的最终提交再回收。
+  if (options.cleanupOrphans !== false) await cleanupUnreferencedBodies(manifest, previous)
 }
 
 export async function clearPrestore(): Promise<void> {

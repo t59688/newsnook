@@ -7,11 +7,15 @@ import { revokeBlobUrl } from '../proxy/hydrateImages'
 import {
   mergeRollingWindow,
   prestoreCandidateLimit,
+  resumableVisitedSources,
+  seedPrestoreWindows,
   type PrestorePlan,
   type PrestoreSourceTarget,
+  type PrestoreSyncCursor,
 } from './model'
 import { fetchSourcePrestoreCandidates } from './sourceWindow'
 import {
+  claimPrestoredBody,
   commitPrestoreManifest,
   loadPrestoreManifest,
   writePrestoredBody,
@@ -55,24 +59,6 @@ function abortError(signal: AbortSignal): unknown {
   return signal.reason ?? new DOMException('操作已取消', 'AbortError')
 }
 
-function carryPreviousSource(
-  target: PrestoreSourceTarget,
-  previous: PrestoreManifest | null,
-  limit: number,
-  nextArticles: Record<string, PrestoreArticleEntry>,
-): string[] {
-  const ids = previous?.sources[target.source.id]?.articleIds ?? []
-  const kept: string[] = []
-  for (const id of ids) {
-    const entry = previous?.articles[id]
-    if (!entry) continue
-    nextArticles[id] = entry
-    kept.push(id)
-    if (kept.length >= limit) break
-  }
-  return kept
-}
-
 function emitProgress(
   options: SyncOptions,
   target: PrestoreSourceTarget,
@@ -109,6 +95,7 @@ async function prepareBody(
   previous: PrestoreManifest | null,
   nextArticles: Record<string, PrestoreArticleEntry>,
   signal: AbortSignal,
+  claimOrphans: boolean,
   extraSources?: NewsSource[],
 ): Promise<{ id: string; entry: PrestoreArticleEntry } | null> {
   if (article.contentType === 'video') return null
@@ -118,6 +105,11 @@ async function prepareBody(
 
   const previousEntry = previous?.articles[article.id]
   if (previousEntry) return { id: article.id, entry: previousEntry }
+
+  if (claimOrphans) {
+    const claimed = await claimPrestoredBody(article)
+    if (claimed) return { id: article.id, entry: claimed }
+  }
 
   const resolved = await resolveArticleBody(article, signal, extraSources)
   if (resolved.bodySource === 'video' || resolved.bodySource === 'blocked') return null
@@ -132,30 +124,75 @@ async function prepareBody(
 
 /**
  * 严格按当前预设的分类/信源顺序同步。信源之间串行；只有当前信源的正文并发 2。
- * 新正文全部先落盘，最后再提交新清单，因此失败/中断不会提前淘汰上一轮可读内容。
+ * 每完成一个信源就提交一次检查点（含断点游标），因此前台抢占、切后台或网络抖动
+ * 造成的中断只会丢掉当前信源的未完成部分，下次从游标继续而不是从 0 重来。
  */
 export async function syncPrestore(options: SyncOptions): Promise<PrestoreSyncResult> {
   const { plan, signal, extraSources } = options
   const perSourceLimit = Math.max(1, Math.floor(options.perSourceLimit))
   const previous = await loadPrestoreManifest()
-  const nextArticles: Record<string, PrestoreArticleEntry> = {}
-  const nextSources: PrestoreManifest['sources'] = {}
+  const seed = seedPrestoreWindows<PrestoreArticleEntry>(plan, previous, perSourceLimit)
+  const nextArticles = seed.articles
+  const nextSources: PrestoreManifest['sources'] = seed.sources
 
+  const resumed = resumableVisitedSources(previous?.sync, plan, perSourceLimit)
+  const visited: string[] = []
+  let committed = previous
   let syncedSources = 0
   let failedSources = 0
   let failedBodies = 0
+  let completedSources = 0
+  // 上一轮中断处的信源可能已有正文落盘但没进清单；只在本轮首个真正处理的信源上
+  // 尝试认领，避免其余信源为必然落空的查找付出读盘开销。
+  let claimOrphans = true
   const candidateLimit = prestoreCandidateLimit(perSourceLimit)
+
+  const buildManifest = (cursor: PrestoreSyncCursor | null): PrestoreManifest => ({
+    version: 1,
+    revision: (committed?.revision ?? 0) + 1,
+    presetId: plan.presetId,
+    planKey: plan.key,
+    perSourceLimit,
+    // updatedAt 表示“上一次完整跑完”，检查点不能把未完成的一轮伪装成已完成。
+    updatedAt: cursor ? committed?.updatedAt ?? 0 : Date.now(),
+    sync: cursor,
+    sources: { ...nextSources },
+    articles: { ...nextArticles },
+  })
+
+  const checkpoint = async () => {
+    const manifest = buildManifest({
+      planKey: plan.key,
+      presetId: plan.presetId,
+      perSourceLimit,
+      visitedSourceIds: [...visited],
+      updatedAt: Date.now(),
+    })
+    try {
+      await commitPrestoreManifest(manifest, { cleanupOrphans: false })
+      committed = manifest
+    } catch (error) {
+      log.storage.warn('Prestore checkpoint failed', manifest.revision, error)
+    }
+  }
 
   for (let sourceIndex = 0; sourceIndex < plan.sources.length; sourceIndex += 1) {
     if (signal.aborted) throw abortError(signal)
     const target = plan.sources[sourceIndex]
+
+    if (resumed.has(target.source.id)) {
+      visited.push(target.source.id)
+      completedSources += 1
+      continue
+    }
+
     emitProgress(
       options,
       target,
       sourceIndex,
       'listing',
       0,
-      syncedSources + failedSources,
+      completedSources,
       failedBodies,
       failedSources,
     )
@@ -168,21 +205,18 @@ export async function syncPrestore(options: SyncOptions): Promise<PrestoreSyncRe
     } catch (error) {
       if (signal.aborted) throw abortError(signal)
       failedSources += 1
+      completedSources += 1
+      visited.push(target.source.id)
       log.storage.warn('Prestore source list failed', target.source.id, error)
-      const carried = carryPreviousSource(target, previous, perSourceLimit, nextArticles)
-      if (carried.length) {
-        nextSources[target.source.id] = {
-          categoryId: target.categoryId,
-          articleIds: carried,
-        }
-      }
+      // 沿用铺底的上一轮窗口即可，没有新进展需要落盘。
+      // 失败也记进游标：续传要继续往前走，死源留给下一轮整体重试。
       emitProgress(
         options,
         target,
         sourceIndex,
         'source-complete',
-        carried.length,
-        syncedSources + failedSources,
+        nextSources[target.source.id]?.articleIds.length ?? 0,
+        completedSources,
         failedBodies,
         failedSources,
       )
@@ -190,6 +224,7 @@ export async function syncPrestore(options: SyncOptions): Promise<PrestoreSyncRe
     }
 
     const freshIds: string[] = []
+    let storedNew = 0
     for (
       let offset = 0;
       offset < candidates.length && freshIds.length < perSourceLimit;
@@ -202,7 +237,14 @@ export async function syncPrestore(options: SyncOptions): Promise<PrestoreSyncRe
         BODY_CONCURRENCY,
         async (article) => {
           try {
-            return await prepareBody(article, previous, nextArticles, signal, extraSources)
+            return await prepareBody(
+              article,
+              previous,
+              nextArticles,
+              signal,
+              claimOrphans,
+              extraSources,
+            )
           } catch (error) {
             if (signal.aborted) throw abortError(signal)
             failedBodies += 1
@@ -215,6 +257,7 @@ export async function syncPrestore(options: SyncOptions): Promise<PrestoreSyncRe
 
       for (const result of results) {
         if (!result || freshIds.length >= perSourceLimit) continue
+        if (!nextArticles[result.id]) storedNew += 1
         nextArticles[result.id] = result.entry
         freshIds.push(result.id)
       }
@@ -225,11 +268,12 @@ export async function syncPrestore(options: SyncOptions): Promise<PrestoreSyncRe
         sourceIndex,
         'bodies',
         freshIds.length,
-        syncedSources + failedSources - 1,
+        completedSources,
         failedBodies,
         failedSources,
       )
     }
+    claimOrphans = false
 
     const previousIds = (previous?.sources[target.source.id]?.articleIds ?? []).filter(
       (id) => Boolean(previous?.articles[id]),
@@ -245,37 +289,35 @@ export async function syncPrestore(options: SyncOptions): Promise<PrestoreSyncRe
         categoryId: target.categoryId,
         articleIds: retainedIds,
       }
+    } else {
+      delete nextSources[target.source.id]
     }
 
+    completedSources += 1
+    visited.push(target.source.id)
     emitProgress(
       options,
       target,
       sourceIndex,
       'source-complete',
       retainedIds.length,
-      syncedSources + failedSources,
+      completedSources,
       failedBodies,
       failedSources,
     )
+
+    // 只有真正写入了新正文才值得落一次检查点，避免全靠沿用时反复重写大清单。
+    if (storedNew > 0 && sourceIndex < plan.sources.length - 1) await checkpoint()
   }
 
   if (signal.aborted) throw abortError(signal)
 
   // 完全失败或一篇可用正文都没有时，绝不能用空清单覆盖上一轮通勤内容。
-  if (syncedSources === 0 || Object.keys(nextArticles).length === 0) {
-    return { manifest: previous, syncedSources, failedSources, failedBodies }
+  if ((syncedSources === 0 && resumed.size === 0) || Object.keys(nextArticles).length === 0) {
+    return { manifest: committed, syncedSources, failedSources, failedBodies }
   }
 
-  const manifest: PrestoreManifest = {
-    version: 1,
-    revision: (previous?.revision ?? 0) + 1,
-    presetId: plan.presetId,
-    planKey: plan.key,
-    perSourceLimit,
-    updatedAt: Date.now(),
-    sources: nextSources,
-    articles: nextArticles,
-  }
+  const manifest = buildManifest(null)
   await commitPrestoreManifest(manifest)
   return { manifest, syncedSources, failedSources, failedBodies }
 }
