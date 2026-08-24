@@ -4,6 +4,7 @@ import { feedArticleId } from '../src/lib/articleId'
 import {
   MAX_SHARE_TOKEN_LENGTH,
   SHARE_LINK_ORIGIN,
+  SHARE_FALLBACK_TITLE,
   SHARE_PATH_PREFIX,
   SHARE_PENDING_TITLE,
   SHARE_TOKEN_TYPICAL_LIMIT,
@@ -16,6 +17,7 @@ import {
   shareTokenFromPath,
   shareUrlDisplay,
   sharePayloadFromArticle,
+  usableShareTitle,
   withResolvedShareTitle,
 } from '../src/lib/shareLink'
 import type { Article } from '../src/lib/types'
@@ -213,7 +215,14 @@ assert.equal(withResolvedShareTitle(opened, '真标题').title, '真标题')
 assert.equal(withResolvedShareTitle(opened, '   ').title, SHARE_PENDING_TITLE)
 assert.equal(withResolvedShareTitle(article, '别的标题').title, article.title)
 
-// 14. 卡片上展示的短链去掉协议并省略过长尾巴
+// 14. 缓存里的占位标题不该被当成真标题再回填一遍
+assert.equal(usableShareTitle('真标题'), '真标题')
+assert.equal(usableShareTitle(SHARE_PENDING_TITLE), undefined)
+assert.equal(usableShareTitle(SHARE_FALLBACK_TITLE), undefined)
+assert.equal(usableShareTitle('  '), undefined)
+assert.equal(usableShareTitle(undefined), undefined)
+
+// 15. 卡片上展示的短链去掉协议并省略过长尾巴
 assert.equal(shareUrlDisplay('https://news.aizeek.com/a/abc', 60), 'news.aizeek.com/a/abc')
 assert.ok(shareUrlDisplay(url, 24).endsWith('…'))
 assert.equal(shareUrlDisplay(url, 24).length, 24)

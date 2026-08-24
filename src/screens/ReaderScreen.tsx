@@ -45,6 +45,7 @@ import {
   buildShareUrl,
   isPendingShareTitle,
   sharePayloadFromArticle,
+  usableShareTitle,
   withResolvedShareTitle,
 } from '../lib/shareLink'
 import { resolveArticleBody, type BodySource } from '../lib/resolveBody'
@@ -521,6 +522,12 @@ export function ReaderScreen({
     const controller = new AbortController()
     setError(null)
 
+    /** 分享深链的标题是占位符；缓存里若存过真标题，命中时直接顶上，不必等联网 */
+    const restoreTitle = (cachedArticle?: Article) => {
+      if (!isPendingShareTitle(article.title)) return
+      setResolvedTitle(usableShareTitle(cachedArticle?.title))
+    }
+
     // 正文内容是静态的，命中缓存直接出，断网也能重读；重新抽取时才绕过
     if (retryToken === 0 && article.contentType !== 'video') {
       const cached = loadCachedBody(article.id)
@@ -529,6 +536,7 @@ export function ReaderScreen({
         setBodySource(cached.bodySource)
         setFromCache(true)
         setLoadState('ready')
+        restoreTitle(cached.article)
         if (!cached.article) {
           saveCachedBody(article, {
             html: cached.html,
@@ -600,6 +608,7 @@ export function ReaderScreen({
           setBodySource(prestored.bodySource)
           setFromCache(true)
           setLoadState('ready')
+          restoreTitle(prestored.article)
           return
         }
         loadFromNetwork()

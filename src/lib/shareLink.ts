@@ -340,6 +340,13 @@ export function isPendingShareTitle(title: string): boolean {
   return title === SHARE_PENDING_TITLE
 }
 
+/** 缓存里存的标题若不是占位，就能拿来回填分享深链打开的这一篇 */
+export function usableShareTitle(title?: string): string | undefined {
+  const value = title?.trim()
+  if (!value || value === SHARE_PENDING_TITLE || value === SHARE_FALLBACK_TITLE) return undefined
+  return value
+}
+
 /** 正文抽取拿到真标题后，用它替换占位标题；正文缓存、稍后读都存补齐后的这份 */
 export function withResolvedShareTitle(article: Article, title?: string): Article {
   const resolved = title?.trim()
