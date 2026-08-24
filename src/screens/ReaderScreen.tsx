@@ -698,7 +698,7 @@ export function ReaderScreen({
       ? translated.title
       : resolvedTitle || pendingTitle
 
-  /** 分享深链进来的文章标题只是占位；收藏时存正文抽取补回的真标题 */
+  /** 分享深链进来的文章标题只是占位；收藏与再分享都用正文抽取补回的真标题 */
   const laterArticle = useMemo(
     () => withResolvedShareTitle(article, resolvedTitle),
     [article, resolvedTitle],
@@ -931,12 +931,15 @@ export function ReaderScreen({
 
   /**
    * 分享主链接：站内短链，对方点开在网页版里读全文。
-   * token 只带原文地址与信源 id，标题由对方抽取正文时自己补。
+   * token 带原文地址、信源 id 与标题（标题供聊天预览卡使用；深链进来的文章
+   * 用正文抽取补齐后的真标题，不把「加载中…」编进链接）。
    */
   const shareUrl = useMemo(() => {
     if (!originUrl) return ''
-    return buildShareUrl(sharePayloadFromArticle({ ...article, originUrl }), { salt: shareSalt })
-  }, [article, originUrl, shareSalt])
+    return buildShareUrl(sharePayloadFromArticle({ ...laterArticle, originUrl }), {
+      salt: shareSalt,
+    })
+  }, [laterArticle, originUrl, shareSalt])
 
   const originHost = useMemo(() => {
     if (!originUrl) return undefined

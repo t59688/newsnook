@@ -1,19 +1,36 @@
 /**
- * 分享深链 `/a/<token>` 的社交卡片：只有爬虫拿 OG HTML，真人仍走 SPA。
+ * 分享深链 `/a/<token>` 的社交卡片：爬虫拿现拼的 OG HTML，真人仍走 SPA，
+ * 但两条路给出的 og:title 都是**这篇文章**的标题。
  *
  * 大图卡三要素在这里回归：任何爬虫 UA 都必须拿到
  * ① 完整 OG + 微信 itemprop 标签；② 永远存在的 og:image（上游没图给品牌兜底图）；
  * ③ 文章化的标题/摘要——绝不能是 SPA 壳或站点通用文案。
+ *
+ * 抓取端不总认得出来（微信一类客户端会带 `Sec-Fetch-*` 伪装成真实导航），
+ * 所以「落到 SPA 的 /a/<token> 也必须带文章级 OG」同样是硬性要求。
  */
 
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import worker, { type Env } from '../functions/worker.ts'
 import { encodeShareToken } from '../src/lib/shareToken.ts'
 
-/** 与 index.html 的通用 meta 保持一致：爬虫一旦拿到这段文案，聊天里就是「站点壳」卡片 */
+/** 与 index.html 的站点级 meta 保持一致：抓取端拿到这段文案，聊天里就是「站点壳」卡片 */
+const SITE_SHELL_TITLE = '有所闻 · News Nook'
 const SITE_SHELL_DESCRIPTION = '有所闻 News Nook，直连原发媒体的沉浸式阅读器。'
-const SPA_SHELL = `<!doctype html><html><head><title>有所闻 · News Nook</title><meta name="description" content="${SITE_SHELL_DESCRIPTION}" /></head><body><div id="root"></div></body></html>`
+const SPA_SHELL = `<!doctype html><html lang="zh-CN"><head>
+    <meta charset="UTF-8" />
+    <meta name="description" content="${SITE_SHELL_DESCRIPTION}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="有所闻" />
+    <meta property="og:title" content="${SITE_SHELL_TITLE}" />
+    <meta property="og:description" content="${SITE_SHELL_DESCRIPTION}" />
+    <meta property="og:url" content="https://news.aizeek.com/" />
+    <meta property="og:image" content="https://news.aizeek.com/og-default.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <title>${SITE_SHELL_TITLE}</title>
+  </head><body><div id="root"></div><script type="module" src="/assets/main.js"></script></body></html>`
 /** 品牌兜底图的假字节，静态资产 mock 用 */
 const BRAND_PNG_BYTES = new Uint8Array([0x89, 0x50, 0x4e, 0x47])
 
@@ -35,9 +52,17 @@ const WHATSAPP_UA = 'WhatsApp/2.23.20.0'
 const BROWSER_UA =
   'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36'
 
+/** 旧链接：v2 早期的 token 不带标题，边缘只能靠现抓原文 */
 const token = encodeShareToken({
   sourceId: 'sspai',
   originUrl: 'https://sspai.com/post/12345',
+})
+/** 当前 App 发出的链接：标题编在 token 里，边缘不依赖上游也能拼出文章标题 */
+const TITLED_ARTICLE = '国产大模型价格战再起'
+const titledToken = encodeShareToken({
+  sourceId: 'sspai',
+  originUrl: 'https://sspai.com/post/12345',
+  title: TITLED_ARTICLE,
 })
 /** 上游没图时卡片应指向的同域图片端点（品牌兜底在端点内回落） */
 const OG_IMAGE_ENDPOINT = `https://news.aizeek.com/a/${token}/og.png`
@@ -95,7 +120,27 @@ function assertFullCard(html: string, context: string): void {
   assert.match(html, /<meta itemprop="description" content="[^"]+">/, `${context}: 微信 itemprop description`)
   assert.match(html, /<meta itemprop="image" content="https:\/\/[^"]+">/, `${context}: 微信 itemprop image`)
   assert.ok(!html.includes('id="root"'), `${context}: 不得是 SPA 空壳`)
+  assertNoSiteShellMeta(html, context)
+}
+
+/** 分享深链的任何响应都不许再出现站点级通用文案 */
+function assertNoSiteShellMeta(html: string, context: string): void {
   assert.ok(!html.includes(SITE_SHELL_DESCRIPTION), `${context}: 不得是站点通用文案`)
+  assert.ok(
+    !html.includes(`content="${SITE_SHELL_TITLE}"`),
+    `${context}: og:title 不得是站点名「${SITE_SHELL_TITLE}」`,
+  )
+}
+
+/** 真人（含被误判成真人的抓取端）应拿到 SPA：React 挂载点与入口脚本都在 */
+function assertSpaDelivered(html: string, context: string): void {
+  assert.ok(html.includes('id="root"'), `${context}: 应是 SPA 页面`)
+  assert.ok(html.includes('src="/assets/main.js"'), `${context}: SPA 入口脚本不得被改写掉`)
+  assert.ok(!html.includes('http-equiv="refresh"'), `${context}: 真人不该被再跳一次`)
+}
+
+function ogTitle(html: string): string | undefined {
+  return /<meta property="og:title" content="([^"]*)">/.exec(html)?.[1]
 }
 
 console.log('--- 测试 1: 爬虫 UA 拿到带文章信息的 OG 卡片 ---')
@@ -213,18 +258,96 @@ await withUpstream(
 )
 console.log('✓ 质询页过滤测试通过')
 
-console.log('--- 测试 2: 普通浏览器 UA 仍走 SPA 回退 ---')
+console.log('--- 测试 2: 普通浏览器 UA 仍走 SPA，但 meta 换成这篇文章 ---')
 await withUpstream(
   () => htmlPage('<html><head><title>不该被抓</title></head></html>'),
   async (visited) => {
-    const res = await worker.fetch(request(`/a/${token}`, BROWSER_UA), env, ctx)
+    const res = await worker.fetch(request(`/a/${titledToken}`, BROWSER_UA), env, ctx)
     const html = await res.text()
-    assert.equal(html, SPA_SHELL, '真人应拿到 SPA 空壳')
-    assert.ok(!html.includes('og:title'), '真人页面不应带卡片标签')
+    assertSpaDelivered(html, '真人访问分享深链')
     assert.equal(visited.length, 0, '真人访问不应触发服务端抓原文')
+    // 站点壳 meta 被换成文章级标签：抓取端伪装成浏览器时也看得到这篇文章
+    assert.equal(ogTitle(html), TITLED_ARTICLE)
+    assertNoSiteShellMeta(html, '改写后的 SPA')
+    assert.match(html, /<title>国产大模型价格战再起 - 有所闻<\/title>/)
+    assert.equal(
+      (html.match(/<meta property="og:title"/g) ?? []).length,
+      1,
+      '站点壳的 og:title 应被摘掉，不能与文章标签并存',
+    )
+    assert.match(html, /<meta property="og:type" content="article">/)
+    assert.match(res.headers.get('vary') ?? '', /User-Agent/i, '同址两种响应，缓存必须按 UA 分开')
   },
 )
 console.log('✓ 非爬虫 UA 测试通过')
+
+console.log('--- 测试 2a: 抓取端带上 Sec-Fetch 伪装成导航，仍拿得到文章标题 ---')
+await withUpstream(
+  () => htmlPage('<html><head><title>不该被抓</title></head></html>'),
+  async (visited) => {
+    for (const ua of [
+      'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 MicroMessenger/8.0.42',
+      'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 wxwork/4.1.20',
+      // 完全不认识的抓取端：UA 判定必然失手，也不能落回站点壳
+      'Mozilla/5.0 (compatible; SomeUnknownPreviewBot/1.0)',
+    ]) {
+      const res = await worker.fetch(
+        request(`/a/${titledToken}`, ua, {
+          headers: { 'Sec-Fetch-Mode': 'navigate', 'Sec-Fetch-Dest': 'document' },
+        }),
+        env,
+        ctx,
+      )
+      const html = await res.text()
+      assert.equal(ogTitle(html), TITLED_ARTICLE, `伪装成导航的抓取端应拿到文章标题：${ua}`)
+      assertNoSiteShellMeta(html, `伪装成导航的抓取端 ${ua}`)
+      assertSpaDelivered(html, `伪装成导航的抓取端 ${ua}`)
+    }
+    assert.equal(visited.length, 0, '这一跳仍不该为了卡片去抓上游，真人打开不能变慢')
+  },
+)
+console.log('✓ Sec-Fetch 伪装测试通过')
+
+console.log('--- 测试 2b: 不带标题的旧链接落到 SPA 时，兜底也像一篇文章 ---')
+await withUpstream(
+  () => htmlPage('<html><head><title>不该被抓</title></head></html>'),
+  async () => {
+    const html = await worker
+      .fetch(request(`/a/${token}`, BROWSER_UA), env, ctx)
+      .then((r) => r.text())
+    assert.equal(ogTitle(html), '少数派 · 一篇文章', '旧链接兜底标题仍带信源名')
+    assertNoSiteShellMeta(html, '旧链接改写后的 SPA')
+    // 卡片必带图：SPA 改写同样指向同域图片端点（端点内回落品牌图）
+    assert.ok(html.includes(`<meta property="og:image" content="${OG_IMAGE_ENDPOINT}">`))
+  },
+)
+console.log('✓ 旧链接 SPA 兜底测试通过')
+
+console.log('--- 测试 2c: 用仓库里真实的 index.html 验证改写不漏匹配 ---')
+{
+  const realShell = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
+  const realEnv: Env = {
+    ASSETS: {
+      fetch: async () =>
+        new Response(realShell, { status: 200, headers: { 'Content-Type': 'text/html' } }),
+    },
+  }
+  await withUpstream(
+    () => htmlPage('<html></html>'),
+    async () => {
+      const html = await worker
+        .fetch(request(`/a/${titledToken}`, BROWSER_UA), realEnv, ctx)
+        .then((r) => r.text())
+      assert.equal(ogTitle(html), TITLED_ARTICLE, '真实站点壳的 og:title 应被换掉')
+      assertNoSiteShellMeta(html, '真实 index.html 改写后')
+      assert.ok(!html.includes('content="website"'), 'og:type 应从 website 变成 article')
+      assert.ok(html.includes('id="root"'), 'React 挂载点必须保留')
+      assert.ok(html.includes('name="viewport"'), '与卡片无关的 meta 不该被误删')
+      assert.ok(html.includes('name="theme-color"'), '主题色 meta 不该被误删')
+    },
+  )
+}
+console.log('✓ 真实 index.html 改写测试通过')
 
 console.log('--- 测试 3: 微信 UA 按 Sec-Fetch 区分抓取与真人导航 ---')
 const WECHAT_UA =
@@ -242,7 +365,8 @@ await withUpstream(
       env,
       ctx,
     )
-    assert.equal(await navigated.text(), SPA_SHELL, '微信内置浏览器的真实导航应进 SPA')
+    assertSpaDelivered(await navigated.clone().text(), '微信内置浏览器的真实导航')
+    assert.ok(!(await navigated.text()).includes('微信抓到的标题'), '真实导航不该现抓上游')
 
     // 抓取端 UA 变体：企业微信 / WeChat / Weixin / 微博 / QQ / 钉钉也要能拿到文章级卡片
     for (const variant of [
@@ -272,12 +396,14 @@ await withUpstream(
         env,
         ctx,
       )
-      assert.equal(await res.text(), SPA_SHELL, `内置浏览器真实导航应进 SPA：${variant}`)
+      assertSpaDelivered(await res.text(), `内置浏览器真实导航：${variant}`)
     }
 
     // 真人在微信里被误判成爬虫后，逃生门 ?app=1 必须直达 SPA，pathname 上仍有 token
     const escaped = await worker.fetch(request(`/a/${token}?app=1`, WECHAT_UA), env, ctx)
-    assert.equal(await escaped.text(), SPA_SHELL, '?app=1 必须直达 SPA，由前端解码 token 进阅读器')
+    const escapedHtml = await escaped.text()
+    assertSpaDelivered(escapedHtml, '?app=1 逃生门')
+    assert.ok(!escapedHtml.includes('微信抓到的标题'), '逃生门这一跳不该现抓上游')
   },
 )
 console.log('✓ 微信 UA 分流测试通过')
@@ -314,7 +440,7 @@ await withUpstream(
       env,
       ctx,
     )
-    assert.equal(await followed.text(), SPA_SHELL, '跟随 refresh 后应落到 SPA，而不是再来一张卡片')
+    assertSpaDelivered(await followed.text(), '跟随 refresh 后应落到 SPA，而不是再来一张卡片')
   },
 )
 console.log('✓ meta refresh 逃生门测试通过')
@@ -397,6 +523,33 @@ await withUpstream(
 )
 console.log('✓ 抓取端 UA 回归测试通过')
 
+console.log('--- 测试 5c: 上游抓不到时用链接里带的标题，不再退到「一篇文章」---')
+await withUpstream(
+  () => {
+    throw new Error('upstream down')
+  },
+  async () => {
+    const html = await worker
+      .fetch(request(`/a/${titledToken}`, WHATSAPP_UA), env, ctx)
+      .then((r) => r.text())
+    assert.equal(ogTitle(html), TITLED_ARTICLE, '反爬拦住上游时，标题仍来自分享链接')
+    assert.match(html, /点击在有所闻中阅读全文 · 原文来自 少数派/)
+    assertFullCard(html, '链接标题兜底卡')
+  },
+)
+
+console.log('--- 测试 5d: 抓得到原文时以原文标题为准（链接里的标题可能已过时）---')
+await withUpstream(
+  () => htmlPage('<html><head><meta property="og:title" content="原文改过的标题"></head></html>'),
+  async () => {
+    const html = await worker
+      .fetch(request(`/a/${titledToken}`, WHATSAPP_UA), env, ctx)
+      .then((r) => r.text())
+    assert.equal(ogTitle(html), '原文改过的标题')
+  },
+)
+console.log('✓ 链接标题优先级测试通过')
+
 console.log('--- 测试 6: 上游注入的 XSS 载荷被转义 ---')
 await withUpstream(
   () =>
@@ -421,6 +574,35 @@ await withUpstream(
   },
 )
 console.log('✓ XSS 转义测试通过')
+
+console.log('--- 测试 6b: 链接里带的标题同样只当文本，卡片与 SPA 都要转义 ---')
+{
+  const evilToken = encodeShareToken({
+    sourceId: 'sspai',
+    originUrl: 'https://sspai.com/post/12345',
+    title: '"><script>alert(1)</script>',
+  })
+  await withUpstream(
+    () => {
+      throw new Error('upstream down')
+    },
+    async () => {
+      for (const [context, ua, headers] of [
+        ['卡片', WHATSAPP_UA, {}],
+        ['改写后的 SPA', BROWSER_UA, {}],
+      ] as const) {
+        const html = await worker
+          .fetch(request(`/a/${evilToken}`, ua, { headers }), env, ctx)
+          .then((r) => r.text())
+        assert.ok(!html.includes('<script>alert(1)'), `${context}: 链接标题里的脚本必须被转义`)
+        const titleMeta = /<meta property="og:title" content="([^"]*)">/.exec(html)
+        assert.ok(titleMeta, `${context}: og:title 仍应是一条完整的 meta`)
+        assert.ok(!titleMeta[1].includes('<'), `${context}: content 里不得残留原始尖括号`)
+      }
+    },
+  )
+}
+console.log('✓ 链接标题转义测试通过')
 
 console.log('--- 测试 7: GBK 页面标题不乱码，非 HTML 上游直接放弃 ---')
 {
@@ -515,10 +697,14 @@ await withUpstream(
   () => htmlPage('<html></html>'),
   async (visited) => {
     const home = await worker.fetch(request('/', WHATSAPP_UA), env, ctx)
-    assert.equal(await home.text(), SPA_SHELL, '首页对爬虫也只给 SPA')
+    assert.equal(await home.text(), SPA_SHELL, '首页对爬虫也只给 SPA，站点级 meta 原样保留')
 
     const nested = await worker.fetch(request(`/a/${token}/extra`, WHATSAPP_UA), env, ctx)
     assert.equal(await nested.text(), SPA_SHELL, '多段路径不是分享深链')
+
+    // token 解不出来时无从改写，SPA 原样返回（前端会弹中文提示）
+    const broken = await worker.fetch(request('/a/not-a-valid-token', BROWSER_UA), env, ctx)
+    assert.equal(await broken.text(), SPA_SHELL, '坏 token 的 SPA 不改写')
     assert.equal(visited.length, 0)
   },
 )

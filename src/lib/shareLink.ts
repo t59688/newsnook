@@ -51,13 +51,19 @@ function clip(value: string, max: number): string {
   return trimmed.length > max ? trimmed.slice(0, max) : trimmed
 }
 
-/** 从当前文章取出可分享的最小字段 */
+/**
+ * 从当前文章取出可分享的最小字段。
+ * 标题也带上：聊天预览卡靠它显示「这篇文章」的名字，边缘抓不到原文时不至于
+ * 退回通用文案（占位标题不算真标题，超长标题由 encodeShareToken 自行丢弃）。
+ */
 export function sharePayloadFromArticle(article: Article): SharePayload {
   const id = clip(article.id, MAX_ID_LENGTH)
+  const title = usableShareTitle(article.title)
   return {
     originUrl: article.originUrl,
     sourceId: clip(article.sourceId, MAX_ID_LENGTH),
     ...(id ? { id } : {}),
+    ...(title ? { title } : {}),
   }
 }
 

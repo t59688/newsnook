@@ -39,20 +39,50 @@ const article: Article = {
   originUrl: 'https://sspai.com/post/12345',
 }
 
-// 1. v2 往返：打开阅读器只需要原文地址与信源 id
+// 1. v2 往返：打开阅读器需要原文地址与信源 id，标题供聊天预览卡使用
 const payload = sharePayloadFromArticle(article)
 const token = encodeShareToken(payload)
 const decoded = decodeShareToken(token)
 assert.ok(decoded, '正常 token 应能解码')
 assert.equal(decoded.originUrl, article.originUrl)
 assert.equal(decoded.sourceId, article.sourceId)
+assert.equal(decoded.title, article.title, '标题应原样往返，边缘据此拼 og:title')
 
-// 2. 中文标题、摘要、信源名都不进 token
+// 2. 只有标题进 token：摘要、信源名仍然不编码
 const plain = Buffer.from(token.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8')
-assert.ok(!/[\u4e00-\u9fff]/.test(plain), 'v2 载荷里不应出现中文')
-assert.ok(!plain.includes(article.title), '标题不得编进 token')
+assert.ok(plain.includes(`\n!${article.title}`), '标题以 ! 行编进载荷')
 assert.ok(!plain.includes(article.summary), '摘要不得编进 token')
+assert.ok(!plain.includes(article.sourceName), '信源名不得编进 token（接收端查 registry）')
 assert.ok(/^2\.[0-9a-z]{1,4}\n/.test(plain), 'v2 载荷第一行是版本号加校验位')
+
+// 2b. 标题行排在 id 槽之后：没有 inline id 时补一行空串，
+//     旧版客户端按位置解码时才不会把标题当成 id（id 错了已读/缓存都对不上）
+assert.equal(
+  plain.split('\n')[3],
+  '',
+  '标题前应留一行空的 id 槽，保证旧客户端解码出的文章 id 不变',
+)
+assert.equal(plain.split('\n')[4], `!${article.title}`, '标题行紧跟在 id 槽之后')
+
+// 2c. 超长标题宁可不编：截断的标题会被接收端当成真标题存进缓存
+const longTitle = '标'.repeat(120)
+const longTitleToken = encodeShareToken({ ...payload, title: longTitle })
+assert.equal(decodeShareToken(longTitleToken)?.title, undefined, '超长标题不进 token')
+assert.equal(longTitleToken, encodeShareToken({ ...payload, title: undefined }))
+
+// 2d. 占位标题不进 token：卡片上不能出现「加载中…」
+assert.equal(
+  sharePayloadFromArticle({ ...article, title: SHARE_PENDING_TITLE }).title,
+  undefined,
+  '占位标题不得当成真标题分享',
+)
+assert.equal(sharePayloadFromArticle({ ...article, title: SHARE_FALLBACK_TITLE }).title, undefined)
+
+// 2e. 标题里的换行会打乱行格式，编码前折成空格
+assert.equal(
+  decodeShareToken(encodeShareToken({ ...payload, title: '两行\n标题' }))?.title,
+  '两行 标题',
+)
 
 // 3. 长度上限：常见站点的分享 token 要留在一行放得下的范围内
 const lengthCases: Array<{ label: string; article: Article }> = [
@@ -267,14 +297,19 @@ assert.equal(
   '未知版本应拒绝',
 )
 
-// 12. 还原 Article：v2 没有标题时先占位，id 与列表侧算法保持一致
+// 12. 还原 Article：链接带标题就直接显示，没带（旧链接 / 超长标题）先占位，
+//     两种情况下 id 都与列表侧算法保持一致
 const opened = articleFromSharePayload(decoded)
 assert.equal(opened.sourceId, 'sspai')
 assert.equal(opened.originUrl, article.originUrl)
 assert.equal(opened.id, article.id, '省掉 id 时接收端应算出与列表侧相同的 id')
-assert.equal(opened.title, SHARE_PENDING_TITLE)
+assert.equal(opened.title, article.title, '链接里带了标题就不必再占位')
 assert.equal(opened.hasRealDate, false)
-assert.ok(isPendingShareTitle(opened.title))
+
+const untitled = articleFromSharePayload(decodeShareToken(longTitleToken)!)
+assert.equal(untitled.id, article.id, '不带标题的链接算出的 id 不变')
+assert.equal(untitled.title, SHARE_PENDING_TITLE)
+assert.ok(isPendingShareTitle(untitled.title))
 
 const fromLegacy = articleFromSharePayload(legacy)
 assert.equal(fromLegacy.title, '国产大模型价格战再起')
@@ -294,9 +329,10 @@ assert.equal(
 )
 
 // 13. 正文抽取补回真标题后才落盘；已有真标题的文章不被覆盖
-assert.equal(withResolvedShareTitle(opened, '真标题').title, '真标题')
-assert.equal(withResolvedShareTitle(opened, '   ').title, SHARE_PENDING_TITLE)
+assert.equal(withResolvedShareTitle(untitled, '真标题').title, '真标题')
+assert.equal(withResolvedShareTitle(untitled, '   ').title, SHARE_PENDING_TITLE)
 assert.equal(withResolvedShareTitle(article, '别的标题').title, article.title)
+assert.equal(withResolvedShareTitle(opened, '抽取到的标题').title, article.title)
 
 // 14. 缓存里的占位标题不该被当成真标题再回填一遍
 assert.equal(usableShareTitle('真标题'), '真标题')

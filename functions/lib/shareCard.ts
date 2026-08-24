@@ -3,13 +3,16 @@
  *
  * 微信、WhatsApp、Telegram 这类客户端是按抓到的 HTML 里的 Open Graph 标签
  * 渲染链接卡片的，而 SPA 回退给出的 `index.html` 只有通用的空壳标签，
- * 于是链接在聊天里就是一串裸地址。
+ * 于是链接在聊天里就是一串裸地址、或者一张写着站点名的通用卡。
  *
- * 这里的做法仍然是无后端的：token 里已经有原文地址与信源 id，边缘节点
- * 现抓一次原文、只从 `<head>` 里取标题/摘要/首图，拼出一页极简的 OG HTML。
- * 不落库、不建 API，抓不到就退回通用文案。
+ * 这里的做法仍然是无后端的：token 里已经有原文地址、信源 id 与标题，
+ * 边缘节点再现抓一次原文、只从 `<head>` 里取标题/摘要/首图，
+ * 拼出一页极简的 OG HTML。不落库、不建 API，抓不到就用 token 里的标题。
  *
- * 只有爬虫才会拿到这页；普通浏览器继续走 SPA 回退，阅读路径完全不变。
+ * 两条路都会带上文章级 OG，**不把卡片绑死在爬虫 UA 判定上**：
+ * - 判定为爬虫 → 这份现拼的卡片 HTML（真人误判了也只多一跳 meta refresh）；
+ * - 判定为真人 → 照常走 SPA，但 `index.html` 里的站点壳 meta 会按 token
+ *   改写成这篇文章的标题（`injectShareMeta`），抓取端伪装成浏览器也认得出。
  */
 
 import {
@@ -317,20 +320,20 @@ function composeDescription(base: string | undefined, sourceName: string): strin
   return `${head}${suffix}`
 }
 
-export function renderShareCard(card: {
+interface ShareMeta {
   title: string
   description: string
   shareUrl: string
-  bounceUrl: string
   /** 必填：没有 og:image 时微信几乎不出大图卡，兜底也要给品牌图 */
   image: string
   imageWidth?: number
   imageHeight?: number
-}): string {
+}
+
+/** 卡片页与改写后的 SPA 共用这组标签，两条路给出的预览完全一致 */
+function renderShareMetaTags(card: ShareMeta): string {
   const title = escapeHtml(card.title)
   const description = escapeHtml(card.description)
-  const shareUrl = escapeHtml(card.shareUrl)
-  const bounceUrl = escapeHtml(card.bounceUrl)
   const image = escapeHtml(card.image)
   const dimensions =
     card.imageWidth && card.imageHeight
@@ -338,12 +341,10 @@ export function renderShareCard(card: {
       : ''
 
   // itemprop 三件套是微信抓卡片的旧协议，与 OG 并存输出，两代抓取端都认
-  return `<!DOCTYPE html><html lang="zh-CN" itemscope itemtype="https://schema.org/Article"><head>
-<meta charset="utf-8">
-<meta property="og:type" content="article">
+  return `<meta property="og:type" content="article">
 <meta property="og:title" content="${title}">
 <meta property="og:description" content="${description}">
-<meta property="og:url" content="${shareUrl}">
+<meta property="og:url" content="${escapeHtml(card.shareUrl)}">
 <meta property="og:image" content="${image}">${dimensions}
 <meta property="og:site_name" content="${escapeHtml(SITE_NAME)}">
 <meta name="twitter:card" content="summary_large_image">
@@ -354,36 +355,34 @@ export function renderShareCard(card: {
 <meta itemprop="description" content="${description}">
 <meta itemprop="image" content="${image}">
 <meta name="description" content="${description}">
-<title>${title} - 有所闻</title>
-<meta http-equiv="refresh" content="0;url=${bounceUrl}">
+<title>${title} - 有所闻</title>`
+}
+
+export function renderShareCard(card: ShareMeta & { bounceUrl: string }): string {
+  return `<!DOCTYPE html><html lang="zh-CN" itemscope itemtype="https://schema.org/Article"><head>
+<meta charset="utf-8">
+${renderShareMetaTags(card)}
+<meta http-equiv="refresh" content="0;url=${escapeHtml(card.bounceUrl)}">
 </head><body></body></html>
 `
 }
 
 /**
- * 命中分享深链且请求方是爬虫时返回卡片 HTML；其余情况返回 null，
- * 由 worker 继续走 SPA 回退。
+ * 拼出这篇文章的一组 OG 值。`meta` 是现抓原文的结果，抓不到就传空对象——
+ * 标题会退到 token 里带的标题，再退到「<信源名> · 一篇文章」，
+ * 任何情况下都不会落回站点通用文案。
  */
-export async function shareCardResponse(request: Request, url: URL): Promise<Response | null> {
-  if (request.method !== 'GET' && request.method !== 'HEAD') return null
-  if (!url.pathname.startsWith(SHARE_PATH_PREFIX)) return null
-  if (url.searchParams.has(SHARE_CARD_BYPASS_PARAM)) return null
-  if (!wantsShareCard(request)) return null
-
-  // 路径不成形（`/a/` 或多段）就不是分享深链，交回 SPA；token 解不出来才给通用卡片
-  const token = shareTokenFromPath(url.pathname)
-  if (!token) return null
-
-  const payload = decodeShareToken(token)
-  const meta = payload ? await fetchPageMeta(payload.originUrl) : {}
+function composeShareMeta(
+  url: URL,
+  token: string,
+  payload: SharePayload | null,
+  meta: PageMeta,
+): ShareMeta {
   const sourceName = payload ? describeSource(payload) : ''
 
   // og:url 用不带 salt 的规范 token：salt 只为换 URL 打破平台预览缓存，
   // 规范地址才是这篇文章的稳定身份，平台按 og:url 归并时不会把缓存键打散。
   const canonicalToken = payload ? encodeShareToken(payload) : token
-  const shareUrl = `${url.origin}${SHARE_PATH_PREFIX}${canonicalToken}`
-  // 逃生门要回到用户实际点开的地址（可能带 salt），token 在 pathname 上原样保留
-  const bounceUrl = `${url.origin}${url.pathname}?${SHARE_CARD_BYPASS_PARAM}=1`
 
   // og:image 必须存在且是同域 https 绝对地址：上游首图经 /a/<token>/og.png
   // 转发（防盗链、http 图、失效图都在端点内兜底），没有首图直接指品牌图。
@@ -399,22 +398,45 @@ export async function shareCardResponse(request: Request, url: URL): Promise<Res
       : {}
     : { imageWidth: OG_DEFAULT_IMAGE_WIDTH, imageHeight: OG_DEFAULT_IMAGE_HEIGHT }
 
-  // 抓到文章标题才算「文章卡」；抓不到时兜底标题也要长得像一篇文章：
-  // 「<信源名> · <v1 链接里的短标题或“一篇文章”>」，不能只剩一句站点空话
-  const articleTitle = meta.title
+  // 标题三级：现抓的原文标题 > 分享链接里带的标题 > 「<信源名> · 一篇文章」
+  const linkTitle = normalizeText(payload?.title, MAX_TITLE_LENGTH)
   const fallbackTitle = payload
-    ? `${sourceName ? `${sourceName} · ` : ''}${
-        normalizeText(payload.title, MAX_TITLE_LENGTH) ?? FALLBACK_ARTICLE_TITLE
-      }`
+    ? `${sourceName ? `${sourceName} · ` : ''}${FALLBACK_ARTICLE_TITLE}`
     : FALLBACK_TITLE
-  const html = renderShareCard({
-    title: articleTitle || fallbackTitle,
+
+  return {
+    title: meta.title || linkTitle || fallbackTitle,
     description: composeDescription(meta.description, sourceName),
-    shareUrl,
-    bounceUrl,
+    shareUrl: `${url.origin}${SHARE_PATH_PREFIX}${canonicalToken}`,
     image,
     ...dimensions,
+  }
+}
+
+/**
+ * 命中分享深链且请求方是爬虫时返回卡片 HTML；其余情况返回 null，
+ * 由 worker 继续走 SPA 回退（SPA 的 meta 由 injectShareMeta 改写）。
+ */
+export async function shareCardResponse(request: Request, url: URL): Promise<Response | null> {
+  if (request.method !== 'GET' && request.method !== 'HEAD') return null
+  if (!url.pathname.startsWith(SHARE_PATH_PREFIX)) return null
+  if (url.searchParams.has(SHARE_CARD_BYPASS_PARAM)) return null
+  if (!wantsShareCard(request)) return null
+
+  // 路径不成形（`/a/` 或多段）就不是分享深链，交回 SPA；token 解不出来才给通用卡片
+  const token = shareTokenFromPath(url.pathname)
+  if (!token) return null
+
+  const payload = decodeShareToken(token)
+  const meta = payload ? await fetchPageMeta(payload.originUrl) : {}
+  const html = renderShareCard({
+    ...composeShareMeta(url, token, payload, meta),
+    // 逃生门要回到用户实际点开的地址（可能带 salt），token 在 pathname 上原样保留
+    bounceUrl: `${url.origin}${url.pathname}?${SHARE_CARD_BYPASS_PARAM}=1`,
   })
+
+  // 抓到原文标题才算「抓成功」：摘要与首图也跟着到位，卡片不会再变
+  const crawled = Boolean(meta.title)
 
   return new Response(request.method === 'HEAD' ? null : html, {
     status: 200,
@@ -422,12 +444,67 @@ export async function shareCardResponse(request: Request, url: URL): Promise<Res
       'Content-Type': 'text/html; charset=utf-8',
       // 文章卡可以多缓存一会儿（标题不会变）；兜底卡不缓存，
       // 上游恢复后爬虫重抓立即能拿到文章级卡片，失败态不该被钉住十分钟
-      'Cache-Control': articleTitle ? 'public, max-age=3600' : 'public, max-age=0, must-revalidate',
-      ...(articleTitle ? {} : { 'CDN-Cache-Control': 'no-store' }),
+      'Cache-Control': crawled ? 'public, max-age=3600' : 'public, max-age=0, must-revalidate',
+      ...(crawled ? {} : { 'CDN-Cache-Control': 'no-store' }),
       // 同一地址对真人给的是 SPA，中间缓存不能把卡片复用过去
       Vary: 'User-Agent',
     },
   })
+}
+
+/** index.html 里的站点级 og / twitter / description 标签，改写前先摘掉 */
+const SHELL_META_PATTERN =
+  /[ \t]*<meta\b[^>]*\b(?:property="og:[^"]*"|name="(?:twitter:[^"]*|description)")[^>]*>\n?/gi
+const SHELL_TITLE_PATTERN = /[ \t]*<title\b[^>]*>[\s\S]*?<\/title>\n?/i
+const HEAD_END_PATTERN = /<\/head>/i
+
+/** 只有 HTML 才值得改写；静态资源与 404 原样放行 */
+function isHtmlResponse(response: Response): boolean {
+  return response.ok && /text\/html/i.test(response.headers.get('content-type') ?? '')
+}
+
+function withVaryUserAgent(headers: Headers): Headers {
+  const vary = headers.get('Vary')
+  if (!vary) headers.set('Vary', 'User-Agent')
+  else if (!/\buser-agent\b/i.test(vary)) headers.set('Vary', `${vary}, User-Agent`)
+  return headers
+}
+
+/**
+ * `/a/<token>` 落到 SPA 时，把 `index.html` 的站点壳 meta 换成这篇文章的 OG 标签。
+ *
+ * 为什么需要它：抓取端不总是认得出来——微信一类客户端会带上 `Sec-Fetch-*`
+ * 伪装成真实导航，UA 判定一失手，爬虫拿到的就是站点通用文案（「有所闻 · News Nook」）。
+ * 改写之后，即便判定成真人，抓到的 HTML 里也是这篇文章的标题。
+ *
+ * 只用 token 里已有的信息，不抓上游：真人打开分享链接的这一跳不能为了卡片变慢。
+ * 非 `/a/<token>`、token 解不出、不是 HTML 一律原样返回。
+ */
+export async function injectShareMeta(request: Request, url: URL, asset: Response): Promise<Response> {
+  if (request.method !== 'GET') return asset
+  if (!url.pathname.startsWith(SHARE_PATH_PREFIX)) return asset
+  const token = shareTokenFromPath(url.pathname)
+  if (!token) return asset
+  const payload = decodeShareToken(token)
+  if (!payload) return asset
+  if (!isHtmlResponse(asset)) return asset
+
+  const html = await asset.text()
+  const headers = withVaryUserAgent(new Headers(asset.headers))
+  // 长度与强校验都随改写失效，留着会让中间缓存把站点壳复用回来
+  headers.delete('content-length')
+  headers.delete('etag')
+
+  const stripped = html.replace(SHELL_META_PATTERN, '').replace(SHELL_TITLE_PATTERN, '')
+  const headEnd = stripped.search(HEAD_END_PATTERN)
+  const body =
+    headEnd < 0
+      ? html
+      : `${stripped.slice(0, headEnd)}${renderShareMetaTags(
+          composeShareMeta(url, token, payload, {}),
+        )}\n${stripped.slice(headEnd)}`
+
+  return new Response(body, { status: asset.status, statusText: asset.statusText, headers })
 }
 
 /** 首图转发比抓 head 更宽裕些：图片体积大、CDN 链路多一跳很常见 */
