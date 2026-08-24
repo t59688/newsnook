@@ -82,13 +82,13 @@ export function ReaderMoreMenu({
             <ActionRow
               icon={Share2}
               title="分享文章"
-              caption="标题与原文链接交给系统分享面板"
+              caption="先看分享卡片，再交给系统分享面板"
               onClick={onShare}
             />
             <ActionRow
               icon={Copy}
               title="复制链接"
-              caption={hasOriginUrl ? '复制原文地址到剪贴板' : '这篇没有原文地址'}
+              caption={hasOriginUrl ? '复制站内分享链接到剪贴板' : '这篇没有原文地址'}
               disabled={!hasOriginUrl}
               onClick={onCopyLink}
             />

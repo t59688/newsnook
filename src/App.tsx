@@ -18,7 +18,13 @@ import {
   syncBodyPins,
 } from './lib/bodyCache'
 import { sortArticles } from './lib/feedPagination'
+import { log } from './lib/logger'
 import { resolveArticleBody } from './lib/resolveBody'
+import {
+  articleFromSharePayload,
+  clearShareLocation,
+  shareTargetFromLocation,
+} from './lib/shareLink'
 import {
   listCacheStats,
   loadEnabledSources,
@@ -221,7 +227,19 @@ export default function App() {
     updatePrefs: update,
     setEnabledIds,
   })
-  const [reading, setReading] = useState<Article | null>(null)
+  /**
+   * 冷启动深链 `/a/<token>`：本地解码后直接进阅读器（正文仍走 resolveBody 站内抽取）。
+   * `undefined` = 普通访问，`null` = token 损坏，给中文提示后停在首页。
+   */
+  const [sharedTarget] = useState(shareTargetFromLocation)
+  const [reading, setReading] = useState<Article | null>(() => {
+    if (!sharedTarget) {
+      if (sharedTarget === null) log.app.warn('share deep link rejected')
+      return null
+    }
+    return articleFromSharePayload(sharedTarget, prefs.customSources)
+  })
+  const [deepLinkError, setDeepLinkError] = useState(sharedTarget === null)
   /** 墨水屏中区进设置时暂存文章，从「我的」返回时恢复阅读 */
   const [readerReturnArticle, setReaderReturnArticle] = useState<Article | null>(null)
   const readerOverlayCloserRef = useRef<(() => boolean) | null>(null)
@@ -325,6 +343,16 @@ export default function App() {
     }
   }, [focusReturnRoute])
 
+  const closeReader = useCallback(() => {
+    setReading(null)
+    clearShareLocation()
+  }, [])
+
+  const dismissDeepLinkError = useCallback(() => {
+    setDeepLinkError(false)
+    clearShareLocation()
+  }, [])
+
   const restoreReaderFromSettings = useCallback(() => {
     if (!readerReturnArticle) return
     setSettingsRoute(null)
@@ -347,7 +375,7 @@ export default function App() {
         return
       }
       if (reading) {
-        setReading(null)
+        closeReader()
         return
       }
       if (settingsRoute?.name === 'category-sources' || settingsRoute?.name === 'category-edit') {
@@ -399,7 +427,7 @@ export default function App() {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [closeSourceFeed, eggOpen, focusSourceId, readerReturnArticle, reading, restoreReaderFromSettings, settingsRoute, tab])
+  }, [closeReader, closeSourceFeed, eggOpen, focusSourceId, readerReturnArticle, reading, restoreReaderFromSettings, settingsRoute, tab])
 
   const {
     articles: fetchedArticles,
@@ -1158,7 +1186,7 @@ export default function App() {
           <ReaderScreen
             article={reading}
             saved={laterIds.has(reading.id)}
-            onClose={() => setReading(null)}
+            onClose={closeReader}
             onToggleLater={toggleLater}
             onCacheChange={notifyCacheChange}
             overlayCloserRef={readerOverlayCloserRef}
@@ -1179,6 +1207,15 @@ export default function App() {
         </Suspense>
       )}
 
+      <ConfirmDialog
+        open={deepLinkError}
+        title="打不开这条分享"
+        message="链接可能已损坏或被截断。请让分享的人重新发一次，或先在首页看看今天的更新。"
+        confirmLabel="知道了"
+        cancelLabel="关闭"
+        onConfirm={dismissDeepLinkError}
+        onCancel={dismissDeepLinkError}
+      />
       <UpdateDialog
         open={appUpdate.dialogOpen}
         release={appUpdate.dialogRelease}

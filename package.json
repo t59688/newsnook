@@ -73,6 +73,7 @@
     "test:reader-font-pinch": "npx tsx scripts/reader-font-pinch.test.ts",
     "test:local-search": "npx tsx scripts/local-search.test.ts",
     "test:share-article": "rolldown scripts/share-article.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/share-article.test.mjs && node node_modules/.cache/newsnook/share-article.test.mjs",
+    "test:share-link": "rolldown scripts/share-link.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/share-link.test.mjs && node node_modules/.cache/newsnook/share-link.test.mjs",
     "test:config-backup": "rolldown scripts/config-backup.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/config-backup.test.mjs && node node_modules/.cache/newsnook/config-backup.test.mjs",
     "test:webview-css-compat": "npx tsx scripts/webview-css-compat.test.ts",
     "bergamot:init": "node scripts/bergamot-init.mjs",

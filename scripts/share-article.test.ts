@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 
 import { buildClipboardText, buildShareText } from '../src/lib/shareArticle'
+import {
+  SHARE_LINK_ORIGIN,
+  buildShareUrl,
+  resolveShareOrigin,
+  sharePayloadFromArticle,
+} from '../src/lib/shareLink'
+import type { Article } from '../src/lib/types'
 
 console.log('Testing article share text...')
 
@@ -26,5 +33,30 @@ assert.equal(
   '国产大模型价格战再起 · 少数派\nhttps://example.com/a1',
 )
 assert.equal(buildClipboardText({ title: '没有原文地址' }), '没有原文地址')
+
+// 5. 分享出去的主链接是站内短链：剪贴板兜底也不能退回出版社地址
+const article: Article = {
+  id: 'sspai:0xdeadbeef',
+  title: '国产大模型价格战再起',
+  summary: '几家厂商在同一周把推理价格压到接近成本线。',
+  publishedAt: 1_756_000_000_000,
+  hasRealDate: true,
+  sourceId: 'sspai',
+  sourceName: '少数派',
+  sourceLabel: '少数派',
+  sourceGroup: 'tech',
+  originUrl: 'https://sspai.com/post/12345',
+}
+const shareUrl = buildShareUrl(sharePayloadFromArticle(article), { origin: SHARE_LINK_ORIGIN })
+const clipboard = buildClipboardText({
+  title: article.title,
+  url: shareUrl,
+  sourceName: article.sourceName,
+})
+assert.ok(clipboard.includes('news.aizeek.com/a/'))
+assert.ok(!clipboard.includes('sspai.com'))
+
+// 6. 无 window 的环境（原生壳、构建脚本）默认落到生产 host
+assert.equal(resolveShareOrigin(), SHARE_LINK_ORIGIN)
 
 console.log('Article share text tests: ALL PASSED')

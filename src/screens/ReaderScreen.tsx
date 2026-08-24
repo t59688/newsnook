@@ -6,6 +6,7 @@ import { ArrowLeft, BookmarkCheck, BookmarkPlus, Globe, Languages, LoaderCircle,
 import { ImageLightbox } from '../components/ImageLightbox'
 import { EinkReaderMenu } from '../components/EinkReaderMenu'
 import { ReaderMoreMenu } from '../components/ReaderMoreMenu'
+import { ShareArticleSheet } from '../components/ShareArticleSheet'
 import { InkAudioPlayer } from '../components/InkAudioPlayer'
 import { InkImage } from '../components/InkImage'
 import { InkVideoPlayer } from '../components/InkVideoPlayer'
@@ -38,7 +39,8 @@ import {
   rememberReadingPosition,
   resolveScrollTop,
 } from '../lib/readingPosition'
-import { buildClipboardText, shareArticle } from '../lib/shareArticle'
+import { buildClipboardText, copyShareText, shareArticle } from '../lib/shareArticle'
+import { buildShareUrl, sharePayloadFromArticle } from '../lib/shareLink'
 import { resolveArticleBody, type BodySource } from '../lib/resolveBody'
 import { articleCoverUrl } from '../lib/articleAudio'
 import { articleRelativeTime } from '../lib/time'
@@ -159,6 +161,7 @@ export function ReaderScreen({
   const [chromeVisible, setChromeVisible] = useState(true)
   const [einkMenuOpen, setEinkMenuOpen] = useState(false)
   const [moreMenuOpen, setMoreMenuOpen] = useState(false)
+  const [shareSheetOpen, setShareSheetOpen] = useState(false)
   const [toast, setToast] = useState<string | null>(null)
   const [resumedPosition, setResumedPosition] = useState(false)
   const lastScrollTopRef = useRef(0)
@@ -217,6 +220,16 @@ export function ReaderScreen({
 
   useEffect(() => {
     if (!overlayCloserRef) return
+    if (shareSheetOpen) {
+      const prev = overlayCloserRef.current
+      overlayCloserRef.current = () => {
+        setShareSheetOpen(false)
+        return true
+      }
+      return () => {
+        overlayCloserRef.current = prev
+      }
+    }
     if (einkMenuOpen) {
       const prev = overlayCloserRef.current
       overlayCloserRef.current = () => {
@@ -247,7 +260,7 @@ export function ReaderScreen({
         overlayCloserRef.current = prev
       }
     }
-  }, [commentsOpen, einkMenuOpen, moreMenuOpen, overlayCloserRef])
+  }, [commentsOpen, einkMenuOpen, moreMenuOpen, overlayCloserRef, shareSheetOpen])
 
   const handleScroll = useCallback(() => {
     if (einkMode) return
@@ -404,7 +417,7 @@ export function ReaderScreen({
   useEdgeSwipeBack({
     containerRef: shellRef,
     onBack: onClose,
-    disabled: Boolean(lightbox || commentsOpen || einkMenuOpen || moreMenuOpen),
+    disabled: Boolean(lightbox || commentsOpen || einkMenuOpen || moreMenuOpen || shareSheetOpen),
     reduced,
   })
 
@@ -683,8 +696,8 @@ export function ReaderScreen({
   pagedSyncRef.current = paged.syncFromScrollTop
   pagedOffsetRef.current = paged.currentStartOffset
 
-  const einkGateRef = useRef({ lightbox, commentsOpen, einkMenuOpen, moreMenuOpen })
-  einkGateRef.current = { lightbox, commentsOpen, einkMenuOpen, moreMenuOpen }
+  const einkGateRef = useRef({ lightbox, commentsOpen, einkMenuOpen, moreMenuOpen, shareSheetOpen })
+  einkGateRef.current = { lightbox, commentsOpen, einkMenuOpen, moreMenuOpen, shareSheetOpen }
 
   useEffect(() => {
     const wasEink = prevEinkRef.current
@@ -724,7 +737,7 @@ export function ReaderScreen({
 
     const onCaptureClick = (event: MouseEvent) => {
       const gate = einkGateRef.current
-      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen) return
+      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen || gate.shareSheetOpen) return
       const target = event.target
       if (!(target instanceof Element)) return
 
@@ -761,7 +774,7 @@ export function ReaderScreen({
     void setVolumePageTurnEnabled(true)
     void addVolumePageTurnListener((direction) => {
       const gate = einkGateRef.current
-      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen) return
+      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen || gate.shareSheetOpen) return
       if (direction === 'prev') pagedGoPrevRef.current()
       else pagedGoNextRef.current()
     }).then((dispose) => {
@@ -774,7 +787,7 @@ export function ReaderScreen({
 
     const onKeyDown = (event: KeyboardEvent) => {
       const gate = einkGateRef.current
-      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen) return
+      if (gate.lightbox || gate.commentsOpen || gate.einkMenuOpen || gate.moreMenuOpen || gate.shareSheetOpen) return
       const target = event.target
       if (
         target instanceof HTMLElement &&
@@ -873,41 +886,73 @@ export function ReaderScreen({
 
   const isBlockedBody = bodySource === 'blocked'
 
-  const shareUrl = resolvedOriginUrl || article.originUrl
+  /** 出版社地址：只用于「浏览器核对原文」与分享 token 里的正文来源 */
+  const originUrl = resolvedOriginUrl || article.originUrl
 
   const openOriginal = async () => {
-    if (!shareUrl) return
-    await Browser.open({ url: shareUrl })
+    if (!originUrl) return
+    await Browser.open({ url: originUrl })
   }
 
-  const handleShare = useCallback(async () => {
+  /** 分享主链接：站内短链，对方点开在网页版里读全文 */
+  const shareUrl = useMemo(() => {
+    if (!originUrl) return ''
+    return buildShareUrl(
+      sharePayloadFromArticle({ ...article, originUrl }, { title: displayedTitle || article.title }),
+    )
+  }, [article, displayedTitle, originUrl])
+
+  const originHost = useMemo(() => {
+    if (!originUrl) return undefined
+    try {
+      return new URL(originUrl).hostname.replace(/^www\./, '')
+    } catch {
+      return undefined
+    }
+  }, [originUrl])
+
+  /** 顶栏「⋯」与墨水屏菜单都收敛到这里：先展示应用内卡片，再交给系统面板 */
+  const openShareSheet = useCallback(() => {
     setMoreMenuOpen(false)
     setEinkMenuOpen(false)
+    if (!shareUrl) {
+      showToast('这篇没有可分享的地址')
+      return
+    }
+    setShareSheetOpen(true)
+  }, [shareUrl, showToast])
+
+  const shareClipboardText = useCallback(
+    () =>
+      buildClipboardText({
+        title: displayedTitle || article.title,
+        url: shareUrl,
+        sourceName: article.sourceName,
+      }),
+    [article.sourceName, article.title, displayedTitle, shareUrl],
+  )
+
+  const handleShare = useCallback(async () => {
+    setShareSheetOpen(false)
     const result = await shareArticle({
       title: displayedTitle || article.title,
       url: shareUrl,
       sourceName: article.sourceName,
     })
-    if (result === 'copied') showToast('系统分享不可用，已复制标题与链接')
+    if (result === 'copied') showToast('系统分享不可用，已复制站内链接')
     else if (result === 'unsupported') showToast('当前环境无法分享，请手动复制链接')
   }, [article.sourceName, article.title, displayedTitle, shareUrl, showToast])
 
   const handleCopyLink = useCallback(async () => {
     setMoreMenuOpen(false)
+    setShareSheetOpen(false)
     if (!shareUrl) return
-    try {
-      await navigator.clipboard.writeText(
-        buildClipboardText({
-          title: displayedTitle || article.title,
-          url: shareUrl,
-          sourceName: article.sourceName,
-        }),
-      )
-      showToast('已复制标题与链接')
-    } catch {
-      showToast('复制失败，请手动选中链接')
-    }
-  }, [article.sourceName, article.title, displayedTitle, shareUrl, showToast])
+    showToast(
+      (await copyShareText(shareClipboardText()))
+        ? '已复制站内分享链接'
+        : '复制失败，请手动选中链接',
+    )
+  }, [shareClipboardText, shareUrl, showToast])
 
   const cancelTranslation = useCallback(() => {
     translationAbortRef.current?.abort()
@@ -1470,7 +1515,7 @@ export function ReaderScreen({
           onJumpPage={(index) => paged.setPageIndex(index)}
           onToggleTranslation={() => void toggleTranslation()}
           onToggleLater={() => onToggleLater(article)}
-          onShare={() => void handleShare()}
+          onShare={openShareSheet}
           onBackToList={onClose}
           onOpenSettings={() => {
             setEinkMenuOpen(false)
@@ -1481,9 +1526,9 @@ export function ReaderScreen({
 
       <ReaderMoreMenu
         open={moreMenuOpen}
-        hasOriginUrl={Boolean(shareUrl)}
+        hasOriginUrl={Boolean(originUrl)}
         onClose={() => setMoreMenuOpen(false)}
-        onShare={() => void handleShare()}
+        onShare={openShareSheet}
         onCopyLink={() => void handleCopyLink()}
         onOpenOriginal={() => {
           setMoreMenuOpen(false)
@@ -1493,6 +1538,20 @@ export function ReaderScreen({
           setMoreMenuOpen(false)
           setRetryToken((token) => token + 1)
         }}
+      />
+
+      <ShareArticleSheet
+        open={shareSheetOpen}
+        title={displayedTitle || article.title}
+        sourceName={article.sourceName}
+        summary={article.summary}
+        publishedAt={article.publishedAt}
+        hasRealDate={article.hasRealDate}
+        shareUrl={shareUrl}
+        originHost={originHost}
+        onClose={() => setShareSheetOpen(false)}
+        onShare={() => void handleShare()}
+        onCopy={() => void handleCopyLink()}
       />
 
       {(toast || resumedPosition) && (

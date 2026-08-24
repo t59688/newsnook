@@ -1,5 +1,8 @@
 /**
- * 把当前文章丢给系统分享面板：标题 + 原文链接。
+ * 把当前文章丢给系统分享面板：标题 + 站内短链。
+ *
+ * 主链接固定是 `news.aizeek.com/a/<token>`（见 lib/shareLink），
+ * 对方点开后在「有所闻」网页版站内读全文，而不是被甩到出版社页面。
  *
  * 与 imageActions 的图片分享同一条路：Android 走 @capacitor/share，
  * Web 优先 Web Share API，浏览器不支持时降级为复制链接。全程不经服务端。
@@ -14,6 +17,7 @@ export type ShareArticleResult = 'shared' | 'copied' | 'cancelled' | 'unsupporte
 
 export interface ShareArticleInput {
   title: string
+  /** 站内短链；调用方用 shareLink.buildShareUrl 生成 */
   url?: string
   sourceName?: string
 }
@@ -38,7 +42,7 @@ function isCancellation(error: unknown): boolean {
   return false
 }
 
-async function copyToClipboard(text: string): Promise<boolean> {
+export async function copyShareText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
@@ -66,7 +70,7 @@ export async function shareArticle(input: ShareArticleInput): Promise<ShareArtic
     } catch (error) {
       if (isCancellation(error)) return 'cancelled'
       log.reader.warn('native share failed', error)
-      return (await copyToClipboard(buildClipboardText(input))) ? 'copied' : 'unsupported'
+      return (await copyShareText(buildClipboardText(input))) ? 'copied' : 'unsupported'
     }
   }
 
@@ -80,5 +84,5 @@ export async function shareArticle(input: ShareArticleInput): Promise<ShareArtic
     }
   }
 
-  return (await copyToClipboard(buildClipboardText(input))) ? 'copied' : 'unsupported'
+  return (await copyShareText(buildClipboardText(input))) ? 'copied' : 'unsupported'
 }
