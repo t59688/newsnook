@@ -274,11 +274,12 @@ v2 明文（换行分隔，比 JSON 再省掉键名与引号）
                     buildShareUrl ─→ https://news.aizeek.com/a/<token>
                     （开发态 resolveShareOrigin 用 window.location.origin，原生壳与生产固定 news.aizeek.com）
 
-解码  冷启动 App.tsx
-        → shareTargetFromLocation()  读 location.pathname，只认单段 /a/<token>
+解码  冷启动 App.tsx（lazy initializer，query 如卡片逃生门的 ?app=1 不参与）
+        → shareTokenFromPath()       读 location.pathname，只认单段 /a/<token>；token 另存给「在 App 中打开」引导条
         → decodeShareToken()         按首行分流 v2 / v1，校验位、字段、长度与 http(s) 协议校验，失败返回 null
         → articleFromSharePayload()  本机认识该 sourceId 就用注册表元数据，否则退回「分享来源」
         → 直接进 ReaderScreen（正文仍是站内抽取），token 坏了则弹中文提示并停在首页
+      Android App 唤起（launchUrl / appUrlOpen）由 lib/appDeepLink.shareTokenFromAppUrl 还原 token 后走同一条链
 ```
 
 - **为什么砍字段**：中文在 UTF-8 + base64 下膨胀三倍，v1 把标题、摘要、信源名全编进去，典型条目要 450～550 字符，聊天工具里折行、被截断就打不开。v2 网易稿 86 字符、公众号稿 82 字符（完整 URL 112 / 108）。
