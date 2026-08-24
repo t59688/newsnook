@@ -6,6 +6,12 @@
  *
  * 与 imageActions 的图片分享同一条路：Android 走 @capacitor/share，
  * Web 优先 Web Share API，浏览器不支持时降级为复制链接。全程不经服务端。
+ *
+ * 有链接时**只传 title + url、绝不传 text**：@capacitor/share 的 Android 端
+ * 会把 text 与 url 拼成一段（EXTRA_TEXT = "text url"），微信收到的是一条
+ * 纯文本消息，不会去抓链接的 OG 卡片；EXTRA_TEXT 恰好是一条裸 URL 时
+ * 才被当成链接消息，聊天里才会出现带图的大卡。标题、摘要都由边缘
+ * OG 卡片展示（functions/lib/shareCard.ts），不需要写进消息正文。
  */
 
 import { Capacitor } from '@capacitor/core'
@@ -34,6 +40,20 @@ export function buildClipboardText(input: ShareArticleInput): string {
   return input.url ? `${text}\n${input.url}` : text
 }
 
+/**
+ * 系统分享面板的载荷。有链接时只给 title + url，让 EXTRA_TEXT 是一条
+ * 裸 URL（见文件头注释）；没有链接才退回纯文本分享。
+ */
+export function buildSharePayload(input: ShareArticleInput): {
+  title: string
+  url?: string
+  text?: string
+} {
+  const title = input.title.trim() || '分享文章'
+  if (input.url) return { title, url: input.url }
+  return { title, text: buildShareText(input) }
+}
+
 function isCancellation(error: unknown): boolean {
   if (error instanceof Error) {
     if (error.name === 'AbortError') return true
@@ -55,17 +75,11 @@ export async function copyShareText(text: string): Promise<boolean> {
 }
 
 export async function shareArticle(input: ShareArticleInput): Promise<ShareArticleResult> {
-  const text = buildShareText(input)
-  const title = input.title.trim() || '分享文章'
+  const payload = buildSharePayload(input)
 
   if (Capacitor.isNativePlatform()) {
     try {
-      await Share.share({
-        title,
-        text,
-        ...(input.url ? { url: input.url } : {}),
-        dialogTitle: '分享文章',
-      })
+      await Share.share({ ...payload, dialogTitle: '分享文章' })
       return 'shared'
     } catch (error) {
       if (isCancellation(error)) return 'cancelled'
@@ -76,7 +90,7 @@ export async function shareArticle(input: ShareArticleInput): Promise<ShareArtic
 
   if (typeof navigator.share === 'function') {
     try {
-      await navigator.share({ title, text, ...(input.url ? { url: input.url } : {}) })
+      await navigator.share(payload)
       return 'shared'
     } catch (error) {
       if (isCancellation(error)) return 'cancelled'

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 
-import { buildClipboardText, buildShareText } from '../src/lib/shareArticle'
+import { buildClipboardText, buildSharePayload, buildShareText } from '../src/lib/shareArticle'
 import {
   SHARE_LINK_ORIGIN,
   buildShareUrl,
@@ -46,6 +46,29 @@ assert.ok(
   ),
   'buildShareText 不得把链接拼进正文',
 )
+
+// 4c. 系统分享载荷：有链接时只给 title + url，绝不带 text。
+// @capacitor/share 的 Android 端会把 text 与 url 拼成 EXTRA_TEXT = "text url"，
+// 微信把这种消息当纯文本、不抓 OG，聊天里就出不了链接卡；
+// EXTRA_TEXT 是一条裸 URL 时才按链接消息处理。
+{
+  const payload = buildSharePayload({
+    title: '国产大模型价格战再起',
+    sourceName: '少数派',
+    url: 'https://news.aizeek.com/a/abc123',
+  })
+  assert.equal(payload.title, '国产大模型价格战再起')
+  assert.equal(payload.url, 'https://news.aizeek.com/a/abc123')
+  assert.equal(payload.text, undefined, '有链接时不得携带 text，否则微信当纯文本消息')
+}
+
+// 4d. 没有链接才退回纯文本分享；空标题同样兜底
+{
+  const payload = buildSharePayload({ title: '国产大模型价格战再起', sourceName: '少数派' })
+  assert.equal(payload.url, undefined)
+  assert.equal(payload.text, '国产大模型价格战再起 · 少数派')
+  assert.equal(buildSharePayload({ title: '  ', url: 'https://example.com/a1' }).title, '分享文章')
+}
 
 // 5. 分享出去的主链接是站内短链：剪贴板兜底也不能退回出版社地址
 const article: Article = {
