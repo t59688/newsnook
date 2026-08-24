@@ -13,6 +13,7 @@ import {
   decodeShareToken,
   encodeShareToken,
   isPendingShareTitle,
+  newShareSalt,
   parseShareUrl,
   shareTargetFromLocation,
   shareTokenFromPath,
@@ -165,6 +166,67 @@ assert.equal(
   '非 http(s) 原文地址应拒绝',
 )
 assert.equal(decodeShareToken('A'.repeat(MAX_SHARE_TOKEN_LENGTH + 1)), null, '超长 token 应拒绝')
+
+// 9b. salt：再次分享换新 URL 打破平台预览缓存，接收端解码时忽略
+const saltedToken = encodeShareToken(payload, { salt: 'ab12' })
+assert.notEqual(saltedToken, token, '带 salt 的 token 应是另一条 URL')
+const saltedPlain = Buffer.from(
+  saltedToken.replace(/-/g, '+').replace(/_/g, '/'),
+  'base64',
+).toString('utf8')
+assert.ok(saltedPlain.includes('\n~ab12'), 'salt 以 ~ 行编进载荷')
+const saltedDecoded = decodeShareToken(saltedToken)
+assert.ok(saltedDecoded, '带 salt 的 token 应能解码')
+assert.equal(saltedDecoded.originUrl, article.originUrl, 'salt 不改变打开的文章')
+assert.equal(saltedDecoded.sourceId, article.sourceId)
+assert.equal(saltedDecoded.id, undefined, 'salt 行不得被误认成 id')
+assert.equal(
+  articleFromSharePayload(saltedDecoded).id,
+  article.id,
+  '带 salt 的链接算出的文章 id 与列表侧一致，已读/缓存/稍后读都对得上',
+)
+
+// salt 与 inline id 共存：id 仍还原，salt 仍被忽略
+const saltedWithId = decodeShareToken(
+  encodeShareToken({ ...payload, id: 'sspai:post-12345' }, { salt: 'zz99' }),
+)
+assert.equal(saltedWithId?.id, 'sspai:post-12345', 'salt 不影响 inline id 的还原')
+
+// salt 参与校验位：改动 salt 而不重算校验的 token 应被拒绝
+{
+  const text = Buffer.from(saltedToken.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString(
+    'utf8',
+  )
+  const tampered = Buffer.from(text.replace('~ab12', '~cd34')).toString('base64url')
+  assert.equal(decodeShareToken(tampered), null, '篡改 salt 而不重算校验位应被拒绝')
+}
+
+// 不合规 salt（超长 / 非 base36）直接丢掉，token 与不带 salt 时一致
+assert.equal(encodeShareToken(payload, { salt: 'UPPER!' }), token)
+assert.equal(encodeShareToken(payload, { salt: 'a'.repeat(20) }), token)
+assert.equal(encodeShareToken(payload, {}), token)
+
+// newShareSalt 生成 4 位 base36，随机换 URL 用
+const salts = new Set(Array.from({ length: 8 }, () => newShareSalt()))
+for (const salt of salts) assert.match(salt, /^[0-9a-z]{4}$/)
+assert.ok(salts.size > 1, '多次生成的 salt 不应全部相同')
+
+// buildShareUrl 带 salt：URL 变了，parseShareUrl 仍解出同一篇
+const saltedUrl = buildShareUrl(payload, { origin: SHARE_LINK_ORIGIN, salt: newShareSalt() })
+assert.notEqual(saltedUrl, url, '带 salt 的分享 URL 应不同')
+assert.equal(parseShareUrl(saltedUrl)?.originUrl, article.originUrl)
+
+// 带 salt 的 token 长度仍在一行放得下的范围内
+for (const item of lengthCases) {
+  const size = encodeShareToken(sharePayloadFromArticle(item.article), { salt: 'zzzz' }).length
+  assert.ok(
+    size <= SHARE_TOKEN_TYPICAL_LIMIT,
+    `${item.label} 带 salt 的 token 应不超过 ${SHARE_TOKEN_TYPICAL_LIMIT} 字符，实际 ${size}`,
+  )
+}
+
+// 手搓 v2：'~' 行出现在 id 槽位时按 salt 忽略，不当成 id
+assert.equal(decodeShareToken(v2Token('sspai\nsspai.com/post/1\n~zzzz'))?.id, undefined)
 
 // 10. v2 明文省掉 https:// 前缀，解码时补回；http 链接原样保留
 assert.ok(plain.includes('sspai.com/post/12345'))
