@@ -66,6 +66,10 @@ newsnook/
 | 新增或修复内置源 | `src/sources/registry.ts` → `lib/parseFeed.ts` / `lib/resolveBody.ts`；探测笔记 `docs/news-sources.md` |
 | 分类 / 场景预设 | `sources/categories.ts` · `presets.ts` · `hooks/usePresets.ts` |
 | 列表拉取与缓存 | `hooks/useFeeds.ts` · `lib/http.ts` · `lib/storage.ts` |
+| 配置备份与恢复 | `lib/backup.ts` · `components/BackupPanel.tsx`（入口在 `screens/settings/StorageScreen.tsx`） |
+| 阅读位置记忆 | `lib/readingPosition.ts`（`newsnook:reading-pos`；滚动与墨水屏分页共用一张表） |
+| 分享 / 阅读器溢出菜单 | `lib/shareArticle.ts` · `components/ReaderMoreMenu.tsx` · `components/EinkReaderMenu.tsx` |
+| 本地离线搜索 | `lib/localSearch.ts` · `screens/settings/LocalSearchScreen.tsx`（与 `web-catalog` 的联网站内搜索无关） |
 | 站内正文 | `lib/resolveBody.ts` · `lib/sanitize.ts` · `lib/bodyCache.ts` · `screens/ReaderScreen.tsx` |
 | 翻译 | `features/translation/`（稳定边界：`types.ts`；新增引擎实现 Provider 并注册） |
 | 代理 / 网络 | `features/proxy/` · `lib/http.ts` · `vite.config.ts` · `functions/` |
@@ -161,6 +165,9 @@ npm run test:proxy
 npm run test:custom-sources
 npm run test:eink
 npm run test:logger
+npm run test:config-backup
+npm run test:local-search
+npm run test:share-article
 
 npm run android:run         # 轻量 cloud
 npm run android:run:local   # 完整 local（Bergamot 需先 bergamot:init）

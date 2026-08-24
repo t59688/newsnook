@@ -82,11 +82,11 @@ newsnook/
 | 界面 | 职责 |
 |---|---|
 | 速闻 `FeedScreen` | 分类轨 + 多源混合时间线 + 下拉刷新 + 场景预设切换 |
-| 我的 `MeScreen` | 稍后读、最近阅读、设置入口 |
-| 阅读器 `ReaderScreen`（lazy） | 站内全文 / 视频 / 墨水屏分页 / 翻译 / 跟贴 / 错误重试 |
-| 设置栈 | 自定义订阅、分类与信源、场景预设、排版、外观、翻译、代理、存储、关于 |
+| 我的 `MeScreen` | 稍后读、最近阅读、本地搜索、设置入口 |
+| 阅读器 `ReaderScreen`（lazy） | 站内全文 / 视频 / 墨水屏分页 / 翻译 / 跟贴 / 分享 / 错误重试 |
+| 设置栈 | 自定义订阅、分类与信源、场景预设、排版、外观、翻译、代理、存储与备份、本地搜索、关于 |
 
-设置路由（`SettingsRoute`）包括：`typography`、`appearance`、`translation`、`proxy`、`presets`、`custom-sources`、`categories`、`channels`、`category-sources`、`category-edit`、`later`、`history`、`storage`、`about`、`changelog`、`licenses`。
+设置路由（`SettingsRoute`）包括：`typography`、`appearance`、`translation`、`proxy`、`presets`、`custom-sources`、`categories`、`channels`、`category-sources`、`category-edit`、`later`、`history`、`local-search`、`storage`、`about`、`changelog`、`licenses`。
 
 Android 物理返回键由 `@capacitor/app` 在 `App.tsx` 统一处理：阅读器 → 设置栈 → 单源焦点 → 退出确认。
 
@@ -229,7 +229,55 @@ ReaderScreen / CommentsDrawer
 
 仅部分源实现 `CommentProvider`；不支持时隐藏跟贴入口。
 
-### 8.6 持久化键
+### 8.6 阅读位置、分享与本地搜索
+
+三者都只读写本机数据，不新增任何网络路径：
+
+```text
+阅读位置  ReaderScreen 滚动 / usePagedReader 翻页
+            → lib/readingPosition（内存表 + 800ms 节流落盘）
+            → newsnook:reading-pos（单键整表，按 updatedAt 保留最近 240 篇）
+          重开文章：正文就绪后按「记录时可滚动高度 → 当前可滚动高度」等比折算回落
+          顶部附近（<120px）与读到结尾（≥97%）视为无需记忆，会清掉旧记录
+
+分享      ReaderMoreMenu / EinkReaderMenu
+            → lib/shareArticle
+                 Android：@capacitor/share（标题 + text + url）
+                 Web：navigator.share，不支持时降级 navigator.clipboard
+
+本地搜索  LocalSearchScreen
+            → lib/localSearch.loadCachedListArticles（枚举 cache:v3:* 列表缓存）
+              + 稍后读 + 最近阅读（正文缓存元数据）
+            → buildLocalSearchCorpus（按 id 去重，稍后读 > 最近阅读 > 列表缓存）
+            → searchLocalArticles（空格切片 AND 子串匹配，标题/摘要/信源名加权，默认取前 80 条）
+```
+
+本地搜索与 `web-catalog` 源的 `searchTemplate`（站内联网搜索）是两条独立路径：前者零请求，只覆盖本机已有内容。
+
+### 8.7 配置备份与恢复
+
+`lib/backup.ts` 把本机关键配置导出成一个 JSON 文件，导入时按分区整段覆盖：
+
+```json
+{
+  "format": "newsnook-backup",
+  "version": 1,
+  "exportedAt": 1756000000000,
+  "appVersion": "1.6.4",
+  "data": {
+    "preferences": {}, "presets": {}, "enabledSources": [],
+    "laterItems": [], "readIds": [], "readingPositions": {}
+  }
+}
+```
+
+- **校验与迁移**：`parseBackup` 检查 `format` / `version` / `data` 形状，逐分区做与运行态相同的 normalize；版本高于当前会拒绝导入，低版本走 `migrate` 补齐（当前仅 v1，新增字段一律「缺省即默认」以保持可逆）。
+- **范围**：只搬配置，不搬缓存——正文缓存、列表缓存、预存正文都可再生，稍后读只留元数据（`contentHtml` 被剥掉）。
+- **与 OPML 的分工**：`lib/opml.ts` 只覆盖自建订阅源，可与其它阅读器互通；备份是「有所闻」自有格式，覆盖偏好、预设、启用信源、稍后读、已读与阅读位置。
+- **落地方式**：Android 写入 `Directory.Cache` 后交给系统分享面板；Web 走 Blob 下载。导入两端都用 `<input type="file">`。全程本地文件，无账号、无云同步。
+- 恢复通过 `storage.writeRestoredKeys` 整段写回，完成后由 UI 重载应用让内存态跟上。
+
+### 8.8 持久化键
 
 前缀 `newsnook:`（`lib/storage.ts`）：
 
@@ -241,6 +289,7 @@ ReaderScreen / CommentsDrawer
 | `custom-sources` | 用户自建源 |
 | `later-items` | 稍后读文章 |
 | `read` | 已读 ID 集合 |
+| `reading-pos` | 阅读位置表 `{ [articleId]: { scrollTop, scrollRange?, pageIndex?, updatedAt } }`（仅 localStorage，上限 240 条） |
 | `cache:v3:{sourceId}` | 列表元数据（约 7 天过期 / 12 小时标 stale） |
 | `body:v1:{id}` + `body:index` | 正文缓存（约 3MB 预算，稍后读 pin） |
 | `feed-translation:*` | 列表标题译文缓存 |
@@ -271,6 +320,8 @@ einkMode=true
   → ReaderScreen：usePagedReader 分页阅读
        左区 ~28% 上一页 · 中区 ~44% 打开 EinkReaderMenu · 右区 ~28% 下一页
        音量键翻页（VolumePageTurn 原生插件）
+       页码与内容偏移一起写入 newsnook:reading-pos，跨会话恢复，
+       且与滚动模式共用同一张表（关掉墨水屏仍落在同一段文字）
   → 翻译/跟贴/图片/视频策略与正常模式相同
 einkMode=false → 完全恢复现有上下滚动阅读，零残留
 ```
@@ -286,7 +337,9 @@ einkMode=false → 完全恢复现有上下滚动阅读，零残留
 | `components/AppShell.tsx` | 墨砚壳 + safe-area |
 | `components/TabBar.tsx` | 底栏 |
 | `components/InkImage.tsx` / `InkVideoPlayer.tsx` | 图片渐进加载 / Progressive·HLS·DASH 播放 / 缩放、全屏与系统级横竖屏 |
-| `components/EinkReaderMenu.tsx` | 墨水屏阅读菜单（字号、页码、翻译、收藏） |
+| `components/EinkReaderMenu.tsx` | 墨水屏阅读菜单（字号、页码、翻译、收藏、分享） |
+| `components/ReaderMoreMenu.tsx` | 滚动模式阅读器溢出菜单（分享、复制链接、浏览器核对、重新抽取） |
+| `components/BackupPanel.tsx` | 「离线存储与备份」里的配置导出/导入面板 |
 | `lib/videoGestures.ts` / `lib/deviceMediaControls.ts` | 播放器手势 / 系统亮度、媒体音量与 Activity 方向控制 |
 | `features/mediaSniffer/*` | 媒体观察、候选评分、Manifest 解析、播放会话上下文 |
 | `hooks/useFeeds.ts` | 多源并行拉取与合并 |
@@ -295,6 +348,10 @@ einkMode=false → 完全恢复现有上下滚动阅读，零残留
 | `lib/resolveBody.ts` | 站内全文策略 |
 | `lib/bodyCache.ts` | 正文 LRU + pin |
 | `lib/opml.ts` | OPML 导入导出与 Feed 探测 |
+| `lib/backup.ts` | 配置备份 JSON 的采集、校验、迁移与恢复 |
+| `lib/readingPosition.ts` | 阅读位置表（节流落盘、容量淘汰、按比例还原） |
+| `lib/shareArticle.ts` | 系统分享面板与剪贴板降级 |
+| `lib/localSearch.ts` | 本地语料合并与离线检索 |
 | `lib/sanitize.ts` | DOMPurify |
 | `features/translation/*` | 翻译领域模型与可替换提供商 |
 | `features/proxy/*` | 代理配置、路由与原生隧道 |
@@ -368,6 +425,10 @@ npm run android:apk | android:aab
 | 正文 | `src/lib/resolveBody.ts` |
 | 正文缓存 | `src/lib/bodyCache.ts` |
 | 持久化 | `src/lib/storage.ts` |
+| 配置备份 | `src/lib/backup.ts` · `src/components/BackupPanel.tsx` |
+| 阅读位置 | `src/lib/readingPosition.ts` |
+| 分享 | `src/lib/shareArticle.ts` · `src/components/ReaderMoreMenu.tsx` |
+| 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
 | 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/index.css` |
 | HTTP / 代理 | `src/lib/http.ts` · `src/features/proxy/` |
 | 翻译 | `src/features/translation/` |
