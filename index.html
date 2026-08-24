@@ -14,9 +14,10 @@
     <meta name="referrer" content="no-referrer" />
     <meta name="description" content="有所闻 News Nook，直连原发媒体的沉浸式阅读器。" />
     <!--
-      首页的默认社交卡片。仅当爬虫抓站点根等普通页面时生效；
-      /a/* 分享深链在边缘 worker 就被接走（functions/lib/shareCard.ts），
-      社交爬虫拿到的是文章级卡片，永远不会落到这份站点壳 meta 上。
+      首页的默认社交卡片。仅当抓取站点根等普通页面时生效；
+      /a/* 分享深链要么在边缘 worker 就被接走、要么由 worker 按 token 把这几行
+      改写成文章级标签（functions/lib/shareCard.ts），抓取端永远不会落到这份站点壳 meta 上。
+      改这些标签的属性写法前先看 shareCard.ts 里的 SHELL_META_PATTERN，别让改写漏匹配。
     -->
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="有所闻" />

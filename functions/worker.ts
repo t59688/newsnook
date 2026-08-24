@@ -1,5 +1,5 @@
 import { onRequest } from './api/[[path]].ts'
-import { shareCardResponse, shareImageResponse } from './lib/shareCard.ts'
+import { injectShareMeta, shareCardResponse, shareImageResponse } from './lib/shareCard.ts'
 
 export interface Env {
   ASSETS?: {
@@ -41,9 +41,10 @@ export default {
     const card = await shareCardResponse(request, url)
     if (card) return card
 
-    // 4. 其余静态资源和前端 SPA 页面由 dist 静态资产服务
+    // 4. 其余静态资源和前端 SPA 页面由 dist 静态资产服务；
+    //    分享深链落到 SPA 时（含爬虫被误判成真人）再按 token 改写文章级 OG 标签
     if (env.ASSETS) {
-      return env.ASSETS.fetch(request)
+      return injectShareMeta(request, url, await env.ASSETS.fetch(request))
     }
 
     return new Response('Asset binding ASSETS not found', { status: 500 })

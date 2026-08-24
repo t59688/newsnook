@@ -16,7 +16,8 @@
  * 第 1 行  "2.<校验位>"：版本号 + 其余内容的短哈希
  * 第 2 行  sourceId
  * 第 3 行  原文地址，https:// 前缀省略不写
- * 第 4 行  可选 id；以 ':' 开头表示补回 `<sourceId>:` 前缀
+ * 第 4 行  可选 id；以 ':' 开头表示补回 `<sourceId>:` 前缀（有标题时即使没有 id 也占一行空串）
+ * 第 5 行  可选标题；以 '!' 开头，见下
  * 末   行  可选 salt；以 '~' 开头，解码时忽略
  * ```
  *
@@ -29,11 +30,20 @@
  * salt 不参与打开文章——接收端解码时直接跳过 '~' 行，文章 id 仍由
  * sourceId + 原文地址算出，已读、缓存、稍后读都对得上。
  *
- * 标题打开后由正文抽取补上（在此之前显示占位），信源名从 registry 查。
- * 绝大多数条目的 id 就是 `<sourceId>:<原文地址哈希>`（见 lib/articleId），
- * 接收端能自己算出来，第 4 行因此通常不出现。
+ * 标题行存在的理由：聊天里的链接预览卡由边缘 worker 现拼（functions/lib/shareCard.ts），
+ * 卡片标题原本只能靠边缘现抓一次原文。抓取被反爬拦住、或抓取端被误判成真人时，
+ * 卡片就只剩「一篇文章」甚至站点通用文案，对方看不出分享的是哪一篇。
+ * 分享时 App 手里本来就有真标题，编进 token 后边缘不依赖上游也能拼出正确的 og:title。
+ * 代价是链接变长（中文一字三字节），因此只在标题不超过
+ * `MAX_TOKEN_TITLE_LENGTH` 时才写入，超长的宁可留给边缘抓取。
  *
- * v1 的 JSON 载荷仍然可解码，旧链接不会失效。
+ * 标题缺席时（旧链接、超长标题）打开后仍由正文抽取补上（在此之前显示占位），
+ * 信源名从 registry 查。绝大多数条目的 id 就是 `<sourceId>:<原文地址哈希>`
+ * （见 lib/articleId），接收端能自己算出来，第 4 行因此通常是空串或不出现。
+ *
+ * v1 的 JSON 载荷仍然可解码，旧链接不会失效；反过来，带标题的新 token 在旧版
+ * 客户端里也只会丢掉标题（标题行前的空 id 行让旧解码器的位置槽仍然对齐），
+ * 打开的仍是同一篇。
  */
 
 import { feedArticleId, hashId } from './articleId'
@@ -50,8 +60,11 @@ const LEGACY_TOKEN_VERSION = 1
 
 /** 超出一律视为被篡改或被拼接，直接拒绝；仍按 v1 的宽度留着，旧链接才打得开 */
 export const MAX_SHARE_TOKEN_LENGTH = 2048
-/** 常见文章（网易 / 公众号 / RSS）编出来的 v2 token 应落在这个长度内 */
-export const SHARE_TOKEN_TYPICAL_LIMIT = 120
+/**
+ * 常见文章（网易 / 公众号 / RSS）编出来的 v2 token 应落在这个长度内。
+ * 带上中文标题后比不带标题时长了一截，但仍只有 v1 的一半左右。
+ */
+export const SHARE_TOKEN_TYPICAL_LIMIT = 240
 
 export const MAX_ID_LENGTH = 256
 
@@ -65,12 +78,20 @@ const MAX_INLINE_ID_LENGTH = 40
 const CHECKSUM_LENGTH = 4
 /** salt 行前缀：以它开头的行在解码时整行跳过 */
 const SALT_LINE_PREFIX = '~'
+/** 标题行前缀：与 salt 行一样按标记解析，不占位置槽 */
+const TITLE_LINE_PREFIX = '!'
+/**
+ * 写进 token 的标题上限。中文一字三字节，base64 再膨胀 1/3，
+ * 超过这个长度的标题写进去会把链接撑得太长，宁可交给边缘现抓原文。
+ */
+export const MAX_TOKEN_TITLE_LENGTH = 50
 /** salt 只是换 URL 用的随机数，太长白占字符 */
 const MAX_SALT_LENGTH = 8
 
 /**
  * 分享 token 里可能出现的字段。
- * v2 只保证 `originUrl` 与 `sourceId`；其余都是 v1 链接的遗留信息。
+ * v2 只保证 `originUrl` 与 `sourceId`；`sourceName` / `summary` / `publishedAt`
+ * 是 v1 链接的遗留信息。
  */
 export interface SharePayload {
   /** 出版社地址：接收方抽取正文与「浏览器核对原文」都用它 */
@@ -78,6 +99,7 @@ export interface SharePayload {
   sourceId: string
   /** 无法由 sourceId + 原文地址推出时才带 */
   id?: string
+  /** 不超过 MAX_TOKEN_TITLE_LENGTH 时才编进 v2 链接，供边缘拼卡片标题 */
   title?: string
   sourceName?: string
   summary?: string
@@ -156,9 +178,19 @@ function compactArticleId(payload: SharePayload): string | null {
   if (id === feedArticleId(payload.sourceId, payload.originUrl)) return null
   const prefix = `${payload.sourceId}:`
   const short = id.startsWith(prefix) ? `:${id.slice(prefix.length)}` : id
-  // '~' 开头的行是 salt 的记号，撞上的 id 宁可丢掉让接收端自己算
-  if (short.startsWith(SALT_LINE_PREFIX)) return null
+  // '~' / '!' 开头的行是 salt 与标题的记号，撞上的 id 宁可丢掉让接收端自己算
+  if (short.startsWith(SALT_LINE_PREFIX) || short.startsWith(TITLE_LINE_PREFIX)) return null
   return short.length > MAX_INLINE_ID_LENGTH ? null : short
+}
+
+/**
+ * 能写进 token 的标题：折掉换行与多余空白（换行会打乱行格式），
+ * 超长则整个丢掉——截断后的标题会被接收端当成真标题存进缓存。
+ */
+function compactTitle(title: string | undefined): string | null {
+  const text = title?.replace(/\s+/g, ' ').trim()
+  if (!text || text.length > MAX_TOKEN_TITLE_LENGTH) return null
+  return text
 }
 
 function checksum(body: string): string {
@@ -182,7 +214,12 @@ function sanitizeSalt(salt: string | undefined): string | null {
 export function encodeShareToken(payload: SharePayload, options?: { salt?: string }): string {
   const lines = [payload.sourceId, compactOriginUrl(payload.originUrl)]
   const inlineId = compactArticleId(payload)
+  const title = compactTitle(payload.title)
+  // 标题行必须排在 id 槽之后：没有 inline id 时补一行空串，旧版客户端按位置
+  // 解码时才不会把标题当成 id（id 错了会让已读 / 缓存 / 稍后读对不上）
   if (inlineId) lines.push(inlineId)
+  else if (title) lines.push('')
+  if (title) lines.push(`${TITLE_LINE_PREFIX}${title}`)
   const salt = sanitizeSalt(options?.salt)
   if (salt) lines.push(`${SALT_LINE_PREFIX}${salt}`)
   const body = lines.join('\n')
@@ -197,8 +234,19 @@ function decodeV2(text: string): SharePayload | null {
   const body = text.slice(headerEnd + 1)
   if (text.slice(1, headerEnd) !== `.${checksum(body)}`) return null
 
-  // salt 行只为换 URL 而存在，校验完整性之后就与打开文章无关
-  const lines = body.split('\n').filter((line) => !line.startsWith(SALT_LINE_PREFIX))
+  // 标记行（salt / 标题）先摘出去，剩下的才按位置解析：
+  // salt 只为换 URL 而存在，校验完整性之后就与打开文章无关
+  const lines: string[] = []
+  let title: string | null = null
+  for (const line of body.split('\n')) {
+    if (line.startsWith(SALT_LINE_PREFIX)) continue
+    if (line.startsWith(TITLE_LINE_PREFIX)) {
+      title ??= nonEmptyString(line.slice(TITLE_LINE_PREFIX.length), MAX_TITLE_LENGTH)
+      continue
+    }
+    lines.push(line)
+  }
+
   const sourceId = nonEmptyString(lines[0], MAX_ID_LENGTH)
   const originUrl = safeHttpUrl(expandOriginUrl((lines[1] ?? '').trim()))
   if (!sourceId || !originUrl) return null
@@ -209,6 +257,7 @@ function decodeV2(text: string): SharePayload | null {
     originUrl,
     sourceId,
     ...(id && id.length <= MAX_ID_LENGTH ? { id } : {}),
+    ...(title ? { title } : {}),
   }
 }
 
