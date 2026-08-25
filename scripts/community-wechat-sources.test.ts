@@ -405,9 +405,9 @@ assert.equal(isWechatArticleUrl('https://www.uisdc.com/seedance-2-5-5'), false)
 // 文章页骨架与线上一致：og:title、activity-name 标题、js_content 带 visibility:hidden，
 // 图片全部 data-src 懒加载（mmbiz CDN），文末夹 mp-style-type 排版标记
 const wechatParagraphs = Array.from(
-  { length: 12 },
+  { length: 20 },
   (_, i) =>
-    `<p style="line-height: 1.75em;">第 ${i + 1} 段：直连 mp.weixin.qq.com 文章页抽出的正文内容，用于验证公众号解析器无需镜像也能拿到站内全文。</p>`,
+    `<p style="line-height: 1.75em;">第 ${i + 1} 段：直连 mp.weixin.qq.com 文章页抽出的正文内容，用于验证公众号解析器在镜像 feed 缺全文或合集条目没有正文时，仍然可以按站内全文路径完成阅读。</p>`,
 ).join('')
 const wechatPageFixture = `<!DOCTYPE html><html><head>
 <meta property="og:title" content="直连正文抽取样张" />
