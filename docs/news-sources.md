@@ -166,14 +166,19 @@ WebView 观察页面的网络、DOM、MSE 与 DRM 信号；接口或观察失败
   `normalizeWechatAlbumUrl` 归一成 JSON 列表入口（`addCustomSource` 自动定 kind）。
   合集只含作者手工归档的文章，不等于全量文章流。
 
-镜像 feed 结构（2026-08-25 实测）：标准 RSS 2.0，`content:encoded` 自带**完整正文**，
-图片经镜像 `img-proxy` 中转（绕开 mmbiz.qpic.cn Referer 防盗链）。feed 自带全文时
-**正文主路径 = feed 全文**（`isSubstantialHtml` 通过，站内直接渲染）；已知噪声由
+镜像 feed 结构（2026-08-25 实测）：标准 RSS 2.0，`content:encoded` 自带**完整正文**
+（占 feed 体积 98–99%，`<description>` 近乎为空），图片经镜像 `img-proxy` 中转
+（绕开 mmbiz.qpic.cn Referer 防盗链）。**信息流与正文分离**（2026-08-25 起）：
+`parseWechatMirrorFeed` 只用全文派生摘要（220 字）与封面（首图），随后丢弃
+`contentHtml`，列表条目只含元数据；正文一律走下方直连路径按需获取。噪声由
 `cleanWechatArticleHtml` 剥离：头部「原创 作者 日期 地点」meta 行、尾部
 「跳转微信打开」link-proxy 链接、隐藏的 `<mp-style-type>`（微信编辑器产物，
-原文页里同样存在）。
+原文页里同样存在）。传输层实测：实例支持 gzip（2.9MB → 216KB wire）与
+`ETag`/`If-None-Match` → 304（条件请求接入为 follow-up），不支持 Range；
+名称检索可用实例目录 `/list/all`（77KB，名称 → feed hash 全量锚点）。完整比选
+过程见 `docs/superpowers/specs/2026-08-25-wechat-account-stream-research.md`。
 
-直连正文路径（feed 缺全文 / 合集条目 / 旧文缓存被逐出时）：`resolveBody` 抓
+直连正文路径（镜像列表条目 / 合集条目 / 旧文缓存被逐出时）：`resolveBody` 抓
 `mp.weixin.qq.com` 文章页，由 `extractWechatBodyHtml` 取 `#js_content`
 （.rich_media_content）——容器带 `visibility: hidden` 内联样式、图片全部 `data-src`
 懒加载（由 `normalizeContentImages` 统一提升并加 `referrerpolicy="no-referrer"`），
@@ -233,7 +238,9 @@ WebView 观察页面的网络、DOM、MSE 与 DRM 信号；接口或观察失败
 | Datawhale（镜像可用） | 教程/训练营向，深度解读密度低 |
 | 数英 digitaling.com | `/feed` 返回 HTML（无 RSS）；内容偏营销创意案例，AI 深度评测密度低，需专用解析性价比不足 |
 | 站酷 zcool.com.cn | 列表页为阿里云 WAF JS 挑战壳（无 JS 客户端拿不到内容），且以作品图集为主非图文长文 |
-| sogou 微信搜索 / feeddd / RSSHub 微信路由 | 搜狗验证码墙；feeddd 项目已停更；RSSHub 微信路由长期不可用——均不满足「稳定公开聚合入口」 |
+| sogou 微信搜索 / feeddd / RSSHub 微信路由 | 搜狗验证码墙（2026-08-25 复测：数据中心 IP 拿到的公众号搜索结果页为空壳）；feeddd 项目已停更；RSSHub 公共实例对通用抓取返回 403、微信路由长期不可用——均不满足「稳定公开聚合入口」 |
+| profile_ext / homepage（微信官方页） | `mp/profile_ext?action=home` 无会话返回「请在微信客户端打开」；`mp/homepage?f=json` 仅对开通页面模板的号有效（抽样 `ret:5`）——与无账号定位冲突 |
+| freewechat.com（自由微信存档） | `profile/<biz>` 可按 biz 直出存档页，但 `?rss` 同为 content:encoded 全文（抽样 3MB）、站内搜索 403；可达性与合规敏感度不适合内置 |
 
 验证方式：新增源均用 `parseSourcePayload`（新 kind 解析器）对线上响应做端到端冒烟
 （uisdc 两页 40+40 条、重叠 1 条、日期/封面齐全；4 个镜像与 woshipm 全部条目带真实
