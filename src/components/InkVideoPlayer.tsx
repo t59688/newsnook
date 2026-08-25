@@ -1,30 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { MutableRefObject, PointerEvent as ReactPointerEvent, ReactNode } from 'react'
+import type { MutableRefObject, PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import type Hls from 'hls.js'
 import {
   AlertCircle,
-  ChevronsLeft,
-  ChevronsRight,
   LoaderCircle,
-  ListVideo,
   Maximize2,
   Minimize2,
   Pause,
   Play,
   RotateCw,
-  Scan,
-  Sun,
   LockOpen,
   SkipBack,
   SkipForward,
   Cast,
   ChevronLeft,
-  RefreshCw,
-  Tv2,
-  X,
-  VolumeX,
-  Volume2,
 } from 'lucide-react'
 
 import { subscribeBatteryStatus, type BatteryStatus } from '../lib/batteryStatus'
@@ -44,20 +34,6 @@ import {
   type LevelControl,
 } from '../lib/deviceMediaControls'
 import {
-  discoverDlnaDevices,
-  isDlnaCastAvailable,
-  startDlnaCast,
-  type DlnaCastDevice,
-  type DlnaCastSession,
-  type DlnaCastStatus,
-} from '../lib/dlnaCast'
-import {
-  controlActiveDlnaCast,
-  setActiveDlnaCast,
-  stopActiveDlnaCast,
-  useDlnaCastSession,
-} from '../features/cast/session'
-import {
   clampLevel,
   clampSeekTarget,
   clampVideoPan,
@@ -69,8 +45,6 @@ import {
   seekOffsetSeconds,
   videoPointForRotation,
   videoSurfaceForRotation,
-  type VideoGesture,
-  type VideoRotation,
 } from '../lib/videoGestures'
 import { Capacitor } from '@capacitor/core'
 import {
@@ -78,12 +52,40 @@ import {
   prepareNativeMediaPlayback,
 } from '../features/mediaSniffer/native'
 import type { MediaResourceDescriptor } from '../features/mediaSniffer/types'
+import {
+  applyPlaybackRate,
+  BOOST_RATE,
+  DEFAULT_VIDEO_VIEW,
+  defaultRotationMode,
+  DOUBLE_TAP_MS,
+  formatTime,
+  hasPlaybackRate,
+  HUD_LINGER_MS,
+  IDLE_GESTURE,
+  LONG_PRESS_MS,
+  nextRotationMode,
+  PLAYBACK_RATES,
+  playableFormatForUrl,
+  ROTATION_MODE_LABEL,
+  TAP_SLOP_PX,
+  type GestureHud,
+  type GestureState,
+  type PinchState,
+  type PlayableFormat,
+  type RotationMode,
+  type VideoViewState,
+} from './inkVideoPlayer/playback'
+import { CastOverlay } from './inkVideoPlayer/CastOverlay'
+import { GestureHudOverlay } from './inkVideoPlayer/GestureHudOverlay'
+import { MediaResourceOverlay } from './inkVideoPlayer/MediaResourceOverlay'
+import { PlayerBatteryIcon } from './inkVideoPlayer/PlayerBatteryIcon'
+import { useCastControls } from './inkVideoPlayer/useCastControls'
 
 interface Props {
   src: string
   poster?: string
   title?: string
-  format?: 'progressive' | 'hls' | 'dash'
+  format?: PlayableFormat
   sourcePage?: string
   requestHeaders?: Record<string, string>
   extraUrls?: string[]
@@ -100,131 +102,6 @@ interface Props {
 export interface InkVideoPlayerFullscreenHandle {
   immersive: boolean
   exit: () => void
-}
-
-/** 全屏旋转模式：锁定横屏 / 跟随设备 / 锁定竖屏 */
-type RotationMode = 'landscape' | 'sensor' | 'portrait'
-
-const ROTATION_MODE_LABEL: Record<RotationMode, string> = {
-  landscape: '锁定横屏',
-  sensor: '跟随设备',
-  portrait: '锁定竖屏',
-}
-
-/** 旋转按钮循环：锁定横屏 → 跟随设备 → 锁定竖屏 → 锁定横屏 */
-function nextRotationMode(mode: RotationMode | null): RotationMode {
-  switch (mode) {
-    case 'landscape':
-      return 'sensor'
-    case 'sensor':
-      return 'portrait'
-    default:
-      return 'landscape'
-  }
-}
-
-/** 进入全屏的默认旋转模式：横屏视频锁横屏，竖屏视频跟随设备，未知尺寸不动方向 */
-function defaultRotationMode(width: number, height: number): RotationMode | null {
-  if (width > height) return 'landscape'
-  if (height > width) return 'sensor'
-  return null
-}
-
-function playableFormatForUrl(url: string, format?: Props['format']): NonNullable<Props['format']> {
-  if (format) return format
-  if (/\.m3u8(?:$|[?#])/i.test(url)) return 'hls'
-  if (/\.mpd(?:$|[?#])/i.test(url)) return 'dash'
-  return 'progressive'
-}
-
-const PLAYBACK_RATES = [0.75, 1, 1.25, 1.5, 2] as const
-/** 长按临时倍速；松手回落到用户选定倍速 */
-const BOOST_RATE = 2.5
-const LONG_PRESS_MS = 380
-const DOUBLE_TAP_MS = 320
-const TAP_SLOP_PX = 12
-const RATE_EPSILON = 0.01
-/** 手指离开后 HUD 再停留一瞬，便于确认调到了哪一档。 */
-const HUD_LINGER_MS = 460
-
-type GestureHud =
-  | { kind: 'seek'; target: number; offset: number }
-  | { kind: 'volume' | 'brightness'; value: number }
-  | { kind: 'zoom'; scale: number; rotation: VideoRotation }
-  | { kind: 'mode'; label: string }
-
-interface VideoViewState {
-  scale: number
-  x: number
-  y: number
-  rotation: VideoRotation
-}
-
-interface PinchState {
-  distance: number
-  midpoint: { x: number; y: number }
-  view: VideoViewState
-}
-
-const DEFAULT_VIDEO_VIEW: VideoViewState = {
-  scale: 1,
-  x: 0,
-  y: 0,
-  rotation: 0,
-}
-
-interface GestureState {
-  /** 视口坐标，用于计算位移 */
-  x: number
-  y: number
-  /** 播放器内坐标，用于判定左右半屏与拇指区 */
-  localX: number
-  at: number
-  moved: boolean
-  boosted: boolean
-  /** 起点是否落在全屏拇指手势区 */
-  thumb: boolean
-  axis: VideoGesture
-  surface: { width: number; height: number }
-  fromTime: number
-  fromLevel: number
-  fromView: VideoViewState
-}
-
-const IDLE_GESTURE: GestureState = {
-  x: 0,
-  y: 0,
-  localX: 0,
-  at: 0,
-  moved: false,
-  boosted: false,
-  thumb: false,
-  axis: 'none',
-  surface: { width: 0, height: 0 },
-  fromTime: 0,
-  fromLevel: 1,
-  fromView: DEFAULT_VIDEO_VIEW,
-}
-
-function hasPlaybackRate(video: HTMLVideoElement, expected: number): boolean {
-  return Math.abs(video.playbackRate - expected) < RATE_EPSILON
-}
-
-function applyPlaybackRate(video: HTMLVideoElement, next: number): boolean {
-  try {
-    video.playbackRate = next
-  } catch {
-    return false
-  }
-  return hasPlaybackRate(video, next)
-}
-
-function formatTime(seconds: number): string {
-  if (!Number.isFinite(seconds) || seconds < 0) return '0:00'
-  const total = Math.floor(seconds)
-  const m = Math.floor(total / 60)
-  const s = total % 60
-  return `${m}:${s.toString().padStart(2, '0')}`
 }
 
 /**
@@ -335,7 +212,6 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
   const toggleFullscreenRef = useRef<() => void>(() => {})
   const lastTapRef = useRef(0)
   const showChromeRef = useRef(true)
-  const castSessionRef = useRef<DlnaCastSession | null>(null)
   const toastTimerRef = useRef<number | null>(null)
   const hudTimerRef = useRef<number | null>(null)
   /** 音量 / 亮度手势进行中；松手后迟到的异步写入不能把淡出定时器冲掉。 */
@@ -375,16 +251,6 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
   const [rate, setRate] = useState(1)
   const [rateMenuOpen, setRateMenuOpen] = useState(false)
   const [resourceMenuOpen, setResourceMenuOpen] = useState(false)
-  const [castOpen, setCastOpen] = useState(false)
-  const [castDevices, setCastDevices] = useState<DlnaCastDevice[]>([])
-  const [castSearching, setCastSearching] = useState(false)
-  const [castConnectingId, setCastConnectingId] = useState<string | null>(null)
-  const [castError, setCastError] = useState<string | null>(null)
-  const {
-    session: castSession,
-    status: castStatus,
-    error: castSessionError,
-  } = useDlnaCastSession()
   const [playerToast, setPlayerToast] = useState<string | null>(null)
   const [boosting, setBoosting] = useState(false)
   const [gestureHud, setGestureHud] = useState<GestureHud | null>(null)
@@ -445,109 +311,35 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
     revealControls()
   }, [revealControls])
 
-  const refreshCastDevices = useCallback(async () => {
-    if (!isDlnaCastAvailable()) {
-      setCastError('投屏仅支持 Android 真机')
-      return
-    }
-    setCastSearching(true)
-    setCastError(null)
-    try {
-      const devices = await discoverDlnaDevices()
-      setCastDevices(devices)
-    } catch (error) {
-      setCastDevices([])
-      setCastError(error instanceof Error ? error.message : '搜索投屏设备失败')
-    } finally {
-      setCastSearching(false)
-    }
-  }, [])
-
-  const openCastPicker = useCallback(() => {
-    if (!isDlnaCastAvailable()) {
-      showPlayerToast('投屏仅支持 Android 真机')
-      return
-    }
-    setCastError(null)
-    setCastOpen(true)
-    if (!castSessionRef.current) void refreshCastDevices()
-  }, [refreshCastDevices, showPlayerToast])
-
-  const connectCastDevice = useCallback(async (device: DlnaCastDevice) => {
-    const castFormat = playableFormatForUrl(src, format)
-    if (castFormat === 'dash') {
-      setCastError('DASH 视频源暂不支持投屏')
-      return
-    }
-
-    setCastConnectingId(device.id)
-    setCastError(null)
-    try {
-      // Refresh the native playback context before the TV starts requesting the
-      // temporary relay URL. This preserves Referer/Cookie/proxy information
-      // captured for custom CMS sources.
-      await prepareNativeMediaPlayback({
-        url: src,
-        sourcePage,
-        format: castFormat,
-        headers: requestHeaders,
-        extraUrls,
-        forceBridge: true,
-      })
-
-      const video = videoRef.current
-      const positionSeconds = video && Number.isFinite(video.currentTime)
-        ? video.currentTime
-        : current
-      const session = await startDlnaCast({
-        deviceId: device.id,
-        url: src,
-        title: title || '文章视频',
-        format: castFormat,
-        positionSeconds,
-      })
-
-      const initialStatus: DlnaCastStatus = {
-        state: 'playing',
-        current: positionSeconds,
-        duration,
-        deviceName: session.deviceName,
-      }
-      castSessionRef.current = session
-      setActiveDlnaCast(session, initialStatus)
-      video?.pause()
-      if (immersive) toggleFullscreenRef.current()
-    } catch (error) {
-      setCastError(error instanceof Error ? error.message : '无法开始投屏')
-    } finally {
-      setCastConnectingId(null)
-    }
-  }, [current, duration, extraUrls, format, immersive, requestHeaders, sourcePage, src, title])
-
-  const sendCastControl = useCallback(async (
-    action: 'play' | 'pause' | 'seek' | 'volume',
-    value?: number,
-  ) => {
-    if (!castSessionRef.current) return
-    setCastError(null)
-    await controlActiveDlnaCast(action, value)
-  }, [])
-
-  const endCast = useCallback(async () => {
-    castSessionRef.current = null
-    setCastError(null)
-    setCastOpen(false)
-    try {
-      await stopActiveDlnaCast()
-    } catch {
-      // The renderer may already be offline; native cleanup still runs when possible.
-    }
-    showPlayerToast('已结束投屏')
-  }, [showPlayerToast])
-
-  useEffect(() => {
-    castSessionRef.current = castSession
-  }, [castSession])
+  const {
+    castOpen,
+    setCastOpen,
+    castDevices,
+    castSearching,
+    castConnectingId,
+    castError,
+    castSession,
+    castStatus,
+    castSessionError,
+    openCastPicker,
+    refreshCastDevices,
+    connectCastDevice,
+    sendCastControl,
+    endCast,
+  } = useCastControls({
+    src,
+    format,
+    title,
+    sourcePage,
+    requestHeaders,
+    extraUrls,
+    videoRef,
+    current,
+    duration,
+    immersive,
+    exitFullscreen: () => toggleFullscreenRef.current(),
+    showPlayerToast,
+  })
 
   const syncBoostIndicator = useCallback((video: HTMLVideoElement) => {
     setBoosting(
@@ -707,7 +499,7 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
           if (cancelled) return
           loadProgressiveSource()
         }).catch(() => {
-          if (!cancelled) failPlayback('瑙嗛婧愭殏鏃舵棤娉曟挱鏀?')
+          if (!cancelled) failPlayback('视频源暂时无法播放')
         })
         return
       }
@@ -1008,9 +800,6 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
       if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
       activePointersRef.current.clear()
       pinchRef.current = null
-      // Leaving the player only detaches this UI. Television playback belongs to
-      // the renderer (direct) or the foreground relay service (compatibility mode).
-      castSessionRef.current = null
       // 卸载时若仍在全屏，窗口亮度必须归还系统，否则整个应用会一直停在调暗状态
       brightnessControl.release()
       volumeControl.release()
@@ -1960,545 +1749,3 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
   )
 }
 
-function MediaResourceOverlay({
-  resources,
-  open,
-  immersive,
-  onToggle,
-  onSelect,
-}: {
-  resources: MediaResourceDescriptor[]
-  open: boolean
-  immersive: boolean
-  onToggle: () => void
-  onSelect: (resource: MediaResourceDescriptor) => void
-}) {
-  useEffect(() => {
-    if (!open) return
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') onToggle()
-    }
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    window.addEventListener('keydown', onKey)
-    return () => {
-      document.body.style.overflow = previousOverflow
-      window.removeEventListener('keydown', onKey)
-    }
-  }, [open, onToggle])
-
-  if (!resources.length || immersive) return null
-
-  return (
-    <>
-      {!open && (
-        <button
-          type="button"
-          data-no-page-tap=""
-          aria-label={`选择视频资源，共 ${resources.length} 个`}
-          aria-expanded={false}
-          title={`视频资源（${resources.length}）`}
-          onClick={onToggle}
-          className="fixed z-[100] flex items-center gap-2 rounded-full border border-haze bg-ink/95 px-3.5 py-2 text-paper shadow-xl shadow-black/35 backdrop-blur-md transition-transform hover:scale-105 active:scale-95"
-          style={{
-            bottom: 'calc(var(--sab, 0px) + 76px)',
-            right: 'calc(var(--sar, 0px) + 1rem)',
-          }}
-        >
-          <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-cinnabar/15 text-cinnabar">
-            <ListVideo size={13} strokeWidth={2} />
-          </span>
-          <span className="font-mono text-[12px] font-medium tracking-[0.03em]">嗅探 {resources.length}</span>
-        </button>
-      )}
-
-      {open && (
-        <div
-          className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm md:items-center md:p-4"
-          role="presentation"
-          data-no-page-tap=""
-          onClick={onToggle}
-        >
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-label={`已嗅探到 ${resources.length} 个资源`}
-            className="flex max-h-[min(78vh,520px)] w-full max-w-sm flex-col overflow-hidden rounded-t-3xl border border-haze bg-ink-raised shadow-2xl md:rounded-2xl"
-            style={{ paddingBottom: 'calc(var(--sab, 0px) + 12px)' }}
-            onClick={(event) => event.stopPropagation()}
-            onPointerDown={(event) => event.stopPropagation()}
-          >
-            <div className="flex shrink-0 justify-center pt-2.5 pb-1 md:hidden" aria-hidden>
-              <span className="h-1 w-10 rounded-full bg-haze" />
-            </div>
-            <h3 className="shrink-0 border-b border-haze/50 px-5 pt-3 pb-3 font-display text-[17px] font-medium text-paper">
-              已嗅探到 {resources.length} 个资源
-            </h3>
-            <ul className="scroll-hidden min-h-0 flex-1 divide-y divide-haze overflow-y-auto overscroll-contain">
-              {resources.map((resource, index) => {
-                const label = resource.type === 'hls' ? 'HLS' : resource.type === 'dash' ? 'DASH' : 'MP4'
-                const detail = resource.videoTracks.find((track) => track.width || track.height)
-                return (
-                  <li key={`${resource.id || resource.url}:${index}`}>
-                    <button
-                      type="button"
-                      onClick={() => onSelect(resource)}
-                      className="flex w-full items-center gap-2.5 px-5 py-3.5 text-left text-paper transition-colors hover:bg-paper/5 active:bg-paper/10"
-                    >
-                      <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-paper/10 font-mono text-[10px]">
-                        {index + 1}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5 text-[13px]">
-                          <span className="font-medium">{label}</span>
-                          {resource.isAd && (
-                            <span className="rounded bg-cinnabar/20 px-1 text-[9px] text-cinnabar-soft">广告</span>
-                          )}
-                          {detail && (
-                            <span className="text-paper/50">
-                              {detail.width || '?'}×{detail.height || '?'}
-                            </span>
-                          )}
-                        </span>
-                        <span className="mt-0.5 block truncate text-[11px] text-paper/50">{resource.url}</span>
-                      </span>
-                    </button>
-                  </li>
-                )
-              })}
-            </ul>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
-function CastOverlay({
-  open,
-  devices,
-  searching,
-  connectingId,
-  error,
-  session,
-  status,
-  fallbackDuration,
-  onClose,
-  onRefresh,
-  onConnect,
-  onControl,
-  onStop,
-}: {
-  open: boolean
-  devices: DlnaCastDevice[]
-  searching: boolean
-  connectingId: string | null
-  error: string | null
-  session: DlnaCastSession | null
-  status: DlnaCastStatus | null
-  fallbackDuration: number
-  onClose: () => void
-  onRefresh: () => void
-  onConnect: (device: DlnaCastDevice) => void
-  onControl: (action: 'play' | 'pause' | 'seek' | 'volume', value?: number) => void
-  onStop: () => void
-}) {
-  const [seekDraft, setSeekDraft] = useState<number | null>(null)
-  const [volumeDraft, setVolumeDraft] = useState<number | null>(null)
-
-  useEffect(() => {
-    if (!open) {
-      setSeekDraft(null)
-      setVolumeDraft(null)
-    }
-  }, [open])
-
-  if (!open) return null
-
-  const total = Math.max(0, status?.duration || fallbackDuration || 0)
-  const remoteCurrent = Math.max(0, Math.min(total || Number.MAX_SAFE_INTEGER, status?.current || 0))
-  const seekValue = seekDraft ?? remoteCurrent
-  const volumeValue = volumeDraft ?? status?.volume ?? 0
-  const stateLabel =
-    status?.state === 'playing'
-      ? '播放中'
-      : status?.state === 'paused'
-        ? '已暂停'
-        : status?.state === 'transitioning'
-          ? '加载中'
-          : status?.state === 'stopped'
-            ? '已停止'
-            : '已连接'
-
-  const commitSeek = (value: number) => {
-    setSeekDraft(null)
-    onControl('seek', value)
-  }
-  const commitVolume = (value: number) => {
-    setVolumeDraft(null)
-    onControl('volume', value)
-  }
-
-  return (
-    <div
-      data-theme="dark"
-      data-no-page-tap=""
-      className="fixed inset-0 z-[140] flex items-end justify-center bg-black/65 backdrop-blur-sm md:items-center md:p-4"
-      role="presentation"
-      onClick={onClose}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-label={session ? '投屏遥控器' : '选择投屏设备'}
-        className="w-full max-w-md overflow-hidden rounded-t-3xl border border-haze bg-ink-raised text-paper shadow-2xl md:rounded-3xl"
-        style={{ paddingBottom: 'calc(var(--sab, 0px) + 12px)' }}
-        onClick={(event) => event.stopPropagation()}
-        onPointerDown={(event) => event.stopPropagation()}
-      >
-        <div className="flex items-center gap-3 border-b border-haze/60 px-4 py-3">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-paper/10 text-paper">
-            <Cast size={18} strokeWidth={2} />
-          </span>
-          <div className="min-w-0 flex-1">
-            <h3 className="truncate text-[16px] font-medium">
-              {session ? session.deviceName : '投屏到设备'}
-            </h3>
-            <p className="mt-0.5 text-[11px] text-paper/55">
-              {session ? stateLabel : '搜索同一局域网内的电视和播放器'}
-            </p>
-          </div>
-          {!session && (
-            <button
-              type="button"
-              aria-label="重新搜索"
-              disabled={searching}
-              onClick={onRefresh}
-              className="flex size-9 items-center justify-center rounded-full text-paper/80 active:bg-paper/10 disabled:opacity-40"
-            >
-              <RefreshCw size={17} className={searching ? 'animate-spin' : ''} />
-            </button>
-          )}
-          <button
-            type="button"
-            aria-label="关闭"
-            onClick={onClose}
-            className="flex size-9 items-center justify-center rounded-full text-paper/80 active:bg-paper/10"
-          >
-            <X size={19} />
-          </button>
-        </div>
-
-        {error && (
-          <div className="mx-4 mt-3 rounded-xl border border-cinnabar/30 bg-cinnabar/10 px-3 py-2 text-[12px] leading-relaxed text-cinnabar-soft">
-            {error}
-          </div>
-        )}
-
-        {!session ? (
-          <div className="max-h-[58vh] overflow-y-auto overscroll-contain px-3 py-3">
-            {searching && devices.length === 0 && (
-              <div className="flex min-h-36 flex-col items-center justify-center gap-2 text-paper/60">
-                <LoaderCircle size={22} className="animate-spin" />
-                <span className="text-[12px]">正在搜索局域网投屏设备…</span>
-              </div>
-            )}
-
-            {!searching && devices.length === 0 && (
-              <div className="flex min-h-36 flex-col items-center justify-center gap-2 px-6 text-center text-paper/55">
-                <Tv2 size={28} strokeWidth={1.5} />
-                <p className="text-[12px] leading-relaxed">
-                  未发现可投屏设备。请确认手机和电视连接同一局域网，并在电视上开启投屏或 DLNA。
-                </p>
-              </div>
-            )}
-
-            <div className="space-y-1.5">
-              {devices.map((device) => {
-                const connecting = connectingId === device.id
-                const details = [device.manufacturer, device.model]
-                  .filter(Boolean)
-                  .join(' · ')
-                return (
-                  <button
-                    key={device.id}
-                    type="button"
-                    disabled={Boolean(connectingId)}
-                    onClick={() => onConnect(device)}
-                    className="flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition-colors active:bg-paper/10 disabled:opacity-50"
-                  >
-                    <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-paper/10">
-                      <Tv2 size={20} strokeWidth={1.8} />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[14px] font-medium">{device.name}</span>
-                      <span className="mt-0.5 block truncate text-[11px] text-paper/50">
-                        {details || device.address}
-                      </span>
-                    </span>
-                    {connecting ? (
-                      <LoaderCircle size={18} className="animate-spin text-paper/70" />
-                    ) : (
-                      <Cast size={17} className="text-paper/45" />
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
-        ) : (
-          <div className="px-5 py-5">
-            <div className="mb-4 rounded-2xl border border-paper/10 bg-paper/5 px-3.5 py-3">
-              <div className="text-[12px] font-medium text-paper/90">
-                {session.mode === 'direct' ? '电视独立播放' : '兼容模式'}
-              </div>
-              <p className="mt-1 text-[11px] leading-relaxed text-paper/55">
-                {session.mode === 'direct'
-                  ? '电视已直接连接视频源。手机可以熄屏、退出应用或关机，不影响电视继续播放。'
-                  : '当前视频需要手机兼容中转。可以熄屏或退出应用，请保持手机开机并连接当前 Wi-Fi。'}
-              </p>
-            </div>
-
-            <div className="rounded-2xl bg-black/25 px-4 py-4">
-              <input
-                type="range"
-                min={0}
-                max={total || 0}
-                step={1}
-                disabled={!total}
-                value={Number.isFinite(seekValue) ? seekValue : 0}
-                aria-label="电视播放进度"
-                className="ink-seek h-6 w-full appearance-none bg-transparent"
-                onChange={(event) => setSeekDraft(Number(event.currentTarget.value))}
-                onPointerUp={(event) => commitSeek(Number(event.currentTarget.value))}
-                onKeyUp={(event) => {
-                  if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-                    commitSeek(Number(event.currentTarget.value))
-                  }
-                }}
-              />
-              <div className="mt-1 flex justify-between font-mono text-[11px] tabular-nums text-paper/55">
-                <span>{formatTime(seekValue)}</span>
-                <span>{formatTime(total)}</span>
-              </div>
-
-              <div className="mt-4 flex items-center justify-center gap-5">
-                <button
-                  type="button"
-                  aria-label="后退 15 秒"
-                  onClick={() => onControl('seek', Math.max(0, remoteCurrent - 15))}
-                  className="flex size-12 items-center justify-center rounded-full bg-paper/10 text-paper active:bg-paper/15"
-                >
-                  <SkipBack size={20} />
-                </button>
-                <button
-                  type="button"
-                  aria-label={status?.state === 'playing' ? '暂停电视播放' : '继续电视播放'}
-                  onClick={() => onControl(status?.state === 'playing' ? 'pause' : 'play')}
-                  className="flex size-16 items-center justify-center rounded-full bg-paper text-ink-deep active:scale-95"
-                >
-                  {status?.state === 'playing' ? (
-                    <Pause size={25} fill="currentColor" fillOpacity={0.2} />
-                  ) : (
-                    <Play size={26} className="ml-1" fill="currentColor" fillOpacity={0.2} />
-                  )}
-                </button>
-                <button
-                  type="button"
-                  aria-label="前进 15 秒"
-                  onClick={() => onControl('seek', Math.min(total || remoteCurrent + 15, remoteCurrent + 15))}
-                  className="flex size-12 items-center justify-center rounded-full bg-paper/10 text-paper active:bg-paper/15"
-                >
-                  <SkipForward size={20} />
-                </button>
-              </div>
-
-              {status?.volume != null && (
-                <div className="mt-5 flex items-center gap-3">
-                  <Volume2 size={17} className="shrink-0 text-paper/60" />
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={Math.max(0, Math.min(1, volumeValue))}
-                    aria-label="电视音量"
-                    className="ink-seek h-6 min-w-0 flex-1 appearance-none bg-transparent"
-                    onChange={(event) => setVolumeDraft(Number(event.currentTarget.value))}
-                    onPointerUp={(event) => commitVolume(Number(event.currentTarget.value))}
-                    onKeyUp={(event) => {
-                      if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-                        commitVolume(Number(event.currentTarget.value))
-                      }
-                    }}
-                  />
-                  <span className="w-9 text-right font-mono text-[11px] text-paper/55">
-                    {Math.round(volumeValue * 100)}%
-                  </span>
-                </div>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={onStop}
-              className="mt-4 w-full rounded-2xl border border-paper/15 py-3 text-[13px] font-medium text-paper/80 active:bg-paper/10"
-            >
-              结束投屏
-            </button>
-          </div>
-        )}
-      </section>
-    </div>
-  )
-}
-
-function LevelBar({ value }: { value: number }) {
-  return (
-    <div className="h-[3px] w-24 overflow-hidden rounded-full bg-paper/25">
-      <div className="h-full rounded-full bg-paper" style={{ width: `${value * 100}%` }} />
-    </div>
-  )
-}
-
-function HudShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="pointer-events-none absolute inset-0 z-[3] flex items-center justify-center">
-      <div className="flex flex-col items-center gap-1.5 rounded-2xl bg-ink-raised/85 px-4 py-2.5">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-/** 全屏手势的即时反馈：进度预览、音量与亮度档位。 */
-function GestureHudOverlay({ hud, duration }: { hud: GestureHud; duration: number }) {
-  if (hud.kind === 'zoom') {
-    return (
-      <HudShell>
-        <div className="flex items-center gap-2 text-paper">
-          <Scan size={17} strokeWidth={1.8} />
-          <span className="font-mono text-[14px] leading-none">
-            {Math.round(hud.scale * 100)}%
-          </span>
-          {hud.rotation !== 0 && (
-            <span className="font-mono text-[11px] leading-none text-cinnabar-soft">
-              {hud.rotation}°
-            </span>
-          )}
-        </div>
-        <span className="text-[10px] leading-none text-paper/55">
-          双指缩放/移动 · 单指亮度/音量/进度
-        </span>
-      </HudShell>
-    )
-  }
-
-  if (hud.kind === 'mode') {
-    return (
-      <HudShell>
-        <div className="flex items-center gap-2 text-paper">
-          <RotateCw size={16} strokeWidth={1.8} />
-          <span className="text-[13px] leading-none">{hud.label}</span>
-        </div>
-        <span className="text-[10px] leading-none text-paper/55">再次点击切换旋转模式</span>
-      </HudShell>
-    )
-  }
-
-  if (hud.kind === 'seek') {
-    const seconds = Math.round(hud.offset)
-    return (
-      <HudShell>
-        <div className="flex items-center gap-1.5 font-mono text-[15px] leading-none text-paper">
-          {seconds < 0 ? (
-            <ChevronsLeft size={16} strokeWidth={1.8} />
-          ) : (
-            <ChevronsRight size={16} strokeWidth={1.8} />
-          )}
-          <span>{formatTime(hud.target)}</span>
-          <span className="text-paper/55">/ {formatTime(duration)}</span>
-        </div>
-        <span className="font-mono text-[11px] leading-none text-cinnabar-soft">
-          {seconds >= 0 ? `+${seconds}` : seconds}s
-        </span>
-      </HudShell>
-    )
-  }
-
-  const percent = Math.round(hud.value * 100)
-  return (
-    <HudShell>
-      <div className="flex items-center gap-2 text-paper">
-        {hud.kind === 'brightness' ? (
-          <Sun size={16} strokeWidth={1.8} />
-        ) : hud.value === 0 ? (
-          <VolumeX size={16} strokeWidth={1.8} />
-        ) : (
-          <Volume2 size={16} strokeWidth={1.8} />
-        )}
-        <LevelBar value={hud.value} />
-        <span className="w-8 text-right font-mono text-[11px] leading-none">{percent}%</span>
-      </div>
-    </HudShell>
-  )
-}
-
-/** Lucide Battery 几何内的比例填充，充电时叠闪电。 */
-function PlayerBatteryIcon({ status }: { status: BatteryStatus | null }) {
-  const level = status?.level ?? null
-  const charging = Boolean(status?.charging)
-  const fill = level == null ? 0 : Math.max(0, Math.min(1, level))
-  const low = level != null && level <= 0.2 && !charging
-  const label =
-    level == null
-      ? '电量未知'
-      : `电量 ${Math.round(level * 100)}%${charging ? '，充电中' : ''}`
-
-  return (
-    <span
-      className="relative inline-flex h-8 w-8 items-center justify-center text-paper/90"
-      role="img"
-      aria-label={label}
-      title={label}
-    >
-      <svg
-        width="20"
-        height="20"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="2"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        aria-hidden
-      >
-        <rect x="2" y="7" width="16" height="10" rx="2" ry="2" />
-        <line x1="22" x2="22" y1="11" y2="13" />
-        {level != null && fill > 0 && (
-          <rect
-            x="4"
-            y="9"
-            width={Math.max(1.2, fill * 12)}
-            height="6"
-            rx="0.8"
-            fill={low ? 'var(--cinnabar, #c45c4a)' : 'currentColor'}
-            stroke="none"
-          />
-        )}
-      </svg>
-      {charging && (
-        <svg
-          width="10"
-          height="10"
-          viewBox="0 0 24 24"
-          className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 drop-shadow-[0_0_2px_rgba(0,0,0,0.85)]"
-          fill="currentColor"
-          aria-hidden
-        >
-          <path d="M13 2 4 14h6l-1 8 9-12h-6l1-8z" />
-        </svg>
-      )}
-    </span>
-  )
-}

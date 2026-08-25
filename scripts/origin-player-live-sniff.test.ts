@@ -172,13 +172,13 @@ assert.equal(withHls?.url, 'https://cdn.example/index.m3u8')
 }
 
 {
-  const player = readFileSync(
-    join(process.cwd(), 'src/components/InkVideoPlayer.tsx'),
+  const overlaySource = readFileSync(
+    join(process.cwd(), 'src/components/inkVideoPlayer/MediaResourceOverlay.tsx'),
     'utf8',
   )
-  const overlayStart = player.indexOf('function MediaResourceOverlay')
+  const overlayStart = overlaySource.indexOf('function MediaResourceOverlay')
   assert.ok(overlayStart >= 0, 'MediaResourceOverlay must exist')
-  const overlay = player.slice(overlayStart, overlayStart + 4500)
+  const overlay = overlaySource.slice(overlayStart, overlayStart + 4500)
   assert.match(
     overlay,
     /items-end/,
