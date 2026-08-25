@@ -7,8 +7,9 @@ export function tourSelector(target: string): string {
 
 /**
  * 引导步骤（顺序即播放顺序）：
- * 先在「速闻」讲清列表、分类与底栏，再切到「我的」讲收藏与设置。
- * 「速闻」步骤按当前 DOM 可见性过滤（桌面端底栏 / 分类轨道隐藏时自动跳过），
+ * 先在「速闻」讲清分类、预设切换、列表与底栏，再切到「我的」讲收藏、
+ * 自定义订阅、翻译、预设管理与其余设置。
+ * 「速闻」步骤按当前 DOM 可见性过滤（桌面端底栏 / 分类轨道 / 预设胶囊隐藏时自动跳过），
  * 「我的」步骤在切 Tab 后才挂载，由服务的 waitForElement 等待。
  */
 export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
@@ -27,6 +28,15 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     title: '分类频道',
     description:
       '点选或在列表上左右横滑即可切换分类。每个分类聚合哪些信源，可在「我的 · 分类与自动刷新」里调整。',
+    side: 'bottom',
+  },
+  {
+    id: 'preset-switcher',
+    tab: 'today',
+    selector: tourSelector('preset-switcher'),
+    title: '切换场景预设',
+    description:
+      '点右上角这枚胶囊，可在工作、通勤、深度阅读等场景间一键切换，每套预设决定首页展示哪些分类与信源。新建和调整预设稍后在「我的」里介绍。',
     side: 'bottom',
   },
   {
@@ -57,12 +67,39 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     side: 'bottom',
   },
   {
+    id: 'me-custom-sources',
+    tab: 'me',
+    selector: tourSelector('me-custom-sources'),
+    title: '自定义订阅',
+    description:
+      '内置源之外，粘贴地址即可添加 RSS / Atom 订阅，部分站点还能直接解析网页目录；OPML 支持批量导入导出，方便从其他阅读器迁移。',
+    side: 'bottom',
+  },
+  {
+    id: 'me-translation',
+    tab: 'me',
+    selector: tourSelector('me-translation'),
+    title: '应用内翻译',
+    description:
+      '外文源的列表标题与正文都能在应用内直接翻译。在这里选择翻译引擎与目标语言，译文可对照原文显示，也可只看译文。',
+    side: 'bottom',
+  },
+  {
+    id: 'me-presets',
+    tab: 'me',
+    selector: tourSelector('me-presets'),
+    title: '管理场景预设',
+    description:
+      '首页右上角切换的预设在这里维护：可以调整内置场景，也能把常用的分类与信源组合保存成自己的预设。',
+    side: 'bottom',
+  },
+  {
     id: 'me-settings',
     tab: 'me',
     selector: tourSelector('me-settings'),
-    title: '偏好设置',
+    title: '更多设置',
     description:
-      '订阅源、分类、场景预设、字体、外观、翻译、代理与离线存储都在这里调整。想再看一遍本引导，去「关于有所闻」。',
+      '分类、字体、外观、网络代理与离线存储也都在这里调整。想再看一遍本引导，去「关于有所闻」。',
     side: 'top',
   },
 ]

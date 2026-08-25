@@ -9,11 +9,22 @@ import type { TourTab } from '../src/features/productTour/types'
 
 // ---------- 步骤定义 ----------
 
+// 引导覆盖核心功能（列表 / 预设 / 自定义订阅 / 翻译 / 设置），上限防止膨胀成负担
 assert.ok(PRODUCT_TOUR_STEPS.length >= 5, '引导至少覆盖 5 个步骤')
-assert.ok(PRODUCT_TOUR_STEPS.length <= 8, '步骤过多会让引导变成负担')
+assert.ok(PRODUCT_TOUR_STEPS.length <= 12, '步骤过多会让引导变成负担')
 
 const ids = PRODUCT_TOUR_STEPS.map((step) => step.id)
 assert.equal(new Set(ids).size, ids.length, '步骤 id 不重复')
+
+// 核心功能步骤必须在场（防止改动时被误删）
+for (const requiredId of [
+  'preset-switcher',
+  'me-custom-sources',
+  'me-translation',
+  'me-presets',
+]) {
+  assert.ok(ids.includes(requiredId), `核心功能步骤 ${requiredId} 在场`)
+}
 
 assert.equal(PRODUCT_TOUR_STEPS[0].id, 'welcome')
 assert.equal(PRODUCT_TOUR_STEPS[0].selector, null, '欢迎卡无高亮目标，居中展示')

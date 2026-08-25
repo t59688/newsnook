@@ -846,7 +846,7 @@ export const FeedScreen = memo(function FeedScreen({
             )}
 
             {presetSwitcher && (
-              <div className="lg:hidden">
+              <div className="lg:hidden" data-tour="preset-switcher">
                 <PresetSwitcher
                   activeName={presetSwitcher.activeName}
                   items={presetSwitcher.items}

@@ -56,11 +56,13 @@ interface SettingsRowProps {
   caption: string
   badge?: number | string | null
   onClick: () => void
+  /** 功能引导锚点，见 features/productTour/steps.ts */
+  dataTour?: string
 }
 
-function SettingsRow({ icon: Icon, title, caption, badge, onClick }: SettingsRowProps) {
+function SettingsRow({ icon: Icon, title, caption, badge, onClick, dataTour }: SettingsRowProps) {
   return (
-    <li className="bg-ink">
+    <li className="bg-ink" data-tour={dataTour}>
       <button
         type="button"
         onClick={onClick}
@@ -195,6 +197,7 @@ export function MeScreen({
             title="自定义订阅与 OPML"
             caption={customSourcesSummary ?? 'RSS / Atom · OPML 导入导出'}
             onClick={onOpenCustomSources}
+            dataTour="me-custom-sources"
           />
           <SettingsRow
             icon={LayoutGrid}
@@ -207,6 +210,7 @@ export function MeScreen({
             title="场景预设"
             caption={presetsSummary}
             onClick={onOpenPresets}
+            dataTour="me-presets"
           />
           <SettingsRow
             icon={Type}
@@ -225,6 +229,7 @@ export function MeScreen({
             title="翻译"
             caption={translationSummary}
             onClick={onOpenTranslationSettings}
+            dataTour="me-translation"
           />
           <SettingsRow
             icon={Globe}
