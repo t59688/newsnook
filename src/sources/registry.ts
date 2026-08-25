@@ -33,6 +33,8 @@ export type SourceKind =
   | 'eastmoney-news'
   | 'wscn-live'
   | 'paulgraham'
+  | 'wechat2rss'
+  | 'uisdc'
   | 'web-catalog'
 
 /** 旧版自建源 kind 兼容 */
@@ -109,6 +111,31 @@ export const OFFSET_MAX_PAGES: Partial<Record<SourceKind, number>> = {
   latepost: 30,
   'eastmoney-news': 40,
   'eastmoney-kx': 40,
+  uisdc: 20,
+}
+
+/**
+ * 公众号镜像入口（wechat2rss 公共实例，第三方维护）。
+ * 该实例失效或换址时只需改这里；feed hash 与公众号的对应关系见 docs/news-sources.md §19.4。
+ */
+export const WECHAT2RSS_BASE = 'https://wechat2rss.xlab.app'
+
+function wechatMirror(
+  id: string,
+  name: string,
+  label: string,
+  feedHash: string,
+  options?: { group?: SourceGroup; enabled?: boolean },
+): NewsSource {
+  return {
+    id,
+    name,
+    label,
+    group: options?.group ?? 'ai',
+    kind: 'wechat2rss',
+    url: `${WECHAT2RSS_BASE}/feed/${feedHash}.xml`,
+    enabled: options?.enabled ?? false,
+  }
 }
 
 function neteaseList(tid: string): string {
@@ -505,6 +532,36 @@ export const SOURCES: NewsSource[] = [
   { id: 'latent-space', name: 'Latent Space', label: 'Latent', group: 'ai', kind: 'feed', url: 'https://www.latent.space/feed', enabled: false },
   // Zvi 周报综述极长，feed 近 2MB；默认关闭，按需启用
   { id: 'thezvi', name: "Don't Worry About the Vase", label: 'Zvi', group: 'ai', kind: 'feed', url: 'https://thezvi.substack.com/feed', enabled: false },
+  // —— 公众号镜像（wechat2rss 第三方公共实例；feed 自带全文即正文主路径）——
+  // 镜像属第三方维护、可能失效；默认关闭，探测与风险记录见 docs/news-sources.md §19.4
+  wechatMirror('xixiaoyao', '夕小瑶科技说', '夕小瑶', 'a1cd365aa14ed7d64cabfc8aa086da40ecaba34d'),
+  // PaperWeekly feed 约 3MB（20 篇论文深读全文），刷新流量较大
+  wechatMirror('paperweekly', 'PaperWeekly', 'PaperWeekly', '3be891c2f4e526629ab055a297cc2cd6c1f0a563'),
+  // 42章经：AI/创投深度访谈，更新频率低（月 2–3 篇）
+  wechatMirror('42zhangjing', '42章经', '42章经', '31436fcc3bba8c2c2a9337a163afcb3b5a57a0a0'),
+  wechatMirror('chaping', '差评 X.PIN', '差评', '8d839de8dd3290a1f1be7a94423cccb30c1b087d', {
+    group: 'tech',
+  }),
+  // 优设无 RSS（/feed 返回首页 HTML、tag feed 与 WP REST 均 404）；解析 tag 列表页，/page/N 翻页
+  {
+    id: 'uisdc-aigc',
+    name: '优设 · AIGC',
+    label: '优设',
+    group: 'ai',
+    kind: 'uisdc',
+    url: 'https://www.uisdc.com/tag/aigc',
+    enabled: false,
+  },
+  // 人人都是产品经理 AI 分类：WP 分类 feed 全文可用（横评 / 产品拆解向）
+  {
+    id: 'woshipm-ai',
+    name: '人人都是产品经理 · AI',
+    label: '人人PM',
+    group: 'ai',
+    kind: 'feed',
+    url: 'https://www.woshipm.com/category/ai/feed',
+    enabled: false,
+  },
   // Arena（原 LMArena）无官方 RSS；解析官网 Blog 列表页（Sanity 嵌入数据）
   {
     id: 'arena',
@@ -814,6 +871,12 @@ export function offsetPageRequest(source: NewsSource, page: number): OffsetPageR
     return { url }
   }
 
+  if (source.kind === 'uisdc') {
+    // WP 归档路径翻页：/tag/aigc → /tag/aigc/page/2
+    if (safePage === 0) return { url: source.url }
+    return { url: `${source.url.replace(/\/+$/, '')}/page/${safePage + 1}` }
+  }
+
   if (source.kind === 'web-catalog') {
     if (source.frameworkHint) {
       return { url: frameworkPageUrl(source.url, safePage, source.frameworkHint.paginationPattern) }
@@ -841,6 +904,7 @@ export function pagingStrategyOf(source: NewsSource): PagingStrategy {
   if (source.kind === 'latepost') return 'upstream-offset'
   if (source.kind === 'eastmoney-news') return 'upstream-offset'
   if (source.kind === 'eastmoney-kx') return 'upstream-offset'
+  if (source.kind === 'uisdc') return 'upstream-offset'
   if (source.kind === 'zhihu') return 'upstream-cursor'
   if (source.kind === 'web-catalog') {
     if (source.frameworkHint) return 'upstream-offset'

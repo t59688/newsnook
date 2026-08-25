@@ -72,7 +72,7 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'tech',
     label: '科技',
     short: '科技',
-    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件 · V2EX · Google 科技',
+    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件 · V2EX · 差评 · Google 科技',
     sourceIds: [
       'netease-tech',
       'ithome',
@@ -82,6 +82,7 @@ export const CATEGORIES: NewsCategory[] = [
       'ruanyifeng',
       'appinn',
       'v2ex',
+      'chaping',
       'gnews-tech',
     ],
   },
@@ -96,7 +97,7 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'ai',
     label: 'AI',
     short: 'AI',
-    caption: '量子位 · 机器之心 · 新智元 · 智东西 · 宝玉 · Arena · 实验室 · 深度解读与评测',
+    caption: '量子位 · 机器之心 · 新智元 · 智东西 · 宝玉 · Arena · 实验室 · 深度解读与评测 · 公众号与社区',
     sourceIds: [
       // 中文与产业
       'qbitai',
@@ -133,6 +134,12 @@ export const CATEGORIES: NewsCategory[] = [
       'understandingai',
       'latent-space',
       'thezvi',
+      // 公众号镜像与社区频道
+      'xixiaoyao',
+      'paperweekly',
+      '42zhangjing',
+      'uisdc-aigc',
+      'woshipm-ai',
     ],
   },
   {
