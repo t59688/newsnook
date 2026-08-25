@@ -88,8 +88,18 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'science',
     label: '科普',
     short: '科普',
-    caption: '果壳科学人 · 泛科学 · 环球科学 · 知识分子 · Google 科学',
-    sourceIds: ['guokr', 'pansci', 'huanqiukexue', 'zhishifenzi', 'gnews-science'],
+    caption: '果壳科学人 · 泛科学 · 环球科学 · 知识分子 · 返朴 · 物理所 · 地球知识局 · 集智 · Google 科学',
+    sourceIds: [
+      'guokr',
+      'pansci',
+      'huanqiukexue',
+      'zhishifenzi',
+      'netease-fanpu',
+      'netease-wuli',
+      'netease-diqiu',
+      'swarma',
+      'gnews-science',
+    ],
   },
   // AI 按信息层次拆四栏：源头（官方）→ 业界（媒体）→ 深读（二次加工）→ 社区
   {
@@ -256,7 +266,7 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'tech-depth',
     label: '科技深度',
     short: '深度',
-    caption: 'Ars · MIT TR · Quanta · Stratechery · Vitalik · Paul Graham · 半导体 · 建筑物理 · WIRED',
+    caption: 'Ars · MIT TR · Quanta · Stratechery · Vitalik · Paul Graham · 半导体 · 建筑物理 · 浅黑科技 · WIRED',
     sourceIds: [
       'arstechnica',
       'mittr',
@@ -265,6 +275,7 @@ export const CATEGORIES: NewsCategory[] = [
       'vitalik',
       'fabricated-knowledge',
       'construction-physics',
+      'qianhei',
       'paulgraham',
       'verge',
       'ifanr',

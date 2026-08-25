@@ -286,6 +286,20 @@ export const SOURCES: NewsSource[] = [
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
     enabled: true,
   },
+  // —— 硬核科普 · 网易号同步（2026-08-25 硬科技/科普甄选，探测记录见 docs/news-sources.md §6）——
+  // 返朴 / 中科院物理所 / 地球知识局：官网无 RSS 或域名已失效，公众号全文同步发布在网易号；
+  // 列表 / 翻页 / 正文复用 netease 路径（full.html 偶发 204 时走 m/dy 落地页 + Readability 兜底，
+  // 该兜底依赖 `netease` 开头的 sourceId，勿改前缀）
+  neteaseChannel('netease-fanpu', '返朴', 'T1551235486149', { group: 'tech', enabled: true }),
+  neteaseChannel('netease-wuli', '中科院物理所', 'T1479706079278', {
+    label: '物理所',
+    group: 'tech',
+    enabled: true,
+  }),
+  neteaseChannel('netease-diqiu', '地球知识局', 'T1479097401984', {
+    group: 'tech',
+    enabled: true,
+  }),
   {
     id: 'ruanyifeng',
     name: '阮一峰的网络日志',
@@ -577,6 +591,16 @@ export const SOURCES: NewsSource[] = [
   wechatAccount('paperweekly', 'PaperWeekly', 'PaperWeekly', '3be891c2f4e526629ab055a297cc2cd6c1f0a563'),
   // 42章经：AI/创投深度访谈，更新频率低（月 2–3 篇）
   wechatAccount('42zhangjing', '42章经', '42章经', '31436fcc3bba8c2c2a9337a163afcb3b5a57a0a0'),
+  // —— 硬核科普公众号（2026-08-25 硬科技/科普甄选，见 docs/news-sources.md §6）——
+  // 集智俱乐部：复杂系统科学深读；官网 swarma.org 的 WP feed 停更于 2025-10，只有镜像有新文。
+  // 曾以「与 AI 产品深读定位不符」落选（§4.3 / §5.3），本轮按科普定位重评收录
+  wechatAccount('swarma', '集智俱乐部', '集智', '8540570d27c0bfe0a219173cf1ace83ae79445cb', {
+    group: 'tech',
+  }),
+  // 浅黑科技：硬科技长文特稿，中位 1.2 万字、月更 1–2 篇；低频大体积，默认关闭
+  wechatAccount('qianhei', '浅黑科技', '浅黑科技', '6111a6d5ecf28cfdd4fc9b664244c05ddacef15c', {
+    group: 'tech',
+  }),
   // 优设无 RSS（/feed 返回首页 HTML、tag feed 与 WP REST 均 404）；解析 tag 列表页，/page/N 翻页
   {
     id: 'uisdc-aigc',
