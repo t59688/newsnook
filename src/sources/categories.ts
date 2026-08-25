@@ -2,7 +2,7 @@
  * 阅读分类：覆盖注册表内全部可用信源。
  * - 「综合」读取用户在频道页启用的源
  * - 默认可见为门户经典栏（见 preferences.DEFAULT_HIDDEN_CATEGORY_IDS / presets.PORTAL_VISIBLE_CATEGORY_IDS）
- * - AI / 游戏 / 深度等默认隐藏，由场景预设打开
+ * - AI 四层（源头 / 业界 / 深读 / 社区）与游戏、科技深度等默认隐藏，由场景预设打开
  * - RSS / 专栏用主题分类承接，保证每个 sourceId 至少落入一个分类
  */
 
@@ -72,7 +72,7 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'tech',
     label: '科技',
     short: '科技',
-    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件 · V2EX · Google 科技',
+    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件 · Google 科技',
     sourceIds: [
       'netease-tech',
       'ithome',
@@ -81,7 +81,6 @@ export const CATEGORIES: NewsCategory[] = [
       'solidot',
       'ruanyifeng',
       'appinn',
-      'v2ex',
       'gnews-tech',
     ],
   },
@@ -92,40 +91,73 @@ export const CATEGORIES: NewsCategory[] = [
     caption: '果壳科学人 · 泛科学 · 环球科学 · 知识分子 · Google 科学',
     sourceIds: ['guokr', 'pansci', 'huanqiukexue', 'zhishifenzi', 'gnews-science'],
   },
+  // AI 按信息层次拆四栏：源头（官方）→ 业界（媒体）→ 深读（二次加工）→ 社区
   {
     id: 'ai',
-    label: 'AI',
-    short: 'AI',
-    caption: '量子位 · 机器之心 · 新智元 · Arena · Anthropic · 实验室 · 综述 · 研究向长文',
+    label: '源头',
+    short: '源头',
+    caption: '实验室与平台官方：OpenAI · Anthropic · Google · DeepMind · HF · PyTorch · Arena',
     sourceIds: [
-      // 中文与产业
-      'qbitai',
-      'jiqizhixin',
-      'aiera',
-      'leiphone',
-      'synced',
-      // 测评榜 / 评测机构
-      'arena',
-      // 实验室 / 平台
       'openai-news',
       'anthropic',
       'google-ai',
       'deepmind',
       'huggingface',
       'pytorch',
-      // 聚焦栏目与产业
+      'arena',
+    ],
+  },
+  {
+    id: 'ai-media',
+    label: '业界',
+    short: '业界',
+    caption: '媒体快报：量子位 · 机器之心 · 新智元 · 雷锋网 · Synced · MIT/Verge/IEEE 等 AI 栏目',
+    sourceIds: [
+      'qbitai',
+      'jiqizhixin',
+      'aiera',
+      'leiphone',
+      'synced',
       'mittr-ai',
       'verge-ai',
       'ieee-ai',
       'venturebeat-ai',
       'marktechpost',
-      // 周报与作者博
+    ],
+  },
+  {
+    id: 'ai-depth',
+    label: '深读',
+    short: '深读',
+    caption: '解读评测与专栏：智东西 · 宝玉 · Mollick · Latent · 夕小瑶 · 42章经 · 周报作者博',
+    sourceIds: [
+      'zhidx',
+      'baoyu',
+      'oneusefulthing',
+      'understandingai',
+      'latent-space',
+      'thezvi',
       'lastweek-ai',
       'import-ai',
       'ahead-of-ai',
       'lil-log',
       'simonw',
       'interconnects',
+      'xixiaoyao',
+      '42zhangjing',
+    ],
+  },
+  {
+    id: 'ai-community',
+    label: '社区',
+    short: '社区',
+    caption: '优设 AIGC · V2EX · HN · PaperWeekly · 人人都是产品经理',
+    sourceIds: [
+      'uisdc-aigc',
+      'v2ex',
+      'hn',
+      'paperweekly',
+      'woshipm-ai',
     ],
   },
   {
@@ -224,7 +256,7 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'tech-depth',
     label: '科技深度',
     short: '深度',
-    caption: 'Ars · MIT TR · Quanta · Stratechery · Vitalik · Paul Graham · 半导体 · 建筑物理 · WIRED · HN',
+    caption: 'Ars · MIT TR · Quanta · Stratechery · Vitalik · Paul Graham · 半导体 · 建筑物理 · WIRED',
     sourceIds: [
       'arstechnica',
       'mittr',
@@ -238,7 +270,6 @@ export const CATEGORIES: NewsCategory[] = [
       'ifanr',
       'infoq-cn',
       'wired',
-      'hn',
     ],
   },
 ]

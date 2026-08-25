@@ -106,6 +106,22 @@ function keepAllowedAudio(html: string): string {
 const CJK_REGEX = /[\p{Script=Han}\u3040-\u30ff\uac00-\ud7af]/u
 const LEADING_SPACE_REGEX = /^[\s\u3000\u00a0\u2000-\u200b\ufeff]+/
 
+function hasInlineMedia(element: Element): boolean {
+  return Boolean(element.querySelector('img, picture, video, audio, iframe, svg, source'))
+}
+
+function unwrapElement(element: Element): void {
+  const parent = element.parentNode
+  if (!parent) {
+    element.remove()
+    return
+  }
+  while (element.firstChild) {
+    parent.insertBefore(element.firstChild, element)
+  }
+  element.remove()
+}
+
 function cleanLeadingIndent(element: Element): void {
   while (element.firstChild) {
     const first = element.firstChild
@@ -128,7 +144,12 @@ function cleanLeadingIndent(element: Element): void {
       }
       if (/^(span|strong|em|b|i|a|font|small|sub|sup)$/i.test(el.tagName)) {
         cleanLeadingIndent(el)
+        // 优设等站用 <span class="img-zoom"><img></span> 包图；无 textContent 但不能删
         if (!el.textContent?.trim()) {
+          if (hasInlineMedia(el)) {
+            unwrapElement(el)
+            continue
+          }
           el.remove()
           continue
         }

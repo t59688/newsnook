@@ -264,19 +264,29 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
     )
   })(),
   (() => {
+    /**
+     * AI 四层：源头 / 业界 / 深读 / 社区；默认启用压量，避免刷屏。
+     * 其余源（PyTorch、雷锋网、周报、PaperWeekly 等）留在分类里可一键开启。
+     */
     const categorySources = {
       ai: pickKnown(
         'openai-news',
         'anthropic',
-        'deepmind',
         'google-ai',
-        'qbitai',
-        'jiqizhixin',
-        'aiera',
+        'deepmind',
+        'huggingface',
         'arena',
-        'simonw',
-        'lil-log',
       ),
+      'ai-media': pickKnown('qbitai', 'jiqizhixin', 'aiera', 'mittr-ai'),
+      'ai-depth': pickKnown(
+        'zhidx',
+        'baoyu',
+        'xixiaoyao',
+        '42zhangjing',
+        'oneusefulthing',
+        'latent-space',
+      ),
+      'ai-community': pickKnown('uisdc-aigc', 'v2ex', 'hn'),
       'tech-depth': pickKnown(
         'arstechnica',
         'mittr',
@@ -285,53 +295,29 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         'fabricated-knowledge',
         'construction-physics',
         'paulgraham',
-        'hn',
       ),
-      tech: pickKnown(
-        'v2ex',
-        'sspai',
-        'geekpark',
-        'solidot',
-        'ruanyifeng',
-        'appinn',
-        'ithome',
-      ),
+      tech: pickKnown('sspai', 'geekpark', 'solidot', 'ruanyifeng', 'appinn', 'ithome'),
       science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'zhishifenzi'),
     }
+    const visible: CategoryId[] = [
+      'ai',
+      'ai-media',
+      'ai-depth',
+      'ai-community',
+      'tech-depth',
+      'tech',
+      'science',
+    ]
     return builtinPreset(
       BUILTIN_TECH_ID,
       '极客与 AI',
-      'AI 一线 · 深度长文 · 极客创造 · 硬核科普',
+      '源头 · 业界 · 深读 · 社区 · 科技深度 · 硬核科普',
       {
-        categoryOrder: ['mix', 'ai', 'tech-depth', 'tech', 'science'],
-        hiddenCategoryIds: hiddenExcept(['mix', 'ai', 'tech-depth', 'tech', 'science']),
+        categoryOrder: visible,
+        hiddenCategoryIds: hiddenExcept(visible),
         categorySources,
         customCategories: [],
-        enabledSourceIds: exclusiveEnabledSourceIds(
-          categorySources,
-          pickKnown(
-            'huggingface',
-            'pytorch',
-            'mittr-ai',
-            'lastweek-ai',
-            'import-ai',
-            'ahead-of-ai',
-            'interconnects',
-            'leiphone',
-            'synced',
-            'marktechpost',
-            'venturebeat-ai',
-            'ieee-ai',
-            'verge-ai',
-            'verge',
-            'ifanr',
-            'infoq-cn',
-            'wired',
-            'netease-tech',
-            'gnews-tech',
-            'gnews-science',
-          ),
-        ),
+        enabledSourceIds: [],
       },
     )
   })(),

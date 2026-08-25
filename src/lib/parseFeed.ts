@@ -1025,6 +1025,130 @@ function parseLatepost(source: NewsSource, payload: string, fetchedAt: number): 
   return articles
 }
 
+/**
+ * wechat2rss 镜像正文的已知噪声：
+ * - 头部「原创 <作者> <YYYY-MM-DD HH:MM> <地点>」meta 行
+ * - 尾部「跳转微信打开」link-proxy 链接
+ * - 隐藏的 <mp-style-type> 排版标记
+ */
+export function cleanWechat2rssContentHtml(html: string): string {
+  let out = html
+
+  const lead = out.match(/^\s*<p\b[^>]*>([\s\S]{0,600}?)<\/p>/)
+  if (lead) {
+    const leadText = stripTags(lead[1])
+    // meta 行很短且必含「YYYY-MM-DD HH:MM」发布时间；正文首段不会同时满足
+    if (leadText.length <= 80 && /\d{4}-\d{2}-\d{2}\s+\d{1,2}:\d{2}/.test(leadText)) {
+      out = out.slice((lead.index ?? 0) + lead[0].length)
+    }
+  }
+
+  return out
+    .replace(/<p\b[^>]*>\s*<mp-style-type\b[^>]*>[\s\S]*?<\/mp-style-type>\s*<\/p>/gi, '')
+    .replace(/<mp-style-type\b[^>]*>[\s\S]*?<\/mp-style-type>/gi, '')
+    .replace(/<p\b[^>]*>\s*<a\b[^>]*>\s*跳转微信打开\s*<\/a>\s*<\/p>\s*$/i, '')
+    .trim()
+}
+
+/**
+ * 公众号镜像（wechat2rss）：标准 RSS + content:encoded 全文，
+ * 在通用 XML 解析后剥离镜像模板噪声并重算摘要。
+ * 原文 mp.weixin.qq.com 对数据中心 IP 常回验证码页，故正文主路径是 feed 自带全文。
+ */
+function parseWechat2rss(source: NewsSource, payload: string, fetchedAt: number): Article[] {
+  return parseXmlFeed(source, payload, fetchedAt).map((article) => {
+    if (!article.contentHtml) return article
+    const cleaned = cleanWechat2rssContentHtml(article.contentHtml)
+    if (!cleaned.includes('<')) return article
+
+    const summaryText = stripTags(cleaned)
+    const cleanedSummary = cleanSummaryText(summaryText, article.title)
+    return {
+      ...article,
+      contentHtml: cleaned,
+      summary: (cleanedSummary || summaryText).slice(0, 220),
+      image: article.image ?? firstImageIn(cleaned),
+    }
+  })
+}
+
+/** 优设列表卡片里的站内功能页（非文章落地页） */
+const UISDC_SKIP_PATH_RE =
+  /^\/(?:tag|category|u|a|zt|news|hunter|hunters|members|about|tip|contribution|archives|procenter|similarsites|ajax)(?:\/|$)/i
+
+/** 优设近一周内的卡片用「刚刚 / N分钟前 / N小时前 / N天前」相对日期，先归一成绝对时刻 */
+function uisdcAbsoluteDate(raw: string, fetchedAt: number): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return trimmed
+  if (/^刚刚$/.test(trimmed) || /^\d+\s*秒前$/.test(trimmed)) {
+    return new Date(fetchedAt).toISOString()
+  }
+  const relative = trimmed.match(/^(\d+)\s*(分钟|小时|天|周|个月)前$/)
+  if (!relative) return trimmed
+  const unitMs: Record<string, number> = {
+    分钟: 60_000,
+    小时: 3_600_000,
+    天: 86_400_000,
+    周: 7 * 86_400_000,
+    个月: 30 * 86_400_000,
+  }
+  const offset = Number(relative[1]) * unitMs[relative[2]]
+  return new Date(fetchedAt - offset).toISOString()
+}
+
+/**
+ * 优设（uisdc.com）tag 列表页。/feed 返回首页 HTML、tag feed 与 WP REST 均 404，
+ * 只能解析归档 HTML：卡片在 <div class="item-wrap">，标题链接在 h2.item-title，
+ * 发布日期在 i.meta-time（YYYY/MM/DD）。正文由 resolveBody 的优设专用抽取
+ * （`extractUisdcBodyHtml`）处理 group 图集与长文，不再依赖裸 Readability。
+ */
+function parseUisdcTag(source: NewsSource, payload: string, fetchedAt: number): Article[] {
+  const seen = new Set<string>()
+  const articles: Article[] = []
+
+  for (const block of payload.split('<div class="item-wrap">').slice(1)) {
+    const titleMatch = block.match(
+      /<h2 class="item-title">\s*<a\b[^>]*href="(https?:\/\/www\.uisdc\.com\/[^"#?]+)"[^>]*>([\s\S]*?)<\/a>/,
+    )
+    if (!titleMatch) continue
+
+    const link = titleMatch[1]
+    const title = stripTags(titleMatch[2])
+    if (!title || seen.has(link)) continue
+
+    let pathname = ''
+    try {
+      pathname = new URL(link).pathname
+    } catch {
+      continue
+    }
+    if (UISDC_SKIP_PATH_RE.test(pathname)) continue
+
+    const dateRaw = block.match(/class="meta-time">\s*([^<]+)/)?.[1]?.trim() ?? ''
+    const image = block.match(/<img\b[^>]+src="(https?:\/\/[^"]+)"/)?.[1]
+    const author = stripTags(block.match(/class="u-name">([\s\S]*?)<\/i>/)?.[1] ?? '')
+
+    const article = buildArticle(
+      source,
+      {
+        title,
+        link,
+        html: '',
+        summaryText: author ? `${title}（${author}）` : title,
+        dateRaw: uisdcAbsoluteDate(dateRaw, fetchedAt),
+        image,
+      },
+      fetchedAt,
+    )
+    if (article) {
+      seen.add(link)
+      articles.push(article)
+    }
+  }
+
+  return articles
+}
+
 function wpFeaturedImage(post: Unknown): string | undefined {
   const media = toArray(asRecord(post._embedded)?.['wp:featuredmedia'])
     .map(asRecord)
@@ -1443,6 +1567,8 @@ const PARSERS: Record<SourceKind, SourceParser> = {
   'eastmoney-news': parseEastmoneyNews,
   'wscn-live': parseWscnLive,
   paulgraham: parsePaulGraham,
+  wechat2rss: parseWechat2rss,
+  uisdc: parseUisdcTag,
   'web-catalog': parseWebCatalog,
 }
 

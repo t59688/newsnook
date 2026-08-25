@@ -2,7 +2,7 @@
 
 > 日期：2026-08-12  
 > 范围：仓库根目录主工程（Vite + React + Capacitor Android）  
-> 相关文档：[产品设计](./superpowers/specs/2026-07-31-newsnook-mobile-app-design.md)、[旧版源逆向](./news-sources.md)、[构建说明](./android-build.md)、[用户手册](./user-guide.md)
+> 相关文档：[产品设计](./superpowers/specs/2026-07-31-newsnook-mobile-app-design.md)、[信源探测笔记](./news-sources.md)、[构建说明](./android-build.md)、[用户手册](./user-guide.md)
 
 ## 1. 一句话
 

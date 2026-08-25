@@ -410,10 +410,82 @@ async function extractMainContentFallback(
   }
 }
 
+/**
+ * 优设正文：通用 Readability 会踩两个站内坑——
+ * 1. 长文包在 `.post-article.uisdc-none` 里；类名含 `none`，被 Readability
+ *    unlikelyCandidates 当成隐藏节点整段丢掉，只剩文内「阅读文章」卡片。
+ * 2. 「优设9图」(`/group/`) 提示词在 `.group-singular-entry`，图集在兄弟节点
+ *    `.group-singular-images`，Readability 只收文不收图。
+ */
+export function extractUisdcBodyHtml(pageHtml: string): string | undefined {
+  const { document } = parseHTML(pageHtml)
+
+  const groupEntry = document.querySelector('.group-singular-entry .entry')
+  const groupImages = Array.from(
+    document.querySelectorAll('.group-singular-images img'),
+  )
+  if (groupEntry || groupImages.length > 0) {
+    const parts: string[] = []
+    if (groupEntry) {
+      const entryHtml = (groupEntry as { innerHTML?: string }).innerHTML?.trim()
+      if (entryHtml) parts.push(entryHtml)
+    }
+    for (const img of groupImages) {
+      const src =
+        img.getAttribute('src')?.trim() ||
+        img.getAttribute('data-src')?.trim() ||
+        ''
+      if (!src || src === ' ') continue
+      const alt = img.getAttribute('alt') || ''
+      parts.push(
+        `<p><img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}"></p>`,
+      )
+    }
+    const html = parts.join('\n').trim()
+    if (html && (groupImages.length >= 1 || stripTags(html).length >= 40)) {
+      return html
+    }
+  }
+
+  const articleRoot =
+    document.querySelector('.post-content-wrap .article') ||
+    document.querySelector('.post-article .article') ||
+    document.querySelector('.post-content .article')
+  if (!articleRoot) return undefined
+
+  // 文中插入的相关文卡片（「阅读文章 >」），不是正文
+  articleRoot.querySelectorAll('.tuwen_link').forEach((node) => node.remove())
+  const html = (articleRoot as { innerHTML?: string }).innerHTML?.trim()
+  if (!html) return undefined
+  if (stripTags(html).length < 40 && !(html.match(/<img\b/gi) || []).length) {
+    return undefined
+  }
+  return html
+}
+
+function isUisdcPageUrl(pageUrl: string): boolean {
+  try {
+    const host = new URL(pageUrl).hostname.toLowerCase()
+    return host === 'uisdc.com' || host.endsWith('.uisdc.com')
+  } catch {
+    return false
+  }
+}
+
 async function extractWithReadability(
   pageHtml: string,
   pageUrl: string,
 ): Promise<ResolvedBody> {
+  if (isUisdcPageUrl(pageUrl)) {
+    const custom = extractUisdcBodyHtml(pageHtml)
+    if (custom) {
+      return {
+        contentHtml: await absolutizeHtml(custom, pageUrl),
+        bodySource: 'readability',
+      }
+    }
+  }
+
   const { Readability } = await import('@mozilla/readability')
   const { document } = parseHTML(pageHtml)
   removeEmbedChrome(document as unknown as Document)

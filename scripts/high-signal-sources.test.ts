@@ -141,7 +141,58 @@ assert.ok(cleaned.includes('Semiconductor manufacturing equipment'))
 
 console.log('✓ Substack boilerplate summary cleaner verified')
 
-// —— 6. V2EX 分享创造（非普通发帖/水帖）验证 ——
+// —— 6. AI 深读信源注册检查 ——
+const AI_DEPTH_SOURCE_IDS = [
+  'zhidx',
+  'baoyu',
+  'oneusefulthing',
+  'understandingai',
+  'latent-space',
+  'thezvi',
+]
+
+// 解读 / 评测源统一归 ai-depth（深读）
+const aiDepthCategory = CATEGORIES.find((cat) => cat.id === 'ai-depth')
+assert.ok(aiDepthCategory?.sourceIds, 'ai-depth category must declare sourceIds')
+for (const id of AI_DEPTH_SOURCE_IDS) {
+  const src = findSource(id)
+  assert.ok(src, `AI depth source ${id} must be registered in SOURCES`)
+  assert.equal(src.group, 'ai', `AI depth source ${id} must be in the ai group`)
+  assert.ok(src.url.startsWith('https://'), `AI depth source ${id} must use https`)
+  assert.ok(
+    aiDepthCategory!.sourceIds!.includes(id),
+    `AI depth source ${id} must be covered by the ai-depth category`,
+  )
+}
+
+// 社区栏存在且优设排首位
+const aiCommunityCategory = CATEGORIES.find((cat) => cat.id === 'ai-community')
+assert.ok(aiCommunityCategory?.sourceIds, 'ai-community category must declare sourceIds')
+assert.equal(aiCommunityCategory!.sourceIds![0], 'uisdc-aigc')
+assert.ok(aiCommunityCategory!.sourceIds!.includes('v2ex'))
+assert.ok(aiCommunityCategory!.sourceIds!.includes('hn'))
+
+// 业界栏收媒体快报
+const aiMediaCategory = CATEGORIES.find((cat) => cat.id === 'ai-media')
+assert.ok(aiMediaCategory?.sourceIds?.includes('qbitai'))
+assert.ok(aiMediaCategory?.sourceIds?.includes('jiqizhixin'))
+
+// 源头栏收官方
+const aiOriginCategory = CATEGORIES.find((cat) => cat.id === 'ai')
+assert.ok(aiOriginCategory?.sourceIds?.includes('openai-news'))
+assert.ok(aiOriginCategory?.sourceIds?.includes('anthropic'))
+assert.ok(!aiOriginCategory?.sourceIds?.includes('qbitai'))
+
+// 分类里引用的 id 必须都已注册，防止手写 sourceIds 拼错
+for (const cat of CATEGORIES) {
+  for (const id of cat.sourceIds ?? []) {
+    assert.ok(findSource(id), `Category ${cat.id} references unregistered source ${id}`)
+  }
+}
+
+console.log('✓ AI depth/review sources registered & category references verified')
+
+// —— 7. V2EX 分享创造（非普通发帖/水帖）验证 ——
 const v2exSource = findSource('v2ex')!
 assert.equal(v2exSource.url, 'https://www.v2ex.com/feed/create.xml')
 assert.equal(v2exSource.name, 'V2EX 分享创造')

@@ -33,6 +33,8 @@ export type SourceKind =
   | 'eastmoney-news'
   | 'wscn-live'
   | 'paulgraham'
+  | 'wechat2rss'
+  | 'uisdc'
   | 'web-catalog'
 
 /** 旧版自建源 kind 兼容 */
@@ -73,7 +75,7 @@ export const SOURCE_GROUPS: Record<SourceGroup, { title: string; caption: string
   cn: { title: '国内', caption: '网易频道与中文媒体' },
   intl: { title: '国际', caption: '公共广电与亚洲视角' },
   tech: { title: '科技', caption: '数码、产品与产业报道' },
-  ai: { title: 'AI', caption: '实验室、综述与研究向长文' },
+  ai: { title: 'AI', caption: '实验室、深度解读与评测长文' },
   special: { title: '专栏', caption: '日报与轻松阅读' },
   custom: { title: '自定义', caption: '自建与 OPML 导入订阅' },
 }
@@ -109,6 +111,31 @@ export const OFFSET_MAX_PAGES: Partial<Record<SourceKind, number>> = {
   latepost: 30,
   'eastmoney-news': 40,
   'eastmoney-kx': 40,
+  uisdc: 20,
+}
+
+/**
+ * 公众号镜像入口（wechat2rss 公共实例，第三方维护）。
+ * 该实例失效或换址时只需改这里；feed hash 与公众号的对应关系见 docs/news-sources.md §4。
+ */
+export const WECHAT2RSS_BASE = 'https://wechat2rss.xlab.app'
+
+function wechatMirror(
+  id: string,
+  name: string,
+  label: string,
+  feedHash: string,
+  options?: { group?: SourceGroup; enabled?: boolean },
+): NewsSource {
+  return {
+    id,
+    name,
+    label,
+    group: options?.group ?? 'ai',
+    kind: 'wechat2rss',
+    url: `${WECHAT2RSS_BASE}/feed/${feedHash}.xml`,
+    enabled: options?.enabled ?? false,
+  }
 }
 
 function neteaseList(tid: string): string {
@@ -486,6 +513,53 @@ export const SOURCES: NewsSource[] = [
   { id: 'lil-log', name: 'Lil’Log', label: 'Lil’Log', group: 'ai', kind: 'feed', url: 'https://lilianweng.github.io/index.xml', enabled: false },
   { id: 'simonw', name: 'Simon Willison', label: 'SimonW', group: 'ai', kind: 'feed', url: 'https://simonwillison.net/atom/everything/', enabled: false },
   { id: 'interconnects', name: 'Interconnects', label: 'Interconnects', group: 'ai', kind: 'feed', url: 'https://www.interconnects.ai/feed', enabled: false },
+  // —— AI 深度解读 / 评测（补强非一手信源：横向评测、产品体验与行业深读）——
+  // 智东西：WP 站但 /feed 500（与新智元同病），走 WordPress REST
+  {
+    id: 'zhidx',
+    name: '智东西',
+    label: '智东西',
+    group: 'ai',
+    kind: 'wordpress',
+    url: 'https://zhidx.com/wp-json/wp/v2/posts?per_page=30&_embed=1',
+    requestHeaders: { Accept: 'application/json, text/plain, */*' },
+    enabled: false,
+  },
+  // 宝玉：RSS 仅摘要，正文回落 Readability 抓静态页（Astro，全文在 DOM）
+  { id: 'baoyu', name: '宝玉的分享', label: '宝玉', group: 'ai', kind: 'feed', url: 'https://baoyu.io/feed.xml', enabled: true },
+  { id: 'oneusefulthing', name: 'One Useful Thing', label: 'Mollick', group: 'ai', kind: 'feed', url: 'https://www.oneusefulthing.org/feed', enabled: false },
+  { id: 'understandingai', name: 'Understanding AI', label: '理解AI', group: 'ai', kind: 'feed', url: 'https://www.understandingai.org/feed', enabled: false },
+  { id: 'latent-space', name: 'Latent Space', label: 'Latent', group: 'ai', kind: 'feed', url: 'https://www.latent.space/feed', enabled: false },
+  // Zvi 周报综述极长，feed 近 2MB；默认关闭，按需启用
+  { id: 'thezvi', name: "Don't Worry About the Vase", label: 'Zvi', group: 'ai', kind: 'feed', url: 'https://thezvi.substack.com/feed', enabled: false },
+  // —— 公众号镜像（wechat2rss 第三方公共实例；feed 自带全文即正文主路径）——
+  // 镜像属第三方维护、可能失效；默认关闭。二轮甄选只保留 3 个真·深度号，
+  // 抽检数据、落选名单（差评等）与风险记录见 docs/news-sources.md §4 / §5
+  wechatMirror('xixiaoyao', '夕小瑶科技说', '夕小瑶', 'a1cd365aa14ed7d64cabfc8aa086da40ecaba34d'),
+  // PaperWeekly feed 约 3MB（20 篇论文深读全文），刷新流量较大；不进默认预设
+  wechatMirror('paperweekly', 'PaperWeekly', 'PaperWeekly', '3be891c2f4e526629ab055a297cc2cd6c1f0a563'),
+  // 42章经：AI/创投深度访谈，更新频率低（月 2–3 篇）
+  wechatMirror('42zhangjing', '42章经', '42章经', '31436fcc3bba8c2c2a9337a163afcb3b5a57a0a0'),
+  // 优设无 RSS（/feed 返回首页 HTML、tag feed 与 WP REST 均 404）；解析 tag 列表页，/page/N 翻页
+  {
+    id: 'uisdc-aigc',
+    name: '优设 · AIGC',
+    label: '优设',
+    group: 'ai',
+    kind: 'uisdc',
+    url: 'https://www.uisdc.com/tag/aigc',
+    enabled: false,
+  },
+  // 人人都是产品经理 AI 分类：WP 分类 feed 全文可用（横评 / 产品拆解向）
+  {
+    id: 'woshipm-ai',
+    name: '人人都是产品经理 · AI',
+    label: '人人PM',
+    group: 'ai',
+    kind: 'feed',
+    url: 'https://www.woshipm.com/category/ai/feed',
+    enabled: false,
+  },
   // Arena（原 LMArena）无官方 RSS；解析官网 Blog 列表页（Sanity 嵌入数据）
   {
     id: 'arena',
@@ -795,6 +869,12 @@ export function offsetPageRequest(source: NewsSource, page: number): OffsetPageR
     return { url }
   }
 
+  if (source.kind === 'uisdc') {
+    // WP 归档路径翻页：/tag/aigc → /tag/aigc/page/2
+    if (safePage === 0) return { url: source.url }
+    return { url: `${source.url.replace(/\/+$/, '')}/page/${safePage + 1}` }
+  }
+
   if (source.kind === 'web-catalog') {
     if (source.frameworkHint) {
       return { url: frameworkPageUrl(source.url, safePage, source.frameworkHint.paginationPattern) }
@@ -822,6 +902,7 @@ export function pagingStrategyOf(source: NewsSource): PagingStrategy {
   if (source.kind === 'latepost') return 'upstream-offset'
   if (source.kind === 'eastmoney-news') return 'upstream-offset'
   if (source.kind === 'eastmoney-kx') return 'upstream-offset'
+  if (source.kind === 'uisdc') return 'upstream-offset'
   if (source.kind === 'zhihu') return 'upstream-cursor'
   if (source.kind === 'web-catalog') {
     if (source.frameworkHint) return 'upstream-offset'
