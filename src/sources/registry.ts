@@ -116,7 +116,7 @@ export const OFFSET_MAX_PAGES: Partial<Record<SourceKind, number>> = {
 
 /**
  * 公众号镜像入口（wechat2rss 公共实例，第三方维护）。
- * 该实例失效或换址时只需改这里；feed hash 与公众号的对应关系见 docs/news-sources.md §19.4。
+ * 该实例失效或换址时只需改这里；feed hash 与公众号的对应关系见 docs/news-sources.md §4。
  */
 export const WECHAT2RSS_BASE = 'https://wechat2rss.xlab.app'
 
@@ -534,7 +534,7 @@ export const SOURCES: NewsSource[] = [
   { id: 'thezvi', name: "Don't Worry About the Vase", label: 'Zvi', group: 'ai', kind: 'feed', url: 'https://thezvi.substack.com/feed', enabled: false },
   // —— 公众号镜像（wechat2rss 第三方公共实例；feed 自带全文即正文主路径）——
   // 镜像属第三方维护、可能失效；默认关闭。二轮甄选只保留 3 个真·深度号，
-  // 抽检数据、落选名单（差评等）与风险记录见 docs/news-sources.md §19.4 / §19.5
+  // 抽检数据、落选名单（差评等）与风险记录见 docs/news-sources.md §4 / §5
   wechatMirror('xixiaoyao', '夕小瑶科技说', '夕小瑶', 'a1cd365aa14ed7d64cabfc8aa086da40ecaba34d'),
   // PaperWeekly feed 约 3MB（20 篇论文深读全文），刷新流量较大；不进默认预设
   wechatMirror('paperweekly', 'PaperWeekly', 'PaperWeekly', '3be891c2f4e526629ab055a297cc2cd6c1f0a563'),

@@ -70,4 +70,17 @@ assert.match(
   /\.lead-title\s*\{[^}]*font-family:\s*var\(--reader-font-family\)[^}]*\}/s,
 )
 
+// 7. 优设等站用无文字的 <span class="img-zoom"><img></span> 包图；不得当空 span 删掉
+const uisdcZoomImage = `
+<p><span class="img-zoom"><img src="https://image.uisdc.com/wp-content/uploads/2026/08/a.webp" alt="封面" width="1000" height="620"></span></p>
+<p>Codex 的使用方式：</p>
+<p><span class="img-zoom"><img src="https://image.uisdc.com/wp-content/uploads/2026/08/b.webp" alt="步骤" loading="lazy"></span></p>
+`
+const cleanedZoom = sanitizeArticleHtml(uisdcZoomImage)
+assert.equal((cleanedZoom.match(/<img\b/gi) || []).length, 2, 'img-zoom wrappers must keep images')
+assert.match(cleanedZoom, /src="https:\/\/image\.uisdc\.com\/wp-content\/uploads\/2026\/08\/a\.webp"/)
+assert.match(cleanedZoom, /src="https:\/\/image\.uisdc\.com\/wp-content\/uploads\/2026\/08\/b\.webp"/)
+assert.match(cleanedZoom, /Codex 的使用方式：/)
+assert.doesNotMatch(cleanedZoom, /img-zoom/, 'empty media wrappers may unwrap; class need not survive')
+
 console.log('paragraph-typography tests passed successfully')

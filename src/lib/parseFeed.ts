@@ -1099,7 +1099,8 @@ function uisdcAbsoluteDate(raw: string, fetchedAt: number): string {
 /**
  * 优设（uisdc.com）tag 列表页。/feed 返回首页 HTML、tag feed 与 WP REST 均 404，
  * 只能解析归档 HTML：卡片在 <div class="item-wrap">，标题链接在 h2.item-title，
- * 发布日期在 i.meta-time（YYYY/MM/DD）。正文走 Readability 抽详情页。
+ * 发布日期在 i.meta-time（YYYY/MM/DD）。正文由 resolveBody 的优设专用抽取
+ * （`extractUisdcBodyHtml`）处理 group 图集与长文，不再依赖裸 Readability。
  */
 function parseUisdcTag(source: NewsSource, payload: string, fetchedAt: number): Article[] {
   const seen = new Set<string>()

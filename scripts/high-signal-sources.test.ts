@@ -141,7 +141,7 @@ assert.ok(cleaned.includes('Semiconductor manufacturing equipment'))
 
 console.log('✓ Substack boilerplate summary cleaner verified')
 
-// —— 6. AI 深度解读 / 评测信源注册检查 ——
+// —— 6. AI 深读信源注册检查 ——
 const AI_DEPTH_SOURCE_IDS = [
   'zhidx',
   'baoyu',
@@ -151,7 +151,7 @@ const AI_DEPTH_SOURCE_IDS = [
   'thezvi',
 ]
 
-// AI 拆分为「一手（ai）/ 深度（ai-depth）」两栏后，深度解读源统一归 ai-depth
+// 解读 / 评测源统一归 ai-depth（深读）
 const aiDepthCategory = CATEGORIES.find((cat) => cat.id === 'ai-depth')
 assert.ok(aiDepthCategory?.sourceIds, 'ai-depth category must declare sourceIds')
 for (const id of AI_DEPTH_SOURCE_IDS) {
@@ -164,6 +164,24 @@ for (const id of AI_DEPTH_SOURCE_IDS) {
     `AI depth source ${id} must be covered by the ai-depth category`,
   )
 }
+
+// 社区栏存在且优设排首位
+const aiCommunityCategory = CATEGORIES.find((cat) => cat.id === 'ai-community')
+assert.ok(aiCommunityCategory?.sourceIds, 'ai-community category must declare sourceIds')
+assert.equal(aiCommunityCategory!.sourceIds![0], 'uisdc-aigc')
+assert.ok(aiCommunityCategory!.sourceIds!.includes('v2ex'))
+assert.ok(aiCommunityCategory!.sourceIds!.includes('hn'))
+
+// 业界栏收媒体快报
+const aiMediaCategory = CATEGORIES.find((cat) => cat.id === 'ai-media')
+assert.ok(aiMediaCategory?.sourceIds?.includes('qbitai'))
+assert.ok(aiMediaCategory?.sourceIds?.includes('jiqizhixin'))
+
+// 源头栏收官方
+const aiOriginCategory = CATEGORIES.find((cat) => cat.id === 'ai')
+assert.ok(aiOriginCategory?.sourceIds?.includes('openai-news'))
+assert.ok(aiOriginCategory?.sourceIds?.includes('anthropic'))
+assert.ok(!aiOriginCategory?.sourceIds?.includes('qbitai'))
 
 // 分类里引用的 id 必须都已注册，防止手写 sourceIds 拼错
 for (const cat of CATEGORIES) {

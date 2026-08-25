@@ -141,7 +141,9 @@ assert.deepEqual(portal.categoryOrder, [
 assert.ok(!portal.hiddenCategoryIds.includes('ent'))
 assert.ok(!portal.hiddenCategoryIds.includes('sports'))
 assert.ok(portal.hiddenCategoryIds.includes('ai'))
+assert.ok(portal.hiddenCategoryIds.includes('ai-media'))
 assert.ok(portal.hiddenCategoryIds.includes('ai-depth'))
+assert.ok(portal.hiddenCategoryIds.includes('ai-community'))
 assert.ok(portal.hiddenCategoryIds.includes('game'))
 assert.deepEqual(portal.categorySources.intl, ['bbc-zh', 'dw-top', 'scmp-china', 'theinitium', 'gnews-world'])
 assert.deepEqual(portal.categorySources.hot, ['netease'])
@@ -177,10 +179,24 @@ const techSnap = normalizeSnapshot(tech.snapshot)
 const visible = new Set(
   CATEGORIES.map((c) => c.id).filter((id) => !techSnap.hiddenCategoryIds.includes(id)),
 )
-assert.ok(visible.has('tech') && visible.has('ai') && visible.has('ai-depth'))
+assert.ok(visible.has('tech') && visible.has('ai') && visible.has('ai-media'))
+assert.ok(visible.has('ai-depth') && visible.has('ai-community'))
 assert.ok(!visible.has('fun'))
-// AI 一手 / 深度分栏，且启用数量收敛（一手 4 + 深度 6）
-assert.deepEqual(techSnap.categorySources.ai, ['qbitai', 'jiqizhixin', 'anthropic', 'arena'])
+// AI 四层：源头 / 业界 / 深读 / 社区
+assert.deepEqual(techSnap.categorySources.ai, [
+  'openai-news',
+  'anthropic',
+  'google-ai',
+  'deepmind',
+  'huggingface',
+  'arena',
+])
+assert.deepEqual(techSnap.categorySources['ai-media'], [
+  'qbitai',
+  'jiqizhixin',
+  'aiera',
+  'mittr-ai',
+])
 assert.deepEqual(techSnap.categorySources['ai-depth'], [
   'zhidx',
   'baoyu',
@@ -189,18 +205,21 @@ assert.deepEqual(techSnap.categorySources['ai-depth'], [
   'oneusefulthing',
   'latent-space',
 ])
+assert.deepEqual(techSnap.categorySources['ai-community'], ['uisdc-aigc', 'v2ex', 'hn'])
 // 其余 AI 源留在分类里可发现但默认关闭
-assert.ok(!techSnap.categorySources.ai?.includes('openai-news'))
+assert.ok(!techSnap.categorySources.ai?.includes('pytorch'))
 assert.ok(!techSnap.categorySources['ai-depth']?.includes('paperweekly'))
+assert.ok(!techSnap.categorySources['ai-community']?.includes('paperweekly'))
 assert.ok(techSnap.categorySources['tech-depth']?.includes('paulgraham'))
-assert.ok(techSnap.categorySources.tech?.includes('v2ex'))
+assert.ok(!techSnap.categorySources['tech-depth']?.includes('hn'))
+assert.ok(!techSnap.categorySources.tech?.includes('v2ex'))
 assert.ok(techSnap.categorySources.tech?.includes('ithome'))
 // 综合不再兜一长串源：无独占源则隐藏综合
 assert.deepEqual(techSnap.enabledSourceIds, [])
 assert.ok(techSnap.hiddenCategoryIds.includes('mix'))
 assert.deepEqual(
   techSnap.categoryOrder.filter((id) => !techSnap.hiddenCategoryIds.includes(id)),
-  ['ai', 'ai-depth', 'tech-depth', 'tech', 'science'],
+  ['ai', 'ai-media', 'ai-depth', 'ai-community', 'tech-depth', 'tech', 'science'],
 )
 
 const depth = normalizeSnapshot(findBuiltinPreset('builtin-depth')!.snapshot)

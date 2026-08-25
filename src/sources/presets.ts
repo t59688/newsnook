@@ -265,13 +265,19 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
   })(),
   (() => {
     /**
-     * AI 启用集合刻意压到 10 个（一手 4 + 深度 6），避免默认全开刷屏：
-     * - 一手：中文资讯双主力 + 实验室官方样例 + Arena 榜单
-     * - 深度：中文解读/实测（含甄选公众号）+ 英文深度双栏
-     * 其余 AI 源（OpenAI、周报、PaperWeekly、优设等）留在分类里可一键开启。
+     * AI 四层：源头 / 业界 / 深读 / 社区；默认启用压量，避免刷屏。
+     * 其余源（PyTorch、雷锋网、周报、PaperWeekly 等）留在分类里可一键开启。
      */
     const categorySources = {
-      ai: pickKnown('qbitai', 'jiqizhixin', 'anthropic', 'arena'),
+      ai: pickKnown(
+        'openai-news',
+        'anthropic',
+        'google-ai',
+        'deepmind',
+        'huggingface',
+        'arena',
+      ),
+      'ai-media': pickKnown('qbitai', 'jiqizhixin', 'aiera', 'mittr-ai'),
       'ai-depth': pickKnown(
         'zhidx',
         'baoyu',
@@ -280,6 +286,7 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         'oneusefulthing',
         'latent-space',
       ),
+      'ai-community': pickKnown('uisdc-aigc', 'v2ex', 'hn'),
       'tech-depth': pickKnown(
         'arstechnica',
         'mittr',
@@ -288,24 +295,23 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         'fabricated-knowledge',
         'construction-physics',
         'paulgraham',
-        'hn',
       ),
-      tech: pickKnown(
-        'v2ex',
-        'sspai',
-        'geekpark',
-        'solidot',
-        'ruanyifeng',
-        'appinn',
-        'ithome',
-      ),
+      tech: pickKnown('sspai', 'geekpark', 'solidot', 'ruanyifeng', 'appinn', 'ithome'),
       science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'zhishifenzi'),
     }
-    const visible: CategoryId[] = ['ai', 'ai-depth', 'tech-depth', 'tech', 'science']
+    const visible: CategoryId[] = [
+      'ai',
+      'ai-media',
+      'ai-depth',
+      'ai-community',
+      'tech-depth',
+      'tech',
+      'science',
+    ]
     return builtinPreset(
       BUILTIN_TECH_ID,
       '极客与 AI',
-      'AI 一手快讯 · 深度解读评测 · 极客创造 · 硬核科普',
+      '源头 · 业界 · 深读 · 社区 · 科技深度 · 硬核科普',
       {
         categoryOrder: visible,
         hiddenCategoryIds: hiddenExcept(visible),
