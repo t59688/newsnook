@@ -5,6 +5,8 @@
 > 分析日期：2026-07-31  
 > 文档目的：记录旧版真实的数据链路、来源归属、解析规则和当前失效点，为重新维护、替换数据源和修复崩溃提供依据。
 
+**文档结构**：本文分两部分。§1–§17 是旧版 APK 的逆向分析，仅作历史参考；**现行内置源以 `src/sources/registry.ts` 为准**，其总览、探测笔记与对旧章节结论的修正见 **§18–§19**。旧章节与现行实现冲突时（如知乎日报、果壳），以 §19.2 为准。
+
 ## 1. 结论摘要
 
 旧版客户端没有自己的新闻服务端。客户端直接访问网易新闻、知乎日报、果壳精选、豆瓣一刻和锤子阅读的接口或网页，再把不同来源的数据统一转换成列表模型。
@@ -916,3 +918,130 @@ platform=www&aid={aid}
 再生成媒体描述交给 `InkVideoPlayer`。Android 上若静态响应没有地址，还可由短生命周期
 WebView 观察页面的网络、DOM、MSE 与 DRM 信号；接口或观察失败时继续走原文抽取与
 反爬软降级。DRM 资源只标记状态，不进入普通直链播放。
+
+## 19. 现行内置源总览与探测笔记
+
+与 `src/sources/registry.ts` 同步（2026-08-25 复核）。列表分页策略与 kind 的对应关系见
+`registry.ts` 的 `pagingStrategyOf`；正文路径除注明外均为「feed 自带全文，否则 Readability
+抽取 `originUrl`」。
+
+### 19.1 分组总览
+
+**网易频道（kind `netease`，25 个）**
+
+TID 与逐频道可用性见 §7 的索引表；返回空列表的「智能 / 暴雪游戏 / 彩票」未注册。
+现行差异：汽车频道 URL 为 `/nc/auto/list/5Yac5Zyz/0-20.html`（顶层键是 `list` 而非 TID，
+解析器按数组键兼容），与 §7 中旧 APK 记录的 `6buE55%2Bz` 不同。列表 UA 固定 `NewsApp`。
+
+**中文媒体 / 科普（group `cn` / `tech`）**
+
+| id | kind | 探测要点 |
+|---|---|---|
+| `sspai` `ifanr` `ithome` `geekpark` `solidot` `appinn` `ruanyifeng` `gcores` `pansci` | feed | 标准 RSS/Atom，直接可用 |
+| `kr36` | feed | 裸域 `36kr.com` 对无 JS 客户端返回反爬壳；必须用 `www.36kr.com/feed-article` |
+| `huxiu` | feed | `rss.huxiu.com`；视频稿适配见 §18 |
+| `infoq-cn` | feed | `www.infoq.cn/feed`，默认关闭 |
+| `huanqiukexue` | feed | `/feed` 404；WP 默认 query feed `/?feed=rss2` 仍在 |
+| `guokr` | guokr | 无 RSS，旧 miniserver JSON 已 404；解析「科学人」列表页，须桌面 UA（移动 UA 404）；只有首页按时间倒序 |
+| `zhishifenzi` | feed | 对 Android Chrome UA 返回 500；列表与正文均用桌面 UA |
+| `tmtpost` | feed | `/rss.xml` |
+| `jazzyear` | jazzyear | 无 RSS（/feed 与 /rss.xml 均 302 → 404 页）；解析首页卡片列表 |
+| `latepost` | latepost | 无 RSS；POST `/site/index`（XHR 头 + Referer）；站点证书链不完整，代理需 `secure:false`，正文对 TLS 错误 insecure 回退 |
+
+**财经快讯 / 盘面（group `cn`）**
+
+| id | kind | 探测要点 |
+|---|---|---|
+| `cls-telegraph` | cls | `get_roll_list` 需按官网前端算法签名（参数排序后 SHA1→MD5）；last_time 游标翻页 |
+| `eastmoney-kx` | eastmoney-kx | `getlist_102_ajaxResult_50_{page}_.html`，需 Referer |
+| `eastmoney-news` | eastmoney-news | `np-listapi` 按 `page_index` 翻页，需 Referer |
+| `wscn-live` | wscn-live | awtmt.com lives 接口，需 Accept + Referer |
+
+**国际（group `intl`）**
+
+| id | kind | 探测要点 |
+|---|---|---|
+| `bbc-zh` `bbc-zh-china` `bbc-zh-world` | feed | 简体 RSS 已 301 → 繁体；china/world 旧 index.xml 停在 2011–2014 归档，统一用 `zhongwen/trad/rss.xml` |
+| `bbc-world` `bbc-business` | feed | feeds.bbci.co.uk 标准 RSS |
+| `gnews-*`（7 个) | google-news | headlines section RSS；跳转链接解码见 `google-news-decode` 测试 |
+| `dw-top` | feed | RDF 格式 |
+| `scmp-china` `scmp-news` | feed | `/rss/4/feed/`、`/rss/91/feed/` |
+| `npr` `guardian-world` `aljazeera` | feed | 标准 RSS |
+| `france24` | feed | `/en/rss` 已 301 到 HTML 目录页；用仍返回 `application/rss+xml` 的分区源（asia-pacific） |
+| `foreign-affairs` `nyrb` `bloomberg-opinion` `project-syndicate` `sinocism` `theinitium` | feed | 深度长文 / 智库；均标准 RSS，默认关闭 |
+
+**科技深度（group `tech`）**
+
+| id | kind | 探测要点 |
+|---|---|---|
+| `arstechnica` `mittr` `verge` `techcrunch` `wired` `hn` `quanta` `stratechery` `vitalik` `fabricated-knowledge` `construction-physics` `v2ex` | feed | 标准 RSS/Atom；Substack 系（vitalik 等）feed 自带全文 |
+| `paulgraham` | paulgraham | 无 RSS；解析 `articles.html` 静态列表，无真实日期（`hasRealDate=false`） |
+
+**AI（group `ai`）**
+
+| id | kind | 探测要点 |
+|---|---|---|
+| `qbitai` `leiphone` `synced` | feed | 标准 RSS |
+| `jiqizhixin` | jiqizhixin | 无 RSS；文章库 JSON API（列表摘要，正文取详情 JSON），需 Referer + Accept |
+| `aiera` | wordpress | WP 站但 `/feed` 常年 500；走 WP REST `wp-json/wp/v2/posts` |
+| `zhidx` | wordpress | 同新智元：`/feed` 500；WP REST 可用，30 条中 29 条 `content.rendered` 全文（2026-08-25 实测） |
+| `baoyu` | feed | `baoyu.io/feed.xml`（302 → `s.baoyu.io`，代理跟随正常）；RSS 仅摘要，正文 Readability 抽静态页（Astro，全文在 DOM，实测 1k–5k 字） |
+| `oneusefulthing` `understandingai` `latent-space` `thezvi` | feed | Substack，feed 自带全文；`understandingai` 约 2 成付费文截断、回落 Readability；`thezvi` feed 近 2 MB、单篇极长，默认关闭 |
+| `openai-news` `google-ai` `deepmind` `huggingface` `pytorch` | feed | 实验室 / 平台一手，标准 RSS/Atom |
+| `mittr-ai` `verge-ai` `ieee-ai` `venturebeat-ai` `marktechpost` | feed | 聚焦栏目 RSS |
+| `lastweek-ai` `import-ai` `ahead-of-ai` `lil-log` `simonw` `interconnects` | feed | 周报与作者博；Substack/静态站均正常 |
+| `arena` | arena | 无官方 RSS；解析官网 Blog 列表页（Sanity 嵌入数据） |
+| `anthropic` | anthropic | 无官方 RSS；解析 `/news` 列表页（Sanity）；URL 带尾斜杠会 308，代理 rewrite 不跟随，必须无尾斜杠 |
+
+**专栏 / 轻松（group `special`）**
+
+| id | kind | 探测要点 |
+|---|---|---|
+| `zhihu-daily` | zhihu | `news-at.zhihu.com/api/4/news/latest` + `before/{yyyyMMdd}` 游标，当前可用（覆盖 §8 的旧结论） |
+| `jandan` | jandan | 官方 `/feed` 对爬虫 403；用 `i.jandan.net` 旧版 JSON API（一次目录） |
+| `astral-codex-ten` `marginalian` `aldaily` `theue` | feed | 标准 RSS，默认关闭 |
+
+### 19.2 对 §1–§17 旧结论的修正
+
+| 旧章节 | 旧结论 | 现行状态 |
+|---|---|---|
+| §1/§8 | 知乎日报旧 API「不可作为稳定源」 | `news-at.zhihu.com` 的 latest / before 接口当前可用，kind `zhihu` 已接入（默认关闭）；域名统一用 `news-at`，不再使用 `news.at` |
+| §1/§9 | 果壳「建议先停用」 | `apis.guokr.com` 旧 JSON 确已失效；现行改为解析 `guokr.com/scientific/` 列表页（kind `guokr`），须桌面 UA |
+| §7 | 汽车频道 URL `6buE55%2Bz` | 现行用 `5Yac5Zyz`，顶层键 `list`，解析器按数组键兼容 |
+| §10/§11 | 豆瓣一刻 / 锤子阅读待评估 | 确认失效，未注册 |
+| §12 | 网易背景图接口 404 | 已废弃，不接入 |
+| §7 | 智能 / 暴雪游戏 / 彩票返回 `[]` | 未注册（与旧结论一致，registry 头部注释同步） |
+
+### 19.3 深度解读 / 评测补强探测记录（2026-08-25）
+
+背景：用户反馈 AI（文生图、文生视频、LLM、文生音乐）与科技分组里**原始发布类**信源
+（实验室官方 blog、发布说明、快讯）偏多，**深度解读 / 评测 / 产品体验**偏少。本轮补强
+以「非一手、可站内全文、稳定 feed、中文优先」为筛选标准。
+
+**已收录（6 个，见 19.1 AI 表）**：
+
+| id | 定位 | 语言 |
+|---|---|---|
+| `zhidx` | 智东西：AI 产业深度报道与硬件/产品评测 | 中文 |
+| `baoyu` | 宝玉的分享：LLM / Prompt / AI 工程的深度解读与译文 | 中文 |
+| `oneusefulthing` | One Useful Thing（Ethan Mollick）：面向普通用户的模型能力实测与使用心得 | 英文 |
+| `understandingai` | Understanding AI（Timothy B. Lee）：面向大众的深度解释性报道 | 英文 |
+| `latent-space` | Latent Space：AI 工程深度解读与从业者访谈 | 英文 |
+| `thezvi` | Don't Worry About the Vase（Zvi）：模型发布后的超长深度评测综述 | 英文 |
+
+英文源占多数的原因：中文 AI 深度解读生态主要在微信公众号内，无稳定 RSS / 可抓取
+网页版；以下候选均已实测并落选：
+
+| 候选 | 探测结果 |
+|---|---|
+| AppSo（爱范儿 AI 产品栏目） | `/app/feed` 302 → 随机文章 HTML；`/category/app/feed` 404，feed 已下线 |
+| 归藏 AIGC Weekly（Quaily） | Atom feed 正常（`quaily.com/op7418/feed/atom`），但文章页只 SSR 约 1000 字预览，其余在 PREMIUM 付费墙后，不满足站内全文 |
+| Founder Park | 无独立可抓取站点（域名解析失败），内容在微信 |
+| Xiaohu.AI | `/feed` 返回 HTML，非 feed |
+| 品玩 PingWest | `/feed` 返回 HTML，非 feed |
+| SemiAnalysis | `/feed/` 全文 RSS 可用，但付费文章中途截断、阅读体验断裂；且半导体深度已有 `fabricated-knowledge`，暂不收 |
+| Every.to / The Batch（deeplearning.ai）/ Artificial Analysis | 均无可用 RSS 端点（探测 404 或返回 HTML） |
+
+验证方式：以上「已收录」6 源均用 `parseSourcePayload` 对线上响应做过端到端解析
+（条目数、日期、`contentHtml` 全文判断），`baoyu` 另用 Readability + linkedom 验证了
+静态页正文抽取（1k–5k 字，`isSubstantialHtml` 通过）。
