@@ -39,6 +39,7 @@ import {
   resolveHuxiuVideoBody,
   resolveJiqizhixinBody,
   resolveNetEaseArticleBody,
+  resolveZhihuBody,
   candidateNeteaseIds,
 } from './resolveBody/siteBodies'
 import {
