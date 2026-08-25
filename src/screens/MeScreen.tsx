@@ -156,7 +156,10 @@ export function MeScreen({
             <span className="h-px flex-1 bg-haze" aria-hidden />
           </div>
 
-        <ul className="divide-y divide-haze border-y border-haze md:grid md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-haze">
+        <ul
+          data-tour="me-reading"
+          className="divide-y divide-haze border-y border-haze md:grid md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-haze"
+        >
           <SettingsRow
             icon={Bookmark}
             title="稍后读"
@@ -183,7 +186,10 @@ export function MeScreen({
           <span className="h-px flex-1 bg-haze" aria-hidden />
         </div>
 
-        <ul className="divide-y divide-haze border-y border-haze md:grid md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-haze">
+        <ul
+          data-tour="me-settings"
+          className="divide-y divide-haze border-y border-haze md:grid md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-haze"
+        >
           <SettingsRow
             icon={Rss}
             title="自定义订阅与 OPML"

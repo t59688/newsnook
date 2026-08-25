@@ -1,0 +1,127 @@
+/*
+ * driver.js 弹层主题化：颜色全部取自 --tone-* 语义 token，
+ * 自动跟随 data-theme（明暗）与 data-scheme（墨问 / 天青 / 自定义）。
+ * 结构类名来自 driver.js 官方样式（dist/driver.css），仅做覆盖不改结构。
+ */
+
+.driver-popover.newsnook-tour {
+  background-color: var(--tone-ink-raised);
+  color: var(--tone-paper);
+  border: 1px solid var(--tone-haze);
+  border-radius: 16px;
+  min-width: 258px;
+  max-width: min(320px, calc(100vw - 28px));
+  padding: 18px;
+  box-shadow: var(--shadow-lift, 0 12px 40px -16px rgb(0 0 0 / 0.85));
+  font-family: var(--font-body, system-ui, sans-serif);
+}
+
+.newsnook-tour .driver-popover-title {
+  font-family: var(--font-display, serif);
+  font-size: 18px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: var(--tone-paper);
+}
+
+.newsnook-tour .driver-popover-description {
+  font-size: 13px;
+  line-height: 1.8;
+  color: var(--tone-paper-muted);
+}
+
+.newsnook-tour .driver-popover-title[style*='block'] + .driver-popover-description {
+  margin-top: 7px;
+}
+
+.newsnook-tour .driver-popover-close-btn {
+  width: 36px;
+  height: 34px;
+  font-size: 19px;
+  color: var(--tone-paper-faint);
+}
+
+.newsnook-tour .driver-popover-close-btn:hover,
+.newsnook-tour .driver-popover-close-btn:focus {
+  color: var(--tone-paper);
+}
+
+.newsnook-tour .driver-popover-progress-text {
+  font-family: var(--font-mono, monospace);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: var(--tone-paper-faint);
+}
+
+.newsnook-tour .driver-popover-footer {
+  margin-top: 14px;
+  gap: 10px;
+}
+
+.newsnook-tour .driver-popover-navigation-btns button + button {
+  margin-left: 8px;
+}
+
+.newsnook-tour .driver-popover-footer-btn {
+  border-radius: 9999px;
+  border: 1px solid var(--tone-haze);
+  background-color: transparent;
+  color: var(--tone-paper-muted);
+  padding: 6px 14px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11px;
+  line-height: 1.4;
+  transition:
+    color 0.2s,
+    border-color 0.2s,
+    background-color 0.2s;
+}
+
+.newsnook-tour .driver-popover-footer-btn:hover,
+.newsnook-tour .driver-popover-footer-btn:focus {
+  background-color: rgb(var(--tone-paper-rgb) / 0.06);
+  color: var(--tone-paper);
+}
+
+/* 下一步 / 开始使用：朱砂点睛，与应用内主按钮语气一致 */
+.newsnook-tour .driver-popover-next-btn {
+  border-color: rgb(var(--tone-cinnabar-rgb) / 0.5);
+  background-color: rgb(var(--tone-cinnabar-rgb) / 0.12);
+  color: var(--tone-cinnabar-soft);
+  font-weight: 500;
+}
+
+.newsnook-tour .driver-popover-next-btn:hover,
+.newsnook-tour .driver-popover-next-btn:focus {
+  border-color: rgb(var(--tone-cinnabar-rgb) / 0.72);
+  background-color: rgb(var(--tone-cinnabar-rgb) / 0.18);
+  color: var(--tone-cinnabar);
+}
+
+/*
+ * 箭头由四向 border 拼出：只染指向侧，其余侧的透明由 driver 基础样式负责，
+ * 不能整体覆盖 border-color，否则会盖掉透明侧。
+ */
+.newsnook-tour .driver-popover-arrow-side-left {
+  border-left-color: var(--tone-ink-raised);
+}
+
+.newsnook-tour .driver-popover-arrow-side-right {
+  border-right-color: var(--tone-ink-raised);
+}
+
+.newsnook-tour .driver-popover-arrow-side-top {
+  border-top-color: var(--tone-ink-raised);
+}
+
+.newsnook-tour .driver-popover-arrow-side-bottom {
+  border-bottom-color: var(--tone-ink-raised);
+}
+
+/* 系统减弱动效时，即使 driver 处于 fade 模式也不再播放透明度动画 */
+@media (prefers-reduced-motion: reduce) {
+  .driver-fade .driver-overlay,
+  .driver-fade .driver-popover {
+    animation: none;
+  }
+}

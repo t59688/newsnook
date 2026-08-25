@@ -882,7 +882,7 @@ export const FeedScreen = memo(function FeedScreen({
         </div>
 
         {categoryId && categories && categories.length > 0 && onCategoryChange && (
-          <div className="mt-0.5 lg:hidden">
+          <div className="mt-0.5 lg:hidden" data-tour="category-rail">
             <CategoryRail
               categories={categories}
               activeId={categoryId}
@@ -946,7 +946,7 @@ export const FeedScreen = memo(function FeedScreen({
         </div>
       </header>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden">
+      <div className="relative min-h-0 flex-1 overflow-hidden" data-tour="feed-list">
         <PullIndicator
           indicatorRef={indicatorRef}
           phase={phase}

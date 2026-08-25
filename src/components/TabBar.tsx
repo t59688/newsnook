@@ -33,6 +33,7 @@ export const TabBar = memo(function TabBar({
   return (
     <nav
       data-surface="tabbar"
+      data-tour="tab-bar"
       className="relative z-20 shrink-0 border-t border-haze/50 bg-ink/92 backdrop-blur-xl transition-colors duration-300 lg:hidden"
       style={{ paddingBottom: 'var(--sab)' }}
     >
