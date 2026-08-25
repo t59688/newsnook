@@ -9,6 +9,8 @@ const plugin = read('android/app/src/main/java/com/aizeek/newsnook/DlnaCastPlugi
 const service = read('android/app/src/main/java/com/aizeek/newsnook/DlnaCastForegroundService.java')
 const manifest = read('android/app/src/main/AndroidManifest.xml')
 const player = read('src/components/InkVideoPlayer.tsx')
+const castControls = read('src/components/inkVideoPlayer/useCastControls.ts')
+const castOverlay = read('src/components/inkVideoPlayer/CastOverlay.tsx')
 const castApi = read('src/lib/dlnaCast.ts')
 
 assert.match(plugin, /setTransportUri\(device, url, title, format\)/)
@@ -37,8 +39,13 @@ assert.doesNotMatch(
   /if \(activeCast\) void stopDlnaCast\(activeCast\.id\)/,
   'unmounting InkVideoPlayer must not stop television playback',
 )
-assert.match(player, /电视独立播放/)
-assert.match(player, /兼容模式/)
+assert.doesNotMatch(
+  castControls,
+  /if \(activeCast\) void stopDlnaCast\(activeCast\.id\)/,
+  'unmounting the cast controls hook must not stop television playback',
+)
+assert.match(castOverlay, /电视独立播放/)
+assert.match(castOverlay, /兼容模式/)
 assert.match(castApi, /export type DlnaCastMode = 'direct' \| 'proxy'/)
 assert.match(castApi, /restore\(\): Promise<DlnaCastRestoreResult>/)
 
