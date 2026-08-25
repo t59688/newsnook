@@ -1026,12 +1026,12 @@ function parseLatepost(source: NewsSource, payload: string, fetchedAt: number): 
 }
 
 /**
- * wechat2rss 镜像正文的已知噪声：
- * - 头部「原创 <作者> <YYYY-MM-DD HH:MM> <地点>」meta 行
- * - 尾部「跳转微信打开」link-proxy 链接
- * - 隐藏的 <mp-style-type> 排版标记
+ * 公众号正文的已知模板噪声（wechat2rss 镜像 feed 与 mp.weixin.qq.com 页面共用）：
+ * - 头部「原创 <作者> <YYYY-MM-DD HH:MM> <地点>」meta 行（镜像模板）
+ * - 尾部「跳转微信打开」link-proxy 链接（镜像模板）
+ * - 隐藏的 <mp-style-type> 排版标记（微信编辑器产物，原文页里也有）
  */
-export function cleanWechat2rssContentHtml(html: string): string {
+export function cleanWechatArticleHtml(html: string): string {
   let out = html
 
   const lead = out.match(/^\s*<p\b[^>]*>([\s\S]{0,600}?)<\/p>/)
@@ -1051,14 +1051,14 @@ export function cleanWechat2rssContentHtml(html: string): string {
 }
 
 /**
- * 公众号镜像（wechat2rss）：标准 RSS + content:encoded 全文，
- * 在通用 XML 解析后剥离镜像模板噪声并重算摘要。
- * 原文 mp.weixin.qq.com 对数据中心 IP 常回验证码页，故正文主路径是 feed 自带全文。
+ * 公众号镜像 feed（wechat2rss，过渡列表数据源）：标准 RSS + content:encoded 全文，
+ * 在通用 XML 解析后剥离镜像模板噪声并重算摘要。feed 自带全文时即正文主路径；
+ * 缺全文时由 resolveBody 直连 mp.weixin.qq.com 文章页抽正文（extractWechatBodyHtml）。
  */
-function parseWechat2rss(source: NewsSource, payload: string, fetchedAt: number): Article[] {
+function parseWechatMirrorFeed(source: NewsSource, payload: string, fetchedAt: number): Article[] {
   return parseXmlFeed(source, payload, fetchedAt).map((article) => {
     if (!article.contentHtml) return article
-    const cleaned = cleanWechat2rssContentHtml(article.contentHtml)
+    const cleaned = cleanWechatArticleHtml(article.contentHtml)
     if (!cleaned.includes('<')) return article
 
     const summaryText = stripTags(cleaned)
@@ -1070,6 +1070,75 @@ function parseWechat2rss(source: NewsSource, payload: string, fetchedAt: number)
       image: article.image ?? firstImageIn(cleaned),
     }
   })
+}
+
+/**
+ * 公众号公开合集（mp.weixin.qq.com/mp/appmsgalbum + f=json）：
+ * getalbum_resp.article_list 携带标题 / 原文链接 / 秒级时间戳 / 封面，正文不随列表下发，
+ * 打开条目时由 resolveBody 直连文章页抽取。ret 非 0（参数错误 / 合集不可见）返回空列表。
+ */
+function parseWechatAlbum(source: NewsSource, payload: string, fetchedAt: number): Article[] {
+  let data: Unknown
+  try {
+    data = JSON.parse(payload) as Unknown
+  } catch {
+    return []
+  }
+
+  const baseResp = asRecord(data.base_resp)
+  if (baseResp && Number(text(baseResp.ret) || '0') !== 0) return []
+
+  const resp = asRecord(data.getalbum_resp)
+  if (!resp) return []
+
+  const articles: Article[] = []
+  for (const raw of toArray(resp.article_list)) {
+    const node = asRecord(raw)
+    if (!node) continue
+    const title = text(node.title)
+    const link = text(node.url).replace(/^http:\/\//i, 'https://')
+    if (!title || !link.startsWith('https://')) continue
+
+    // create_time 为 unix 秒；缺失时留空走 fetchedAt
+    const createTime = Number(text(node.create_time))
+    const dateRaw =
+      Number.isFinite(createTime) && createTime > 0
+        ? new Date(createTime * 1000).toISOString()
+        : ''
+
+    const cover =
+      text(node.cover_img_1_1) ||
+      text(node.cover_img_url_1_1) ||
+      text(node.cover_img_url) ||
+      text(node.cover_url)
+
+    const article = buildArticle(
+      source,
+      {
+        title,
+        link,
+        html: '',
+        summaryText: '',
+        dateRaw,
+        image: cover.replace(/^http:\/\//i, 'https://') || undefined,
+      },
+      fetchedAt,
+    )
+    if (article) articles.push(article)
+  }
+
+  return articles
+}
+
+/**
+ * 公众号解析器（kind `wechat`）：按响应载荷分流——
+ * JSON 视为公开合集接口，其余按镜像 RSS 解析。
+ */
+function parseWechatSource(source: NewsSource, payload: string, fetchedAt: number): Article[] {
+  if (payload.trim().startsWith('{')) {
+    return parseWechatAlbum(source, payload, fetchedAt)
+  }
+  return parseWechatMirrorFeed(source, payload, fetchedAt)
 }
 
 /** 优设列表卡片里的站内功能页（非文章落地页） */
@@ -1567,7 +1636,7 @@ const PARSERS: Record<SourceKind, SourceParser> = {
   'eastmoney-news': parseEastmoneyNews,
   'wscn-live': parseWscnLive,
   paulgraham: parsePaulGraham,
-  wechat2rss: parseWechat2rss,
+  wechat: parseWechatSource,
   uisdc: parseUisdcTag,
   'web-catalog': parseWebCatalog,
 }

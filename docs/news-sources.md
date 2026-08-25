@@ -77,7 +77,7 @@
 | `lastweek-ai` `import-ai` `ahead-of-ai` `lil-log` `simonw` `interconnects` | feed | 周报与作者博；Substack/静态站均正常 |
 | `arena` | arena | 无官方 RSS；解析官网 Blog 列表页（Sanity 嵌入数据） |
 | `anthropic` | anthropic | 无官方 RSS；解析 `/news` 列表页（Sanity）；URL 带尾斜杠会 308，代理 rewrite 不跟随，必须无尾斜杠 |
-| `xixiaoyao` `paperweekly` `42zhangjing` | wechat2rss | 公众号镜像（第三方 wechat2rss 公共实例），feed 自带全文；探测与风险见 §4 |
+| `xixiaoyao` `paperweekly` `42zhangjing` | wechat | 公众号解析器；列表过渡数据源为 wechat2rss 镜像 feed（自带全文），缺全文时直连 mp.weixin.qq.com 文章页抽正文；探测与风险见 §4 |
 | `uisdc-aigc` | uisdc | 优设 AIGC 标签页，无 RSS；解析归档 HTML + `/page/N` 翻页，正文 Readability；见 §4 |
 | `woshipm-ai` | feed | 人人都是产品经理 AI 分类 WP feed，全文；见 §4 |
 
@@ -148,21 +148,40 @@ WebView 观察页面的网络、DOM、MSE 与 DRM 信号；接口或观察失败
 **第三方镜像 + 自定义解析**路径接入，并补充设计/产品社区频道（体验解读、工具评测、
 教程深读），面向「无法亲手玩模型」的读者。
 
-### 4.1 公众号镜像（kind `wechat2rss`）
+### 4.1 公众号解析器（kind `wechat`；2026-08-26 由 `wechat2rss` kind 升级）
 
-抓取路径：wechat2rss 公共实例（`https://wechat2rss.xlab.app`，第三方维护，收录约
-395 个号）。实例基址集中在 `registry.ts` 的 `WECHAT2RSS_BASE`，失效或换址只改一处。
+`wechat` 是一等公民 kind（公众号解析器），旧 kind 名 `wechat2rss` 由
+`normalizeSourceKind` 归一兼容（旧备份 / 旧自建源无需迁移）。解析器按响应载荷分流，
+支持两类列表入口：
 
-feed 结构（2026-08-25 实测）：标准 RSS 2.0，`content:encoded` 自带**完整正文**，
-图片经镜像 `img-proxy` 中转（绕开 mmbiz.qpic.cn Referer 防盗链）。因此**正文主路径 =
-feed 自带全文**（`isSubstantialHtml` 通过，站内直接渲染）；已知模板噪声由
-`cleanWechat2rssContentHtml` 剥离：头部「原创 作者 日期 地点」meta 行、尾部
-「跳转微信打开」link-proxy 链接、隐藏的 `<mp-style-type>`。
+- **镜像 feed（内置号的过渡列表数据源）**：wechat2rss 公共实例
+  （`https://wechat2rss.xlab.app`，第三方维护，收录约 395 个号）。实例基址集中在
+  `registry.ts` 的 `WECHAT2RSS_BASE`，失效或换址只改一处。微信不提供无登录的公众号
+  全量文章流（profile_ext 需要会话、搜狗有验证码墙，见 §4.3），故内置三号仍以镜像
+  feed 取列表，但解析与正文不再依赖镜像模板。
+- **公开合集直连（appmsgalbum）**：`mp.weixin.qq.com/mp/appmsgalbum?action=getalbum
+  &__biz=…&album_id=…&f=json`，无登录可访问（2026-08-26 实测数据中心 IP 亦可），
+  返回 `getalbum_resp.article_list`（标题 / 原文链接 / 秒级 `create_time` /
+  `cover_img_1_1` 封面）。自定义源粘贴合集分享链接时由 `isWechatAlbumUrl` 识别、
+  `normalizeWechatAlbumUrl` 归一成 JSON 列表入口（`addCustomSource` 自动定 kind）。
+  合集只含作者手工归档的文章，不等于全量文章流。
 
-回源兜底：`originUrl` 为 `mp.weixin.qq.com` 原文页。实测数据中心 IP 直抓会 302 到
-`wappoc_appmsgcaptcha` 验证码页（正文近乎空白，Readability 判「过短」后走摘要 +
-打开原文的软降级）；移动端住宅网络通常可正常返回文章 HTML。故列表缓存过期、
-`bodyCache` 又被逐出的旧文在部分网络下只能读镜像摘要。
+镜像 feed 结构（2026-08-25 实测）：标准 RSS 2.0，`content:encoded` 自带**完整正文**，
+图片经镜像 `img-proxy` 中转（绕开 mmbiz.qpic.cn Referer 防盗链）。feed 自带全文时
+**正文主路径 = feed 全文**（`isSubstantialHtml` 通过，站内直接渲染）；已知噪声由
+`cleanWechatArticleHtml` 剥离：头部「原创 作者 日期 地点」meta 行、尾部
+「跳转微信打开」link-proxy 链接、隐藏的 `<mp-style-type>`（微信编辑器产物，
+原文页里同样存在）。
+
+直连正文路径（feed 缺全文 / 合集条目 / 旧文缓存被逐出时）：`resolveBody` 抓
+`mp.weixin.qq.com` 文章页，由 `extractWechatBodyHtml` 取 `#js_content`
+（.rich_media_content）——容器带 `visibility: hidden` 内联样式、图片全部 `data-src`
+懒加载（由 `normalizeContentImages` 统一提升并加 `referrerpolicy="no-referrer"`），
+标题回填取 `og:title` / `#activity-name`。2026-08-26 实测：`/s/<slug>` 形态文章页
+对数据中心 IP 也返回完整 HTML；`/s?__biz=…` 参数形态在数据中心 IP 常返回
+`secitptpage/verify` 环境验证壳（无正文），已加入 `isBlockedPublisherHtml` 识别，
+命中后走换 UA → 翻译镜像 → 摘要 + 打开原文的既有软降级链。移动端住宅网络通常两种
+形态均可正常返回文章 HTML。
 
 首轮收录 4 个；二轮甄选（§5）移除差评，现存 3 个（均默认关闭，由「深读 / 社区」分类与
 「极客与 AI」预设承接）：

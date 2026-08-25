@@ -35,8 +35,10 @@ import { CATEGORIES, findCategory, PORTAL_VISIBLE_CATEGORY_IDS, type CategoryId,
 import {
   SOURCES,
   findSource,
+  isWechatAlbumUrl,
   makeCustomSourceId,
   normalizeSourceKind,
+  normalizeWechatAlbumUrl,
   type NewsSource,
   type SourceGroup,
 } from './registry'
@@ -705,7 +707,9 @@ export function addCustomSource(
   },
   targetCategoryId?: CategoryId,
 ): { nextPrefs: Preferences; newSourceId: string } {
-  const url = draft.url.trim()
+  // 公众号合集分享链接：归一成 JSON 列表入口并走公众号解析器
+  const wechatAlbum = !draft.kind && isWechatAlbumUrl(draft.url.trim())
+  const url = wechatAlbum ? normalizeWechatAlbumUrl(draft.url.trim()) : draft.url.trim()
   const name = draft.name.trim() || '自定义订阅'
   const label = draft.label?.trim() || name.slice(0, 4)
   const id = makeCustomSourceId(url)
@@ -719,7 +723,7 @@ export function addCustomSource(
     name,
     label,
     group,
-    kind: draft.kind ?? 'feed',
+    kind: draft.kind ?? (wechatAlbum ? 'wechat' : 'feed'),
     url,
     siteUrl: draft.siteUrl?.trim() || undefined,
     enabled: true,

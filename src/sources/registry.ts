@@ -33,13 +33,15 @@ export type SourceKind =
   | 'eastmoney-news'
   | 'wscn-live'
   | 'paulgraham'
-  | 'wechat2rss'
+  | 'wechat'
   | 'uisdc'
   | 'web-catalog'
 
 /** 旧版自建源 kind 兼容 */
 export function normalizeSourceKind(kind: string | undefined): SourceKind {
   if (kind === 'web-video' || kind === 'web-catalog') return 'web-catalog'
+  // 公众号解析器升级前的旧 kind
+  if (kind === 'wechat2rss') return 'wechat'
   return (kind as SourceKind) || 'feed'
 }
 
@@ -115,12 +117,14 @@ export const OFFSET_MAX_PAGES: Partial<Record<SourceKind, number>> = {
 }
 
 /**
- * 公众号镜像入口（wechat2rss 公共实例，第三方维护）。
+ * 公众号解析器（kind `wechat`）的镜像列表入口（wechat2rss 公共实例，第三方维护）。
+ * 内置号目前仍以镜像 feed 为过渡列表数据源：微信不提供无登录的公众号全量文章流，
+ * 解析器另支持 mp.weixin.qq.com 公开合集 JSON 直连（见 normalizeWechatAlbumUrl）。
  * 该实例失效或换址时只需改这里；feed hash 与公众号的对应关系见 docs/news-sources.md §4。
  */
 export const WECHAT2RSS_BASE = 'https://wechat2rss.xlab.app'
 
-function wechatMirror(
+function wechatAccount(
   id: string,
   name: string,
   label: string,
@@ -132,10 +136,42 @@ function wechatMirror(
     name,
     label,
     group: options?.group ?? 'ai',
-    kind: 'wechat2rss',
+    kind: 'wechat',
     url: `${WECHAT2RSS_BASE}/feed/${feedHash}.xml`,
     enabled: options?.enabled ?? false,
   }
+}
+
+/** 公众号公开合集（appmsgalbum）分享链接；biz 参数有 __biz / biz 两种写法 */
+export function isWechatAlbumUrl(url: string): boolean {
+  try {
+    const parsed = new URL(url.trim())
+    if (parsed.hostname !== 'mp.weixin.qq.com') return false
+    if (!parsed.pathname.startsWith('/mp/appmsgalbum')) return false
+    const biz = parsed.searchParams.get('__biz') || parsed.searchParams.get('biz')
+    return Boolean(biz && parsed.searchParams.get('album_id'))
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 公众号合集链接归一成 JSON 列表入口：
+ * 去掉分享参数与 #wechat_redirect，补 f=json / count，保证列表请求拿到结构化数据。
+ */
+export function normalizeWechatAlbumUrl(url: string): string {
+  if (!isWechatAlbumUrl(url)) return url
+  const parsed = new URL(url.trim())
+  const biz = parsed.searchParams.get('__biz') || parsed.searchParams.get('biz') || ''
+  const albumId = parsed.searchParams.get('album_id') || ''
+  const search = new URLSearchParams({
+    action: 'getalbum',
+    __biz: biz,
+    album_id: albumId,
+    count: String(CATALOG_PAGE_SIZE),
+    f: 'json',
+  })
+  return `https://mp.weixin.qq.com/mp/appmsgalbum?${search.toString()}`
 }
 
 function neteaseList(tid: string): string {
@@ -532,14 +568,15 @@ export const SOURCES: NewsSource[] = [
   { id: 'latent-space', name: 'Latent Space', label: 'Latent', group: 'ai', kind: 'feed', url: 'https://www.latent.space/feed', enabled: false },
   // Zvi 周报综述极长，feed 近 2MB；默认关闭，按需启用
   { id: 'thezvi', name: "Don't Worry About the Vase", label: 'Zvi', group: 'ai', kind: 'feed', url: 'https://thezvi.substack.com/feed', enabled: false },
-  // —— 公众号镜像（wechat2rss 第三方公共实例；feed 自带全文即正文主路径）——
+  // —— 公众号（kind `wechat` 公众号解析器；列表过渡数据源为 wechat2rss 镜像 feed，
+  // feed 自带全文优先，缺全文时由解析器直连 mp.weixin.qq.com 文章页抽正文）——
   // 镜像属第三方维护、可能失效；默认关闭。二轮甄选只保留 3 个真·深度号，
   // 抽检数据、落选名单（差评等）与风险记录见 docs/news-sources.md §4 / §5
-  wechatMirror('xixiaoyao', '夕小瑶科技说', '夕小瑶', 'a1cd365aa14ed7d64cabfc8aa086da40ecaba34d'),
+  wechatAccount('xixiaoyao', '夕小瑶科技说', '夕小瑶', 'a1cd365aa14ed7d64cabfc8aa086da40ecaba34d'),
   // PaperWeekly feed 约 3MB（20 篇论文深读全文），刷新流量较大；不进默认预设
-  wechatMirror('paperweekly', 'PaperWeekly', 'PaperWeekly', '3be891c2f4e526629ab055a297cc2cd6c1f0a563'),
+  wechatAccount('paperweekly', 'PaperWeekly', 'PaperWeekly', '3be891c2f4e526629ab055a297cc2cd6c1f0a563'),
   // 42章经：AI/创投深度访谈，更新频率低（月 2–3 篇）
-  wechatMirror('42zhangjing', '42章经', '42章经', '31436fcc3bba8c2c2a9337a163afcb3b5a57a0a0'),
+  wechatAccount('42zhangjing', '42章经', '42章经', '31436fcc3bba8c2c2a9337a163afcb3b5a57a0a0'),
   // 优设无 RSS（/feed 返回首页 HTML、tag feed 与 WP REST 均 404）；解析 tag 列表页，/page/N 翻页
   {
     id: 'uisdc-aigc',
