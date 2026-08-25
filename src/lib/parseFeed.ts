@@ -1051,23 +1051,26 @@ export function cleanWechatArticleHtml(html: string): string {
 }
 
 /**
- * 公众号镜像 feed（wechat2rss，过渡列表数据源）：标准 RSS + content:encoded 全文，
- * 在通用 XML 解析后剥离镜像模板噪声并重算摘要。feed 自带全文时即正文主路径；
- * 缺全文时由 resolveBody 直连 mp.weixin.qq.com 文章页抽正文（extractWechatBodyHtml）。
+ * 公众号镜像 feed（wechat2rss，过渡列表数据源）：标准 RSS + content:encoded 全文
+ * （占 feed 体积 98–99%，实测 0.7–2.9MB/20 条）。信息流与正文分离：全文只用来派生
+ * 摘要与封面，不进列表条目；正文由 resolveBody 按需直连 mp.weixin.qq.com 文章页
+ * 抽取（extractWechatBodyHtml），bodyCache 承接已读缓存。
+ * 调研与取舍见 docs/superpowers/specs/2026-08-25-wechat-account-stream-research.md。
  */
 function parseWechatMirrorFeed(source: NewsSource, payload: string, fetchedAt: number): Article[] {
   return parseXmlFeed(source, payload, fetchedAt).map((article) => {
     if (!article.contentHtml) return article
     const cleaned = cleanWechatArticleHtml(article.contentHtml)
-    if (!cleaned.includes('<')) return article
+    // 清洗后没剩标签说明全文形态异常，仍从原始全文取摘要素材
+    const summarySource = cleaned.includes('<') ? cleaned : article.contentHtml
 
-    const summaryText = stripTags(cleaned)
+    const summaryText = stripTags(summarySource)
     const cleanedSummary = cleanSummaryText(summaryText, article.title)
     return {
       ...article,
-      contentHtml: cleaned,
+      contentHtml: undefined,
       summary: (cleanedSummary || summaryText).slice(0, 220),
-      image: article.image ?? firstImageIn(cleaned),
+      image: article.image ?? firstImageIn(summarySource),
     }
   })
 }

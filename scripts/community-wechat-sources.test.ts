@@ -3,7 +3,7 @@
  * 1. 注册表与分类覆盖 / 互斥自检（含 wechat2rss → wechat 兼容别名）
  * 2. 优设 tag 列表页解析器（卡片抽取、导航过滤、日期与配图）
  * 3. 优设 /page/N 翻页映射与分页策略
- * 4. 公众号镜像 feed 噪声清洗（meta 行 / 跳转微信打开 / mp-style-type）与全文判断
+ * 4. 公众号镜像 feed 噪声清洗（meta 行 / 跳转微信打开 / mp-style-type）与列表剥离全文
  * 5. 优设详情正文（group 图集 / 长文避开 uisdc-none + 阅读文章卡片）
  * 6. 公众号公开合集 JSON 列表解析（appmsgalbum）与合集链接归一
  * 7. 公众号文章页正文抽取（js_content / data-src / 验证壳拒收）
@@ -196,11 +196,11 @@ for (const id of WECHAT_ACCOUNT_IDS) {
 
 console.log('✓ uisdc /page/N offset paging & wechat client-catalog verified')
 
-// —— 4. 公众号镜像 feed 正文清洗与全文判断 ——
+// —— 4. 公众号镜像 feed 正文清洗与列表剥离全文（信息流与正文分离）——
 const body = Array.from(
   { length: 20 },
   (_, i) =>
-    `<p>第 ${i + 1} 段：这是一段足够长的正文内容，用来验证公众号镜像 feed 自带全文可以直接作为站内正文渲染，而不需要回源抓取微信页面；镜像图片经 img-proxy 中转，正文文字则完整保留在 content:encoded 里。</p>`,
+    `<p>第 ${i + 1} 段：这是一段足够长的正文内容，用来验证公众号镜像 feed 的 content:encoded 全文只被拿来派生摘要与封面，列表条目本身不携带全文；正文改由 resolveBody 按需直连微信文章页抽取。</p>`,
 ).join('')
 
 const wechatFixture = `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0" xmlns:content="http://purl.org/rss/1.0/modules/content/">
@@ -227,25 +227,29 @@ assert.equal(wechatArticles.length, 1)
 const [wechatArticle] = wechatArticles
 assert.equal(wechatArticle.title, '黄仁勋被曝当上 AI 圈“红娘”，算力大战突然换了玩法')
 assert.equal(wechatArticle.hasRealDate, true)
-assert.ok(wechatArticle.contentHtml, 'contentHtml must be kept from content:encoded')
-assert.ok(!wechatArticle.contentHtml!.includes('跳转微信打开'), 'mirror tail link must be stripped')
-assert.ok(!wechatArticle.contentHtml!.includes('mp-style-type'), 'mp-style-type must be stripped')
-assert.ok(
-  !/原创\s*阿雅/.test(wechatArticle.contentHtml!),
-  'leading author/date meta line must be stripped',
+// 信息流与正文分离：content:encoded（占 feed 体积 98–99%）不得进列表条目，
+// 正文由 resolveBody 按需直连文章页；列表持久化层的剥离另有 compactCachedArticle 兜底
+assert.equal(
+  wechatArticle.contentHtml,
+  undefined,
+  'mirror fulltext must be dropped from list items (list/body separation)',
 )
-assert.ok(wechatArticle.contentHtml!.includes('img-proxy'), 'image via mirror proxy must survive')
 assert.ok(wechatArticle.summary.startsWith('第 1 段'), 'summary must start from real body text')
 assert.ok(
-  isSubstantialHtml(wechatArticle.contentHtml),
-  'mirror full text must pass the substantial check (in-app reading without refetch)',
+  !/原创\s*阿雅/.test(wechatArticle.summary),
+  'leading author/date meta line must not leak into summary',
+)
+assert.ok(wechatArticle.summary.length <= 220, 'summary must stay a short field')
+assert.ok(
+  wechatArticle.image?.includes('/img-proxy/'),
+  'cover must be derived from the first body image before dropping fulltext',
 )
 
 // 清洗器不得误伤：没有 meta 行的正文首段必须原样保留
 const plain = '<p>这是一篇没有镜像模板噪声的正文首段。</p><p>第二段。</p>'
 assert.equal(cleanWechatArticleHtml(plain), plain)
 
-console.log('✓ wechat mirror feed boilerplate cleanup & fulltext check verified')
+console.log('✓ wechat mirror feed boilerplate cleanup & list/body separation verified')
 
 // —— 5. 优设详情正文：避开 Readability 的 uisdc-none / 图集兄弟节点坑 ——
 const groupDetailFixture = `
