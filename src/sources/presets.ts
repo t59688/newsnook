@@ -247,7 +247,7 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
       ),
       intl: pickKnown('bbc-zh', 'dw-top', 'scmp-china', 'theinitium', 'gnews-world'),
       health: pickKnown('netease-health', 'gnews-health'),
-      science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'gnews-science'),
+      science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'netease-diqiu', 'gnews-science'),
       fun: pickKnown('netease-fun', 'jandan'),
     }
     return builtinPreset(
@@ -294,10 +294,19 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         'vitalik',
         'fabricated-knowledge',
         'construction-physics',
+        'qianhei',
         'paulgraham',
       ),
       tech: pickKnown('sspai', 'geekpark', 'solidot', 'ruanyifeng', 'appinn', 'ithome'),
-      science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'zhishifenzi'),
+      science: pickKnown(
+        'guokr',
+        'pansci',
+        'huanqiukexue',
+        'zhishifenzi',
+        'netease-fanpu',
+        'netease-wuli',
+        'swarma',
+      ),
     }
     const visible: CategoryId[] = [
       'ai',
@@ -458,7 +467,14 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
   })(),
   (() => {
     const categorySources = {
-      science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'zhishifenzi'),
+      science: pickKnown(
+        'guokr',
+        'pansci',
+        'huanqiukexue',
+        'zhishifenzi',
+        'netease-fanpu',
+        'netease-diqiu',
+      ),
       tech: pickKnown('sspai', 'ruanyifeng', 'appinn', 'v2ex'),
       theue: pickKnown('theue'),
       zhihu: pickKnown('zhihu-daily'),

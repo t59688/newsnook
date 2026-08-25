@@ -99,6 +99,59 @@ for (const id of ['xixiaoyao', 'paperweekly', '42zhangjing', 'uisdc-aigc', 'wosh
 
 console.log('✓ wechat mirror & community sources registered, categories covered & exclusive')
 
+// —— 1b. 硬科技 / 科普甄选（2026-08-25）——
+// 集智俱乐部 / 浅黑科技走 wechat2rss 镜像；返朴 / 中科院物理所 / 地球知识局的公众号
+// 全文同步发布在网易号，列表与正文复用 netease 路径（见 docs/news-sources.md §6）
+const SCIENCE_WECHAT_IDS = ['swarma', 'qianhei']
+const SCIENCE_NETEASE_IDS = ['netease-fanpu', 'netease-wuli', 'netease-diqiu']
+
+for (const id of SCIENCE_WECHAT_IDS) {
+  const src = findSource(id)
+  assert.ok(src, `${id} must be registered in SOURCES`)
+  assert.equal(src.kind, 'wechat', `${id} must use the wechat kind`)
+  assert.ok(
+    src.url.startsWith(`${WECHAT2RSS_BASE}/feed/`),
+    `${id} list URL must come from WECHAT2RSS_BASE`,
+  )
+  assert.equal(src.enabled, false, `${id} mirror must default to disabled`)
+  assert.equal(pagingStrategyOf(src), 'client-catalog', id)
+}
+
+for (const id of SCIENCE_NETEASE_IDS) {
+  const src = findSource(id)
+  assert.ok(src, `${id} must be registered in SOURCES`)
+  assert.equal(src.kind, 'netease', `${id} must reuse the netease list/body path`)
+  assert.match(
+    src.url,
+    /^https:\/\/c\.m\.163\.com\/nc\/article\/list\/T\d+\/0-\d+\.html$/,
+    `${id} list URL must be a netease dy TID endpoint`,
+  )
+  assert.equal(src.userAgent, 'NewsApp', `${id} list UA must stay NewsApp`)
+  assert.equal(src.enabled, true, `${id} follows the science default-on style`)
+  assert.equal(pagingStrategyOf(src), 'upstream-offset', id)
+  assert.match(
+    offsetPageRequest(src, 1).url,
+    /\/20-20\.html$/,
+    `${id} page 2 must map to offset 20`,
+  )
+  // 正文兜底（full.html / m 站落地页）按 sourceId 前缀路由，勿改前缀
+  assert.ok(id.startsWith('netease'), `${id} must keep the netease id prefix for body resolution`)
+}
+
+// 分类归属：科普收编 4 个新源，浅黑科技归科技深度；都不得漏进 AI 分层
+const scienceCategory = CATEGORIES.find((cat) => cat.id === 'science')!
+for (const id of ['netease-fanpu', 'netease-wuli', 'netease-diqiu', 'swarma']) {
+  assert.ok(scienceCategory.sourceIds!.includes(id), `${id} must be covered by science`)
+}
+const techDepthCategory = CATEGORIES.find((cat) => cat.id === 'tech-depth')!
+assert.ok(techDepthCategory.sourceIds!.includes('qianhei'), 'qianhei must be covered by tech-depth')
+for (const id of [...SCIENCE_WECHAT_IDS, ...SCIENCE_NETEASE_IDS]) {
+  assert.ok(!aiDepthCategory.sourceIds!.includes(id), `${id} must not leak into ai-depth`)
+  assert.ok(!aiCategory.sourceIds!.includes(id), `${id} must not leak into the official ai category`)
+}
+
+console.log('✓ hard-science sources registered (wechat mirror + netease dy), categories verified')
+
 // —— 2. 优设 tag 列表页解析 ——
 const uisdcSource = findSource('uisdc-aigc')!
 const uisdcFixture = `
