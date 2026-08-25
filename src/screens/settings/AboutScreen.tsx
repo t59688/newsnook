@@ -2,6 +2,7 @@ import { useState } from 'react'
 import {
   BookOpen,
   Check,
+  Compass,
   Copy,
   ExternalLink,
   HardDrive,
@@ -28,6 +29,8 @@ interface Props {
   onCheckUpdate?: () => void
   onOpenChangelog?: () => void
   onOpenLicenses?: () => void
+  /** 重新播放功能引导（回到「速闻」页开播，不清「看过」标记） */
+  onReplayTour?: () => void
   flavorSwitchSupported?: boolean
   currentChannelLabel?: string
   flavorSwitchTitle?: string
@@ -84,6 +87,7 @@ export function AboutScreen({
   onCheckUpdate,
   onOpenChangelog,
   onOpenLicenses,
+  onReplayTour,
   flavorSwitchSupported = false,
   currentChannelLabel,
   flavorSwitchTitle,
@@ -206,6 +210,30 @@ export function AboutScreen({
           </li>
         </ul>
       </SettingsSection>
+
+      {onReplayTour ? (
+        <SettingsSection title="使用帮助">
+          <ul className="divide-y divide-haze border-y border-haze bg-ink">
+            <li className="transition-colors hover:bg-ink-raised/30 active:bg-ink-raised/50">
+              <button
+                type="button"
+                onClick={onReplayTour}
+                className="page-x flex w-full items-center gap-3.5 py-4 text-left"
+              >
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ink-raised/60 text-paper">
+                  <Compass size={18} strokeWidth={1.75} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <span className="text-[14px] font-medium text-paper">重看功能引导</span>
+                  <p className="mt-0.5 truncate font-mono text-[11px] text-paper-faint">
+                    回到「速闻」页，重新过一遍常用功能
+                  </p>
+                </div>
+              </button>
+            </li>
+          </ul>
+        </SettingsSection>
+      ) : null}
 
       <SettingsSection title="项目与文档">
         <ul className="divide-y divide-haze border-y border-haze bg-ink">

@@ -21,6 +21,7 @@ const BOOTSTRAP_MIRROR_KEYS = [
   'enabled',
   'presets',
   'splash-seen',
+  'tour-seen',
   'later-items',
   'later',
   'read',
@@ -210,6 +211,20 @@ export function markStartupSplashSeen(): void {
 /** 清除「已看过完整开场」标记，下次冷启动会再播完整动画（播完后仍会重新标记） */
 export function clearStartupSplashSeen(): void {
   removeKeys(['splash-seen'])
+}
+
+/** 功能引导只自动播放一次；完成或跳过都算看过，「关于」页可随时重看（不清标记） */
+export function hasSeenProductTour(): boolean {
+  return read<boolean>('tour-seen', false)
+}
+
+export function markProductTourSeen(): void {
+  write('tour-seen', true)
+}
+
+/** 调试用：清除标记后下次冷启动进首页会再次自动引导 */
+export function clearProductTourSeen(): void {
+  removeKeys(['tour-seen'])
 }
 
 export function loadPreferences(): unknown {

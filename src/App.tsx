@@ -74,6 +74,7 @@ import {
   useEasterEggTrigger,
 } from './features/easterEgg'
 import { proxyModeLabel } from './features/proxy/config'
+import { useProductTour } from './features/productTour/useProductTour'
 import { UpdateDialog } from './features/appUpdate/UpdateDialog'
 import { useAppUpdate } from './features/appUpdate/useAppUpdate'
 import { usePrestore } from './features/prestore/usePrestore'
@@ -269,6 +270,30 @@ export default function App() {
   const { onTap: onBrandTap } = useEasterEggTrigger(openEgg)
   const [focusSourceId, setFocusSourceId] = useState<string | null>(null)
   const [categoryFilterSourceId, setCategoryFilterSourceId] = useState<string | null>(null)
+
+  /**
+   * 功能引导：首次进首页（启动页撤除后）自动播放一次；「关于」页可重看。
+   * ready 限定在无遮挡层的「速闻」页，分享深链冷启动等场景会等回到首页再播。
+   */
+  const tourFinish = useCallback(() => setTab('today'), [])
+  const { start: startProductTourNow, stopIfActive: stopProductTourIfActive } = useProductTour({
+    ready:
+      tab === 'today' &&
+      !reading &&
+      !settingsRoute &&
+      !focusSourceId &&
+      !eggOpen &&
+      !deepLinkError,
+    setTab,
+    onFinish: tourFinish,
+  })
+
+  const replayProductTour = useCallback(() => {
+    setSettingsRoute(null)
+    setFocusSourceId(null)
+    setTab('today')
+    startProductTourNow()
+  }, [startProductTourNow])
   const [later, setLater] = useState<Article[]>(() => loadLaterArticles())
   const [readIds, setReadIds] = useState<Set<string>>(() => loadIdSet('read'))
   const laterRef = useRef(later)
@@ -388,6 +413,9 @@ export default function App() {
     let removeListener: (() => Promise<void>) | undefined
 
     void CapacitorApp.addListener('backButton', () => {
+      if (stopProductTourIfActive()) {
+        return
+      }
       if (eggOpen) {
         setEggOpen(false)
         return
@@ -448,7 +476,7 @@ export default function App() {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [closeReader, closeSourceFeed, eggOpen, focusSourceId, readerReturnArticle, reading, restoreReaderFromSettings, settingsRoute, tab])
+  }, [closeReader, closeSourceFeed, eggOpen, focusSourceId, readerReturnArticle, reading, restoreReaderFromSettings, settingsRoute, stopProductTourIfActive, tab])
 
   const {
     articles: fetchedArticles,
@@ -1012,6 +1040,7 @@ export default function App() {
           onCheckUpdate={() => void appUpdate.promptManualCheck()}
           onOpenChangelog={() => setSettingsRoute({ name: 'changelog' })}
           onOpenLicenses={() => setSettingsRoute({ name: 'licenses' })}
+          onReplayTour={replayProductTour}
           flavorSwitchSupported={appUpdate.supported}
           currentChannelLabel={appUpdate.currentChannel === 'local' ? '离线翻译版' : '云端版'}
           flavorSwitchTitle={
