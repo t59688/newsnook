@@ -96,12 +96,13 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'ai',
     label: 'AI',
     short: 'AI',
-    caption: '量子位 · 机器之心 · 新智元 · Arena · Anthropic · 实验室 · 综述 · 研究向长文',
+    caption: '量子位 · 机器之心 · 新智元 · 智东西 · 宝玉 · Arena · 实验室 · 深度解读与评测',
     sourceIds: [
       // 中文与产业
       'qbitai',
       'jiqizhixin',
       'aiera',
+      'zhidx',
       'leiphone',
       'synced',
       // 测评榜 / 评测机构
@@ -126,6 +127,12 @@ export const CATEGORIES: NewsCategory[] = [
       'lil-log',
       'simonw',
       'interconnects',
+      // 深度解读 / 评测
+      'baoyu',
+      'oneusefulthing',
+      'understandingai',
+      'latent-space',
+      'thezvi',
     ],
   },
   {
