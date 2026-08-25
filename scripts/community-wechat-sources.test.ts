@@ -1,31 +1,44 @@
 /**
- * 公众号镜像（wechat2rss）与社区频道（优设 AIGC / 人人PM）专项测试：
- * 1. 注册表与分类覆盖 / 互斥自检
+ * 公众号解析器（kind `wechat`）与社区频道（优设 AIGC / 人人PM）专项测试：
+ * 1. 注册表与分类覆盖 / 互斥自检（含 wechat2rss → wechat 兼容别名）
  * 2. 优设 tag 列表页解析器（卡片抽取、导航过滤、日期与配图）
  * 3. 优设 /page/N 翻页映射与分页策略
- * 4. wechat2rss 正文噪声清洗（meta 行 / 跳转微信打开 / mp-style-type）与全文判断
+ * 4. 公众号镜像 feed 噪声清洗（meta 行 / 跳转微信打开 / mp-style-type）与全文判断
  * 5. 优设详情正文（group 图集 / 长文避开 uisdc-none + 阅读文章卡片）
+ * 6. 公众号公开合集 JSON 列表解析（appmsgalbum）与合集链接归一
+ * 7. 公众号文章页正文抽取（js_content / data-src / 验证壳拒收）
  *
  * 用法：npx tsx scripts/community-wechat-sources.test.ts
  */
 import assert from 'node:assert/strict'
 
-import { cleanWechat2rssContentHtml, parseSourcePayload } from '../src/lib/parseFeed'
-import { extractUisdcBodyHtml, isSubstantialHtml } from '../src/lib/resolveBody'
+import { cleanWechatArticleHtml, parseSourcePayload } from '../src/lib/parseFeed'
+import {
+  extractUisdcBodyHtml,
+  extractWechatArticleTitle,
+  extractWechatBodyHtml,
+  isBlockedPublisherHtml,
+  isSubstantialHtml,
+  isWechatArticleUrl,
+} from '../src/lib/resolveBody'
 import { sanitizeArticleHtml } from '../src/lib/sanitize'
 import { CATEGORIES, uncoveredSourceIds } from '../src/sources/categories'
+import { DEFAULT_PREFERENCES, addCustomSource } from '../src/sources/preferences'
 import { duplicateSourcesAcrossCategories } from '../src/sources/presets'
 import {
   findSource,
+  isWechatAlbumUrl,
   maxOffsetPages,
+  normalizeSourceKind,
+  normalizeWechatAlbumUrl,
   offsetPageRequest,
   pagingStrategyOf,
   WECHAT2RSS_BASE,
 } from '../src/sources/registry'
 
 // —— 1. 注册表与分类检查 ——
-// 二轮甄选后仅保留 3 个真·深度公众号镜像；差评（chaping）已移除，见 docs/news-sources.md §5
-const WECHAT_MIRROR_IDS = ['xixiaoyao', 'paperweekly', '42zhangjing']
+// 二轮甄选后仅保留 3 个真·深度公众号；差评（chaping）已移除，见 docs/news-sources.md §5
+const WECHAT_ACCOUNT_IDS = ['xixiaoyao', 'paperweekly', '42zhangjing']
 const COMMUNITY_IDS = ['uisdc-aigc', 'woshipm-ai']
 
 assert.equal(
@@ -34,23 +47,27 @@ assert.equal(
   'chaping was removed in the curation round and must stay unregistered',
 )
 
-for (const id of [...WECHAT_MIRROR_IDS, ...COMMUNITY_IDS]) {
+for (const id of [...WECHAT_ACCOUNT_IDS, ...COMMUNITY_IDS]) {
   const src = findSource(id)
   assert.ok(src, `Source ${id} must be registered in SOURCES`)
   assert.ok(src.name && src.label, `Source ${id} must have name and label`)
   assert.ok(src.url.startsWith('https://'), `Source ${id} must use https`)
 }
 
-for (const id of WECHAT_MIRROR_IDS) {
+for (const id of WECHAT_ACCOUNT_IDS) {
   const src = findSource(id)!
-  assert.equal(src.kind, 'wechat2rss', `${id} must use the wechat2rss kind`)
+  assert.equal(src.kind, 'wechat', `${id} must use the wechat kind (公众号解析器)`)
   assert.ok(
     src.url.startsWith(`${WECHAT2RSS_BASE}/feed/`),
-    `${id} feed URL must come from WECHAT2RSS_BASE`,
+    `${id} transitional list URL must come from WECHAT2RSS_BASE`,
   )
   // 第三方镜像默认关闭，由分类 / 预设按需启用
   assert.equal(src.enabled, false, `${id} must default to disabled`)
 }
+
+// 旧自建源 / 备份里的 wechat2rss kind 必须归一到公众号解析器
+assert.equal(normalizeSourceKind('wechat2rss'), 'wechat')
+assert.equal(normalizeSourceKind('wechat'), 'wechat')
 
 assert.equal(findSource('uisdc-aigc')!.kind, 'uisdc')
 assert.equal(findSource('woshipm-ai')!.kind, 'feed')
@@ -172,14 +189,14 @@ assert.equal(offsetPageRequest(uisdcSource, 0).url, 'https://www.uisdc.com/tag/a
 assert.equal(offsetPageRequest(uisdcSource, 1).url, 'https://www.uisdc.com/tag/aigc/page/2')
 assert.equal(offsetPageRequest(uisdcSource, 4).url, 'https://www.uisdc.com/tag/aigc/page/5')
 
-// 公众号镜像是纯 RSS：一次目录 + 客户端窗口
-for (const id of WECHAT_MIRROR_IDS) {
+// 公众号列表是一次目录 + 客户端窗口
+for (const id of WECHAT_ACCOUNT_IDS) {
   assert.equal(pagingStrategyOf(findSource(id)!), 'client-catalog', id)
 }
 
-console.log('✓ uisdc /page/N offset paging & wechat2rss client-catalog verified')
+console.log('✓ uisdc /page/N offset paging & wechat client-catalog verified')
 
-// —— 4. wechat2rss 正文清洗与全文判断 ——
+// —— 4. 公众号镜像 feed 正文清洗与全文判断 ——
 const body = Array.from(
   { length: 20 },
   (_, i) =>
@@ -226,9 +243,9 @@ assert.ok(
 
 // 清洗器不得误伤：没有 meta 行的正文首段必须原样保留
 const plain = '<p>这是一篇没有镜像模板噪声的正文首段。</p><p>第二段。</p>'
-assert.equal(cleanWechat2rssContentHtml(plain), plain)
+assert.equal(cleanWechatArticleHtml(plain), plain)
 
-console.log('✓ wechat2rss boilerplate cleanup & fulltext check verified')
+console.log('✓ wechat mirror feed boilerplate cleanup & fulltext check verified')
 
 // —— 5. 优设详情正文：避开 Readability 的 uisdc-none / 图集兄弟节点坑 ——
 const groupDetailFixture = `
@@ -280,4 +297,155 @@ assert.equal((postBody.match(/<img\b/gi) || []).length, 3, 'post body keeps hero
 
 console.log('✓ uisdc detail body extractor keeps group gallery & post images')
 
-console.log('\nAll community & wechat mirror source tests passed!')
+// —— 6. 公众号公开合集 JSON 列表（appmsgalbum 直连入口）——
+const albumShareUrl =
+  'https://mp.weixin.qq.com/mp/appmsgalbum?__biz=MzA3MDM3NjE5NQ==&action=getalbum&album_id=1375870284640911361&scene=173&from_msgid=2247487974&from_itemidx=1&count=3&nolastread=1#wechat_redirect'
+assert.equal(isWechatAlbumUrl(albumShareUrl), true)
+assert.equal(isWechatAlbumUrl('https://mp.weixin.qq.com/s/AbCdEf'), false)
+assert.equal(isWechatAlbumUrl('https://example.com/mp/appmsgalbum?__biz=x&album_id=1'), false)
+
+const albumListUrl = normalizeWechatAlbumUrl(albumShareUrl)
+{
+  const parsed = new URL(albumListUrl)
+  assert.equal(parsed.hostname, 'mp.weixin.qq.com')
+  assert.equal(parsed.pathname, '/mp/appmsgalbum')
+  assert.equal(parsed.searchParams.get('f'), 'json', 'list URL must request JSON payload')
+  assert.equal(parsed.searchParams.get('__biz'), 'MzA3MDM3NjE5NQ==')
+  assert.equal(parsed.searchParams.get('album_id'), '1375870284640911361')
+  assert.ok(!albumListUrl.includes('#'), 'share fragment must be dropped')
+  assert.ok(!parsed.searchParams.get('scene'), 'share tracking params must be dropped')
+}
+// biz 简写参数（RSSHub 风格链接）同样可识别
+assert.equal(
+  isWechatAlbumUrl('https://mp.weixin.qq.com/mp/appmsgalbum?biz=MzA3MDM3NjE5NQ==&action=getalbum&album_id=1375870284640911361'),
+  true,
+)
+
+// 字段名与线上响应一致（2026-08-25 实测 getalbum_resp 形态）
+const albumFixture = JSON.stringify({
+  base_resp: { exportkey_token: '', ret: 0 },
+  getalbum_resp: {
+    article_list: [
+      {
+        cover_img_1_1: 'http://mmbiz.qpic.cn/mmbiz_jpg/cover-a/300',
+        create_time: '1755750000',
+        itemidx: '1',
+        msgid: '2650941860',
+        pos_num: '96',
+        title: '合集第一篇：深度长文',
+        url: 'http://mp.weixin.qq.com/s?__biz=MzA3MDM3NjE5NQ==&mid=2650941860&idx=1&sn=6c1da71ee86b9b5a46d053b6f76861d4#rd',
+      },
+      {
+        create_time: '1755660000',
+        title: '合集第二篇：无封面也可入列',
+        url: 'https://mp.weixin.qq.com/s?__biz=MzA3MDM3NjE5NQ==&mid=2650941800&idx=1&sn=abcdef0123456789abcdef0123456789',
+      },
+      { title: '缺链接的脏数据必须被跳过' },
+    ],
+    base_info: { article_count: '96' },
+    continue_flag: '1',
+  },
+})
+
+const albumSource = {
+  id: 'custom_wechatalbum',
+  name: '看理想 · 李厚辰专栏',
+  label: '看理想',
+  group: 'custom' as const,
+  kind: 'wechat' as const,
+  url: albumListUrl,
+  enabled: true,
+}
+const albumArticles = parseSourcePayload(albumSource, albumFixture)
+assert.equal(albumArticles.length, 2, 'dirty rows without link must be skipped')
+assert.equal(albumArticles[0].title, '合集第一篇：深度长文')
+assert.ok(
+  albumArticles[0].originUrl.startsWith('https://mp.weixin.qq.com/s?__biz='),
+  'album item url must be https-upgraded',
+)
+assert.equal(albumArticles[0].hasRealDate, true, 'create_time (unix seconds) must be parsed')
+assert.equal(albumArticles[0].publishedAt, 1755750000 * 1000)
+assert.equal(
+  albumArticles[0].image,
+  'https://mmbiz.qpic.cn/mmbiz_jpg/cover-a/300',
+  'cover_img_1_1 must be https-upgraded as cover',
+)
+assert.equal(albumArticles[0].contentHtml, undefined, 'album list carries no body; reader resolves it')
+assert.equal(albumArticles[1].image, undefined)
+
+// ret 非 0（参数错误 / 合集不可见）与非 JSON 均安全返回空列表
+assert.deepEqual(
+  parseSourcePayload(albumSource, JSON.stringify({ base_resp: { ret: 10004 } })),
+  [],
+)
+assert.deepEqual(parseSourcePayload(albumSource, '{ not json'), [])
+
+// 自定义源粘贴合集分享链接：kind 识别为 wechat，URL 归一为 JSON 列表入口
+{
+  const { nextPrefs, newSourceId } = addCustomSource(DEFAULT_PREFERENCES, {
+    name: '看理想 · 李厚辰专栏',
+    url: albumShareUrl,
+  })
+  const added = nextPrefs.customSources?.find((s) => s.id === newSourceId)
+  assert.ok(added, 'custom album source must be added')
+  assert.equal(added.kind, 'wechat')
+  assert.equal(added.url, albumListUrl)
+}
+
+console.log('✓ wechat album JSON listing & custom album source detection verified')
+
+// —— 7. 公众号文章页正文抽取 ——
+assert.equal(isWechatArticleUrl('https://mp.weixin.qq.com/s/d8fJvLQ4o7wjr_4YBXGgqQ'), true)
+assert.equal(
+  isWechatArticleUrl('https://mp.weixin.qq.com/s?__biz=MzIwNzc2NTk0NQ==&mid=1&idx=1&sn=x'),
+  true,
+)
+assert.equal(isWechatArticleUrl('https://www.uisdc.com/seedance-2-5-5'), false)
+
+// 文章页骨架与线上一致：og:title、activity-name 标题、js_content 带 visibility:hidden，
+// 图片全部 data-src 懒加载（mmbiz CDN），文末夹 mp-style-type 排版标记
+const wechatParagraphs = Array.from(
+  { length: 20 },
+  (_, i) =>
+    `<p style="line-height: 1.75em;">第 ${i + 1} 段：直连 mp.weixin.qq.com 文章页抽出的正文内容，用于验证公众号解析器在镜像 feed 缺全文或合集条目没有正文时，仍然可以按站内全文路径完成阅读。</p>`,
+).join('')
+const wechatPageFixture = `<!DOCTYPE html><html><head>
+<meta property="og:title" content="直连正文抽取样张" />
+</head><body>
+<div class="rich_media">
+  <h1 class="rich_media_title" id="activity-name"><span class="js_title_inner">直连正文抽取样张</span></h1>
+  <div class="rich_media_content js_underline_content defaultNoSetting" id="js_content" style="visibility: hidden; opacity: 0; ">
+    <p><img class="rich_pages wxw-img" data-ratio="0.5" data-src="https://mmbiz.qpic.cn/sz_mmbiz_jpg/hero/640?wx_fmt=jpeg" data-w="1080" width="100%"></p>
+    ${wechatParagraphs}
+    <p style="display: none;"><mp-style-type data-value="3"></mp-style-type></p>
+  </div>
+</div>
+<div id="js_pc_qr_code">打开微信扫一扫</div>
+</body></html>`
+
+const wechatBody = extractWechatBodyHtml(wechatPageFixture)
+assert.ok(wechatBody, 'js_content body must be extracted')
+assert.ok(wechatBody.includes('第 1 段'), 'body text preserved')
+assert.ok(!wechatBody.includes('mp-style-type'), 'mp-style-type marker stripped')
+assert.ok(!wechatBody.includes('打开微信扫一扫'), 'page chrome outside js_content excluded')
+assert.ok(wechatBody.includes('data-src'), 'lazy images kept for normalizeContentImages to lift')
+assert.equal(extractWechatArticleTitle(wechatPageFixture), '直连正文抽取样张')
+assert.ok(isSubstantialHtml(wechatBody), 'direct-page body must pass the substantial check')
+
+// 验证壳（数据中心 IP 抓 /s?__biz=… 的常见响应）：没有 js_content，且必须判为拦截页
+const verifyShellFixture = `<!DOCTYPE html><html><head><title></title>
+<link rel="stylesheet" href="//res.wx.qq.com/mmbizwap/zh_CN/htmledition/style/page/secitptpage/verify802853.css" media="all">
+</head><body class="zh_CN"><div class="weui-msg"><div id="tips" class="top_tips warning"></div></div>
+<script>var PAGE_MID='mmbizwap:secitptpage/verify.html';</script></body></html>`
+assert.equal(extractWechatBodyHtml(verifyShellFixture), undefined, 'verify shell has no body')
+assert.equal(
+  isBlockedPublisherHtml(verifyShellFixture),
+  true,
+  'verify shell must be treated as blocked so the soft fallback engages',
+)
+// 正常文章页不得误判为拦截页
+assert.equal(isBlockedPublisherHtml(wechatPageFixture), false)
+
+console.log('✓ wechat article page extractor & verify-shell rejection verified')
+
+console.log('\nAll community & wechat source tests passed!')

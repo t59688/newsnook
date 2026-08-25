@@ -31,6 +31,7 @@ import {
 } from './http'
 import { decodeGoogleNewsUrl, isGoogleNewsArticleUrl } from './googleNewsDecode'
 import { normalizeContentImages } from './normalizeImages'
+import { cleanWechatArticleHtml } from './parseFeed'
 import { buildPageLeadHtml, isSoftNotFoundHtml } from './pageLead'
 import { sanitizeArticleHtml } from './sanitize'
 import type { Article } from './types'
@@ -182,6 +183,10 @@ export function isBlockedPublisherHtml(html: string): boolean {
     /_0x[0-9a-f]{3,}\s*\(/i.test(head) &&
     /spinner|conic-gradient/i.test(head)
   ) {
+    return true
+  }
+  // 微信公众号环境验证壳：数据中心 IP 抓 /s?__biz=… 常返回 secitptpage/verify 空壳页
+  if (/secitptpage\/verify/i.test(head) || /环境异常[\s\S]{0,40}完成验证/.test(head)) {
     return true
   }
   return false
@@ -472,6 +477,48 @@ function isUisdcPageUrl(pageUrl: string): boolean {
   }
 }
 
+/** 公众号文章页（/s/<slug> 与 /s?__biz=… 两种形态同域） */
+export function isWechatArticleUrl(pageUrl: string): boolean {
+  try {
+    const parsed = new URL(pageUrl)
+    return parsed.hostname === 'mp.weixin.qq.com' && parsed.pathname.startsWith('/s')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * 公众号文章页正文：内容固定在 `#js_content`（.rich_media_content），
+ * 容器带 `visibility: hidden` 内联样式、图片全部 data-src 懒加载——裸 Readability
+ * 会受隐藏样式与占位图干扰，直接取容器 innerHTML 再走统一图片提升更稳。
+ * 验证壳 / 已删除提示页没有 js_content，返回 undefined 交由通用链路兜底。
+ */
+export function extractWechatBodyHtml(pageHtml: string): string | undefined {
+  const { document } = parseHTML(pageHtml)
+  const root =
+    document.querySelector('#js_content') ||
+    document.querySelector('.rich_media_content')
+  if (!root) return undefined
+
+  const html = cleanWechatArticleHtml(
+    ((root as { innerHTML?: string }).innerHTML ?? '').trim(),
+  )
+  if (!html) return undefined
+  if (stripTags(html).length < 40 && !(html.match(/<img\b/gi) || []).length) {
+    return undefined
+  }
+  return html
+}
+
+/** 公众号文章标题（og:title 优先，回退 #activity-name）；分享短链无标题时回填阅读器 */
+export function extractWechatArticleTitle(pageHtml: string): string | undefined {
+  const og = pageHtml.match(/<meta[^>]+property="og:title"[^>]+content="([^"]*)"/i)?.[1]?.trim()
+  if (og) return og
+  const { document } = parseHTML(pageHtml)
+  const heading = document.querySelector('#activity-name')?.textContent?.trim()
+  return heading || undefined
+}
+
 async function extractWithReadability(
   pageHtml: string,
   pageUrl: string,
@@ -481,6 +528,17 @@ async function extractWithReadability(
     if (custom) {
       return {
         contentHtml: await absolutizeHtml(custom, pageUrl),
+        bodySource: 'readability',
+      }
+    }
+  }
+
+  if (isWechatArticleUrl(pageUrl)) {
+    const custom = extractWechatBodyHtml(pageHtml)
+    if (custom) {
+      return {
+        contentHtml: await absolutizeHtml(custom, pageUrl),
+        title: extractWechatArticleTitle(pageHtml),
         bodySource: 'readability',
       }
     }
