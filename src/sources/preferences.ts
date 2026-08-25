@@ -127,6 +127,7 @@ export const DEFAULT_TYPOGRAPHY: TypographyPrefs = {
  */
 export const DEFAULT_HIDDEN_CATEGORY_IDS: CategoryId[] = [
   'ai',
+  'ai-depth',
   'game',
   'exclusive',
   'politics',

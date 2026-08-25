@@ -533,15 +533,13 @@ export const SOURCES: NewsSource[] = [
   // Zvi 周报综述极长，feed 近 2MB；默认关闭，按需启用
   { id: 'thezvi', name: "Don't Worry About the Vase", label: 'Zvi', group: 'ai', kind: 'feed', url: 'https://thezvi.substack.com/feed', enabled: false },
   // —— 公众号镜像（wechat2rss 第三方公共实例；feed 自带全文即正文主路径）——
-  // 镜像属第三方维护、可能失效；默认关闭，探测与风险记录见 docs/news-sources.md §19.4
+  // 镜像属第三方维护、可能失效；默认关闭。二轮甄选只保留 3 个真·深度号，
+  // 抽检数据、落选名单（差评等）与风险记录见 docs/news-sources.md §19.4 / §19.5
   wechatMirror('xixiaoyao', '夕小瑶科技说', '夕小瑶', 'a1cd365aa14ed7d64cabfc8aa086da40ecaba34d'),
-  // PaperWeekly feed 约 3MB（20 篇论文深读全文），刷新流量较大
+  // PaperWeekly feed 约 3MB（20 篇论文深读全文），刷新流量较大；不进默认预设
   wechatMirror('paperweekly', 'PaperWeekly', 'PaperWeekly', '3be891c2f4e526629ab055a297cc2cd6c1f0a563'),
   // 42章经：AI/创投深度访谈，更新频率低（月 2–3 篇）
   wechatMirror('42zhangjing', '42章经', '42章经', '31436fcc3bba8c2c2a9337a163afcb3b5a57a0a0'),
-  wechatMirror('chaping', '差评 X.PIN', '差评', '8d839de8dd3290a1f1be7a94423cccb30c1b087d', {
-    group: 'tech',
-  }),
   // 优设无 RSS（/feed 返回首页 HTML、tag feed 与 WP REST 均 404）；解析 tag 列表页，/page/N 翻页
   {
     id: 'uisdc-aigc',

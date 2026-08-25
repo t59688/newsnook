@@ -151,14 +151,18 @@ const AI_DEPTH_SOURCE_IDS = [
   'thezvi',
 ]
 
-const aiCategory = CATEGORIES.find((cat) => cat.id === 'ai')
-assert.ok(aiCategory?.sourceIds, 'AI category must declare sourceIds')
+// AI 拆分为「一手（ai）/ 深度（ai-depth）」两栏后，深度解读源统一归 ai-depth
+const aiDepthCategory = CATEGORIES.find((cat) => cat.id === 'ai-depth')
+assert.ok(aiDepthCategory?.sourceIds, 'ai-depth category must declare sourceIds')
 for (const id of AI_DEPTH_SOURCE_IDS) {
   const src = findSource(id)
   assert.ok(src, `AI depth source ${id} must be registered in SOURCES`)
   assert.equal(src.group, 'ai', `AI depth source ${id} must be in the ai group`)
   assert.ok(src.url.startsWith('https://'), `AI depth source ${id} must use https`)
-  assert.ok(aiCategory!.sourceIds!.includes(id), `AI depth source ${id} must be covered by the ai category`)
+  assert.ok(
+    aiDepthCategory!.sourceIds!.includes(id),
+    `AI depth source ${id} must be covered by the ai-depth category`,
+  )
 }
 
 // 分类里引用的 id 必须都已注册，防止手写 sourceIds 拼错

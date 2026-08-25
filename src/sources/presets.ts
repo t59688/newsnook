@@ -264,22 +264,21 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
     )
   })(),
   (() => {
+    /**
+     * AI 启用集合刻意压到 10 个（一手 4 + 深度 6），避免默认全开刷屏：
+     * - 一手：中文资讯双主力 + 实验室官方样例 + Arena 榜单
+     * - 深度：中文解读/实测（含甄选公众号）+ 英文深度双栏
+     * 其余 AI 源（OpenAI、周报、PaperWeekly、优设等）留在分类里可一键开启。
+     */
     const categorySources = {
-      ai: pickKnown(
-        'openai-news',
-        'anthropic',
-        'deepmind',
-        'google-ai',
-        'qbitai',
-        'jiqizhixin',
-        'aiera',
+      ai: pickKnown('qbitai', 'jiqizhixin', 'anthropic', 'arena'),
+      'ai-depth': pickKnown(
         'zhidx',
         'baoyu',
         'xixiaoyao',
-        'uisdc-aigc',
-        'arena',
-        'simonw',
-        'lil-log',
+        '42zhangjing',
+        'oneusefulthing',
+        'latent-space',
       ),
       'tech-depth': pickKnown(
         'arstechnica',
@@ -299,51 +298,20 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         'ruanyifeng',
         'appinn',
         'ithome',
-        'chaping',
       ),
       science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'zhishifenzi'),
     }
+    const visible: CategoryId[] = ['ai', 'ai-depth', 'tech-depth', 'tech', 'science']
     return builtinPreset(
       BUILTIN_TECH_ID,
       '极客与 AI',
-      'AI 一线 · 深度长文 · 极客创造 · 硬核科普',
+      'AI 一手快讯 · 深度解读评测 · 极客创造 · 硬核科普',
       {
-        categoryOrder: ['mix', 'ai', 'tech-depth', 'tech', 'science'],
-        hiddenCategoryIds: hiddenExcept(['mix', 'ai', 'tech-depth', 'tech', 'science']),
+        categoryOrder: visible,
+        hiddenCategoryIds: hiddenExcept(visible),
         categorySources,
         customCategories: [],
-        enabledSourceIds: exclusiveEnabledSourceIds(
-          categorySources,
-          pickKnown(
-            'huggingface',
-            'pytorch',
-            'mittr-ai',
-            'lastweek-ai',
-            'import-ai',
-            'ahead-of-ai',
-            'interconnects',
-            'oneusefulthing',
-            'understandingai',
-            'latent-space',
-            'thezvi',
-            'paperweekly',
-            '42zhangjing',
-            'woshipm-ai',
-            'leiphone',
-            'synced',
-            'marktechpost',
-            'venturebeat-ai',
-            'ieee-ai',
-            'verge-ai',
-            'verge',
-            'ifanr',
-            'infoq-cn',
-            'wired',
-            'netease-tech',
-            'gnews-tech',
-            'gnews-science',
-          ),
-        ),
+        enabledSourceIds: [],
       },
     )
   })(),

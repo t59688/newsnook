@@ -72,7 +72,7 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'tech',
     label: '科技',
     short: '科技',
-    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件 · V2EX · 差评 · Google 科技',
+    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件 · V2EX · Google 科技',
     sourceIds: [
       'netease-tech',
       'ithome',
@@ -82,7 +82,6 @@ export const CATEGORIES: NewsCategory[] = [
       'ruanyifeng',
       'appinn',
       'v2ex',
-      'chaping',
       'gnews-tech',
     ],
   },
@@ -93,34 +92,51 @@ export const CATEGORIES: NewsCategory[] = [
     caption: '果壳科学人 · 泛科学 · 环球科学 · 知识分子 · Google 科学',
     sourceIds: ['guokr', 'pansci', 'huanqiukexue', 'zhishifenzi', 'gnews-science'],
   },
+  // AI 按信息层次拆两栏：「AI 快讯」收原始发布与一手报道，「AI 深度」收二次加工
+  // （深度解读 / 评测体验 / 周报专栏 / 公众号与社区精选），互不重叠
   {
     id: 'ai',
-    label: 'AI',
+    label: 'AI 快讯',
     short: 'AI',
-    caption: '量子位 · 机器之心 · 新智元 · 智东西 · 宝玉 · Arena · 实验室 · 深度解读与评测 · 公众号与社区',
+    caption: '一手动态：量子位 · 机器之心 · 新智元 · 实验室与平台官方 · Arena 榜单',
     sourceIds: [
-      // 中文与产业
+      // 中文一手资讯
       'qbitai',
       'jiqizhixin',
       'aiera',
-      'zhidx',
       'leiphone',
       'synced',
       // 测评榜 / 评测机构
       'arena',
-      // 实验室 / 平台
+      // 实验室 / 平台官方
       'openai-news',
       'anthropic',
       'google-ai',
       'deepmind',
       'huggingface',
       'pytorch',
-      // 聚焦栏目与产业
+      // 聚焦栏目快讯
       'mittr-ai',
       'verge-ai',
       'ieee-ai',
       'venturebeat-ai',
       'marktechpost',
+    ],
+  },
+  {
+    id: 'ai-depth',
+    label: 'AI 深度',
+    short: 'AI深度',
+    caption: '二次加工：智东西 · 宝玉 · Mollick · Latent Space · 周报专栏 · 公众号与社区精选',
+    sourceIds: [
+      // 中文深度解读 / 评测
+      'zhidx',
+      'baoyu',
+      // 英文深度 / 实测
+      'oneusefulthing',
+      'understandingai',
+      'latent-space',
+      'thezvi',
       // 周报与作者博
       'lastweek-ai',
       'import-ai',
@@ -128,12 +144,6 @@ export const CATEGORIES: NewsCategory[] = [
       'lil-log',
       'simonw',
       'interconnects',
-      // 深度解读 / 评测
-      'baoyu',
-      'oneusefulthing',
-      'understandingai',
-      'latent-space',
-      'thezvi',
       // 公众号镜像与社区频道
       'xixiaoyao',
       'paperweekly',

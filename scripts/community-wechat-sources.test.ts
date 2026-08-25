@@ -22,8 +22,15 @@ import {
 } from '../src/sources/registry'
 
 // —— 1. 注册表与分类检查 ——
-const WECHAT_MIRROR_IDS = ['xixiaoyao', 'paperweekly', '42zhangjing', 'chaping']
+// 二轮甄选后仅保留 3 个真·深度公众号镜像；差评（chaping）已移除，见 §19.5
+const WECHAT_MIRROR_IDS = ['xixiaoyao', 'paperweekly', '42zhangjing']
 const COMMUNITY_IDS = ['uisdc-aigc', 'woshipm-ai']
+
+assert.equal(
+  findSource('chaping'),
+  undefined,
+  'chaping was removed in the curation round and must stay unregistered',
+)
 
 for (const id of [...WECHAT_MIRROR_IDS, ...COMMUNITY_IDS]) {
   const src = findSource(id)
@@ -56,12 +63,15 @@ for (const cat of CATEGORIES) {
 const dupes = duplicateSourcesAcrossCategories(categoryDefaults)
 assert.deepEqual(dupes, [], `CATEGORIES must stay mutually exclusive, dupes: ${dupes.join(', ')}`)
 
-const aiCategory = CATEGORIES.find((cat) => cat.id === 'ai')!
+// 公众号镜像与社区频道属「二次加工」，统一归 ai-depth 分类
+const aiDepthCategory = CATEGORIES.find((cat) => cat.id === 'ai-depth')!
 for (const id of ['xixiaoyao', 'paperweekly', '42zhangjing', 'uisdc-aigc', 'woshipm-ai']) {
-  assert.ok(aiCategory.sourceIds!.includes(id), `${id} must be covered by the ai category`)
+  assert.ok(aiDepthCategory.sourceIds!.includes(id), `${id} must be covered by the ai-depth category`)
 }
-const techCategory = CATEGORIES.find((cat) => cat.id === 'tech')!
-assert.ok(techCategory.sourceIds!.includes('chaping'), 'chaping must be covered by the tech category')
+const aiCategory = CATEGORIES.find((cat) => cat.id === 'ai')!
+for (const id of ['xixiaoyao', 'paperweekly', '42zhangjing']) {
+  assert.ok(!aiCategory.sourceIds!.includes(id), `${id} must not leak into the first-hand ai category`)
+}
 
 console.log('✓ wechat mirror & community sources registered, categories covered & exclusive')
 
