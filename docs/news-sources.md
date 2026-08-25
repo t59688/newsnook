@@ -976,6 +976,7 @@ TID 与逐频道可用性见 §7 的索引表；返回空列表的「智能 / �
 |---|---|---|
 | `arstechnica` `mittr` `verge` `techcrunch` `wired` `hn` `quanta` `stratechery` `vitalik` `fabricated-knowledge` `construction-physics` `v2ex` | feed | 标准 RSS/Atom；Substack 系（vitalik 等）feed 自带全文 |
 | `paulgraham` | paulgraham | 无 RSS；解析 `articles.html` 静态列表，无真实日期（`hasRealDate=false`） |
+| `chaping` | wechat2rss | 差评 X.PIN 公众号镜像（科技/AI 产品评测向）；见 §19.4 |
 
 **AI（group `ai`）**
 
@@ -992,6 +993,9 @@ TID 与逐频道可用性见 §7 的索引表；返回空列表的「智能 / �
 | `lastweek-ai` `import-ai` `ahead-of-ai` `lil-log` `simonw` `interconnects` | feed | 周报与作者博；Substack/静态站均正常 |
 | `arena` | arena | 无官方 RSS；解析官网 Blog 列表页（Sanity 嵌入数据） |
 | `anthropic` | anthropic | 无官方 RSS；解析 `/news` 列表页（Sanity）；URL 带尾斜杠会 308，代理 rewrite 不跟随，必须无尾斜杠 |
+| `xixiaoyao` `paperweekly` `42zhangjing` | wechat2rss | 公众号镜像（第三方 wechat2rss 公共实例），feed 自带全文；探测与风险见 §19.4 |
+| `uisdc-aigc` | uisdc | 优设 AIGC 标签页，无 RSS；解析归档 HTML + `/page/N` 翻页，正文 Readability；见 §19.4 |
+| `woshipm-ai` | feed | 人人都是产品经理 AI 分类 WP feed，全文；见 §19.4 |
 
 **专栏 / 轻松（group `special`）**
 
@@ -1045,3 +1049,78 @@ TID 与逐频道可用性见 §7 的索引表；返回空列表的「智能 / �
 验证方式：以上「已收录」6 源均用 `parseSourcePayload` 对线上响应做过端到端解析
 （条目数、日期、`contentHtml` 全文判断），`baoyu` 另用 Readability + linkedom 验证了
 静态页正文抽取（1k–5k 字，`isSubstantialHtml` 通过）。
+
+### 19.4 公众号镜像与社区频道探测记录（2026-08-25）
+
+背景：§19.3 指出中文 AI 深度解读生态主要在微信公众号内。本轮不再放弃，改走
+**第三方镜像 + 自定义解析**路径接入，并补充设计/产品社区频道（体验解读、工具评测、
+教程深读），面向「无法亲手玩模型」的读者。
+
+#### 公众号镜像（kind `wechat2rss`）
+
+抓取路径：wechat2rss 公共实例（`https://wechat2rss.xlab.app`，第三方维护，收录约
+395 个号）。实例基址集中在 `registry.ts` 的 `WECHAT2RSS_BASE`，失效或换址只改一处。
+
+feed 结构（2026-08-25 实测）：标准 RSS 2.0，`content:encoded` 自带**完整正文**，
+图片经镜像 `img-proxy` 中转（绕开 mmbiz.qpic.cn Referer 防盗链）。因此**正文主路径 =
+feed 自带全文**（`isSubstantialHtml` 通过，站内直接渲染）；已知模板噪声由
+`cleanWechat2rssContentHtml` 剥离：头部「原创 作者 日期 地点」meta 行、尾部
+「跳转微信打开」link-proxy 链接、隐藏的 `<mp-style-type>`。
+
+回源兜底：`originUrl` 为 `mp.weixin.qq.com` 原文页。实测数据中心 IP 直抓会 302 到
+`wappoc_appmsgcaptcha` 验证码页（正文近乎空白，Readability 判「过短」后走摘要 +
+打开原文的软降级）；移动端住宅网络通常可正常返回文章 HTML。故列表缓存过期、
+`bodyCache` 又被逐出的旧文在部分网络下只能读镜像摘要。
+
+已收录（4 个，均默认关闭，由 AI/科技分类与「极客与 AI」预设承接）：
+
+| id | 公众号 | 定位 | feed 体积 | 备注 |
+|---|---|---|---|---|
+| `xixiaoyao` | 夕小瑶科技说 | AI 深度解读 + 产品实测，中文 | ~0.7MB | 20 条全部全文（1.7k–4k 字） |
+| `paperweekly` | PaperWeekly | AI 论文深读 | ~2.9MB | 刷新流量较大；19/20 条 ≥800 字 |
+| `42zhangjing` | 42章经 | AI/创投深度访谈（补 Founder Park 类缺口） | ~0.8MB | 更新频率低（月 2–3 篇），偶有活动帖 |
+| `chaping` | 差评 X.PIN | 科技/AI 产品评测与体验（大众向），归 tech 组 | ~0.7MB | 14/20 条 ≥800 字，短稿回源受验证码限制 |
+
+风险（须知情）：镜像是第三方公益实例，可能限流、下线或调整 URL 结构；收录列表
+不可定制（归藏、数字生命卡兹克、Founder Park 等号不在免费列表内）；img-proxy 与
+实例同生命周期，实例失效时旧文配图一并失效。
+
+#### 社区频道
+
+**优设 · AIGC（kind `uisdc`，`uisdc-aigc`）**
+
+- 探测：`/feed` 200 但返回首页 HTML（RSS 已禁用）；`/tag/aigc/feed` 与
+  `/wp-json/wp/v2/posts` 均 404（WP REST 已关）。只能解析归档 HTML。
+- 列表：`https://www.uisdc.com/tag/aigc`，卡片在 `<div class="item-wrap">`，标题链接在
+  `h2.item-title`，发布时间在 `i.meta-time`（近一周为「刚刚 / N小时前 / N天前」相对
+  日期，需归一；更早为 `YYYY/MM/DD`）；封面为 `image.uisdc.com` 直链。每页 40 条，
+  `/tag/aigc/page/N` 上游翻页（109 页，注册表限 20 页）。
+- 正文：常规文章页（`/{slug}`）与灵感卡片页（`/group/{id}.html`）均可被 Readability
+  抽取（实测 4k–10k 字、正文图完整）；懒加载 `data-src` 由 `normalizeContentImages`
+  统一提升。
+- 同站其他候选 tag：`/tag/ai绘画`、`/tag/ai视频` 等结构相同，`uisdc` kind 可直接
+  复用，暂只注册 AIGC 一个入口避免同站内容刷屏。
+
+**人人都是产品经理 · AI（kind `feed`，`woshipm-ai`）**
+
+- `https://www.woshipm.com/category/ai/feed`：WP 分类 feed 正常，`content:encoded`
+  全文（~4.7k 字/篇），含大模型横评、Agent 架构拆解等评测/深读内容。全站 feed
+  （`/feed`）混入运营/电商话题，故只收 AI 分类。
+
+#### 落选记录（2026-08-25 实测）
+
+| 候选 | 探测结果 |
+|---|---|
+| 归藏 AIGC Weekly（重评） | 公众号不在 wechat2rss 免费列表；Quaily 路径维持 §19.3 结论（SSR 仅 ~1000 字预览 + PREMIUM 付费墙），仍无全文可达路径 |
+| 数字生命卡兹克 | 公众号不在镜像免费列表；其 AIHOT（aihot.virxact.com）是资讯聚合平台而非本人文章存档，不能替代公众号长文 |
+| Founder Park | 维持 §19.3 结论：无独立站点，且不在镜像免费列表 |
+| 集智俱乐部（镜像可用） | feed 达 5.7MB 且内容偏复杂科学/学术交叉（生物、数学物理），与「AI 产品深度解读/评测」定位不符 |
+| Datawhale（镜像可用） | 教程/训练营向，深度解读密度低 |
+| 数英 digitaling.com | `/feed` 返回 HTML（无 RSS）；内容偏营销创意案例，AI 深度评测密度低，需专用解析性价比不足 |
+| 站酷 zcool.com.cn | 列表页为阿里云 WAF JS 挑战壳（无 JS 客户端拿不到内容），且以作品图集为主非图文长文 |
+| sogou 微信搜索 / feeddd / RSSHub 微信路由 | 搜狗验证码墙；feeddd 项目已停更；RSSHub 微信路由长期不可用——均不满足「稳定公开聚合入口」 |
+
+验证方式：新增源均用 `parseSourcePayload`（新 kind 解析器）对线上响应做端到端冒烟
+（uisdc 两页 40+40 条、重叠 1 条、日期/封面齐全；4 个镜像与 woshipm 全部条目带真实
+日期、全文比例见上表）；优设两类详情页用 Readability + linkedom 验证站内抽取。
+单测见 `scripts/community-wechat-sources.test.ts`（`npm run test:community-sources`）。
