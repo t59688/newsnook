@@ -2,7 +2,7 @@
 
 > 日期：2026-08-12  
 > 范围：仓库根目录主工程（Vite + React + Capacitor Android）  
-> 相关文档：[产品设计](./superpowers/specs/2026-07-31-newsnook-mobile-app-design.md)、[信源探测笔记](./news-sources.md)、[构建说明](./android-build.md)、[用户手册](./user-guide.md)
+> 相关文档：[产品设计](./superpowers/specs/2026-07-31-newsnook-mobile-app-design.md)、[信源探测笔记](./news-sources.md)、[构建说明](./android-build.md)、[用户手册](./user-guide.md)、[本地推荐](./local-recommend.md)
 
 ## 1. 一句话
 
@@ -111,7 +111,7 @@ Android 物理返回键由 `@capacitor/app` 在 `App.tsx` 统一处理：阅读�
 分类轨（`sources/categories.ts`）：
 
 - **综合**：跟随用户启用的全部源
-- **推荐**（`recommend`）：聚合分类，候选取当前布局可见分类的信源并集，条目由 `lib/recommend.ts` 按本机已读画像重排（纯本地，冷启动退化为按时间）；默认隐藏，旧数据归一化时保持隐藏，显式开启会写入 `categoryOrder`
+- **推荐**（`recommend`）：聚合分类，候选取当前布局可见分类的信源并集，条目由 `lib/recommend.ts` 按本机已读画像重排（纯本地，冷启动退化为按时间）；默认隐藏，旧数据归一化时保持隐藏，显式开启会写入 `categoryOrder`。原理、权重与效果见 [本地推荐](./local-recommend.md)
 - 其余分类：绑定默认 `sourceIds`，可由偏好覆盖
 
 场景预设（`sources/presets.ts` + `hooks/usePresets.ts`）：快照分类顺序/显隐、各类别选源与综合频道启用列表。内置可就地改并覆盖存储，另存为才复制成用户预设；`activePresetId` 可直接指向内置 id。内置「本地推荐」（`builtin-foryou`）只展示推荐 + 综合两栏。
@@ -551,7 +551,7 @@ npm run android:apk | android:aab
 | 阅读位置 | `src/lib/readingPosition.ts` |
 | 分享 | `src/lib/shareLink.ts` · `src/lib/shareToken.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` · `functions/lib/shareCard.ts` |
 | 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
-| 本地推荐 | `src/lib/recommend.ts` · `src/sources/categories.ts`（`recommend`） · `src/sources/presets.ts`（`builtin-foryou`） |
+| 本地推荐 | [docs/local-recommend.md](./local-recommend.md) · `src/lib/recommend.ts` · `src/sources/categories.ts`（`recommend`） · `src/sources/presets.ts`（`builtin-foryou`） |
 | 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/index.css` |
 | HTTP / 代理 | `src/lib/http.ts` · `src/features/proxy/` |
 | 翻译 | `src/features/translation/` |

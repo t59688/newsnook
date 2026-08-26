@@ -50,6 +50,7 @@ newsnook/
 ├── docs/                        # 架构、用户手册、构建、设计稿
 │   ├── architecture.md
 │   ├── user-guide.md
+│   ├── local-recommend.md
 │   ├── android-build.md
 │   ├── news-sources.md
 │   └── superpowers/{specs,plans}/
@@ -70,7 +71,7 @@ newsnook/
 | 阅读位置记忆 | `lib/readingPosition.ts`（`newsnook:reading-pos`；滚动与墨水屏分页共用一张表） |
 | 分享 / 阅读器溢出菜单 | `lib/shareToken.ts`（v2 token 编解码，App 与边缘 worker 共用） · `lib/shareLink.ts`（站内短链 `news.aizeek.com/a/<token>` 组装 + 深链冷启动） · `lib/articleId.ts`（收发两端共用的条目 id 规则） · `lib/shareArticle.ts` · `components/ShareArticleSheet.tsx` · `components/ReaderMoreMenu.tsx` · `components/EinkReaderMenu.tsx` · `functions/lib/shareCard.ts`（爬虫抓 `/a/*` 时的 Open Graph 卡片） |
 | 本地离线搜索 | `lib/localSearch.ts` · `screens/settings/LocalSearchScreen.tsx`（与 `web-catalog` 的联网站内搜索无关） |
-| 本地推荐预设 | `lib/recommend.ts`（已读画像 + 排序，纯本地） · `sources/categories.ts`（`recommend` 聚合分类） · `sources/presets.ts`（`builtin-foryou`）；接线在 `App.tsx` |
+| 本地推荐预设 | 原理与效果见 [`docs/local-recommend.md`](./docs/local-recommend.md)；代码：`lib/recommend.ts` · `sources/categories.ts`（`recommend`） · `sources/presets.ts`（`builtin-foryou`）；接线在 `App.tsx` |
 | 功能引导 | `features/productTour/`（steps 纯定义 · Service 封装 driver.js · useProductTour 接 App）；目标元素用 `data-tour` 锚定；重看入口在 `screens/settings/AboutScreen.tsx` |
 | 站内正文 | `lib/resolveBody.ts` · `lib/sanitize.ts` · `lib/bodyCache.ts` · `screens/ReaderScreen.tsx` |
 | 翻译 | `features/translation/`（稳定边界：`types.ts`；新增引擎实现 Provider 并注册） |
@@ -200,6 +201,7 @@ Android SDK / 签名 / 发版细节：[`docs/android-build.md`](./docs/android-b
 | [`CONTRIBUTING.md`](./CONTRIBUTING.md) | 人类贡献与 PR 约定 |
 | [`docs/architecture.md`](./docs/architecture.md) | 分层、数据流、持久化、风险 |
 | [`docs/user-guide.md`](./docs/user-guide.md) | 用户操作手册 |
+| [`docs/local-recommend.md`](./docs/local-recommend.md) | 本地推荐：原理、权重与效果（与代码同步） |
 | [`docs/android-build.md`](./docs/android-build.md) | 构建、签名、CI |
 | [`docs/news-sources.md`](./docs/news-sources.md) | 源探测与频道笔记 |
 | [`docs/legal.md`](./docs/legal.md) | 法律与声明 |
