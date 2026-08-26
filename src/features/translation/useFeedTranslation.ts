@@ -8,6 +8,7 @@ import {
   saveCachedFeedTranslations,
 } from './feedTranslationStorage'
 import { createTranslationProvider } from './providers'
+import { isTranslationRateLimitError } from './rateLimit'
 import { isArticleForeign, isValidTranslationQuality } from './quality'
 import type { Article } from '../../lib/types'
 import {
@@ -176,6 +177,9 @@ export function useFeedTranslation(
           } catch (chunkError) {
             if (controller.signal.aborted) break
             log.translation.warn('Failed to translate chunk:', chunkError)
+            // 命中限流：立即停止本轮管道，避免继续冲击接口导致封禁延长；
+            // 未翻译条目不记失败，留待下次列表变化时自然重试
+            if (isTranslationRateLimitError(chunkError)) break
             for (const art of chunk) {
               failedIdsRef.current.add(art.id)
             }

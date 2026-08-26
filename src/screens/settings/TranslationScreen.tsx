@@ -636,12 +636,12 @@ export function TranslationScreen({ prefs, onChange, onBack }: Props) {
                 type="number"
                 min={1}
                 max={5}
-                value={String(activeCloud.concurrency ?? 2)}
-                placeholder="2"
+                value={String(activeCloud.concurrency ?? 1)}
+                placeholder="1"
                 onChange={(raw) => {
                   const trimmed = raw.trim()
                   if (!trimmed) {
-                    updateCloud({ concurrency: 2 })
+                    updateCloud({ concurrency: 1 })
                     return
                   }
                   const n = Number(trimmed)

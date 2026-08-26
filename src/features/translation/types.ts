@@ -26,7 +26,7 @@ export interface CloudTranslationConfig {
   region?: string
   /** OpenAI 兼容提供商必填；其它云端可空。 */
   model?: string
-  /** OpenAI 兼容及 DeepLX 单段模式并发；合法 1–10（DeepLX 建议 1–3），缺省 2。 */
+  /** OpenAI 兼容及 DeepLX 单段模式并发；OpenAI 合法 1–10 缺省 2，DeepLX 合法 1–5 缺省 1。 */
   concurrency?: number
 }
 

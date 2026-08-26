@@ -3,8 +3,12 @@ import { parseHTML } from 'linkedom'
 
 import { normalizeTranslationPrefs } from '../src/features/translation/config'
 import { DeepLXProvider, GoogleProvider } from '../src/features/translation/providers'
+import { configureDeepLxThrottleForTests } from '../src/features/translation/rateLimit'
 import { TranslationService } from '../src/features/translation/service'
 import type { TranslationProvider } from '../src/features/translation/types'
+
+// DeepLX 共享节流门在测试里压到 1ms，避免用例被真实限速拖慢
+configureDeepLxThrottleForTests({ minIntervalMs: 1, jitterMaxMs: 0 })
 
 const window = parseHTML('<html><body></body></html>')
 Object.assign(globalThis, {

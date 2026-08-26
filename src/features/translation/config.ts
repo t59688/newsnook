@@ -62,7 +62,8 @@ const DEFAULT_CLOUD: TranslationPrefs['cloud'] = {
   deeplx: {
     apiKey: '',
     endpoint: '',
-    concurrency: 2,
+    // 公共 DeepLX 服务按突发频率封禁，默认串行最稳妥；自建服务可自行调高
+    concurrency: 1,
   },
   openai: {
     apiKey: '',
