@@ -1,9 +1,13 @@
 import { useId, useMemo, useState } from 'react'
-import { PanelTop, Trash2 } from 'lucide-react'
+import { AlertCircle, PanelTop, Trash2 } from 'lucide-react'
 
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { SourcePicker } from '../../components/SourcePicker'
-import type { CategoryId, NewsCategory } from '../../sources/categories'
+import {
+  isReservedCategoryLabel,
+  type CategoryId,
+  type NewsCategory,
+} from '../../sources/categories'
 import {
   allRegisteredSources,
   describeSources,
@@ -92,8 +96,12 @@ export function CategoryEditScreen({
     }
   }
 
-  const isValid = label.trim().length > 0 && selectedIds.length > 0
   const displayShort = short.trim() || label.trim().slice(0, 4) || '预览'
+  // 「推荐」是阅读达标后自动出现的动态栏位，自建分类名称与短名都不得占用
+  const reservedLabel = isReservedCategoryLabel(label)
+  const reservedShort = !reservedLabel && isReservedCategoryLabel(displayShort)
+  const isValid =
+    label.trim().length > 0 && selectedIds.length > 0 && !reservedLabel && !reservedShort
 
   const handleSubmit = (e?: React.FormEvent) => {
     e?.preventDefault()
@@ -180,6 +188,12 @@ export function CategoryEditScreen({
               placeholder="例如：海外精选、深度阅读、我的专栏"
               className="mt-1.5 w-full rounded-xl border border-haze bg-ink-raised px-3.5 py-2.5 text-[14.5px] text-paper placeholder-paper-faint/45 transition-colors focus:border-cinnabar focus:outline-none"
             />
+            {reservedLabel && (
+              <p className="mt-1.5 flex items-center gap-1 font-mono text-[11px] text-rose-400">
+                <AlertCircle size={12} />
+                「推荐」留给自动出现的推荐栏了，请换一个名字。
+              </p>
+            )}
           </div>
 
           {/* 灵感快捷标签 */}
@@ -217,6 +231,12 @@ export function CategoryEditScreen({
               placeholder={label.trim().slice(0, 4) || '自动截取前 4 字'}
               className="mt-1.5 w-full rounded-xl border border-haze bg-ink-raised px-3.5 py-2.5 text-[14.5px] text-paper placeholder-paper-faint/45 transition-colors focus:border-cinnabar focus:outline-none"
             />
+            {reservedShort && (
+              <p className="mt-1.5 flex items-center gap-1 font-mono text-[11px] text-rose-400">
+                <AlertCircle size={12} />
+                短名「推荐」留给自动出现的推荐栏了，请换一个短名。
+              </p>
+            )}
           </div>
         </div>
       </SettingsSection>

@@ -20,7 +20,7 @@ import { useFeedTranslation } from '../features/translation/useFeedTranslation'
 import type { TranslationPrefs } from '../features/translation/types'
 import { extractCatalog } from '../features/catalogEngine/engine'
 import { catalogHtmlToArticles } from '../features/catalogEngine/toArticles'
-import type { CategoryId, NewsCategory } from '../sources/categories'
+import { RECOMMEND_CATEGORY_ID, type CategoryId, type NewsCategory } from '../sources/categories'
 import { findSource, type NewsSource } from '../sources/registry'
 import { fetchAbsoluteText } from '../lib/http'
 
@@ -667,6 +667,12 @@ export const FeedScreen = memo(function FeedScreen({
                     查看分类全部信源
                   </button>
                 </>
+              ) : categoryId === RECOMMEND_CATEGORY_ID ? (
+                <p>
+                  暂时没有可推荐的新内容：可能这批候选都读过了，或还没取到列表。
+                  <br />
+                  下拉刷新会拉取新内容并重算推荐。
+                </p>
               ) : (
                 <p>
                   还没有取到内容。

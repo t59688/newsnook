@@ -23,7 +23,7 @@ import {
   clamp,
   DEFAULT_HIDDEN_CATEGORY_IDS,
   DEFAULT_TYPOGRAPHY,
-  FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   FONT_FAMILY_OPTIONS,
   normalizePrestorePrefs,
   uniqueValid,
@@ -115,7 +115,7 @@ export function normalizePreferences(raw: unknown): Preferences {
 
   const categorySources: Record<CategoryId, string[]> = {}
   Object.entries(input.categorySources ?? {}).forEach(([categoryId, sourceIds]) => {
-    if (!allCategoryIds.has(categoryId) || categoryId === FOLLOWS_ENABLED_SOURCES) return
+    if (!allCategoryIds.has(categoryId) || isAggregateCategoryId(categoryId)) return
     const valid = uniqueValid(sourceIds, knownSourceIds)
     if (valid.length) categorySources[categoryId] = valid
   })
@@ -124,6 +124,9 @@ export function normalizePreferences(raw: unknown): Preferences {
   const hidden = Array.isArray(input.hiddenCategoryIds)
     ? uniqueValid(input.hiddenCategoryIds, allCategoryIds)
     : [...DEFAULT_HIDDEN_CATEGORY_IDS]
+
+  // 「推荐」已改为动态栏位（不进注册表）：旧数据中的 recommend id 由 uniqueValid 自然剔除
+  const categoryOrder = uniqueValid(input.categoryOrder, allCategoryIds)
 
   const scheme = isThemeScheme(input.scheme) ? input.scheme : DEFAULT_THEME_SCHEME
   let customScheme = normalizeCustomScheme(input.customScheme)
@@ -136,7 +139,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   }
 
   return {
-    categoryOrder: uniqueValid(input.categoryOrder, allCategoryIds),
+    categoryOrder,
     // 至少保留一个可见分类，否则首页无内容可选
     hiddenCategoryIds: hidden.length >= allCategoryIds.size ? hidden.slice(1) : hidden,
     categorySources,
@@ -151,6 +154,9 @@ export function normalizePreferences(raw: unknown): Preferences {
       typeof input.autoRefreshOnCategorySwitch === 'boolean'
         ? input.autoRefreshOnCategorySwitch
         : true,
+    // 旧数据无此字段（含旧备份导入）时默认开启推荐栏
+    recommendEnabled:
+      typeof input.recommendEnabled === 'boolean' ? input.recommendEnabled : true,
     einkMode: typeof input.einkMode === 'boolean' ? input.einkMode : false,
     wifiOnlyAutoLoadMedia:
       typeof input.wifiOnlyAutoLoadMedia === 'boolean' ? input.wifiOnlyAutoLoadMedia : false,

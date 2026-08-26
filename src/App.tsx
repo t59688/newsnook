@@ -20,6 +20,13 @@ import {
 } from './lib/bodyCache'
 import { sortArticles } from './lib/feedPagination'
 import { log } from './lib/logger'
+import {
+  buildReadingProfile,
+  collectReadArticles,
+  rankRecommendations,
+  recommendationReadiness,
+  scopeSignalsToSources,
+} from './lib/recommend'
 import { resolveArticleBody } from './lib/resolveBody'
 import {
   isAndroidBrowser,
@@ -83,7 +90,7 @@ import {
   translationLanguageLabel,
   translationProviderLabel,
 } from './features/translation/config'
-import type { CategoryId } from './sources/categories'
+import { RECOMMEND_CATEGORY_ID, type CategoryId } from './sources/categories'
 import {
   FONT_FAMILY_OPTIONS,
   FONT_SCALE_OPTIONS,
@@ -91,9 +98,11 @@ import {
   addCustomSource,
   allRegisteredSources,
   batchImportSourcesAndCategories,
+  defaultFeedCategoryId,
   deleteCustomCategory,
   deleteCustomSource,
   deleteCustomSources,
+  recommendationScopeSourceIds,
   resetCategoryLayout,
   resetCategorySources,
   resetTypography,
@@ -102,6 +111,7 @@ import {
   setEinkMode,
   setPrestoreEnabled,
   setPrestorePerSourceLimit,
+  setRecommendEnabled,
   setWifiOnlyAutoLoadMedia,
   selectThemeScheme,
   setCustomSchemeColors,
@@ -113,6 +123,7 @@ import {
   updateCustomSource,
   updateTypography,
   visibleCategories,
+  withRecommendCategory,
   type TypographyPrefs,
 } from './sources/preferences'
 import { SOURCES, findSource } from './sources/registry'
@@ -224,7 +235,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>('today')
   const [todayPullRefreshSeq, setTodayPullRefreshSeq] = useState(0)
   const [categoryId, setCategoryId] = useState<CategoryId>(
-    () => visibleCategories(prefs)[0]?.id ?? 'mix',
+    () => defaultFeedCategoryId(visibleCategories(prefs)),
   )
   const [settingsRoute, setSettingsRoute] = useState<SettingsRoute | null>(null)
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
@@ -297,6 +308,9 @@ export default function App() {
   const [later, setLater] = useState<Article[]>(() => loadLaterArticles())
   const [readIds, setReadIds] = useState<Set<string>>(() => loadIdSet('read'))
   const laterRef = useRef(later)
+  /** 推荐排序经 ref 读取已读集合：打开文章返回时不重排，避免列表跳动 */
+  const readIdsRef = useRef(readIds)
+  readIdsRef.current = readIds
   const [cacheSnapshot, setCacheSnapshot] = useState(emptyCacheSnapshot)
   const cacheSnapshotReadyRef = useRef(false)
   const refreshCacheSnapshot = useCallback(() => {
@@ -320,16 +334,59 @@ export default function App() {
     refreshCacheSnapshot()
   }, [tab, settingsRoute, refreshCacheSnapshot])
 
-  const categories = useMemo(() => visibleCategories(prefs), [prefs])
+  const regularCategories = useMemo(() => visibleCategories(prefs), [prefs])
 
-  // 当前分类被隐藏（或首次进入时默认分类不可见）时退回第一个可见分类
+  /**
+   * 推荐候选池：严格取当前预设启用的全部信源（可见分类并集，综合贡献频道启用列表）。
+   * 以内容 key 记忆 Set，避免无关偏好变化（如排版）触发就绪判定与画像重算。
+   */
+  const recommendScopeKey = useMemo(
+    () => recommendationScopeSourceIds(prefs, enabledIds).join('|'),
+    [prefs, enabledIds],
+  )
+  const recommendScope = useMemo(
+    () => new Set(recommendScopeKey ? recommendScopeKey.split('|') : []),
+    [recommendScopeKey],
+  )
+
+  /**
+   * 推荐就绪进度：阈值收在 lib/recommend 内，这里拿到「已读 X / 需 Y」
+   * 供设置页解释推荐栏何时出现；计数达阈值即停，开销有界。
+   */
+  const recommendReadiness = useMemo(
+    () => recommendationReadiness({ readIds, laterArticles: later }, recommendScope),
+    [readIds, later, recommendScope],
+  )
+  /** 推荐分类是否亮起：设置开关开启且预设内阅读达标，二者缺一不亮 */
+  const recommendEnabled = prefs.recommendEnabled !== false
+  const recommendReady = recommendEnabled && recommendReadiness.ready
+
+  /** 首页轨道：推荐亮起时插到最前；默认选中与回退永远落在第一个普通分类 */
+  const categories = useMemo(
+    () => withRecommendCategory(regularCategories, recommendReady),
+    [regularCategories, recommendReady],
+  )
+
+  // 当前分类失效（被隐藏 / 推荐熄灭 / 首次进入不可见）时退回第一个普通分类，绝不自动落到推荐
   useEffect(() => {
     if (!categories.length) return
     if (!categories.some((category) => category.id === categoryId)) {
-      setCategoryId(categories[0].id)
+      setCategoryId(defaultFeedCategoryId(categories))
       setCategoryFilterSourceId(null)
     }
   }, [categories, categoryId])
+
+  // 切换预设后回到新预设的第一个普通分类：推荐池随预设而变，不静默延续推荐 Tab
+  const activePresetId = presets.state.activePresetId
+  const prevPresetIdRef = useRef(activePresetId)
+  useEffect(() => {
+    if (prevPresetIdRef.current === activePresetId) return
+    prevPresetIdRef.current = activePresetId
+    if (categoryId === RECOMMEND_CATEGORY_ID) {
+      setCategoryId(defaultFeedCategoryId(regularCategories))
+      setCategoryFilterSourceId(null)
+    }
+  }, [activePresetId, categoryId, regularCategories])
 
   const categorySourceIds = useMemo(
     () => sourceIdsForCategoryWithPrefs(categoryId, prefs, enabledIds),
@@ -507,7 +564,18 @@ export default function App() {
     return sortArticles([...byId.values()])
   }, [fetchedArticles, prestore.snapshot.articles])
 
-  const runRefresh = useCallback(() => refresh(listScopeIds), [refresh, listScopeIds])
+  /**
+   * 推荐栏内的刷新（下拉或顶栏按钮）即「重算推荐」：除了拉新候选，
+   * 还基于最新已读 / 稍后读信号重建画像并立即重排。画像本身不落盘，
+   * 每次都是即时计算，因此没有需要单独「重置」的隐藏状态。
+   */
+  const [recommendProfileSeq, setRecommendProfileSeq] = useState(0)
+  const runRefresh = useCallback(() => {
+    if (categoryId === RECOMMEND_CATEGORY_ID) {
+      setRecommendProfileSeq((seq) => seq + 1)
+    }
+    return refresh(listScopeIds)
+  }, [refresh, listScopeIds, categoryId])
 
   // 进入分类 / 信源集合变化时，预拉该分类已开启的源（受 autoRefreshOnCategorySwitch 开关控制）
   const bootstrapKey = fetchIds.join('|')
@@ -540,14 +608,51 @@ export default function App() {
     [availableArticles, categorySourceSet],
   )
 
+  const availableArticlesRef = useRef(availableArticles)
+  availableArticlesRef.current = availableArticles
+
+  /**
+   * 本地推荐画像：进入「推荐」分类时从本机信号（已读 id × 各池元数据 join、
+   * 稍后读、正文缓存阅读历史）构建一次，并裁剪到当前预设的候选池——
+   * 各预设画像互不串味。停留期间的下拉刷新 / 顶栏刷新经 recommendProfileSeq
+   * 触发重建（重算推荐），单次已读不重算（避免读完返回列表跳动）。
+   * 信号全部经 ref 读取，避免每次已读变化都重排。
+   */
+  const recommendProfile = useMemo(() => {
+    if (categoryId !== RECOMMEND_CATEGORY_ID) return null
+    void recommendProfileSeq
+    const laterNow = laterRef.current
+    const historyArticles = listCachedArticles(60).map((entry) => entry.article)
+    return buildReadingProfile(
+      scopeSignalsToSources(
+        {
+          readArticles: collectReadArticles(readIdsRef.current, [
+            laterNow,
+            historyArticles,
+            availableArticlesRef.current,
+          ]),
+          laterArticles: laterNow,
+        },
+        recommendScope,
+      ),
+    )
+  }, [categoryId, recommendScope, recommendProfileSeq])
+
+  /** 推荐结果：排除已读与稍后读（稍后读有专页），冷启动退化为按时间 */
+  const recommendedArticles = useMemo(() => {
+    if (!recommendProfile) return null
+    const excludeIds = new Set(readIdsRef.current)
+    for (const item of laterRef.current) excludeIds.add(item.id)
+    return rankRecommendations(articles, recommendProfile, { excludeIds })
+  }, [articles, recommendProfile])
+
   /** 单源筛选时保持数组引用稳定：每次渲染现算会让列表翻译等依赖 articles 的 effect 反复中止重启 */
-  const displayedArticles = useMemo(
-    () =>
-      categoryFilterSourceId
-        ? articles.filter((item) => item.sourceId === categoryFilterSourceId)
-        : articles,
-    [articles, categoryFilterSourceId],
-  )
+  const displayedArticles = useMemo(() => {
+    const base = recommendedArticles ?? articles
+    return categoryFilterSourceId
+      ? base.filter((item) => item.sourceId === categoryFilterSourceId)
+      : base
+  }, [articles, recommendedArticles, categoryFilterSourceId])
 
   const articlesForCategory = useCallback(
     (id: CategoryId) => {
@@ -1075,6 +1180,13 @@ export default function App() {
         enabledCount={enabledIds.length}
         presetLabel={presets.activePreset?.name}
         restoreFactory={Boolean(presets.activePreset?.builtin)}
+        recommend={{
+          enabled: recommendEnabled,
+          ready: recommendReadiness.ready,
+          scopedDocs: recommendReadiness.scopedDocs,
+          requiredDocs: recommendReadiness.requiredDocs,
+          onChange: (enabled) => update((prev) => setRecommendEnabled(prev, enabled)),
+        }}
         onReorder={(order) => update((prev) => setCategoryOrder(prev, order))}
         onToggleVisible={(id) => update((prev) => toggleCategoryVisible(prev, id))}
         onToggleAutoRefresh={(enabled) =>
@@ -1139,10 +1251,10 @@ export default function App() {
           history={cachedHistory}
           readCount={readIds.size}
           customSourcesSummary={customSourcesSummary}
-          categoriesSummary={`${categories.length} 个启用分类 · ${
+          categoriesSummary={`${regularCategories.length} 个启用分类 · ${
             prefs.autoRefreshOnCategorySwitch !== false ? '切换自动刷新开启' : '切换自动刷新已关闭'
           }`}
-          presetsSummary={`${presets.activePreset?.name ?? '未选择'} · ${categories.length} 分类 · ${enabledIds.length} 源`}
+          presetsSummary={`${presets.activePreset?.name ?? '未选择'} · ${regularCategories.length} 分类 · ${enabledIds.length} 源`}
           typographySummary={typographySummary}
           appearanceSummary={appearanceSummary}
           translationSummary={translationSummary}

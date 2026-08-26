@@ -3,10 +3,16 @@
  * 运行态仍是 preferences + enabled；本模块负责快照库与互转。
  */
 
-import { CATEGORIES, type CategoryId, type NewsCategory, PORTAL_VISIBLE_CATEGORY_IDS } from './categories'
+import {
+  CATEGORIES,
+  PORTAL_VISIBLE_CATEGORY_IDS,
+  type CategoryId,
+  type NewsCategory,
+} from './categories'
 import {
   describeSources,
   FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   type Preferences,
 } from './preferences'
 import { isCustomSourceId, SOURCES } from './registry'
@@ -101,14 +107,16 @@ export function normalizeSnapshot(raw: unknown): LayoutSnapshot {
 
   const categorySources: Record<CategoryId, string[]> = {}
   Object.entries(input.categorySources ?? {}).forEach(([categoryId, sourceIds]) => {
-    if (!allCategoryIds.has(categoryId) || categoryId === FOLLOWS_ENABLED_SOURCES) return
+    if (!allCategoryIds.has(categoryId) || isAggregateCategoryId(categoryId)) return
     const valid = uniqueValidSourceIds(sourceIds)
     if (valid.length) categorySources[categoryId] = valid
   })
 
+  // 「推荐」已改为动态栏位（不进注册表）：旧快照中的 recommend id 由 uniqueValid 自然剔除
   const hidden = uniqueValid(input.hiddenCategoryIds, allCategoryIds)
+  const categoryOrder = uniqueValid(input.categoryOrder, allCategoryIds)
   return {
-    categoryOrder: uniqueValid(input.categoryOrder, allCategoryIds),
+    categoryOrder,
     hiddenCategoryIds: hidden.length >= allCategoryIds.size ? hidden.slice(1) : hidden,
     categorySources,
     customCategories,

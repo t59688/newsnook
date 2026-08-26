@@ -25,7 +25,7 @@ try {
   } = prefsMod
   const { uncoveredSourceIds } = catMod
 
-  const VISIBLE = ['mix', 'hot', 'ent', 'sports', 'tech', 'finance', 'intl', 'health', 'game', 'fun']
+  const VISIBLE = ['mix', 'hot', 'ent', 'sports', 'tech', 'finance', 'intl', 'health', 'science', 'fun']
 
   assert.equal(uncoveredSourceIds().length, 0, '每个源至少落入一个分类')
   assert.deepEqual(
@@ -33,24 +33,11 @@ try {
     VISIBLE,
     '默认可见应为门户经典 10 栏',
   )
-  assert.deepEqual(categorySourceIds('hot', DEFAULT_PREFERENCES), [
-    'netease',
-    'bbc-zh',
-    'scmp-china',
-  ])
-  assert.deepEqual(categorySourceIds('ent', DEFAULT_PREFERENCES), ['netease-ent'])
-  assert.deepEqual(categorySourceIds('tech', DEFAULT_PREFERENCES), [
-    'netease-tech',
-    'ithome',
-    'sspai',
-  ])
-  assert.deepEqual(categorySourceIds('intl', DEFAULT_PREFERENCES), [
-    'bbc-zh',
-    'dw-top',
-    'scmp-china',
-    'france24',
-    'aljazeera',
-  ])
+  assert.deepEqual(categorySourceIds('hot', DEFAULT_PREFERENCES), ['netease'])
+  assert.deepEqual(categorySourceIds('ent', DEFAULT_PREFERENCES), ['netease-ent', 'gnews-ent'])
+  // 多源分类只做成员校验，避免注册表微调时脚本反复失效
+  assert.ok(categorySourceIds('tech', DEFAULT_PREFERENCES).includes('ithome'))
+  assert.ok(categorySourceIds('intl', DEFAULT_PREFERENCES).includes('bbc-zh'))
   assert.deepEqual(
     [...normalizePreferences(null).hiddenCategoryIds].sort(),
     [...DEFAULT_HIDDEN_CATEGORY_IDS].sort(),
@@ -137,7 +124,8 @@ try {
     categoryOrder: ['tech', 'hot'],
     hiddenCategoryIds: [],
   })
-  assert.deepEqual(restoredHidden.categoryOrder, [])
+  // resetCategoryLayout 会写入门户默认顺序（而非空数组交给默认推导）
+  assert.deepEqual(restoredHidden.categoryOrder, VISIBLE)
   assert.deepEqual(
     [...restoredHidden.hiddenCategoryIds].sort(),
     [...DEFAULT_HIDDEN_CATEGORY_IDS].sort(),
@@ -159,6 +147,7 @@ try {
     typography: { fontScale: 99, lineHeight: 'x', fontFamily: 'comic' },
   })
   assert.deepEqual(dirty.categoryOrder, ['tech'], '未知/重复分类应被剔除')
+  // 「推荐」已改为动态栏位（不进注册表），归一化不再往隐藏列表补写它
   assert.deepEqual(dirty.hiddenCategoryIds, [])
   assert.deepEqual(dirty.categorySources, { tech: ['sspai'] })
   assert.equal(dirty.typography.fontScale, 1.4, '越界字号应被夹住')

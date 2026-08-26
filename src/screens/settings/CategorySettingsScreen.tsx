@@ -22,6 +22,17 @@ interface Props {
   presetLabel?: string
   /** 正在编辑内置预设时，「恢复默认」= 恢复该内置出厂 */
   restoreFactory?: boolean
+  /**
+   * 动态「推荐」栏的开关与就绪进度：数值由 lib/recommend 给出，这里只负责展示。
+   * 关闭对所有预设生效；推荐不是普通分类，不进下方的排序/显隐网格。
+   */
+  recommend?: {
+    enabled: boolean
+    ready: boolean
+    scopedDocs: number
+    requiredDocs: number
+    onChange: (enabled: boolean) => void
+  }
   onReorder: (order: CategoryId[]) => void
   onToggleVisible: (categoryId: CategoryId) => void
   onToggleAutoRefresh?: (enabled: boolean) => void
@@ -83,6 +94,7 @@ export function CategorySettingsScreen({
   enabledCount,
   presetLabel,
   restoreFactory,
+  recommend,
   onReorder,
   onToggleVisible,
   onToggleAutoRefresh,
@@ -542,6 +554,31 @@ export function CategorySettingsScreen({
             }
           />
         </div>
+
+        {recommend && (
+          <div className="mt-3 flex items-center justify-between gap-4 rounded-2xl border border-haze bg-ink-raised p-4 shadow-[var(--shadow-lift)]">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-display text-[15px] font-medium text-paper">「推荐」栏</span>
+                <span className="rounded-full bg-paper/5 px-2 py-0.5 font-mono text-[10px] text-paper-muted border border-haze/60">
+                  {!recommend.enabled ? '已关闭' : recommend.ready ? '已出现' : '积累中'}
+                </span>
+              </div>
+              <p className="mt-1 text-[12px] leading-relaxed text-paper-muted">
+                {!recommend.enabled
+                  ? '关闭后各预设都不显示推荐栏，普通分类不受影响；重新打开且读够后会再次出现。'
+                  : recommend.ready
+                    ? '已显示在分类栏第一位，按本机已读习惯排序，数据不出本机；进入后下拉刷新即重算。'
+                    : `当前预设已读 ${recommend.scopedDocs} / ${recommend.requiredDocs} 篇，读够后自动出现在分类栏第一位，数据不出本机。`}
+              </p>
+            </div>
+            <ToggleSwitch
+              checked={recommend.enabled}
+              label="推荐栏"
+              onChange={() => recommend.onChange(!recommend.enabled)}
+            />
+          </div>
+        )}
       </div>
 
       <div

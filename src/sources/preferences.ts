@@ -22,6 +22,7 @@ export {
   LINE_HEIGHT_OPTIONS,
   PARAGRAPH_GAP_OPTIONS,
   PRESTORE_PER_SOURCE_OPTIONS,
+  isAggregateCategoryId,
   type FontFamilyId,
   type Preferences,
   type PrestorePrefs,
@@ -35,6 +36,7 @@ export {
   allRegisteredCategories,
   allRegisteredSources,
   categorySourceIds,
+  defaultFeedCategoryId,
   deleteCustomCategory,
   describeSources,
   hasSourceOverride,
@@ -42,6 +44,7 @@ export {
   isCustomCategory,
   moveCategory,
   orderedCategories,
+  recommendationScopeSourceIds,
   reorderCategories,
   resetCategoryLayout,
   resetCategorySources,
@@ -54,6 +57,7 @@ export {
   toggleCategoryVisible,
   updateCustomCategory,
   visibleCategories,
+  withRecommendCategory,
 } from './preferences/categoryPrefs'
 
 export {
@@ -73,6 +77,7 @@ export {
   setEinkMode,
   setPrestoreEnabled,
   setPrestorePerSourceLimit,
+  setRecommendEnabled,
   setThemeMode,
   setThemeScheme,
   setWifiOnlyAutoLoadMedia,

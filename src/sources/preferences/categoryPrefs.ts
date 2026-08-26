@@ -6,7 +6,10 @@
 import {
   CATEGORIES,
   findCategory,
+  isReservedCategoryLabel,
   PORTAL_VISIBLE_CATEGORY_IDS,
+  RECOMMEND_CATEGORY,
+  RECOMMEND_CATEGORY_ID,
   type CategoryId,
   type NewsCategory,
 } from '../categories'
@@ -14,6 +17,7 @@ import { SOURCES, findSource, type NewsSource } from '../registry'
 import {
   DEFAULT_HIDDEN_CATEGORY_IDS,
   FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   uniqueValid,
   type Preferences,
 } from './model'
@@ -158,12 +162,64 @@ export function isCategoryVisible(categoryId: CategoryId, prefs: Preferences): b
   return !prefs.hiddenCategoryIds.includes(categoryId)
 }
 
-/** 当前分类要拉取的信源；综合分类回落到频道页启用列表 */
+/**
+ * 「推荐」分类的候选范围：严格取当前预设启用的全部信源——
+ * 可见分类的信源并集，综合贡献频道启用列表；不引入未订阅源，也不回落到池外列表。
+ * 并集为空（如空白预设）时返回空数组，此时推荐分类不会亮起。
+ */
+export function recommendationScopeSourceIds(
+  prefs: Preferences,
+  enabledIds: string[],
+): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  const push = (sourceId: string) => {
+    if (seen.has(sourceId)) return
+    seen.add(sourceId)
+    ids.push(sourceId)
+  }
+  for (const category of visibleCategories(prefs)) {
+    if (category.id === FOLLOWS_ENABLED_SOURCES) {
+      enabledIds.forEach(push)
+      continue
+    }
+    categorySourceIds(category.id, prefs).forEach(push)
+  }
+  return ids
+}
+
+/**
+ * 首页轨道最终列表：推荐达标时插到最前，普通分类顺序不变。
+ * 推荐分类不进注册表与偏好，只在展示层拼装。
+ */
+export function withRecommendCategory(
+  categories: NewsCategory[],
+  recommendReady: boolean,
+): NewsCategory[] {
+  if (!recommendReady) return categories
+  return [RECOMMEND_CATEGORY, ...categories]
+}
+
+/**
+ * 默认选中与回退目标：跳过动态「推荐」，永远取第一个普通分类。
+ * 进入软件、切换预设或当前分类失效时都以此为准，推荐只能由用户手动选中。
+ */
+export function defaultFeedCategoryId(categories: NewsCategory[]): CategoryId {
+  return (
+    categories.find((category) => category.id !== RECOMMEND_CATEGORY_ID)?.id ??
+    FOLLOWS_ENABLED_SOURCES
+  )
+}
+
+/** 当前分类要拉取的信源；综合回落到频道启用列表，推荐取可见分类信源并集 */
 export function sourceIdsForCategoryWithPrefs(
   categoryId: CategoryId,
   prefs: Preferences,
   enabledIds: string[],
 ): string[] {
+  if (categoryId === RECOMMEND_CATEGORY_ID) {
+    return recommendationScopeSourceIds(prefs, enabledIds)
+  }
   const ids = categorySourceIds(categoryId, prefs)
   return ids.length ? ids : enabledIds
 }
@@ -221,7 +277,10 @@ export function toggleCategoryVisible(prefs: Preferences, categoryId: CategoryId
   const all = allRegisteredCategories(prefs)
   const hidden = prefs.hiddenCategoryIds
   if (hidden.includes(categoryId)) {
-    return { ...prefs, hiddenCategoryIds: hidden.filter((id) => id !== categoryId) }
+    return {
+      ...prefs,
+      hiddenCategoryIds: hidden.filter((id) => id !== categoryId),
+    }
   }
   // 全部隐藏会让首页无处可去
   if (hidden.length + 1 >= all.length) return prefs
@@ -233,7 +292,7 @@ export function toggleCategorySource(
   categoryId: CategoryId,
   sourceId: string,
 ): Preferences {
-  if (categoryId === FOLLOWS_ENABLED_SOURCES) return prefs
+  if (isAggregateCategoryId(categoryId)) return prefs
 
   const current = categorySourceIds(categoryId, prefs)
   const removing = current.includes(sourceId)
@@ -258,6 +317,10 @@ export function addCustomCategory(
   prefs: Preferences,
   draft: { label: string; short?: string; sourceIds: string[] },
 ): { nextPrefs: Preferences; newCategoryId: CategoryId } {
+  // 「推荐」是动态栏位保留名：自建分类不得占用（界面同步拦截，此处兜底）
+  if (isReservedCategoryLabel(draft.label) || isReservedCategoryLabel(draft.short ?? '')) {
+    return { nextPrefs: prefs, newCategoryId: '' }
+  }
   const knownSourceIds = new Set(allRegisteredSources(prefs).map((s) => s.id))
   const validSourceIds = uniqueValid(draft.sourceIds, knownSourceIds)
   const label = draft.label.trim() || '自定义分类'
@@ -302,6 +365,10 @@ export function updateCustomCategory(
   categoryId: CategoryId,
   patch: { label?: string; short?: string; sourceIds?: string[] },
 ): Preferences {
+  // 编辑路径同样不得改名为保留名「推荐」
+  if (isReservedCategoryLabel(patch.label ?? '') || isReservedCategoryLabel(patch.short ?? '')) {
+    return prefs
+  }
   const list = prefs.customCategories ?? []
   const index = list.findIndex((category) => category.id === categoryId)
   if (index < 0) return prefs
