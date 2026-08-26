@@ -291,16 +291,21 @@ WebView 观察页面的网络、DOM、MSE 与 DRM 信号；接口或观察失败
 
 ### 5.4 AI 分类分层与预设启用集合
 
-- 分类拆四栏（`categories.ts`），信源互斥：
-  - `ai`（**源头**：实验室 / 平台官方 + Arena）
+- 分类拆六栏（`categories.ts`；2026-08-26 起官方一手按厂商拆分），信源互斥：
+  - `ai-openai`（**OpenAI**：News · Cookbook）
+  - `ai-claude`（**Claude**：Anthropic 新闻 · Claude 博客 / 客户案例 / 学院用例与教程）
+  - `ai`（**实验室**：Google AI · DeepMind · Hugging Face · PyTorch · Arena）
   - `ai-media`（**业界**：中英文媒体与 AI 栏目快报）
   - `ai-depth`（**深读**：解读 / 评测 / 周报 / 甄选公众号）
   - `ai-community`（**社区**：优设 AIGC 首位 · V2EX · HN · PaperWeekly · 人人 PM）
-  四栏均在 `DEFAULT_HIDDEN_CATEGORY_IDS`（新装默认隐藏，由场景预设或分类管理打开）。
-- 「极客与 AI」预设（`presets.ts`）可见顺序：源头 → 业界 → 深读 → 社区 → 科技深度 → 科技 → 科普；
-  综合（mix）隐藏。默认启用示例：源头含 OpenAI / Cookbook / Anthropic / Claude Blog / Google AI / DeepMind / HF / Arena；
-  业界含量子位 / 机器之心 / 新智元 / MIT AI；深读含智东西 / 宝玉 / 夕小瑶 / 42章经 / Mollick / Latent；
-  社区含优设 / V2EX / HN。其余 AI 源留在分类中可一键开启。
+  六栏均在 `DEFAULT_HIDDEN_CATEGORY_IDS`（新装默认隐藏，由场景预设或分类管理打开）。
+- 「极客与 AI」预设（`presets.ts`）可见顺序：OpenAI → Claude → 实验室 → 业界 → 深读 → 社区 →
+  科技深度 → 科技 → 科普；综合（mix）隐藏。默认启用示例：OpenAI / Claude 两栏整栏启用；
+  实验室含 Google AI / DeepMind / HF / Arena；业界含量子位 / 机器之心 / 新智元 / MIT AI；
+  深读含智东西 / 宝玉 / 夕小瑶 / 42章经 / Mollick / Latent；社区含优设 / V2EX / HN。
+  其余 AI 源（PyTorch、雷锋网、周报等）留在分类中可一键开启。
+- 「商业创投」预设的 AI 媒体快报（量子位 / 新智元 / VB AI）挂 `ai-media`（业界）栏，
+  不再借用 `ai` 栏。
 - 兼容性：老用户已持久化的 `hiddenCategoryIds` 若不含新建栏 id，升级后「业界 / 社区」可能短暂可见，
   可在分类管理隐藏或重新应用预设归位，无数据丢失。`chaping` 移除后，
   `normalizePreferences` / `normalizeSnapshot` 会自动从旧偏好与预设快照中剔除该 id。
@@ -370,11 +375,13 @@ Readability 兜底（实测正文块 2.4k–10.6k 字），站内全文成立。
 `academy.claude.com/use-cases/` 307 → 无斜杠；`developers.openai.com/cookbook/` 308 → 无斜杠；
 claude.com 两个路径带不带斜杠均 200。
 
-### 7.2 分类与预设
+### 7.2 分类与预设（2026-08-26 按厂商拆栏）
 
-- 五个新源与 `openai-news` 全部默认启用，归 **源头 `ai`** 分类（分类互斥不变量保持）；
-- 「极客与 AI」预设源头栏加入 `openai-cookbook` 与 `claude-blog`（压量原则，
-  案例 / 学院两类低频源留在分类里可一键开启）。
+- 五个新源与 `openai-news` 全部默认启用；官方一手按厂商拆三栏：OpenAI 两源归 `ai-openai`，
+  Anthropic / Claude 五源归 `ai-claude`，其余实验室（Google AI / DeepMind / HF / PyTorch / Arena）
+  留在 `ai`（label 由「源头」改为「实验室」），分类互斥不变量保持（栏目全貌见 §5.4）；
+- 「极客与 AI」预设 OpenAI / Claude 两栏整栏启用（含案例 / 学院低频源），
+  实验室栏启用 Google AI / DeepMind / HF / Arena（PyTorch 留在分类里可一键开启）。
 
 验证：`npm run test:ai-firstparty`（注册 / 分类 / 分流 / 分页断言 + 三个解析器 fixture 与兜底路径），
 `npm run test:high-signal`、`npm run test:layout-presets`、`npm run test:category-source-usage`。

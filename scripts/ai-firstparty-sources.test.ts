@@ -44,10 +44,30 @@ assert.equal(findSource('anthropic')?.enabled, true, 'anthropic must stay enable
 assert.equal(findSource('openai-news')?.enabled, true, 'openai-news must be flipped to enabled')
 assert.equal(findSource('openai-news')?.url, 'https://openai.com/news/rss.xml')
 
-// 分类覆盖：全部落入「源头」，且分类间互斥仍成立
-const aiCategory = CATEGORIES.find((cat) => cat.id === 'ai')
-for (const id of NEW_SOURCE_IDS) {
-  assert.ok(aiCategory?.sourceIds?.includes(id), `${id} must be covered by the ai category`)
+// 分类覆盖：OpenAI / Claude 各自拆栏，其余实验室留在 ai（实验室），且分类间互斥仍成立
+const aiOpenaiCategory = CATEGORIES.find((cat) => cat.id === 'ai-openai')
+for (const id of ['openai-news', 'openai-cookbook']) {
+  assert.ok(
+    aiOpenaiCategory?.sourceIds?.includes(id),
+    `${id} must be covered by the ai-openai category`,
+  )
+}
+const aiClaudeCategory = CATEGORIES.find((cat) => cat.id === 'ai-claude')
+for (const id of [
+  'anthropic',
+  'claude-blog',
+  'claude-customers',
+  'claude-academy-use-cases',
+  'claude-academy-tutorials',
+]) {
+  assert.ok(
+    aiClaudeCategory?.sourceIds?.includes(id),
+    `${id} must be covered by the ai-claude category`,
+  )
+}
+const aiLabsCategory = CATEGORIES.find((cat) => cat.id === 'ai')
+for (const id of ['google-ai', 'deepmind', 'huggingface', 'pytorch', 'arena']) {
+  assert.ok(aiLabsCategory?.sourceIds?.includes(id), `${id} must stay in the ai (labs) category`)
 }
 assert.deepEqual(uncoveredSourceIds(), [])
 const categoryDefaults: Record<string, string[]> = {}

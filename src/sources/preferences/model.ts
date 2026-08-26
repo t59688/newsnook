@@ -102,6 +102,8 @@ export const DEFAULT_TYPOGRAPHY: TypographyPrefs = {
  * AI、游戏、深度与冷门细分留给场景预设或分类管理。
  */
 export const DEFAULT_HIDDEN_CATEGORY_IDS: CategoryId[] = [
+  'ai-openai',
+  'ai-claude',
   'ai',
   'ai-media',
   'ai-depth',
