@@ -114,7 +114,7 @@ Android 物理返回键由 `@capacitor/app` 在 `App.tsx` 统一处理：阅读�
 - **推荐**（`recommend`）：聚合分类，候选取当前布局可见分类的信源并集，条目由 `lib/recommend.ts` 按本机已读画像重排（纯本地，冷启动退化为按时间）；默认隐藏，旧数据归一化时保持隐藏，显式开启会写入 `categoryOrder`。原理、权重与效果见 [本地推荐](./local-recommend.md)
 - 其余分类：绑定默认 `sourceIds`，可由偏好覆盖
 
-场景预设（`sources/presets.ts` + `hooks/usePresets.ts`）：快照分类顺序/显隐、各类别选源与综合频道启用列表。内置可就地改并覆盖存储，另存为才复制成用户预设；`activePresetId` 可直接指向内置 id。内置「本地推荐」（`builtin-foryou`）只展示推荐 + 综合两栏。
+场景预设（`sources/presets.ts` + `hooks/usePresets.ts`）：快照分类顺序/显隐、各类别选源与综合频道启用列表。内置可就地改并覆盖存储，另存为才复制成用户预设；`activePresetId` 可直接指向内置 id。内置「本地推荐」（`builtin-foryou`）只展示推荐一栏。
 
 ### 7.3 用户偏好
 

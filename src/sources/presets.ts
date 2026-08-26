@@ -278,14 +278,14 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
   })(),
   (() => {
     /**
-     * 本地推荐：推荐栏按本机已读画像重排（lib/recommend.ts），综合栏保留时间线对照。
-     * 候选池即频道启用列表；纯本地信号，无上传、无云端画像。
+     * 本地推荐：只展示推荐栏，按本机已读画像重排（lib/recommend.ts）。
+     * 仅推荐可见时候选回落频道启用列表；纯本地信号，无上传、无云端画像。
      */
-    const visible: CategoryId[] = [RECOMMEND_CATEGORY_ID, 'mix']
+    const visible: CategoryId[] = [RECOMMEND_CATEGORY_ID]
     return builtinPreset(
       BUILTIN_FORYOU_ID,
       '本地推荐',
-      '按本机已读习惯排序 · 冷启动按时间 · 综合时间线对照',
+      '按本机已读习惯排序 · 冷启动按时间',
       {
         categoryOrder: visible,
         hiddenCategoryIds: hiddenExcept(visible),

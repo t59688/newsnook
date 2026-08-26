@@ -202,8 +202,8 @@ assert.ok(foryou!.snapshot.enabledSourceIds.length > 0, '候选池不应为空')
 const foryouPrefs = applySnapshotToPrefs(DEFAULT_PREFERENCES, foryou!.snapshot)
 assert.deepEqual(
   visibleCategories(foryouPrefs).map((category) => category.id),
-  [RECOMMEND_CATEGORY_ID, 'mix'],
-  '预设应只展示推荐 + 综合对照',
+  [RECOMMEND_CATEGORY_ID],
+  '预设应只展示推荐栏',
 )
 console.log('recommend preset: ok')
 
