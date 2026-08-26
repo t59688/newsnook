@@ -185,7 +185,9 @@ assert.ok(!visible.has('fun'))
 // AI 四层：源头 / 业界 / 深读 / 社区
 assert.deepEqual(techSnap.categorySources.ai, [
   'openai-news',
+  'openai-cookbook',
   'anthropic',
+  'claude-blog',
   'google-ai',
   'deepmind',
   'huggingface',

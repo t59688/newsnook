@@ -74,7 +74,10 @@
 | `zhidx` | wordpress | 同新智元：`/feed` 500；WP REST 可用，30 条中 29 条 `content.rendered` 全文（2026-08-25 实测） |
 | `baoyu` | feed | `baoyu.io/feed.xml`（302 → `s.baoyu.io`，代理跟随正常）；RSS 仅摘要，正文 Readability 抽静态页（Astro，全文在 DOM，实测 1k–5k 字） |
 | `oneusefulthing` `understandingai` `latent-space` `thezvi` | feed | Substack，feed 自带全文；`understandingai` 约 2 成付费文截断、回落 Readability；`thezvi` feed 近 2 MB、单篇极长，默认关闭 |
-| `openai-news` `google-ai` `deepmind` `huggingface` `pytorch` | feed | 实验室 / 平台一手，标准 RSS/Atom |
+| `openai-news` `google-ai` `deepmind` `huggingface` `pytorch` | feed | 实验室 / 平台一手，标准 RSS/Atom；`openai-news` 2026-08-26 复测正常（约 700KB 全量目录）并改为默认启用 |
+| `openai-cookbook` | openai-cookbook | 无专属 RSS；解析 Astro 列表行（标题 + 日期），带尾斜杠会 308；见 §7 |
+| `claude-blog` `claude-customers` | claude-webflow | claude.com 为 Webflow 站，无 RSS；解析 CMS 集合列表（fs-list-field 元数据 + 跑马灯）；见 §7 |
+| `claude-academy-use-cases` `claude-academy-tutorials` | claude-academy | academy.claude.com 卡片列表，无日期（`hasRealDate=false`），带尾斜杠会 307；见 §7 |
 | `mittr-ai` `verge-ai` `ieee-ai` `venturebeat-ai` `marktechpost` | feed | 聚焦栏目 RSS |
 | `lastweek-ai` `import-ai` `ahead-of-ai` `lil-log` `simonw` `interconnects` | feed | 周报与作者博；Substack/静态站均正常 |
 | `arena` | arena | 无官方 RSS；解析官网 Blog 列表页（Sanity 嵌入数据） |
@@ -295,7 +298,7 @@ WebView 观察页面的网络、DOM、MSE 与 DRM 信号；接口或观察失败
   - `ai-community`（**社区**：优设 AIGC 首位 · V2EX · HN · PaperWeekly · 人人 PM）
   四栏均在 `DEFAULT_HIDDEN_CATEGORY_IDS`（新装默认隐藏，由场景预设或分类管理打开）。
 - 「极客与 AI」预设（`presets.ts`）可见顺序：源头 → 业界 → 深读 → 社区 → 科技深度 → 科技 → 科普；
-  综合（mix）隐藏。默认启用示例：源头含 OpenAI / Anthropic / Google AI / DeepMind / HF / Arena；
+  综合（mix）隐藏。默认启用示例：源头含 OpenAI / Cookbook / Anthropic / Claude Blog / Google AI / DeepMind / HF / Arena；
   业界含量子位 / 机器之心 / 新智元 / MIT AI；深读含智东西 / 宝玉 / 夕小瑶 / 42章经 / Mollick / Latent；
   社区含优设 / V2EX / HN。其余 AI 源留在分类中可一键开启。
 - 兼容性：老用户已持久化的 `hiddenCategoryIds` 若不含新建栏 id，升级后「业界 / 社区」可能短暂可见，
@@ -344,3 +347,34 @@ Readability 兜底（实测正文块 2.4k–10.6k 字），站内全文成立。
 
 验证：`npm run test:community-sources`（新源 kind / URL / UA / 默认启用 / 分页策略 / 分类归属断言），
 `npm run test:layout-presets`（预设互斥与 mix 重叠不变量）。
+
+## 7. AI 一手官方源扩充（2026-08-26）
+
+背景：补齐 OpenAI / Anthropic（Claude）官方一手内容并默认启用；既有 `anthropic` /
+`openai-news` 保留不动（后者由默认关改为默认开）。全部归 **源头 `ai`** 分类，
+分页策略 `client-catalog`，正文走通用 Readability；`claude.com` 加入智能分流国际域名
+（`academy.claude.com` 由后缀匹配覆盖；`developers.openai.com` 已被既有 `openai.com` 覆盖）。
+
+### 7.1 收录（5 个新源 + 1 个启用）
+
+| id | kind | 探测要点（2026-08-26 实测） |
+|---|---|---|
+| `claude-blog` | claude-webflow | claude.com 是 **Webflow** 站（非 anthropic.com 的 Next.js/Sanity），无 RSS（`/blog/rss.xml` 等均 404）。CMS 集合服务端渲染：网格条目带隐藏元数据 `fs-list-field="heading"` / `fs-list-field="date"`，首页跑马灯条目（`marquee_cms_blog_list_item`）只有 `<h2>` 标题 + 英文日期文本；两处合并去重后 25 篇全带日期。同一篇会渲染多遍，去重时**带日期版本优先**。标题含 `&#x27;` 等十六进制实体，解析器先解码。正文页服务端渲染约 2 万字符文本，Readability 正常 |
+| `claude-customers` | claude-webflow | 同上 Webflow 集合（`stories_cms_item`）；标题优先取 `fs-list-field="title"`（故事标题），缺失退回 `client`（客户名）；21 篇全带日期 |
+| `claude-academy-use-cases` | claude-academy | academy.claude.com 为 TanStack SSR 站，无 RSS，sitemap 无 lastmod。卡片 `<a href="/use-cases/<slug>"><h3>标题</h3></a>` 静态渲染；列表与详情均无日期 → `hasRealDate=false` + 递减伪时序（同 `paulgraham`，feed 层会排在有日期条目之后）。详情页为完整文字指南（实测 5.9k 字符文本），Readability 正常 |
+| `claude-academy-tutorials` | claude-academy | 同上卡片结构（31 条）。**详情为视频教程**，服务端只渲染标题 + 简介（约 375 字符），正文偏薄、播放器为客户端 SPA 组件；站内可读标题/简介，深入观看需打开原文，属已知限制 |
+| `openai-cookbook` | openai-cookbook | developers.openai.com 为 Astro 站。站级 `/rss.xml` 混入 YouTube 与 platform.openai.com 文档链接，不适合做列表源；解析 `/cookbook` 列表行（`line-clamp-1` 标题 + `text-right` 日期），Featured 卡片与列表行重复时带日期版本优先，90 条全带日期。详情页服务端渲染全文（实测 5.6 万字符），Readability 正常 |
+| `openai-news`（既有） | feed | RSS 复测正常（约 700KB 全量目录，`lastBuildDate` 当天）；由 `enabled: false` 改为 `true` |
+
+尾斜杠陷阱（与 `anthropic` 同类，代理 rewrite 不跟随重定向，注册 URL 一律无尾斜杠）：
+`academy.claude.com/use-cases/` 307 → 无斜杠；`developers.openai.com/cookbook/` 308 → 无斜杠；
+claude.com 两个路径带不带斜杠均 200。
+
+### 7.2 分类与预设
+
+- 五个新源与 `openai-news` 全部默认启用，归 **源头 `ai`** 分类（分类互斥不变量保持）；
+- 「极客与 AI」预设源头栏加入 `openai-cookbook` 与 `claude-blog`（压量原则，
+  案例 / 学院两类低频源留在分类里可一键开启）。
+
+验证：`npm run test:ai-firstparty`（注册 / 分类 / 分流 / 分页断言 + 三个解析器 fixture 与兜底路径），
+`npm run test:high-signal`、`npm run test:layout-presets`、`npm run test:category-source-usage`。

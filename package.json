@@ -64,6 +64,7 @@
     "test:paulgraham-dates": "npx tsx scripts/paulgraham-dates.test.ts",
     "test:finance-sources": "npx tsx scripts/finance-sources.test.ts",
     "test:high-signal": "npx tsx scripts/high-signal-sources.test.ts",
+    "test:ai-firstparty": "npx tsx scripts/ai-firstparty-sources.test.ts",
     "test:community-sources": "npx tsx scripts/community-wechat-sources.test.ts",
     "test:eink": "npx tsx scripts/eink-mode.test.ts",
     "test:native-fullscreen": "npx tsx scripts/native-fullscreen.test.ts",

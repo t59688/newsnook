@@ -1,7 +1,7 @@
 /**
  * 列表解析统一入口。实现按边界拆在 parseFeed/ 子模块：
  * - generic：RSS / Atom / RDF / JSON Feed 通用路径
- * - netease / zhihu / flightSites / sites / finance / wechat：站点定制 kind
+ * - netease / zhihu / flightSites / aiFirstparty / sites / finance / wechat：站点定制 kind
  * - dateEnrichment：晚点 / 甲子光年 / Paul Graham 的详情页日期补全
  * 对外导入路径保持 `lib/parseFeed` 不变。
  */
@@ -13,6 +13,11 @@ import { parseGenericFeed, parseXmlFeed } from './parseFeed/generic'
 import { parseNetease } from './parseFeed/netease'
 import { parseZhihuDaily } from './parseFeed/zhihu'
 import { parseAnthropicNews, parseArenaBlog } from './parseFeed/flightSites'
+import {
+  parseClaudeAcademy,
+  parseClaudeWebflow,
+  parseOpenaiCookbook,
+} from './parseFeed/aiFirstparty'
 import {
   parseGuokrList,
   parseJandan,
@@ -74,6 +79,9 @@ const PARSERS: Record<SourceKind, SourceParser> = {
   paulgraham: parsePaulGraham,
   wechat: parseWechatSource,
   uisdc: parseUisdcTag,
+  'claude-webflow': parseClaudeWebflow,
+  'claude-academy': parseClaudeAcademy,
+  'openai-cookbook': parseOpenaiCookbook,
   'web-catalog': parseWebCatalog,
 }
 

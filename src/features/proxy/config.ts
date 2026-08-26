@@ -42,6 +42,7 @@ export const DEFAULT_INTERNATIONAL_DOMAINS = [
   'interconnects.ai',
   'arena.ai',
   'anthropic.com',
+  'claude.com',
   'nytimes.com',
   'reuters.com',
   'bloomberg.com',
@@ -96,6 +97,11 @@ export const DEFAULT_INTERNATIONAL_SOURCE_IDS = new Set<string>([
   'interconnects',
   'arena',
   'anthropic',
+  'claude-blog',
+  'claude-customers',
+  'claude-academy-use-cases',
+  'claude-academy-tutorials',
+  'openai-cookbook',
 ])
 
 export function proxyModeLabel(mode: ProxyMode): string {

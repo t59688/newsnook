@@ -266,12 +266,14 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
   (() => {
     /**
      * AI 四层：源头 / 业界 / 深读 / 社区；默认启用压量，避免刷屏。
-     * 其余源（PyTorch、雷锋网、周报、PaperWeekly 等）留在分类里可一键开启。
+     * 其余源（PyTorch、雷锋网、周报、Claude 案例/学院、PaperWeekly 等）留在分类里可一键开启。
      */
     const categorySources = {
       ai: pickKnown(
         'openai-news',
+        'openai-cookbook',
         'anthropic',
+        'claude-blog',
         'google-ai',
         'deepmind',
         'huggingface',
