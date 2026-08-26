@@ -124,7 +124,8 @@ try {
     categoryOrder: ['tech', 'hot'],
     hiddenCategoryIds: [],
   })
-  assert.deepEqual(restoredHidden.categoryOrder, [])
+  // resetCategoryLayout 会写入门户默认顺序（而非空数组交给默认推导）
+  assert.deepEqual(restoredHidden.categoryOrder, VISIBLE)
   assert.deepEqual(
     [...restoredHidden.hiddenCategoryIds].sort(),
     [...DEFAULT_HIDDEN_CATEGORY_IDS].sort(),
