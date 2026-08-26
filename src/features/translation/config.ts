@@ -62,7 +62,7 @@ const DEFAULT_CLOUD: TranslationPrefs['cloud'] = {
   deeplx: {
     apiKey: '',
     endpoint: '',
-    // 公共 DeepLX 服务按突发频率封禁，默认串行最稳妥；自建服务可自行调高
+    // /translate 模式已改为合并批串行，该字段不再生效，仅为兼容旧配置保留
     concurrency: 1,
   },
   openai: {

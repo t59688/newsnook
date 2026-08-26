@@ -121,7 +121,11 @@ globalThis.fetch = async (input, init) => {
     authorization: headers.get('Authorization'),
   })
   const text = typeof body.text === 'string' ? body.text : body.text?.[0] ?? ''
-  return Response.json({ code: 200, data: `LX:${text}` })
+  const translated = text
+    .split('\n')
+    .map((line) => `LX:${line}`)
+    .join('\n')
+  return Response.json({ code: 200, data: translated })
 }
 
 const deepLx = new DeepLXProvider({
@@ -134,11 +138,12 @@ const deepLxResult = await deepLx.translate({
   targetLanguage: 'zh-Hans',
 })
 assert.deepEqual(deepLxResult, ['LX:Hello', 'LX:World'])
-assert.equal(requests.length, 2)
+// 单段模式合并批：两段短文本合并为一个换行分隔的请求
+assert.equal(requests.length, 1)
 assert.equal(requests[0].url, 'https://deeplx.example/path-token/translate')
 assert.equal(requests[0].authorization, null)
 assert.deepEqual(requests[0].body, {
-  text: 'Hello',
+  text: 'Hello\nWorld',
   source_lang: 'EN',
   target_lang: 'ZH',
 })
@@ -219,18 +224,24 @@ assert.ok(googleAutoBody)
 assert.equal('source' in googleAutoBody, false)
 assert.equal(googleAutoBody.target, 'zh-CN')
 
-// Test DeepLX concurrency limit (max 3 concurrent requests)
+// Test DeepLX 合并批串行：25 段短文本 → 3 个请求（10+10+5），且严格串行
 let activeConcurrent = 0
 let maxConcurrentObserved = 0
+let deepLxRequestCount = 0
 globalThis.fetch = async (_input, init) => {
   activeConcurrent++
+  deepLxRequestCount++
   if (activeConcurrent > maxConcurrentObserved) {
     maxConcurrentObserved = activeConcurrent
   }
   const body = JSON.parse(String(init?.body)) as { text?: string }
   await new Promise((r) => setTimeout(r, 10))
   activeConcurrent--
-  return Response.json({ code: 200, data: `LX:${body.text}` })
+  const translated = (body.text ?? '')
+    .split('\n')
+    .map((line) => `LX:${line}`)
+    .join('\n')
+  return Response.json({ code: 200, data: translated })
 }
 
 const deepLxConcurrency = new DeepLXProvider({ apiKey: '', endpoint: 'https://deeplx.example/translate' })
@@ -239,7 +250,8 @@ await deepLxConcurrency.translate({
   sourceLanguage: 'en',
   targetLanguage: 'zh-Hans',
 })
-assert.ok(maxConcurrentObserved <= 3, `Max concurrent requests was ${maxConcurrentObserved}, expected <= 3`)
+assert.equal(deepLxRequestCount, 3, `25 段短文本应合并为 3 个请求，实际 ${deepLxRequestCount}`)
+assert.equal(maxConcurrentObserved, 1, `合并批应严格串行，实际并发 ${maxConcurrentObserved}`)
 
 globalThis.fetch = originalFetch
 

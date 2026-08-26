@@ -48,17 +48,44 @@ const DEFAULT_THROTTLE: DeepLxThrottleConfig = {
   maxRetries: 3,
 }
 
-let currentConfig: DeepLxThrottleConfig = { ...DEFAULT_THROTTLE }
+/**
+ * 公共共享网关（如 api.deeplx.org）按令牌配额限流：配额烧完后所有请求
+ * （包括单条测试连接）都会 429 一段时间。对这类主机采用更保守的档位：
+ * 更大的请求间隔压低配额消耗；被限流后只重试一次，避免重试本身继续烧配额。
+ */
+const PUBLIC_GATEWAY_THROTTLE: DeepLxThrottleConfig = {
+  minIntervalMs: 1000,
+  backoffBaseMs: 3000,
+  backoffMaxMs: 15000,
+  jitterMaxMs: 250,
+  maxRetries: 1,
+}
 
-export function deepLxThrottleConfig(): Readonly<DeepLxThrottleConfig> {
-  return currentConfig
+const PUBLIC_GATEWAY_HOSTS = new Set(['api.deeplx.org'])
+
+let currentConfig: DeepLxThrottleConfig = { ...DEFAULT_THROTTLE }
+let publicGatewayConfig: DeepLxThrottleConfig = { ...PUBLIC_GATEWAY_THROTTLE }
+
+/** 端点是否指向已知的公共共享 DeepLX 网关（按令牌配额限流）。 */
+export function isPublicDeepLxGateway(endpoint: string): boolean {
+  try {
+    return PUBLIC_GATEWAY_HOSTS.has(new URL(endpoint).hostname.toLowerCase())
+  } catch {
+    return false
+  }
+}
+
+export function deepLxThrottleConfig(endpoint?: string): Readonly<DeepLxThrottleConfig> {
+  return endpoint && isPublicDeepLxGateway(endpoint) ? publicGatewayConfig : currentConfig
 }
 
 /** 仅供 scripts/ 测试压缩等待时间；生产代码不要调用。 */
 export function configureDeepLxThrottleForTests(
   overrides?: Partial<DeepLxThrottleConfig>,
+  publicGatewayOverrides?: Partial<DeepLxThrottleConfig>,
 ): void {
   currentConfig = { ...DEFAULT_THROTTLE, ...overrides }
+  publicGatewayConfig = { ...PUBLIC_GATEWAY_THROTTLE, ...publicGatewayOverrides }
 }
 
 function abortError(): DOMException {
@@ -90,12 +117,17 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
  */
 export class MinIntervalGate {
   private nextSlotAt = 0
+  private readonly endpoint: string
+
+  constructor(endpoint = '') {
+    this.endpoint = endpoint
+  }
 
   async acquire(signal?: AbortSignal): Promise<void> {
     if (signal?.aborted) throw abortError()
     const now = Date.now()
     const slot = Math.max(now, this.nextSlotAt)
-    this.nextSlotAt = slot + currentConfig.minIntervalMs
+    this.nextSlotAt = slot + deepLxThrottleConfig(this.endpoint).minIntervalMs
     if (slot > now) await sleep(slot - now, signal)
   }
 
@@ -118,7 +150,7 @@ export function deepLxGate(endpoint: string): MinIntervalGate {
   }
   let gate = gates.get(key)
   if (!gate) {
-    gate = new MinIntervalGate()
+    gate = new MinIntervalGate(key)
     gates.set(key, gate)
   }
   return gate
@@ -140,8 +172,12 @@ export function parseRetryAfterMs(value: string | null | undefined): number | un
 }
 
 /** 第 attempt 次重试前的等待：优先服务端 Retry-After，否则指数退避，再加抖动。 */
-export function deepLxBackoffMs(attempt: number, retryAfterMs?: number): number {
-  const config = currentConfig
+export function deepLxBackoffMs(
+  attempt: number,
+  retryAfterMs?: number,
+  endpoint?: string,
+): number {
+  const config = deepLxThrottleConfig(endpoint)
   const backoff =
     retryAfterMs != null && retryAfterMs > 0
       ? retryAfterMs

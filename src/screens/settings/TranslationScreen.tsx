@@ -630,28 +630,6 @@ export function TranslationScreen({ prefs, onChange, onBack }: Props) {
                 </button>
               }
             />
-            {prefs.provider === 'deeplx' && (
-              <Field
-                label="最大并发"
-                type="number"
-                min={1}
-                max={5}
-                value={String(activeCloud.concurrency ?? 1)}
-                placeholder="1"
-                onChange={(raw) => {
-                  const trimmed = raw.trim()
-                  if (!trimmed) {
-                    updateCloud({ concurrency: 1 })
-                    return
-                  }
-                  const n = Number(trimmed)
-                  if (!Number.isFinite(n)) return
-                  const truncated = Math.trunc(n)
-                  if (truncated < 1 || truncated > 5) return
-                  updateCloud({ concurrency: truncated })
-                }}
-              />
-            )}
             {prefs.provider === 'azure' && (
               <Field
                 label="AZURE REGION（可选）"

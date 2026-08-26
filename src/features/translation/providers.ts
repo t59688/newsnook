@@ -1,6 +1,7 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 
 import { mapConcurrent as sharedMapConcurrent } from '../../lib/asyncPool'
+import { log } from '../../lib/logger'
 import {
   BergamotTranslation,
   isBergamotTranslationAvailable,
@@ -253,12 +254,6 @@ function normalizeOpenAiConcurrency(value: unknown): number {
   return value
 }
 
-function normalizeDeepLxConcurrency(value: unknown): number {
-  if (typeof value !== 'number' || !Number.isFinite(value) || !Number.isInteger(value)) return 1
-  if (value < 1 || value > 5) return 1
-  return value
-}
-
 async function mapConcurrent<T, R>(
   items: T[],
   concurrency: number,
@@ -481,9 +476,15 @@ export class DeepLProvider extends CloudProvider {
   }
 }
 
+/**
+ * 归一化 DeepLX 端点：路径未以 /translate 结尾时自动补全，
+ * 兼容「https://api.deeplx.org/<token>」这类漏写 /translate 的路径令牌配置
+ * （/v1/translate、/v2/translate 都以 /translate 结尾，不受影响）。
+ */
 function deepLxUrl(endpoint: string): URL {
   const url = new URL(endpoint)
-  if (url.pathname === '/' || url.pathname === '') url.pathname = '/translate'
+  const path = url.pathname.replace(/\/+$/, '')
+  url.pathname = /\/translate$/i.test(path) ? path : `${path}/translate`
   return url
 }
 
@@ -500,15 +501,30 @@ interface DeepLxResponse {
 }
 
 const DEEPLX_RATE_LIMIT_MESSAGE =
-  'DeepLX：触发速率限制（429 Too Many Requests），已自动降速重试仍被限流。请稍候再试；若频繁出现，可降低最大并发或关闭「自动翻译外文标题」。'
+  'DeepLX：触发速率限制（429 Too Many Requests），已自动降速重试仍被限流。公共服务按令牌/IP 限频，请稍候再试；若频繁出现，可关闭「自动翻译外文标题」或改用自建服务。'
+
+/**
+ * /translate 单段模式的合并批上限。上游 DeepL 匿名接口对单次请求有约
+ * 1500 字符的硬上限（新版 DeepLX 服务端直接 413 拒绝），留余量取 1200。
+ */
+const DEEPLX_JOIN_ITEMS = 10
+const DEEPLX_JOIN_CHARS = 1200
+
+/** 段内换行在 HTML 渲染中等价于空格；压平后才能用换行作为合并批的段落分隔符。 */
+function flattenLineBreaks(text: string): string {
+  return text.replace(/\s*[\r\n]+\s*/g, ' ')
+}
 
 /**
  * DeepLX 的免费端点与 DeepL 官方 API 不是同一协议：
  * `/translate` 一次接收一个字符串并从 `data` 返回译文；
  * `/v2/translate` 则兼容官方的数组请求与 `translations` 响应。
  *
- * 公共 DeepLX 按突发频率临时封禁 IP/令牌，所以两种模式的请求都经过共享
- * 节流门（跨实例最小间隔），429 时按指数退避重试并优先尊重 Retry-After。
+ * 公共 DeepLX 网关按令牌配额限流、自建实例的上游按突发频率封 IP，
+ * 请求「数量」比间隔更致命。因此 `/translate` 模式将多段文本按换行合并成
+ * 一个请求（DeepLX 服务端整体透传给上游、换行结构原样保留，与主流客户端
+ * 的批量方式一致），并且所有请求经过共享节流门；429 时退避重试并尊重
+ * Retry-After，已知公共网关采用更保守的档位（更慢起步、更少重试）。
  */
 export class DeepLXProvider extends CloudProvider {
   readonly id = 'deeplx' as const
@@ -519,7 +535,7 @@ export class DeepLXProvider extends CloudProvider {
     signal?: AbortSignal,
   ): Promise<JsonResponse> {
     const gate = deepLxGate(url)
-    const { maxRetries } = deepLxThrottleConfig()
+    const { maxRetries } = deepLxThrottleConfig(url)
     for (let attempt = 0; ; attempt += 1) {
       await gate.acquire(signal)
       const response = await postJson(url, body, deepLxHeaders(this.config.apiKey), signal)
@@ -530,11 +546,106 @@ export class DeepLXProvider extends CloudProvider {
       if (!rateLimited) return response
       const retryAfterMs = parseRetryAfterMs(response.headers['retry-after'])
       // 即便重试耗尽也上报冷却，让后续其它请求（信息流/测试连接）继续等待而非齐射
-      gate.reportRateLimit(deepLxBackoffMs(attempt, retryAfterMs))
+      gate.reportRateLimit(deepLxBackoffMs(attempt, retryAfterMs, url))
       if (attempt >= maxRetries) {
         throw new TranslationRateLimitError(DEEPLX_RATE_LIMIT_MESSAGE, retryAfterMs)
       }
     }
+  }
+
+  /** /translate 模式的单请求：一个字符串进、一个字符串出。 */
+  private async translateSingle(
+    url: string,
+    text: string,
+    sourceLang: string | undefined,
+    targetLang: string,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    const response = await this.postThrottled(
+      url,
+      {
+        text,
+        ...(sourceLang ? { source_lang: sourceLang } : {}),
+        target_lang: targetLang,
+      },
+      signal,
+    )
+    if (response.status < 200 || response.status >= 300) throw errorMessage('DeepLX', response)
+    const data = response.data as DeepLxResponse
+    if (typeof data.code === 'number' && data.code !== 200) {
+      throw new Error(`DeepLX：${data.message ?? `服务返回错误码 ${data.code}`}`)
+    }
+    if (typeof data.data === 'string') return data.data
+    const officialText = data.translations?.[0]?.text
+    if (officialText) return officialText
+    throw new Error('DeepLX 返回的数据格式不正确')
+  }
+
+  /**
+   * 把一批文本按换行合并成一个 /translate 请求；译文按换行拆回。
+   * 行数对不上时（上游偶发合并/拆分段落）回退为逐段请求，保证结果对齐。
+   */
+  private async translateJoinedBatch(
+    url: string,
+    texts: string[],
+    sourceLang: string | undefined,
+    targetLang: string,
+    signal?: AbortSignal,
+  ): Promise<string[]> {
+    const results = new Array<string>(texts.length).fill('')
+    const sendIndexes: number[] = []
+    const sendTexts: string[] = []
+    texts.forEach((text, index) => {
+      const flattened = flattenLineBreaks(text).trim()
+      if (flattened) {
+        sendIndexes.push(index)
+        sendTexts.push(flattened)
+      }
+    })
+    if (!sendTexts.length) return results
+
+    if (sendTexts.length === 1) {
+      results[sendIndexes[0]] = await this.translateSingle(
+        url,
+        sendTexts[0],
+        sourceLang,
+        targetLang,
+        signal,
+      )
+      return results
+    }
+
+    const joined = await this.translateSingle(
+      url,
+      sendTexts.join('\n'),
+      sourceLang,
+      targetLang,
+      signal,
+    )
+    let parts: string[] | null = joined.split('\n').map((part) => part.trim())
+    if (parts.length !== sendTexts.length) {
+      const nonEmpty = parts.filter((part) => part)
+      parts = nonEmpty.length === sendTexts.length ? nonEmpty : null
+    }
+    if (parts) {
+      parts.forEach((part, i) => {
+        results[sendIndexes[i]] = part
+      })
+      return results
+    }
+
+    // 行数不匹配：逐段回退（仍经共享节流门限速）
+    log.translation.warn('DeepLX joined batch line count mismatch, falling back to per-text requests')
+    for (let i = 0; i < sendTexts.length; i += 1) {
+      results[sendIndexes[i]] = await this.translateSingle(
+        url,
+        sendTexts[i],
+        sourceLang,
+        targetLang,
+        signal,
+      )
+    }
+    return results
   }
 
   async translate(request: TranslationRequest): Promise<string[]> {
@@ -571,36 +682,16 @@ export class DeepLXProvider extends CloudProvider {
       )
     }
 
-    // 单段请求接口模式（/translate）：一段一请求，按配置并发（1~5，默认 1），
-    // 请求开始时刻由共享节流门错开
-    const concurrency = normalizeDeepLxConcurrency(this.config.concurrency)
-    return mapConcurrent(
+    // 单段接口模式（/translate）：按换行把多段合并成一个请求、按批串行推进，
+    // 请求数从「每段一发」降到「每批一发」，适配公共网关的令牌配额
+    return inBatches(
       request.texts,
-      concurrency,
-      async (text) => {
-        const response = await this.postThrottled(
-          url.toString(),
-          {
-            text,
-            ...(sourceLang ? { source_lang: sourceLang } : {}),
-            target_lang: targetLang,
-          },
-          request.signal,
-        )
-        if (response.status < 200 || response.status >= 300) throw errorMessage('DeepLX', response)
-        const data = response.data as DeepLxResponse
-        if (typeof data.code === 'number' && data.code !== 200) {
-          throw new Error(`DeepLX：${data.message ?? `服务返回错误码 ${data.code}`}`)
-        }
-        if (typeof data.data === 'string') return data.data
-        const officialText = data.translations?.[0]?.text
-        if (officialText) return officialText
-        throw new Error('DeepLX 返回的数据格式不正确')
-      },
+      DEEPLX_JOIN_ITEMS,
+      DEEPLX_JOIN_CHARS,
+      async (texts) =>
+        this.translateJoinedBatch(url.toString(), texts, sourceLang, targetLang, request.signal),
       request.signal,
-      (singleTranslated, index) => {
-        request.onBatch?.([singleTranslated], index)
-      },
+      request.onBatch,
     )
   }
 }
