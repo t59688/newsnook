@@ -22,6 +22,7 @@ import type {
   TranslationProviderId,
   TranslationRequest,
   TranslationSourceLanguage,
+  TranslationTextKind,
 } from './types'
 
 const LANGUAGE_MAP: Record<
@@ -536,59 +537,70 @@ export class DeepLXProvider extends CloudProvider {
 
     // 单段请求接口模式（/translate）：以滚动窗口按配置并发（1~5，默认 2）处理，配合错峰节流与 429 退避重试
     const concurrency = normalizeDeepLxConcurrency(this.config.concurrency)
-    return mapConcurrent(
-      request.texts,
-      concurrency,
-      async (text, index) => {
-        // 请求前平滑错峰：错开并发请求（每段间隔 120ms）
-        if (index > 0) {
-          await sleep(120, request.signal)
-        }
+    // 同一次调用内相同文本只发一次请求（正文里重复的 caption/短语共享在途结果）
+    const inflightByText = new Map<string, Promise<string>>()
+    const translateSingle = async (text: string, index: number): Promise<string> => {
+      // 请求前平滑错峰：错开并发请求（每段间隔 120ms）
+      if (index > 0) {
+        await sleep(120, request.signal)
+      }
 
-        const sendSingleRequest = async (): Promise<{ is429: boolean; text?: string; error?: Error }> => {
-          const response = await postJson(
-            url.toString(),
-            {
-              text,
-              ...(sourceLang ? { source_lang: sourceLang } : {}),
-              target_lang: language(this.id, request.targetLanguage),
-            },
-            deepLxHeaders(this.config.apiKey),
-            request.signal,
-          )
-          if (response.status === 429) {
+      const sendSingleRequest = async (): Promise<{ is429: boolean; text?: string; error?: Error }> => {
+        const response = await postJson(
+          url.toString(),
+          {
+            text,
+            ...(sourceLang ? { source_lang: sourceLang } : {}),
+            target_lang: language(this.id, request.targetLanguage),
+          },
+          deepLxHeaders(this.config.apiKey),
+          request.signal,
+        )
+        if (response.status === 429) {
+          return {
+            is429: true,
+            error: new Error('DeepLX：触发速率限制（429 Too Many Requests），请求过于频繁，请稍候重试或在设置中降低并发。'),
+          }
+        }
+        if (response.status < 200 || response.status >= 300) throw errorMessage('DeepLX', response)
+        const data = response.data as DeepLxResponse
+        if (typeof data.code === 'number' && data.code !== 200) {
+          if (data.code === 429) {
             return {
               is429: true,
               error: new Error('DeepLX：触发速率限制（429 Too Many Requests），请求过于频繁，请稍候重试或在设置中降低并发。'),
             }
           }
-          if (response.status < 200 || response.status >= 300) throw errorMessage('DeepLX', response)
-          const data = response.data as DeepLxResponse
-          if (typeof data.code === 'number' && data.code !== 200) {
-            if (data.code === 429) {
-              return {
-                is429: true,
-                error: new Error('DeepLX：触发速率限制（429 Too Many Requests），请求过于频繁，请稍候重试或在设置中降低并发。'),
-              }
-            }
-            throw new Error(`DeepLX：${data.message ?? `服务返回错误码 ${data.code}`}`)
-          }
-          if (typeof data.data === 'string') return { is429: false, text: data.data }
-          const officialText = data.translations?.[0]?.text
-          if (officialText) return { is429: false, text: officialText }
-          throw new Error('DeepLX 返回的数据格式不正确')
+          throw new Error(`DeepLX：${data.message ?? `服务返回错误码 ${data.code}`}`)
         }
+        if (typeof data.data === 'string') return { is429: false, text: data.data }
+        const officialText = data.translations?.[0]?.text
+        if (officialText) return { is429: false, text: officialText }
+        throw new Error('DeepLX 返回的数据格式不正确')
+      }
 
-        let res = await sendSingleRequest()
+      let res = await sendSingleRequest()
+      if (res.is429) {
+        // 遭遇 429 速率限制时，自动等待 1.2 秒进行一次退避重试
+        await sleep(1200, request.signal)
+        res = await sendSingleRequest()
         if (res.is429) {
-          // 遭遇 429 速率限制时，自动等待 1.2 秒进行一次退避重试
-          await sleep(1200, request.signal)
-          res = await sendSingleRequest()
-          if (res.is429) {
-            throw res.error ?? new Error('DeepLX：触发速率限制（429 Too Many Requests）')
-          }
+          throw res.error ?? new Error('DeepLX：触发速率限制（429 Too Many Requests）')
         }
-        return res.text ?? ''
+      }
+      return res.text ?? ''
+    }
+
+    return mapConcurrent(
+      request.texts,
+      concurrency,
+      (text, index) => {
+        let pending = inflightByText.get(text)
+        if (!pending) {
+          pending = translateSingle(text, index)
+          inflightByText.set(text, pending)
+        }
+        return pending
       },
       request.signal,
       (singleTranslated, index) => {
@@ -611,42 +623,54 @@ export class OpenAiProvider extends CloudProvider {
       throw new Error('AI 翻译：textKinds 与 texts 长度不一致')
     }
 
+    // 同一次调用内「文本 + 场景」相同的段落只发一次请求，重复段共享在途结果
+    const inflightByKey = new Map<string, Promise<string>>()
+    const translateSingle = async (text: string, kind: TranslationTextKind): Promise<string> => {
+      const system = openAiTranslationSystemPrompt(
+        request.sourceLanguage,
+        request.targetLanguage,
+        kind,
+        model,
+      )
+      const userPrompt = openAiTranslationUserPrompt(text, request.targetLanguage, kind, model)
+      const messages: { role: 'system' | 'user'; content: string }[] = []
+      if (system) messages.push({ role: 'system', content: system })
+      messages.push({ role: 'user', content: userPrompt })
+      const response = await postJson(
+        url,
+        {
+          model,
+          // Mid-low: fluent news prose without inventing proper-noun transliterations.
+          temperature: 0.6,
+          stream: false,
+          stop: OPENAI_TRANSLATION_STOP,
+          messages,
+        },
+        { Authorization: `Bearer ${this.config.apiKey.trim()}` },
+        request.signal,
+      )
+      if (response.status < 200 || response.status >= 300) {
+        throw errorMessage('AI 翻译', response)
+      }
+      const content = extractOpenAiChatContent(response.data)
+      if (typeof content !== 'string' || !content.trim()) {
+        throw new Error('AI 翻译：返回内容为空')
+      }
+      return cleanOpenAiTranslation(content)
+    }
+
     return mapConcurrent(
       request.texts,
       concurrency,
-      async (text, index) => {
+      (text, index) => {
         const kind = request.textKinds?.[index] ?? 'paragraph'
-        const system = openAiTranslationSystemPrompt(
-          request.sourceLanguage,
-          request.targetLanguage,
-          kind,
-          model,
-        )
-        const userPrompt = openAiTranslationUserPrompt(text, request.targetLanguage, kind, model)
-        const messages: { role: 'system' | 'user'; content: string }[] = []
-        if (system) messages.push({ role: 'system', content: system })
-        messages.push({ role: 'user', content: userPrompt })
-        const response = await postJson(
-          url,
-          {
-            model,
-            // Mid-low: fluent news prose without inventing proper-noun transliterations.
-            temperature: 0.6,
-            stream: false,
-            stop: OPENAI_TRANSLATION_STOP,
-            messages,
-          },
-          { Authorization: `Bearer ${this.config.apiKey.trim()}` },
-          request.signal,
-        )
-        if (response.status < 200 || response.status >= 300) {
-          throw errorMessage('AI 翻译', response)
+        const key = `${kind}\u0000${text}`
+        let pending = inflightByKey.get(key)
+        if (!pending) {
+          pending = translateSingle(text, kind)
+          inflightByKey.set(key, pending)
         }
-        const content = extractOpenAiChatContent(response.data)
-        if (typeof content !== 'string' || !content.trim()) {
-          throw new Error('AI 翻译：返回内容为空')
-        }
-        return cleanOpenAiTranslation(content)
+        return pending
       },
       request.signal,
       (singleTranslated, index) => {

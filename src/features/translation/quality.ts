@@ -42,6 +42,17 @@ export function isArticleForeign(
   // 2. 结合标题与摘要整体检测
   const combined = `${title} ${summary}`.trim()
   const detected = detectLanguage(combined)
+
+  if (detected.usedFallback) {
+    // 样本过短置信不足时的回退是英语，不能据此当成外文——
+    // 否则「中文短标题 + 空摘要」会被误判并对已是目标语言的文本发起翻译请求。
+    // 按字符构成兜底：仅目标为中文且样本明显是拉丁文时才进翻译队列。
+    if (!isTargetChinese) return false
+    const han = (combined.match(/[\u4e00-\u9fa5\u3400-\u4dbf]/g) || []).length
+    const latin = (combined.match(/[a-zA-Z]/g) || []).length
+    return latin >= 6 && han <= 2
+  }
+
   const isDetectedChinese = detected.language === 'zh-Hans' || detected.language === 'zh-Hant'
 
   if (isTargetChinese) {

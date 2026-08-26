@@ -540,6 +540,15 @@ export default function App() {
     [availableArticles, categorySourceSet],
   )
 
+  /** 单源筛选时保持数组引用稳定：每次渲染现算会让列表翻译等依赖 articles 的 effect 反复中止重启 */
+  const displayedArticles = useMemo(
+    () =>
+      categoryFilterSourceId
+        ? articles.filter((item) => item.sourceId === categoryFilterSourceId)
+        : articles,
+    [articles, categoryFilterSourceId],
+  )
+
   const articlesForCategory = useCallback(
     (id: CategoryId) => {
       const ids = new Set(sourceIdsForCategoryWithPrefs(id, prefs, enabledIds))
@@ -1175,9 +1184,6 @@ export default function App() {
     const activeFilterSource = categoryFilterSourceId
       ? findSource(categoryFilterSourceId, prefs.customSources)
       : null
-    const displayedArticles = categoryFilterSourceId
-      ? articles.filter((item) => item.sourceId === categoryFilterSourceId)
-      : articles
 
     return (
       <FeedScreen

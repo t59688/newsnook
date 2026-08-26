@@ -8,6 +8,9 @@ import {
 import { detectLanguage } from '../src/features/translation/detectLanguage'
 import { DEFAULT_TRANSLATION_PREFS, normalizeTranslationPrefs } from '../src/features/translation/config'
 import { isArticleForeign, isValidTranslationQuality } from '../src/features/translation/quality'
+import { collectFeedTranslationWork } from '../src/features/translation/useFeedTranslation'
+import type { TranslatedFeedItem } from '../src/features/translation/types'
+import type { Article } from '../src/lib/types'
 
 // 1. Mock LocalStorage for node environment
 const memoryStore = new Map<string, string>()
@@ -104,6 +107,12 @@ assert.equal(
   false,
 )
 
+// 短中文标题 + 空摘要：样本不足触发检测回退，不应被误判为外文（否则已是目标语言仍请求）
+assert.equal(isArticleForeign({ title: '中美经贸会谈落幕', summary: '' }, 'zh-Hans'), false)
+
+// 短外文标题仍应命中翻译队列
+assert.equal(isArticleForeign({ title: 'Fed cuts rates', summary: '' }, 'zh-Hans'), true)
+
 // 6. Test isValidTranslationQuality (Rejecting partial / corrupted translations)
 // Bad case 1: "Wang Gungwu on the lessons of Chinese history and the Cold War" -> "王 gunshot on Chinese history and the Cold War"
 assert.equal(
@@ -143,6 +152,64 @@ assert.equal(
     "zh-Hans",
   ),
   true,
+)
+
+// 7. collectFeedTranslationWork：已在状态 / 已持久缓存 / 会话失败 / 非外文的条目都不再进入待翻译队列
+const makeArticle = (id: string, title: string): Article => ({
+  id,
+  title,
+  summary: '',
+  publishedAt: Date.now(),
+  hasRealDate: true,
+  sourceId: 'src-test',
+  sourceName: 'Test',
+  sourceLabel: 'Test',
+  sourceGroup: 'intl',
+  originUrl: `https://example.com/${id}`,
+})
+
+clearFeedTranslations()
+saveCachedFeedTranslation({
+  articleId: 'art-cached',
+  title: '已缓存的中文译文标题',
+  targetLanguage: 'zh-Hans',
+  translatedAt: Date.now(),
+})
+
+const stateMap = new Map<string, TranslatedFeedItem>([
+  [
+    'art-in-state',
+    { articleId: 'art-in-state', title: '已在状态里的译文', targetLanguage: 'zh-Hans', translatedAt: Date.now() },
+  ],
+  [
+    'art-stale-lang',
+    { articleId: 'art-stale-lang', title: '旧语言译文', targetLanguage: 'en', translatedAt: Date.now() },
+  ],
+])
+
+const work = collectFeedTranslationWork(
+  [
+    makeArticle('art-cached', 'Cached headline should reuse persistent cache'),
+    makeArticle('art-fresh', 'Fresh headline still needs a translation request'),
+    makeArticle('art-failed', 'Failed headline must be skipped this session'),
+    makeArticle('art-zh', '中文标题不进入翻译队列'),
+    makeArticle('art-in-state', 'Already translated headline in state'),
+    makeArticle('art-stale-lang', 'State entry holds wrong target language'),
+  ],
+  stateMap,
+  new Set(['art-failed']),
+  'zh-Hans',
+)
+
+// 命中持久缓存的直接复用，不再发请求
+assert.deepEqual(
+  work.cachedHits.map((item) => item.articleId),
+  ['art-cached'],
+)
+// 只有真正没有译文的外文标题才需要联网（状态里语言不匹配的也要重翻）
+assert.deepEqual(
+  work.needed.map((item) => item.id),
+  ['art-fresh', 'art-stale-lang'],
 )
 
 console.log('feed-translation: ok')
