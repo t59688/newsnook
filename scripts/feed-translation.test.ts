@@ -107,6 +107,12 @@ assert.equal(
   false,
 )
 
+// 短中文标题 + 空摘要：样本不足触发检测回退，不应被误判为外文（否则已是目标语言仍请求）
+assert.equal(isArticleForeign({ title: '中美经贸会谈落幕', summary: '' }, 'zh-Hans'), false)
+
+// 短外文标题仍应命中翻译队列
+assert.equal(isArticleForeign({ title: 'Fed cuts rates', summary: '' }, 'zh-Hans'), true)
+
 // 6. Test isValidTranslationQuality (Rejecting partial / corrupted translations)
 // Bad case 1: "Wang Gungwu on the lessons of Chinese history and the Cold War" -> "王 gunshot on Chinese history and the Cold War"
 assert.equal(
