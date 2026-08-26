@@ -1012,17 +1012,18 @@ export function ReaderScreen({
   const toggleTranslation = async () => {
     if (loadState !== 'ready') return
 
-    // 1. 如果正在翻译中，点击取消本次翻译并切回原文
+    // 1. 如果正在翻译中，点击取消本次翻译并切回原文；丢弃半成品，避免之后被当成完整译文直接展示
     if (translationState === 'loading') {
       cancelTranslation()
+      setTranslated(null)
       setTranslationState('idle')
       setTranslationError('')
       setShowTranslation(false)
       return
     }
 
-    // 2. 如果当前正在显示译文（或处于报错状态），点击直接切回原文
-    if (showTranslation) {
+    // 2. 如果当前正在显示译文，点击直接切回原文；报错状态除外——那时按钮语义是「重试」，落到下方重新翻译
+    if (showTranslation && translationState !== 'error') {
       setShowTranslation(false)
       setTranslationError('')
       return
@@ -1046,6 +1047,7 @@ export function ReaderScreen({
     translationTimeoutRef.current = setTimeout(() => {
       if (translationAbortRef.current !== controller) return
       controller.abort()
+      setTranslated(null)
       setTranslationError('翻译等待超过 60 秒，请检查网络或翻译服务后重试。')
       setTranslationState('error')
     }, TRANSLATION_TIMEOUT_MS)
@@ -1082,6 +1084,8 @@ export function ReaderScreen({
       setTranslationState('idle')
     } catch (error) {
       if (controller.signal.aborted) return
+      // 未完成的部分译文不保留：否则错误清除后会被当成完整译文直接展示
+      setTranslated(null)
       const raw = error instanceof Error ? error.message : '翻译失败'
       setTranslationError(
         raw.includes('MODEL_NOT_DOWNLOADED')

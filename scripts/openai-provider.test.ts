@@ -335,6 +335,45 @@ await providerFive.translate({ texts: many, sourceLanguage: 'en', targetLanguage
 assert.ok(maxActive <= 5, `custom max concurrent ${maxActive}`)
 assert.ok(maxActive >= 2, `expected some parallelism, got ${maxActive}`)
 
+// 同一次调用内重复文本只请求一次，结果按原顺序展开，onBatch 仍逐条回调
+let dedupCalls = 0
+globalThis.fetch = async (_input, init) => {
+  dedupCalls++
+  const body = JSON.parse(String(init?.body)) as {
+    messages: { role: string; content: string }[]
+  }
+  const user = body.messages.find((m) => m.role === 'user')?.content ?? ''
+  const plain = user.match(/^原文：\n([\s\S]+)$/)
+  await new Promise((r) => setTimeout(r, 5))
+  return Response.json({ choices: [{ message: { content: `AI:${plain?.[1] ?? user}` } }] })
+}
+const dedupIndexes: number[] = []
+const dedupResult = await providerFive.translate({
+  texts: ['Same caption', 'Body text', 'Same caption'],
+  sourceLanguage: 'en',
+  targetLanguage: 'zh-Hans',
+  onBatch: (_batch, startIndex) => {
+    dedupIndexes.push(startIndex)
+  },
+})
+assert.deepEqual(dedupResult, ['AI:Same caption', 'AI:Body text', 'AI:Same caption'])
+assert.equal(dedupCalls, 2)
+assert.deepEqual(
+  dedupIndexes.sort((a, b) => a - b),
+  [0, 1, 2],
+)
+
+// 文本相同但场景不同（headline vs paragraph）不去重，仍各自请求
+dedupCalls = 0
+const kindSplit = await providerFive.translate({
+  texts: ['Same words', 'Same words'],
+  textKinds: ['headline', 'paragraph'],
+  sourceLanguage: 'en',
+  targetLanguage: 'zh-Hans',
+})
+assert.deepEqual(kindSplit, ['AI:Same words', 'AI:Same words'])
+assert.equal(dedupCalls, 2)
+
 globalThis.fetch = originalFetch
 
 console.log('openai-provider: ok')
