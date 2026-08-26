@@ -82,6 +82,11 @@ export interface Preferences {
   /** 切换/滑动到分类页时是否自动刷新（关闭时保留滚动阅读位置） */
   autoRefreshOnCategorySwitch?: boolean
   /**
+   * 推荐栏总开关：关闭后所有预设都不显示动态「推荐」分类，普通分类不受影响；
+   * 重新打开且预设内阅读仍达标时推荐栏自动恢复。默认开启。
+   */
+  recommendEnabled?: boolean
+  /**
    * 墨水屏模式：关动画/弱化装饰/文章分页。与 theme 正交；默认 false。
    * 关闭后须完整恢复正常模式行为。
    */
@@ -150,6 +155,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   translation: DEFAULT_TRANSLATION_PREFS,
   proxy: DEFAULT_PROXY_PREFS,
   autoRefreshOnCategorySwitch: true,
+  recommendEnabled: true,
   einkMode: false,
   wifiOnlyAutoLoadMedia: false,
   prestore: DEFAULT_PRESTORE_PREFS,

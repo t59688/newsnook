@@ -23,8 +23,8 @@ import { log } from './lib/logger'
 import {
   buildReadingProfile,
   collectReadArticles,
-  isRecommendationReady,
   rankRecommendations,
+  recommendationReadiness,
   scopeSignalsToSources,
 } from './lib/recommend'
 import { resolveArticleBody } from './lib/resolveBody'
@@ -111,6 +111,7 @@ import {
   setEinkMode,
   setPrestoreEnabled,
   setPrestorePerSourceLimit,
+  setRecommendEnabled,
   setWifiOnlyAutoLoadMedia,
   selectThemeScheme,
   setCustomSchemeColors,
@@ -348,11 +349,17 @@ export default function App() {
     [recommendScopeKey],
   )
 
-  /** 推荐分类是否亮起：阅读阈值收在 lib/recommend 内，UI 只消费布尔结果 */
-  const recommendReady = useMemo(
-    () => isRecommendationReady({ readIds, laterArticles: later }, recommendScope),
+  /**
+   * 推荐就绪进度：阈值收在 lib/recommend 内，这里拿到「已读 X / 需 Y」
+   * 供设置页解释推荐栏何时出现；计数达阈值即停，开销有界。
+   */
+  const recommendReadiness = useMemo(
+    () => recommendationReadiness({ readIds, laterArticles: later }, recommendScope),
     [readIds, later, recommendScope],
   )
+  /** 推荐分类是否亮起：设置开关开启且预设内阅读达标，二者缺一不亮 */
+  const recommendEnabled = prefs.recommendEnabled !== false
+  const recommendReady = recommendEnabled && recommendReadiness.ready
 
   /** 首页轨道：推荐亮起时插到最前；默认选中与回退永远落在第一个普通分类 */
   const categories = useMemo(
@@ -557,7 +564,18 @@ export default function App() {
     return sortArticles([...byId.values()])
   }, [fetchedArticles, prestore.snapshot.articles])
 
-  const runRefresh = useCallback(() => refresh(listScopeIds), [refresh, listScopeIds])
+  /**
+   * 推荐栏内的刷新（下拉或顶栏按钮）即「重算推荐」：除了拉新候选，
+   * 还基于最新已读 / 稍后读信号重建画像并立即重排。画像本身不落盘，
+   * 每次都是即时计算，因此没有需要单独「重置」的隐藏状态。
+   */
+  const [recommendProfileSeq, setRecommendProfileSeq] = useState(0)
+  const runRefresh = useCallback(() => {
+    if (categoryId === RECOMMEND_CATEGORY_ID) {
+      setRecommendProfileSeq((seq) => seq + 1)
+    }
+    return refresh(listScopeIds)
+  }, [refresh, listScopeIds, categoryId])
 
   // 进入分类 / 信源集合变化时，预拉该分类已开启的源（受 autoRefreshOnCategorySwitch 开关控制）
   const bootstrapKey = fetchIds.join('|')
@@ -596,11 +614,13 @@ export default function App() {
   /**
    * 本地推荐画像：进入「推荐」分类时从本机信号（已读 id × 各池元数据 join、
    * 稍后读、正文缓存阅读历史）构建一次，并裁剪到当前预设的候选池——
-   * 各预设画像互不串味。停留期间下拉刷新只用新候选重排，画像在下次进入该分类
-   * 时更新。信号全部经 ref 读取，避免每次已读变化都重排。
+   * 各预设画像互不串味。停留期间的下拉刷新 / 顶栏刷新经 recommendProfileSeq
+   * 触发重建（重算推荐），单次已读不重算（避免读完返回列表跳动）。
+   * 信号全部经 ref 读取，避免每次已读变化都重排。
    */
   const recommendProfile = useMemo(() => {
     if (categoryId !== RECOMMEND_CATEGORY_ID) return null
+    void recommendProfileSeq
     const laterNow = laterRef.current
     const historyArticles = listCachedArticles(60).map((entry) => entry.article)
     return buildReadingProfile(
@@ -616,7 +636,7 @@ export default function App() {
         recommendScope,
       ),
     )
-  }, [categoryId, recommendScope])
+  }, [categoryId, recommendScope, recommendProfileSeq])
 
   /** 推荐结果：排除已读与稍后读（稍后读有专页），冷启动退化为按时间 */
   const recommendedArticles = useMemo(() => {
@@ -1160,6 +1180,13 @@ export default function App() {
         enabledCount={enabledIds.length}
         presetLabel={presets.activePreset?.name}
         restoreFactory={Boolean(presets.activePreset?.builtin)}
+        recommend={{
+          enabled: recommendEnabled,
+          ready: recommendReadiness.ready,
+          scopedDocs: recommendReadiness.scopedDocs,
+          requiredDocs: recommendReadiness.requiredDocs,
+          onChange: (enabled) => update((prev) => setRecommendEnabled(prev, enabled)),
+        }}
         onReorder={(order) => update((prev) => setCategoryOrder(prev, order))}
         onToggleVisible={(id) => update((prev) => toggleCategoryVisible(prev, id))}
         onToggleAutoRefresh={(enabled) =>

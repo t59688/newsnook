@@ -77,6 +77,7 @@ export {
   setEinkMode,
   setPrestoreEnabled,
   setPrestorePerSourceLimit,
+  setRecommendEnabled,
   setThemeMode,
   setThemeScheme,
   setWifiOnlyAutoLoadMedia,

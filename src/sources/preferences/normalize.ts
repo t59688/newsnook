@@ -154,6 +154,9 @@ export function normalizePreferences(raw: unknown): Preferences {
       typeof input.autoRefreshOnCategorySwitch === 'boolean'
         ? input.autoRefreshOnCategorySwitch
         : true,
+    // 旧数据无此字段（含旧备份导入）时默认开启推荐栏
+    recommendEnabled:
+      typeof input.recommendEnabled === 'boolean' ? input.recommendEnabled : true,
     einkMode: typeof input.einkMode === 'boolean' ? input.einkMode : false,
     wifiOnlyAutoLoadMedia:
       typeof input.wifiOnlyAutoLoadMedia === 'boolean' ? input.wifiOnlyAutoLoadMedia : false,

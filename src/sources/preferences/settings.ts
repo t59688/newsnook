@@ -98,3 +98,8 @@ export function setAutoRefreshOnCategorySwitch(
     ? prefs
     : { ...prefs, autoRefreshOnCategorySwitch: enabled }
 }
+
+/** 推荐栏总开关：关闭立即隐藏所有预设的「推荐」分类，重新打开且阅读达标后自动恢复 */
+export function setRecommendEnabled(prefs: Preferences, enabled: boolean): Preferences {
+  return prefs.recommendEnabled === enabled ? prefs : { ...prefs, recommendEnabled: enabled }
+}

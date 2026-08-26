@@ -13,6 +13,7 @@ import {
   collectReadArticles,
   isRecommendationReady,
   rankRecommendations,
+  recommendationReadiness,
   scopeSignalsToSources,
   tokenize,
 } from '../src/lib/recommend'
@@ -29,6 +30,7 @@ import {
   defaultFeedCategoryId,
   normalizePreferences,
   recommendationScopeSourceIds,
+  setRecommendEnabled,
   sourceIdsForCategoryWithPrefs,
   toggleCategorySource,
   updateCustomCategory,
@@ -396,5 +398,105 @@ assert.equal(
   '正常改名不受影响',
 )
 console.log('recommend reserved-name: ok')
+
+// —— Task 14: 就绪进度——设置页展示「已读 X / 需 Y」，与布尔判定语义一致 ——
+assert.deepEqual(
+  recommendationReadiness({ readIds: [], laterArticles: [] }, readyScope),
+  { ready: false, scopedDocs: 0, requiredDocs: RECOMMEND_MIN_SCOPED_DOCS },
+  '零阅读时进度为 0',
+)
+assert.deepEqual(
+  recommendationReadiness({ readIds: readsOf('netease', 2), laterArticles: [] }, readyScope),
+  { ready: false, scopedDocs: 2, requiredDocs: RECOMMEND_MIN_SCOPED_DOCS },
+  '未达标时报告实际计数',
+)
+assert.deepEqual(
+  recommendationReadiness(
+    { readIds: readsOf('netease', RECOMMEND_MIN_SCOPED_DOCS), laterArticles: [] },
+    readyScope,
+  ),
+  { ready: true, scopedDocs: RECOMMEND_MIN_SCOPED_DOCS, requiredDocs: RECOMMEND_MIN_SCOPED_DOCS },
+  '刚好达标即就绪',
+)
+assert.deepEqual(
+  recommendationReadiness({ readIds: readsOf('netease', 100), laterArticles: [] }, readyScope),
+  { ready: true, scopedDocs: RECOMMEND_MIN_SCOPED_DOCS, requiredDocs: RECOMMEND_MIN_SCOPED_DOCS },
+  '超量阅读时计数封顶于阈值（达标即提前停止）',
+)
+assert.deepEqual(
+  recommendationReadiness(
+    { readIds: readsOf('out-of-scope', 100), laterArticles: [] },
+    readyScope,
+  ),
+  { ready: false, scopedDocs: 0, requiredDocs: RECOMMEND_MIN_SCOPED_DOCS },
+  '池外阅读不计入进度',
+)
+assert.deepEqual(
+  recommendationReadiness({ readIds: readsOf('netease', 100), laterArticles: [] }, new Set()),
+  { ready: false, scopedDocs: 0, requiredDocs: RECOMMEND_MIN_SCOPED_DOCS },
+  '空候选池进度恒为 0',
+)
+// 稍后读计入且去重
+assert.deepEqual(
+  recommendationReadiness(
+    { readIds: [laterDocs[0].id], laterArticles: laterDocs },
+    readyScope,
+  ).scopedDocs,
+  laterDocs.length,
+  '重复条目在进度里只计一次',
+)
+// 布尔捷径与进度对象保持一致
+for (const count of [0, 1, RECOMMEND_MIN_SCOPED_DOCS - 1, RECOMMEND_MIN_SCOPED_DOCS, 20]) {
+  const activity = { readIds: readsOf('netease', count), laterArticles: [] }
+  assert.equal(
+    isRecommendationReady(activity, readyScope),
+    recommendationReadiness(activity, readyScope).ready,
+    `count=${count} 时布尔判定应与进度对象一致`,
+  )
+}
+// 候选池收缩（如关闭信源）立即反映在就绪判定上
+const shrunkScope = new Set(['ithome'])
+assert.equal(
+  recommendationReadiness(
+    { readIds: readsOf('netease', RECOMMEND_MIN_SCOPED_DOCS), laterArticles: [] },
+    shrunkScope,
+  ).ready,
+  false,
+  '信源移出候选池后其阅读记录不再支撑就绪',
+)
+console.log('recommend readiness progress: ok')
+
+// —— Task 15: 推荐栏总开关——偏好持久化、归一化与备份兼容 ——
+assert.equal(DEFAULT_PREFERENCES.recommendEnabled, true, '默认开启推荐栏')
+assert.equal(normalizePreferences(null).recommendEnabled, true, '旧数据缺字段时默认开启')
+assert.equal(
+  normalizePreferences({ recommendEnabled: false }).recommendEnabled,
+  false,
+  '显式关闭应保留',
+)
+assert.equal(
+  normalizePreferences({ recommendEnabled: 'nope' }).recommendEnabled,
+  true,
+  '脏值回落为开启',
+)
+
+const disabledPrefs = setRecommendEnabled(DEFAULT_PREFERENCES, false)
+assert.equal(disabledPrefs.recommendEnabled, false)
+assert.equal(
+  setRecommendEnabled(disabledPrefs, false),
+  disabledPrefs,
+  '同值设置应返回原对象（避免无谓持久化）',
+)
+assert.equal(setRecommendEnabled(disabledPrefs, true).recommendEnabled, true)
+// 开关不触碰普通分类布局
+assert.deepEqual(disabledPrefs.categoryOrder, DEFAULT_PREFERENCES.categoryOrder)
+assert.deepEqual(disabledPrefs.hiddenCategoryIds, DEFAULT_PREFERENCES.hiddenCategoryIds)
+// 持久化 / 备份往返（restoreBackup 同样走 normalizePreferences）
+assert.equal(
+  normalizePreferences(JSON.parse(JSON.stringify(disabledPrefs))).recommendEnabled,
+  false,
+  '关闭状态应在 JSON 往返后保留',
+)
+console.log('recommend toggle pref: ok')
 
 console.log('recommend: all ok')

@@ -11,7 +11,8 @@
  * 冷启动（画像为空）时退化为按时间排序；有画像时输出经信源打散，避免单源刷屏。
  *
  * 「推荐」不是常驻分类：每个预设的候选池是该预设启用的全部信源，
- * 池内阅读量达到 isRecommendationReady 的阈值后，推荐栏才在该预设里出现。
+ * 池内阅读量达到 recommendationReadiness 的阈值后，推荐栏才在该预设里出现；
+ * 偏好里的 recommendEnabled 总开关（sources/preferences）可整体关闭该栏位。
  */
 
 import { sourceIdOfArticleId } from './articleId'
@@ -23,7 +24,13 @@ export const RECOMMEND_LIMIT = 120
 /**
  * 推荐分类起亮阈值：预设候选池内累计的已读 + 稍后读文档数达到该值，
  * 画像才有起码的词面与信源信号，「推荐」栏才在该预设里出现。
- * UI 只消费 isRecommendationReady 的布尔结果，不感知具体数值；导出仅供测试与文档。
+ *
+ * 取 5 的理由：每篇标题贡献约 10~20 个 bigram 词面，5 篇是画像不被单篇偶读
+ * 主导的下限，同时一次阅读会话内即可解锁，功能可被自然发现；再调低会放大
+ * 噪声，调高只是推迟出现——排序本身有冷启动时间序兜底，低阈值的下行有限。
+ *
+ * 阈值只存在于本模块：UI 经 recommendationReadiness 拿到「已读 X / 需 Y」，
+ * 不自行硬编码数值；导出仅供测试与文档。
  */
 export const RECOMMEND_MIN_SCOPED_DOCS = 5
 
@@ -60,29 +67,52 @@ export interface ReadingActivity {
   laterArticles: Article[]
 }
 
+export interface RecommendationReadiness {
+  ready: boolean
+  /** 已计入的池内阅读条数；达到 requiredDocs 后停止累计，最大即 requiredDocs */
+  scopedDocs: number
+  /** 起亮所需条数（即 RECOMMEND_MIN_SCOPED_DOCS），随结果一起给出便于 UI 展示 */
+  requiredDocs: number
+}
+
 /**
- * 预设是否已积累足够阅读行为：只统计能归属到候选池信源的条目
- * （条目 id 首段即信源 id，见 lib/articleId），达到阈值即提前返回。
- * 每个预设按自己的候选池独立判定，互不串味。
+ * 预设阅读积累的可解释判定：只统计能归属到候选池信源的去重条目
+ * （条目 id 首段即信源 id，见 lib/articleId），除布尔结果外给出
+ * 「已读 X / 需 Y」进度，供设置页向用户解释推荐栏何时出现。
+ * 计数达到阈值即提前停止，保持 O(阅读量) 上限；X 因此封顶为 Y，
+ * 不代表池内阅读总量。每个预设按自己的候选池独立判定，互不串味。
  */
-export function isRecommendationReady(
+export function recommendationReadiness(
   activity: ReadingActivity,
   scopeSourceIds: ReadonlySet<string>,
-): boolean {
-  if (!scopeSourceIds.size) return false
+): RecommendationReadiness {
+  const requiredDocs = RECOMMEND_MIN_SCOPED_DOCS
+  if (!scopeSourceIds.size) return { ready: false, scopedDocs: 0, requiredDocs }
   const counted = new Set<string>()
   const count = (id: string, sourceId: string): boolean => {
     if (!id || counted.has(id) || !scopeSourceIds.has(sourceId)) return false
     counted.add(id)
-    return counted.size >= RECOMMEND_MIN_SCOPED_DOCS
+    return counted.size >= requiredDocs
   }
   for (const article of activity.laterArticles) {
-    if (count(article.id, article.sourceId)) return true
+    if (count(article.id, article.sourceId)) {
+      return { ready: true, scopedDocs: counted.size, requiredDocs }
+    }
   }
   for (const id of activity.readIds) {
-    if (count(id, sourceIdOfArticleId(id))) return true
+    if (count(id, sourceIdOfArticleId(id))) {
+      return { ready: true, scopedDocs: counted.size, requiredDocs }
+    }
   }
-  return false
+  return { ready: false, scopedDocs: counted.size, requiredDocs }
+}
+
+/** 就绪判定的布尔捷径：语义与 recommendationReadiness().ready 完全一致 */
+export function isRecommendationReady(
+  activity: ReadingActivity,
+  scopeSourceIds: ReadonlySet<string>,
+): boolean {
+  return recommendationReadiness(activity, scopeSourceIds).ready
 }
 
 /** 只保留落在候选池信源内的信号：预设各自的画像不吸收池外阅读记录 */
