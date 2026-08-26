@@ -10,7 +10,7 @@ import { SOURCES } from './registry'
 
 export type CategoryId = string
 
-/** 本地推荐分类：候选来自当前布局可见分类的信源并集，排序见 lib/recommend.ts */
+/** 本地推荐分类：候选池为当前预设启用的全部信源，排序见 lib/recommend.ts */
 export const RECOMMEND_CATEGORY_ID: CategoryId = 'recommend'
 
 export interface NewsCategory {
@@ -25,6 +25,22 @@ export interface NewsCategory {
   sourceIds?: string[]
   /** 标记是否为用户自建的自定义分类 */
   isCustom?: boolean
+}
+
+/**
+ * 动态「推荐」分类：不进 CATEGORIES 注册表，不参与分类管理与预设快照；
+ * 由 App 在预设内阅读量达标（lib/recommend.isRecommendationReady）时插到轨道最前。
+ */
+export const RECOMMEND_CATEGORY: NewsCategory = {
+  id: RECOMMEND_CATEGORY_ID,
+  label: '推荐',
+  short: '推荐',
+  caption: '基于本机已读记录对预设内信源做个性化排序 · 数据不出本机',
+}
+
+/** 「推荐」是动态栏位的保留名：自建分类的名称与短名都不得使用 */
+export function isReservedCategoryLabel(label: string): boolean {
+  return label.trim() === RECOMMEND_CATEGORY.label
 }
 
 /** 单源分类：轨道名与来源名一致 */
@@ -49,14 +65,6 @@ export const CATEGORIES: NewsCategory[] = [
     label: '综合',
     short: '综合',
     caption: '按「综合频道」里启用的来源混合编排',
-  },
-  {
-    // 本地推荐：无固定信源，候选取当前布局可见分类的信源并集（见 recommendationScopeSourceIds），
-    // 排序逻辑在 lib/recommend.ts；默认隐藏，由「本地推荐」预设或分类管理开启
-    id: 'recommend',
-    label: '推荐',
-    short: '推荐',
-    caption: '基于本机已读记录对预设内信源做个性化排序 · 数据不出本机',
   },
   {
     id: 'hot',

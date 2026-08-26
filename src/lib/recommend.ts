@@ -9,12 +9,23 @@
  * - 信源亲和：已读 / 稍后读落在哪些源，按最大值归一到 0..1。
  * - 新鲜度：按发布时间指数衰减。
  * 冷启动（画像为空）时退化为按时间排序；有画像时输出经信源打散，避免单源刷屏。
+ *
+ * 「推荐」不是常驻分类：每个预设的候选池是该预设启用的全部信源，
+ * 池内阅读量达到 isRecommendationReady 的阈值后，推荐栏才在该预设里出现。
  */
 
+import { sourceIdOfArticleId } from './articleId'
 import type { Article } from './types'
 
 /** 推荐列表条数上限：手机上翻不完，且压住重排开销 */
 export const RECOMMEND_LIMIT = 120
+
+/**
+ * 推荐分类起亮阈值：预设候选池内累计的已读 + 稍后读文档数达到该值，
+ * 画像才有起码的词面与信源信号，「推荐」栏才在该预设里出现。
+ * UI 只消费 isRecommendationReady 的布尔结果，不感知具体数值；导出仅供测试与文档。
+ */
+export const RECOMMEND_MIN_SCOPED_DOCS = 5
 
 /** 画像最多吸收的文档数（稍后读优先，其次已读） */
 const PROFILE_DOC_CAP = 200
@@ -41,6 +52,49 @@ export interface RecommendSignals {
   readArticles: Article[]
   /** 稍后读列表 */
   laterArticles: Article[]
+}
+
+/** 判定推荐是否可用的轻量输入：已读只需要 id 集合，无需先 join 元数据 */
+export interface ReadingActivity {
+  readIds: Iterable<string>
+  laterArticles: Article[]
+}
+
+/**
+ * 预设是否已积累足够阅读行为：只统计能归属到候选池信源的条目
+ * （条目 id 首段即信源 id，见 lib/articleId），达到阈值即提前返回。
+ * 每个预设按自己的候选池独立判定，互不串味。
+ */
+export function isRecommendationReady(
+  activity: ReadingActivity,
+  scopeSourceIds: ReadonlySet<string>,
+): boolean {
+  if (!scopeSourceIds.size) return false
+  const counted = new Set<string>()
+  const count = (id: string, sourceId: string): boolean => {
+    if (!id || counted.has(id) || !scopeSourceIds.has(sourceId)) return false
+    counted.add(id)
+    return counted.size >= RECOMMEND_MIN_SCOPED_DOCS
+  }
+  for (const article of activity.laterArticles) {
+    if (count(article.id, article.sourceId)) return true
+  }
+  for (const id of activity.readIds) {
+    if (count(id, sourceIdOfArticleId(id))) return true
+  }
+  return false
+}
+
+/** 只保留落在候选池信源内的信号：预设各自的画像不吸收池外阅读记录 */
+export function scopeSignalsToSources(
+  signals: RecommendSignals,
+  scopeSourceIds: ReadonlySet<string>,
+): RecommendSignals {
+  const inScope = (article: Article) => scopeSourceIds.has(article.sourceId)
+  return {
+    readArticles: signals.readArticles.filter(inScope),
+    laterArticles: signals.laterArticles.filter(inScope),
+  }
 }
 
 export interface ReadingProfile {

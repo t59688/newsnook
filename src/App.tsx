@@ -23,7 +23,9 @@ import { log } from './lib/logger'
 import {
   buildReadingProfile,
   collectReadArticles,
+  isRecommendationReady,
   rankRecommendations,
+  scopeSignalsToSources,
 } from './lib/recommend'
 import { resolveArticleBody } from './lib/resolveBody'
 import {
@@ -96,9 +98,11 @@ import {
   addCustomSource,
   allRegisteredSources,
   batchImportSourcesAndCategories,
+  defaultFeedCategoryId,
   deleteCustomCategory,
   deleteCustomSource,
   deleteCustomSources,
+  recommendationScopeSourceIds,
   resetCategoryLayout,
   resetCategorySources,
   resetTypography,
@@ -118,6 +122,7 @@ import {
   updateCustomSource,
   updateTypography,
   visibleCategories,
+  withRecommendCategory,
   type TypographyPrefs,
 } from './sources/preferences'
 import { SOURCES, findSource } from './sources/registry'
@@ -229,7 +234,7 @@ export default function App() {
   const [tab, setTab] = useState<TabKey>('today')
   const [todayPullRefreshSeq, setTodayPullRefreshSeq] = useState(0)
   const [categoryId, setCategoryId] = useState<CategoryId>(
-    () => visibleCategories(prefs)[0]?.id ?? 'mix',
+    () => defaultFeedCategoryId(visibleCategories(prefs)),
   )
   const [settingsRoute, setSettingsRoute] = useState<SettingsRoute | null>(null)
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
@@ -328,16 +333,53 @@ export default function App() {
     refreshCacheSnapshot()
   }, [tab, settingsRoute, refreshCacheSnapshot])
 
-  const categories = useMemo(() => visibleCategories(prefs), [prefs])
+  const regularCategories = useMemo(() => visibleCategories(prefs), [prefs])
 
-  // 当前分类被隐藏（或首次进入时默认分类不可见）时退回第一个可见分类
+  /**
+   * 推荐候选池：严格取当前预设启用的全部信源（可见分类并集，综合贡献频道启用列表）。
+   * 以内容 key 记忆 Set，避免无关偏好变化（如排版）触发就绪判定与画像重算。
+   */
+  const recommendScopeKey = useMemo(
+    () => recommendationScopeSourceIds(prefs, enabledIds).join('|'),
+    [prefs, enabledIds],
+  )
+  const recommendScope = useMemo(
+    () => new Set(recommendScopeKey ? recommendScopeKey.split('|') : []),
+    [recommendScopeKey],
+  )
+
+  /** 推荐分类是否亮起：阅读阈值收在 lib/recommend 内，UI 只消费布尔结果 */
+  const recommendReady = useMemo(
+    () => isRecommendationReady({ readIds, laterArticles: later }, recommendScope),
+    [readIds, later, recommendScope],
+  )
+
+  /** 首页轨道：推荐亮起时插到最前；默认选中与回退永远落在第一个普通分类 */
+  const categories = useMemo(
+    () => withRecommendCategory(regularCategories, recommendReady),
+    [regularCategories, recommendReady],
+  )
+
+  // 当前分类失效（被隐藏 / 推荐熄灭 / 首次进入不可见）时退回第一个普通分类，绝不自动落到推荐
   useEffect(() => {
     if (!categories.length) return
     if (!categories.some((category) => category.id === categoryId)) {
-      setCategoryId(categories[0].id)
+      setCategoryId(defaultFeedCategoryId(categories))
       setCategoryFilterSourceId(null)
     }
   }, [categories, categoryId])
+
+  // 切换预设后回到新预设的第一个普通分类：推荐池随预设而变，不静默延续推荐 Tab
+  const activePresetId = presets.state.activePresetId
+  const prevPresetIdRef = useRef(activePresetId)
+  useEffect(() => {
+    if (prevPresetIdRef.current === activePresetId) return
+    prevPresetIdRef.current = activePresetId
+    if (categoryId === RECOMMEND_CATEGORY_ID) {
+      setCategoryId(defaultFeedCategoryId(regularCategories))
+      setCategoryFilterSourceId(null)
+    }
+  }, [activePresetId, categoryId, regularCategories])
 
   const categorySourceIds = useMemo(
     () => sourceIdsForCategoryWithPrefs(categoryId, prefs, enabledIds),
@@ -553,22 +595,28 @@ export default function App() {
 
   /**
    * 本地推荐画像：进入「推荐」分类时从本机信号（已读 id × 各池元数据 join、
-   * 稍后读、正文缓存阅读历史）构建一次；停留期间下拉刷新只用新候选重排，
-   * 画像在下次进入该分类时更新。信号全部经 ref 读取，避免每次已读变化都重排。
+   * 稍后读、正文缓存阅读历史）构建一次，并裁剪到当前预设的候选池——
+   * 各预设画像互不串味。停留期间下拉刷新只用新候选重排，画像在下次进入该分类
+   * 时更新。信号全部经 ref 读取，避免每次已读变化都重排。
    */
   const recommendProfile = useMemo(() => {
     if (categoryId !== RECOMMEND_CATEGORY_ID) return null
     const laterNow = laterRef.current
     const historyArticles = listCachedArticles(60).map((entry) => entry.article)
-    return buildReadingProfile({
-      readArticles: collectReadArticles(readIdsRef.current, [
-        laterNow,
-        historyArticles,
-        availableArticlesRef.current,
-      ]),
-      laterArticles: laterNow,
-    })
-  }, [categoryId])
+    return buildReadingProfile(
+      scopeSignalsToSources(
+        {
+          readArticles: collectReadArticles(readIdsRef.current, [
+            laterNow,
+            historyArticles,
+            availableArticlesRef.current,
+          ]),
+          laterArticles: laterNow,
+        },
+        recommendScope,
+      ),
+    )
+  }, [categoryId, recommendScope])
 
   /** 推荐结果：排除已读与稍后读（稍后读有专页），冷启动退化为按时间 */
   const recommendedArticles = useMemo(() => {
@@ -1176,10 +1224,10 @@ export default function App() {
           history={cachedHistory}
           readCount={readIds.size}
           customSourcesSummary={customSourcesSummary}
-          categoriesSummary={`${categories.length} 个启用分类 · ${
+          categoriesSummary={`${regularCategories.length} 个启用分类 · ${
             prefs.autoRefreshOnCategorySwitch !== false ? '切换自动刷新开启' : '切换自动刷新已关闭'
           }`}
-          presetsSummary={`${presets.activePreset?.name ?? '未选择'} · ${categories.length} 分类 · ${enabledIds.length} 源`}
+          presetsSummary={`${presets.activePreset?.name ?? '未选择'} · ${regularCategories.length} 分类 · ${enabledIds.length} 源`}
           typographySummary={typographySummary}
           appearanceSummary={appearanceSummary}
           translationSummary={translationSummary}

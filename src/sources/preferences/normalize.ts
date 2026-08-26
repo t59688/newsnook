@@ -11,12 +11,7 @@ import {
 import { DEFAULT_CUSTOM_SCHEME, normalizeCustomScheme } from '../../lib/customScheme'
 import { normalizeTranslationPrefs } from '../../features/translation/config'
 import { normalizeProxyPrefs } from '../../features/proxy/config'
-import {
-  CATEGORIES,
-  RECOMMEND_CATEGORY_ID,
-  type CategoryId,
-  type NewsCategory,
-} from '../categories'
+import { CATEGORIES, type CategoryId, type NewsCategory } from '../categories'
 import {
   SOURCES,
   makeCustomSourceId,
@@ -130,12 +125,8 @@ export function normalizePreferences(raw: unknown): Preferences {
     ? uniqueValid(input.hiddenCategoryIds, allCategoryIds)
     : [...DEFAULT_HIDDEN_CATEGORY_IDS]
 
+  // 「推荐」已改为动态栏位（不进注册表）：旧数据中的 recommend id 由 uniqueValid 自然剔除
   const categoryOrder = uniqueValid(input.categoryOrder, allCategoryIds)
-  // 「推荐」是后加入的内置分类：旧数据既未排序也未隐藏它时保持隐藏，
-  // 避免升级后突然出现在轨道上；显式开启（预设或分类管理）会把它写进 categoryOrder。
-  if (!categoryOrder.includes(RECOMMEND_CATEGORY_ID) && !hidden.includes(RECOMMEND_CATEGORY_ID)) {
-    hidden.push(RECOMMEND_CATEGORY_ID)
-  }
 
   const scheme = isThemeScheme(input.scheme) ? input.scheme : DEFAULT_THEME_SCHEME
   let customScheme = normalizeCustomScheme(input.customScheme)

@@ -107,7 +107,6 @@ export const DEFAULT_TYPOGRAPHY: TypographyPrefs = {
  * AI、游戏、深度与冷门细分留给场景预设或分类管理。
  */
 export const DEFAULT_HIDDEN_CATEGORY_IDS: CategoryId[] = [
-  'recommend',
   'ai-openai',
   'ai-claude',
   'ai',
@@ -160,7 +159,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
 export const FOLLOWS_ENABLED_SOURCES: CategoryId = 'mix'
 
 /**
- * 聚合分类：信源由布局推导而非逐分类编辑（综合=频道启用列表；推荐=可见分类并集）。
+ * 聚合分类：信源由布局推导而非逐分类编辑（综合=频道启用列表；推荐=预设启用信源并集）。
  * 不接受 categorySources 覆盖，持久化时同样跳过。
  */
 export function isAggregateCategoryId(categoryId: CategoryId): boolean {

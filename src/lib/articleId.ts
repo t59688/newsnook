@@ -18,3 +18,13 @@ export function hashId(input: string): string {
 export function feedArticleId(sourceId: string, link: string): string {
   return `${sourceId}:${hashId(link)}`
 }
+
+/**
+ * 从条目 id 反解信源 id。
+ * 已读记录只存 id 集合，本地推荐按预设统计阅读量时靠它归属信源；
+ * 不符合本模块规则的 id 返回空串（调用方按「无法归属」处理）。
+ */
+export function sourceIdOfArticleId(articleId: string): string {
+  const separator = articleId.indexOf(':')
+  return separator > 0 ? articleId.slice(0, separator) : ''
+}

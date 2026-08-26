@@ -36,6 +36,7 @@ export {
   allRegisteredCategories,
   allRegisteredSources,
   categorySourceIds,
+  defaultFeedCategoryId,
   deleteCustomCategory,
   describeSources,
   hasSourceOverride,
@@ -56,6 +57,7 @@ export {
   toggleCategoryVisible,
   updateCustomCategory,
   visibleCategories,
+  withRecommendCategory,
 } from './preferences/categoryPrefs'
 
 export {

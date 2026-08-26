@@ -6,7 +6,6 @@
 import {
   CATEGORIES,
   PORTAL_VISIBLE_CATEGORY_IDS,
-  RECOMMEND_CATEGORY_ID,
   type CategoryId,
   type NewsCategory,
 } from './categories'
@@ -22,7 +21,6 @@ export const MIGRATE_LAYOUT_PRESET_ID = 'user-migrated-layout'
 export const USER_DEFAULT_LAYOUT_ID = 'user-default-layout'
 
 export const BUILTIN_DEFAULT_ID = 'builtin-default'
-export const BUILTIN_FORYOU_ID = 'builtin-foryou'
 export const BUILTIN_TECH_ID = 'builtin-tech'
 export const BUILTIN_BIZ_ID = 'builtin-biz'
 export const BUILTIN_WORLD_ID = 'builtin-world'
@@ -114,12 +112,9 @@ export function normalizeSnapshot(raw: unknown): LayoutSnapshot {
     if (valid.length) categorySources[categoryId] = valid
   })
 
+  // 「推荐」已改为动态栏位（不进注册表）：旧快照中的 recommend id 由 uniqueValid 自然剔除
   const hidden = uniqueValid(input.hiddenCategoryIds, allCategoryIds)
   const categoryOrder = uniqueValid(input.categoryOrder, allCategoryIds)
-  // 与 preferences/normalize 一致：旧快照未收录「推荐」时保持隐藏，避免升级后突然出现在轨道上
-  if (!categoryOrder.includes(RECOMMEND_CATEGORY_ID) && !hidden.includes(RECOMMEND_CATEGORY_ID)) {
-    hidden.push(RECOMMEND_CATEGORY_ID)
-  }
   return {
     categoryOrder,
     hiddenCategoryIds: hidden.length >= allCategoryIds.size ? hidden.slice(1) : hidden,
@@ -273,25 +268,6 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         categorySources,
         customCategories: [],
         enabledSourceIds: exclusiveEnabledSourceIds(categorySources, defaultEnabledIds()),
-      },
-    )
-  })(),
-  (() => {
-    /**
-     * 本地推荐：只展示推荐栏，按本机已读画像重排（lib/recommend.ts）。
-     * 仅推荐可见时候选回落频道启用列表；纯本地信号，无上传、无云端画像。
-     */
-    const visible: CategoryId[] = [RECOMMEND_CATEGORY_ID]
-    return builtinPreset(
-      BUILTIN_FORYOU_ID,
-      '本地推荐',
-      '按本机已读习惯排序 · 冷启动按时间',
-      {
-        categoryOrder: visible,
-        hiddenCategoryIds: hiddenExcept(visible),
-        categorySources: {},
-        customCategories: [],
-        enabledSourceIds: defaultEnabledIds(),
       },
     )
   })(),

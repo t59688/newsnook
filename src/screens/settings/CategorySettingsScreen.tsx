@@ -5,11 +5,7 @@ import { SettingsHint, SettingsShell } from '../../components/SettingsShell'
 import { ToggleSwitch } from '../../components/ToggleSwitch'
 import { useReducedMotion } from '../../hooks/useReducedMotion'
 import { revealItems } from '../../lib/motion'
-import {
-  RECOMMEND_CATEGORY_ID,
-  type CategoryId,
-  type NewsCategory,
-} from '../../sources/categories'
+import type { CategoryId, NewsCategory } from '../../sources/categories'
 import {
   FOLLOWS_ENABLED_SOURCES,
   describeSources,
@@ -495,8 +491,6 @@ export function CategorySettingsScreen({
       onOpenChannels()
       return
     }
-    // 推荐分类的信源由布局推导（可见分类并集），没有可编辑的固定信源
-    if (category.id === RECOMMEND_CATEGORY_ID) return
     onEditSources(category.id)
   }
 
@@ -581,9 +575,7 @@ export function CategorySettingsScreen({
           const followsChannels = category.id === FOLLOWS_ENABLED_SOURCES
           const summary = followsChannels
             ? `跟随频道 · ${enabledCount} 源`
-            : category.id === RECOMMEND_CATEGORY_ID
-              ? '预设内全部信源 · 按已读习惯本地排序'
-              : describeSources(category.sourceIds ?? [], prefs.customSources)
+            : describeSources(category.sourceIds ?? [], prefs.customSources)
           const customized = hasSourceOverride(category.id, prefs)
           const isDragging = draggingId === category.id
           const isHolding = holdingId === category.id
@@ -665,10 +657,6 @@ export function CategorySettingsScreen({
                 <span className="mt-2 inline-flex items-center gap-0.5 self-end font-mono text-[9px] tracking-[0.12em] text-cinnabar-soft">
                   编辑
                   <ChevronRight size={11} strokeWidth={1.6} />
-                </span>
-              ) : category.id === RECOMMEND_CATEGORY_ID ? (
-                <span className="mt-2 inline-flex items-center gap-0.5 self-end font-mono text-[9px] tracking-[0.12em] text-paper-faint">
-                  自动聚合
                 </span>
               ) : !followsChannels ? (
                 <span className="mt-2 inline-flex items-center gap-0.5 self-end font-mono text-[9px] tracking-[0.12em] text-paper-faint">
