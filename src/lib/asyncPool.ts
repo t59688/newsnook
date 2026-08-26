@@ -4,6 +4,9 @@
  *
  * abort 时停止派发新任务，但等已开始的任务全部收尾后再抛 AbortError，
  * 避免调用方提前解锁后仍有残留写入。
+ *
+ * 任一任务抛错同样停止派发新任务（整体以首个错误 reject），
+ * 避免调用方已收到失败后，残余 worker 仍继续发起无效请求。
  */
 export async function mapConcurrent<T, R>(
   items: T[],
@@ -19,13 +22,20 @@ export async function mapConcurrent<T, R>(
   }
 
   let nextIndex = 0
+  let failed = false
   const limit = Math.max(1, concurrency)
 
   const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
     while (nextIndex < items.length) {
-      if (signal?.aborted) return
+      if (signal?.aborted || failed) return
       const currentIndex = nextIndex++
-      const res = await fn(items[currentIndex], currentIndex)
+      let res: R
+      try {
+        res = await fn(items[currentIndex], currentIndex)
+      } catch (error) {
+        failed = true
+        throw error
+      }
       results[currentIndex] = res
       onItemDone?.(res, currentIndex)
     }

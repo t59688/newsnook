@@ -79,4 +79,26 @@ console.log('Testing mapConcurrent peak concurrency...')
   assert.equal(finished, startedAtSettle, 'no late finishes after settle')
 }
 
+{
+  // 任一任务失败后应停止派发新任务（已在途的照常收尾）
+  let started = 0
+  let finished = 0
+  const items = Array.from({ length: 20 }, (_, i) => i)
+
+  const run = mapConcurrent(items, 3, async (item) => {
+    started += 1
+    if (item === 1) {
+      await sleep(10)
+      throw new Error('boom')
+    }
+    await sleep(30)
+    finished += 1
+  })
+
+  await assert.rejects(() => run, /boom/)
+  await sleep(80)
+  assert.ok(started < items.length, `failure should stop dispatching, started=${started}`)
+  assert.equal(finished, started - 1, 'only the failed task should not finish')
+}
+
 console.log('async-pool tests passed')
