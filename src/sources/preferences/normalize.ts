@@ -11,7 +11,12 @@ import {
 import { DEFAULT_CUSTOM_SCHEME, normalizeCustomScheme } from '../../lib/customScheme'
 import { normalizeTranslationPrefs } from '../../features/translation/config'
 import { normalizeProxyPrefs } from '../../features/proxy/config'
-import { CATEGORIES, type CategoryId, type NewsCategory } from '../categories'
+import {
+  CATEGORIES,
+  RECOMMEND_CATEGORY_ID,
+  type CategoryId,
+  type NewsCategory,
+} from '../categories'
 import {
   SOURCES,
   makeCustomSourceId,
@@ -23,7 +28,7 @@ import {
   clamp,
   DEFAULT_HIDDEN_CATEGORY_IDS,
   DEFAULT_TYPOGRAPHY,
-  FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   FONT_FAMILY_OPTIONS,
   normalizePrestorePrefs,
   uniqueValid,
@@ -115,7 +120,7 @@ export function normalizePreferences(raw: unknown): Preferences {
 
   const categorySources: Record<CategoryId, string[]> = {}
   Object.entries(input.categorySources ?? {}).forEach(([categoryId, sourceIds]) => {
-    if (!allCategoryIds.has(categoryId) || categoryId === FOLLOWS_ENABLED_SOURCES) return
+    if (!allCategoryIds.has(categoryId) || isAggregateCategoryId(categoryId)) return
     const valid = uniqueValid(sourceIds, knownSourceIds)
     if (valid.length) categorySources[categoryId] = valid
   })
@@ -124,6 +129,13 @@ export function normalizePreferences(raw: unknown): Preferences {
   const hidden = Array.isArray(input.hiddenCategoryIds)
     ? uniqueValid(input.hiddenCategoryIds, allCategoryIds)
     : [...DEFAULT_HIDDEN_CATEGORY_IDS]
+
+  const categoryOrder = uniqueValid(input.categoryOrder, allCategoryIds)
+  // 「推荐」是后加入的内置分类：旧数据既未排序也未隐藏它时保持隐藏，
+  // 避免升级后突然出现在轨道上；显式开启（预设或分类管理）会把它写进 categoryOrder。
+  if (!categoryOrder.includes(RECOMMEND_CATEGORY_ID) && !hidden.includes(RECOMMEND_CATEGORY_ID)) {
+    hidden.push(RECOMMEND_CATEGORY_ID)
+  }
 
   const scheme = isThemeScheme(input.scheme) ? input.scheme : DEFAULT_THEME_SCHEME
   let customScheme = normalizeCustomScheme(input.customScheme)
@@ -136,7 +148,7 @@ export function normalizePreferences(raw: unknown): Preferences {
   }
 
   return {
-    categoryOrder: uniqueValid(input.categoryOrder, allCategoryIds),
+    categoryOrder,
     // 至少保留一个可见分类，否则首页无内容可选
     hiddenCategoryIds: hidden.length >= allCategoryIds.size ? hidden.slice(1) : hidden,
     categorySources,

@@ -7,6 +7,7 @@ import {
   CATEGORIES,
   findCategory,
   PORTAL_VISIBLE_CATEGORY_IDS,
+  RECOMMEND_CATEGORY_ID,
   type CategoryId,
   type NewsCategory,
 } from '../categories'
@@ -14,6 +15,7 @@ import { SOURCES, findSource, type NewsSource } from '../registry'
 import {
   DEFAULT_HIDDEN_CATEGORY_IDS,
   FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   uniqueValid,
   type Preferences,
 } from './model'
@@ -158,12 +160,41 @@ export function isCategoryVisible(categoryId: CategoryId, prefs: Preferences): b
   return !prefs.hiddenCategoryIds.includes(categoryId)
 }
 
-/** 当前分类要拉取的信源；综合分类回落到频道页启用列表 */
+/**
+ * 「推荐」分类的候选范围：当前布局全部可见分类的信源并集（综合贡献频道启用列表）。
+ * 只覆盖用户在本预设里订阅的源，不引入未订阅源；布局里没有其它可见分类时回落到频道启用列表。
+ */
+export function recommendationScopeSourceIds(
+  prefs: Preferences,
+  enabledIds: string[],
+): string[] {
+  const ids: string[] = []
+  const seen = new Set<string>()
+  const push = (sourceId: string) => {
+    if (seen.has(sourceId)) return
+    seen.add(sourceId)
+    ids.push(sourceId)
+  }
+  for (const category of visibleCategories(prefs)) {
+    if (category.id === RECOMMEND_CATEGORY_ID) continue
+    if (category.id === FOLLOWS_ENABLED_SOURCES) {
+      enabledIds.forEach(push)
+      continue
+    }
+    categorySourceIds(category.id, prefs).forEach(push)
+  }
+  return ids.length ? ids : enabledIds
+}
+
+/** 当前分类要拉取的信源；综合回落到频道启用列表，推荐取可见分类信源并集 */
 export function sourceIdsForCategoryWithPrefs(
   categoryId: CategoryId,
   prefs: Preferences,
   enabledIds: string[],
 ): string[] {
+  if (categoryId === RECOMMEND_CATEGORY_ID) {
+    return recommendationScopeSourceIds(prefs, enabledIds)
+  }
   const ids = categorySourceIds(categoryId, prefs)
   return ids.length ? ids : enabledIds
 }
@@ -221,7 +252,16 @@ export function toggleCategoryVisible(prefs: Preferences, categoryId: CategoryId
   const all = allRegisteredCategories(prefs)
   const hidden = prefs.hiddenCategoryIds
   if (hidden.includes(categoryId)) {
-    return { ...prefs, hiddenCategoryIds: hidden.filter((id) => id !== categoryId) }
+    const next: Preferences = {
+      ...prefs,
+      hiddenCategoryIds: hidden.filter((id) => id !== categoryId),
+    }
+    // 「推荐」以是否收录进 categoryOrder 区分「显式开启」与旧数据缺省：
+    // 解除隐藏时落一份全量顺序，避免归一化迁移在重启后把它重新藏起来
+    if (categoryId === RECOMMEND_CATEGORY_ID && !prefs.categoryOrder.includes(categoryId)) {
+      next.categoryOrder = currentOrder(prefs)
+    }
+    return next
   }
   // 全部隐藏会让首页无处可去
   if (hidden.length + 1 >= all.length) return prefs
@@ -233,7 +273,7 @@ export function toggleCategorySource(
   categoryId: CategoryId,
   sourceId: string,
 ): Preferences {
-  if (categoryId === FOLLOWS_ENABLED_SOURCES) return prefs
+  if (isAggregateCategoryId(categoryId)) return prefs
 
   const current = categorySourceIds(categoryId, prefs)
   const removing = current.includes(sourceId)

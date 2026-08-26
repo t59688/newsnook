@@ -159,7 +159,8 @@ try {
     typography: { fontScale: 99, lineHeight: 'x', fontFamily: 'comic' },
   })
   assert.deepEqual(dirty.categoryOrder, ['tech'], '未知/重复分类应被剔除')
-  assert.deepEqual(dirty.hiddenCategoryIds, [])
+  // 「推荐」为后加入的内置分类：旧数据未显式收录时归一化会保持隐藏
+  assert.deepEqual(dirty.hiddenCategoryIds, ['recommend'])
   assert.deepEqual(dirty.categorySources, { tech: ['sspai'] })
   assert.equal(dirty.typography.fontScale, 1.4, '越界字号应被夹住')
   assert.equal(dirty.typography.lineHeight, 1.9)

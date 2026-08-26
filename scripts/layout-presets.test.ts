@@ -123,7 +123,13 @@ assert.equal(next.typography.fontScale, 1.22)
 console.log('layout-presets core: ok')
 
 // —— Task 2: builtins ——
-assert.equal(BUILTIN_PRESETS.length, 7)
+assert.equal(BUILTIN_PRESETS.length, 8)
+
+// 本地推荐预设：推荐 + 综合对照，无逐分类信源（详细契约见 scripts/recommend.test.ts）
+const foryou = findBuiltinPreset('builtin-foryou')!
+assert.deepEqual(foryou.snapshot.categoryOrder, ['recommend', 'mix'])
+assert.deepEqual(foryou.snapshot.categorySources, {})
+assert.ok(foryou.snapshot.enabledSourceIds.length > 0)
 
 const portal = normalizeSnapshot(findBuiltinPreset('builtin-default')!.snapshot)
 assert.deepEqual(portal.categoryOrder, [

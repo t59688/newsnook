@@ -14,7 +14,12 @@ import { DEFAULT_TRANSLATION_PREFS } from '../../features/translation/config'
 import type { TranslationPrefs } from '../../features/translation/types'
 import { DEFAULT_PROXY_PREFS } from '../../features/proxy/config'
 import type { ProxyPrefs } from '../../features/proxy/types'
-import { PORTAL_VISIBLE_CATEGORY_IDS, type CategoryId, type NewsCategory } from '../categories'
+import {
+  PORTAL_VISIBLE_CATEGORY_IDS,
+  RECOMMEND_CATEGORY_ID,
+  type CategoryId,
+  type NewsCategory,
+} from '../categories'
 import type { NewsSource } from '../registry'
 
 export type FontFamilyId = 'sans' | 'serif' | 'system'
@@ -102,6 +107,7 @@ export const DEFAULT_TYPOGRAPHY: TypographyPrefs = {
  * AI、游戏、深度与冷门细分留给场景预设或分类管理。
  */
 export const DEFAULT_HIDDEN_CATEGORY_IDS: CategoryId[] = [
+  'recommend',
   'ai-openai',
   'ai-claude',
   'ai',
@@ -152,6 +158,14 @@ export const DEFAULT_PREFERENCES: Preferences = {
 
 /** 综合分类跟随「频道」页启用状态，不参与逐分类信源编辑 */
 export const FOLLOWS_ENABLED_SOURCES: CategoryId = 'mix'
+
+/**
+ * 聚合分类：信源由布局推导而非逐分类编辑（综合=频道启用列表；推荐=可见分类并集）。
+ * 不接受 categorySources 覆盖，持久化时同样跳过。
+ */
+export function isAggregateCategoryId(categoryId: CategoryId): boolean {
+  return categoryId === FOLLOWS_ENABLED_SOURCES || categoryId === RECOMMEND_CATEGORY_ID
+}
 
 export const FONT_FAMILY_OPTIONS: { id: FontFamilyId; label: string; cssVar: string }[] = [
   { id: 'sans', label: '黑体', cssVar: 'var(--font-reader-sans)' },

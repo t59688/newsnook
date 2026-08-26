@@ -10,6 +10,9 @@ import { SOURCES } from './registry'
 
 export type CategoryId = string
 
+/** 本地推荐分类：候选来自当前布局可见分类的信源并集，排序见 lib/recommend.ts */
+export const RECOMMEND_CATEGORY_ID: CategoryId = 'recommend'
+
 export interface NewsCategory {
   id: CategoryId
   label: string
@@ -46,6 +49,14 @@ export const CATEGORIES: NewsCategory[] = [
     label: '综合',
     short: '综合',
     caption: '按「综合频道」里启用的来源混合编排',
+  },
+  {
+    // 本地推荐：无固定信源，候选取当前布局可见分类的信源并集（见 recommendationScopeSourceIds），
+    // 排序逻辑在 lib/recommend.ts；默认隐藏，由「本地推荐」预设或分类管理开启
+    id: 'recommend',
+    label: '推荐',
+    short: '推荐',
+    caption: '基于本机已读记录对预设内信源做个性化排序 · 数据不出本机',
   },
   {
     id: 'hot',

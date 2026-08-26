@@ -3,10 +3,17 @@
  * 运行态仍是 preferences + enabled；本模块负责快照库与互转。
  */
 
-import { CATEGORIES, type CategoryId, type NewsCategory, PORTAL_VISIBLE_CATEGORY_IDS } from './categories'
+import {
+  CATEGORIES,
+  PORTAL_VISIBLE_CATEGORY_IDS,
+  RECOMMEND_CATEGORY_ID,
+  type CategoryId,
+  type NewsCategory,
+} from './categories'
 import {
   describeSources,
   FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   type Preferences,
 } from './preferences'
 import { isCustomSourceId, SOURCES } from './registry'
@@ -15,6 +22,7 @@ export const MIGRATE_LAYOUT_PRESET_ID = 'user-migrated-layout'
 export const USER_DEFAULT_LAYOUT_ID = 'user-default-layout'
 
 export const BUILTIN_DEFAULT_ID = 'builtin-default'
+export const BUILTIN_FORYOU_ID = 'builtin-foryou'
 export const BUILTIN_TECH_ID = 'builtin-tech'
 export const BUILTIN_BIZ_ID = 'builtin-biz'
 export const BUILTIN_WORLD_ID = 'builtin-world'
@@ -101,14 +109,19 @@ export function normalizeSnapshot(raw: unknown): LayoutSnapshot {
 
   const categorySources: Record<CategoryId, string[]> = {}
   Object.entries(input.categorySources ?? {}).forEach(([categoryId, sourceIds]) => {
-    if (!allCategoryIds.has(categoryId) || categoryId === FOLLOWS_ENABLED_SOURCES) return
+    if (!allCategoryIds.has(categoryId) || isAggregateCategoryId(categoryId)) return
     const valid = uniqueValidSourceIds(sourceIds)
     if (valid.length) categorySources[categoryId] = valid
   })
 
   const hidden = uniqueValid(input.hiddenCategoryIds, allCategoryIds)
+  const categoryOrder = uniqueValid(input.categoryOrder, allCategoryIds)
+  // 与 preferences/normalize 一致：旧快照未收录「推荐」时保持隐藏，避免升级后突然出现在轨道上
+  if (!categoryOrder.includes(RECOMMEND_CATEGORY_ID) && !hidden.includes(RECOMMEND_CATEGORY_ID)) {
+    hidden.push(RECOMMEND_CATEGORY_ID)
+  }
   return {
-    categoryOrder: uniqueValid(input.categoryOrder, allCategoryIds),
+    categoryOrder,
     hiddenCategoryIds: hidden.length >= allCategoryIds.size ? hidden.slice(1) : hidden,
     categorySources,
     customCategories,
@@ -260,6 +273,25 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         categorySources,
         customCategories: [],
         enabledSourceIds: exclusiveEnabledSourceIds(categorySources, defaultEnabledIds()),
+      },
+    )
+  })(),
+  (() => {
+    /**
+     * 本地推荐：推荐栏按本机已读画像重排（lib/recommend.ts），综合栏保留时间线对照。
+     * 候选池即频道启用列表；纯本地信号，无上传、无云端画像。
+     */
+    const visible: CategoryId[] = [RECOMMEND_CATEGORY_ID, 'mix']
+    return builtinPreset(
+      BUILTIN_FORYOU_ID,
+      '本地推荐',
+      '按本机已读习惯排序 · 冷启动按时间 · 综合时间线对照',
+      {
+        categoryOrder: visible,
+        hiddenCategoryIds: hiddenExcept(visible),
+        categorySources: {},
+        customCategories: [],
+        enabledSourceIds: defaultEnabledIds(),
       },
     )
   })(),

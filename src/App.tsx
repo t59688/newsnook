@@ -20,6 +20,11 @@ import {
 } from './lib/bodyCache'
 import { sortArticles } from './lib/feedPagination'
 import { log } from './lib/logger'
+import {
+  buildReadingProfile,
+  collectReadArticles,
+  rankRecommendations,
+} from './lib/recommend'
 import { resolveArticleBody } from './lib/resolveBody'
 import {
   isAndroidBrowser,
@@ -83,7 +88,7 @@ import {
   translationLanguageLabel,
   translationProviderLabel,
 } from './features/translation/config'
-import type { CategoryId } from './sources/categories'
+import { RECOMMEND_CATEGORY_ID, type CategoryId } from './sources/categories'
 import {
   FONT_FAMILY_OPTIONS,
   FONT_SCALE_OPTIONS,
@@ -297,6 +302,9 @@ export default function App() {
   const [later, setLater] = useState<Article[]>(() => loadLaterArticles())
   const [readIds, setReadIds] = useState<Set<string>>(() => loadIdSet('read'))
   const laterRef = useRef(later)
+  /** 推荐排序经 ref 读取已读集合：打开文章返回时不重排，避免列表跳动 */
+  const readIdsRef = useRef(readIds)
+  readIdsRef.current = readIds
   const [cacheSnapshot, setCacheSnapshot] = useState(emptyCacheSnapshot)
   const cacheSnapshotReadyRef = useRef(false)
   const refreshCacheSnapshot = useCallback(() => {
@@ -540,14 +548,43 @@ export default function App() {
     [availableArticles, categorySourceSet],
   )
 
+  const availableArticlesRef = useRef(availableArticles)
+  availableArticlesRef.current = availableArticles
+
+  /**
+   * 本地推荐画像：进入「推荐」分类时从本机信号（已读 id × 各池元数据 join、
+   * 稍后读、正文缓存阅读历史）构建一次；停留期间下拉刷新只用新候选重排，
+   * 画像在下次进入该分类时更新。信号全部经 ref 读取，避免每次已读变化都重排。
+   */
+  const recommendProfile = useMemo(() => {
+    if (categoryId !== RECOMMEND_CATEGORY_ID) return null
+    const laterNow = laterRef.current
+    const historyArticles = listCachedArticles(60).map((entry) => entry.article)
+    return buildReadingProfile({
+      readArticles: collectReadArticles(readIdsRef.current, [
+        laterNow,
+        historyArticles,
+        availableArticlesRef.current,
+      ]),
+      laterArticles: laterNow,
+    })
+  }, [categoryId])
+
+  /** 推荐结果：排除已读与稍后读（稍后读有专页），冷启动退化为按时间 */
+  const recommendedArticles = useMemo(() => {
+    if (!recommendProfile) return null
+    const excludeIds = new Set(readIdsRef.current)
+    for (const item of laterRef.current) excludeIds.add(item.id)
+    return rankRecommendations(articles, recommendProfile, { excludeIds })
+  }, [articles, recommendProfile])
+
   /** 单源筛选时保持数组引用稳定：每次渲染现算会让列表翻译等依赖 articles 的 effect 反复中止重启 */
-  const displayedArticles = useMemo(
-    () =>
-      categoryFilterSourceId
-        ? articles.filter((item) => item.sourceId === categoryFilterSourceId)
-        : articles,
-    [articles, categoryFilterSourceId],
-  )
+  const displayedArticles = useMemo(() => {
+    const base = recommendedArticles ?? articles
+    return categoryFilterSourceId
+      ? base.filter((item) => item.sourceId === categoryFilterSourceId)
+      : base
+  }, [articles, recommendedArticles, categoryFilterSourceId])
 
   const articlesForCategory = useCallback(
     (id: CategoryId) => {
