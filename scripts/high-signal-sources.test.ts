@@ -177,10 +177,17 @@ const aiMediaCategory = CATEGORIES.find((cat) => cat.id === 'ai-media')
 assert.ok(aiMediaCategory?.sourceIds?.includes('qbitai'))
 assert.ok(aiMediaCategory?.sourceIds?.includes('jiqizhixin'))
 
-// 源头栏收官方
+// 官方一手拆三栏：OpenAI / Claude 各占一栏，其余实验室留在 ai（实验室）
+const aiOpenaiCategory = CATEGORIES.find((cat) => cat.id === 'ai-openai')
+assert.ok(aiOpenaiCategory?.sourceIds?.includes('openai-news'))
+assert.ok(aiOpenaiCategory?.sourceIds?.includes('openai-cookbook'))
+const aiClaudeCategory = CATEGORIES.find((cat) => cat.id === 'ai-claude')
+assert.ok(aiClaudeCategory?.sourceIds?.includes('anthropic'))
+assert.ok(aiClaudeCategory?.sourceIds?.includes('claude-blog'))
 const aiOriginCategory = CATEGORIES.find((cat) => cat.id === 'ai')
-assert.ok(aiOriginCategory?.sourceIds?.includes('openai-news'))
-assert.ok(aiOriginCategory?.sourceIds?.includes('anthropic'))
+assert.ok(aiOriginCategory?.sourceIds?.includes('google-ai'))
+assert.ok(aiOriginCategory?.sourceIds?.includes('deepmind'))
+assert.ok(!aiOriginCategory?.sourceIds?.includes('openai-news'))
 assert.ok(!aiOriginCategory?.sourceIds?.includes('qbitai'))
 
 // 分类里引用的 id 必须都已注册，防止手写 sourceIds 拼错

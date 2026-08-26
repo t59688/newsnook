@@ -2,7 +2,7 @@
  * 阅读分类：覆盖注册表内全部可用信源。
  * - 「综合」读取用户在频道页启用的源
  * - 默认可见为门户经典栏（见 preferences.DEFAULT_HIDDEN_CATEGORY_IDS / presets.PORTAL_VISIBLE_CATEGORY_IDS）
- * - AI 四层（源头 / 业界 / 深读 / 社区）与游戏、科技深度等默认隐藏，由场景预设打开
+ * - AI 六栏（OpenAI / Claude / 实验室 / 业界 / 深读 / 社区）与游戏、科技深度等默认隐藏，由场景预设打开
  * - RSS / 专栏用主题分类承接，保证每个 sourceId 至少落入一个分类
  */
 
@@ -101,21 +101,33 @@ export const CATEGORIES: NewsCategory[] = [
       'gnews-science',
     ],
   },
-  // AI 按信息层次拆四栏：源头（官方）→ 业界（媒体）→ 深读（二次加工）→ 社区
+  // AI 按信息层次拆栏：OpenAI / Claude / 实验室（官方一手）→ 业界（媒体）→ 深读（二次加工）→ 社区
+  {
+    id: 'ai-openai',
+    label: 'OpenAI',
+    short: 'OpenAI',
+    caption: 'OpenAI 官方：News 发布 · Cookbook 实践指南',
+    sourceIds: ['openai-news', 'openai-cookbook'],
+  },
+  {
+    id: 'ai-claude',
+    label: 'Claude',
+    short: 'Claude',
+    caption: 'Anthropic 官方：新闻 · Claude 博客 · 客户案例 · 学院用例/教程',
+    sourceIds: [
+      'anthropic',
+      'claude-blog',
+      'claude-customers',
+      'claude-academy-use-cases',
+      'claude-academy-tutorials',
+    ],
+  },
   {
     id: 'ai',
-    label: '源头',
-    short: '源头',
-    caption: '实验室与平台官方：OpenAI · Anthropic · Google · DeepMind · HF · PyTorch · Arena',
-    sourceIds: [
-      'openai-news',
-      'anthropic',
-      'google-ai',
-      'deepmind',
-      'huggingface',
-      'pytorch',
-      'arena',
-    ],
+    label: '实验室',
+    short: '实验室',
+    caption: '实验室与平台官方：Google AI · DeepMind · Hugging Face · PyTorch · Arena',
+    sourceIds: ['google-ai', 'deepmind', 'huggingface', 'pytorch', 'arena'],
   },
   {
     id: 'ai-media',

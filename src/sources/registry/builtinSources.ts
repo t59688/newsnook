@@ -404,7 +404,8 @@ export const SOURCES: NewsSource[] = [
   },
   { id: 'leiphone', name: '雷锋网', label: '雷锋网', group: 'ai', kind: 'feed', url: 'https://www.leiphone.com/feed', enabled: false },
   { id: 'synced', name: 'Synced', label: 'Synced', group: 'ai', kind: 'feed', url: 'https://syncedreview.com/feed/', enabled: false },
-  { id: 'openai-news', name: 'OpenAI News', label: 'OpenAI', group: 'ai', kind: 'feed', url: 'https://openai.com/news/rss.xml', enabled: false },
+  // OpenAI News RSS 2026-08-26 复测正常（约 700KB 全量目录），一手官方源默认启用
+  { id: 'openai-news', name: 'OpenAI News', label: 'OpenAI', group: 'ai', kind: 'feed', url: 'https://openai.com/news/rss.xml', enabled: true },
   { id: 'google-ai', name: 'Google AI Blog', label: 'Google AI', group: 'ai', kind: 'feed', url: 'https://blog.google/innovation-and-ai/technology/ai/rss/', enabled: false },
   { id: 'deepmind', name: 'Google DeepMind', label: 'DeepMind', group: 'ai', kind: 'feed', url: 'https://deepmind.google/blog/rss.xml', enabled: false },
   { id: 'huggingface', name: 'Hugging Face Blog', label: 'HF', group: 'ai', kind: 'feed', url: 'https://huggingface.co/blog/feed.xml', enabled: false },
@@ -497,6 +498,59 @@ export const SOURCES: NewsSource[] = [
     kind: 'anthropic',
     // 带尾斜杠会 308 → /news；代理 rewrite 不跟随，必须无尾斜杠
     url: 'https://www.anthropic.com/news',
+    enabled: true,
+  },
+  // —— AI 一手官方内容扩充（2026-08-26，探测记录见 docs/news-sources.md §7）——
+  // claude.com 是 Webflow 站（非 anthropic.com 的 Next.js/Sanity），无 RSS；
+  // CMS 集合列表服务端渲染，隐藏元数据块带 fs-list-field 标题/日期，正文 Readability
+  {
+    id: 'claude-blog',
+    name: 'Claude Blog',
+    label: 'Claude',
+    group: 'ai',
+    kind: 'claude-webflow',
+    url: 'https://claude.com/blog',
+    enabled: true,
+  },
+  {
+    id: 'claude-customers',
+    name: 'Claude Customers',
+    label: 'Claude案例',
+    group: 'ai',
+    kind: 'claude-webflow',
+    url: 'https://claude.com/customers',
+    enabled: true,
+  },
+  // academy.claude.com 无 RSS，sitemap 也无 lastmod；卡片列表与详情都不带日期
+  // （hasRealDate=false，同 paulgraham）。URL 带尾斜杠会 307，必须无尾斜杠。
+  // use-cases 详情为完整文字指南；tutorials 为视频教程，详情文字较薄（标题+简介）
+  {
+    id: 'claude-academy-use-cases',
+    name: 'Claude Academy · Use Cases',
+    label: 'Claude用例',
+    group: 'ai',
+    kind: 'claude-academy',
+    url: 'https://academy.claude.com/use-cases',
+    enabled: true,
+  },
+  {
+    id: 'claude-academy-tutorials',
+    name: 'Claude Academy · Tutorials',
+    label: 'Claude教程',
+    group: 'ai',
+    kind: 'claude-academy',
+    url: 'https://academy.claude.com/tutorials',
+    enabled: true,
+  },
+  // OpenAI Cookbook 无专属 RSS（站级 /rss.xml 混入 YouTube 与平台文档链接）；
+  // 解析 Astro 列表行（标题+日期）。URL 带尾斜杠会 308，必须无尾斜杠
+  {
+    id: 'openai-cookbook',
+    name: 'OpenAI Cookbook',
+    label: 'Cookbook',
+    group: 'ai',
+    kind: 'openai-cookbook',
+    url: 'https://developers.openai.com/cookbook',
     enabled: true,
   },
 

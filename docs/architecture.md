@@ -101,7 +101,7 @@ Android 物理返回键由 `@capacitor/app` 在 `App.tsx` 统一处理：阅读�
 | 通用 Feed | `feed` | RSS 2.0 / Atom / RDF / JSON Feed |
 | 搜索聚合 | `google-news` | Google News RSS，需解码真实 URL |
 | 门户 JSON | `netease`、`zhihu` | 网易移动端列表、知乎日报 |
-| 站点定制 | `latepost`、`jandan`、`jiqizhixin`、`cls`、`eastmoney-*`、`wscn-live`、`guokr`、`jazzyear`、`arena`、`anthropic`、`paulgraham`、`wordpress` 等 | 各站列表/详情协议与 UA 在 registry 中声明 |
+| 站点定制 | `latepost`、`jandan`、`jiqizhixin`、`cls`、`eastmoney-*`、`wscn-live`、`guokr`、`jazzyear`、`arena`、`anthropic`、`claude-webflow`、`claude-academy`、`openai-cookbook`、`paulgraham`、`wordpress` 等 | 各站列表/详情协议与 UA 在 registry 中声明 |
 | 用户自建 | `feed`（`isCustom: true`） | OPML 导入或手动添加，走通用解析 |
 
 内置源按 `SourceGroup`（`cn` / `intl` / `tech` / `ai` / `special` / `custom`）分组；用户可在「综合频道」单独开关，或在分类下覆盖选源。

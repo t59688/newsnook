@@ -25,6 +25,9 @@ export type SourceKind =
   | 'paulgraham'
   | 'wechat'
   | 'uisdc'
+  | 'claude-webflow'
+  | 'claude-academy'
+  | 'openai-cookbook'
   | 'web-catalog'
 
 /** 旧版自建源 kind 兼容 */
