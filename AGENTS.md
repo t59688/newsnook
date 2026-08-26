@@ -70,6 +70,7 @@ newsnook/
 | 阅读位置记忆 | `lib/readingPosition.ts`（`newsnook:reading-pos`；滚动与墨水屏分页共用一张表） |
 | 分享 / 阅读器溢出菜单 | `lib/shareToken.ts`（v2 token 编解码，App 与边缘 worker 共用） · `lib/shareLink.ts`（站内短链 `news.aizeek.com/a/<token>` 组装 + 深链冷启动） · `lib/articleId.ts`（收发两端共用的条目 id 规则） · `lib/shareArticle.ts` · `components/ShareArticleSheet.tsx` · `components/ReaderMoreMenu.tsx` · `components/EinkReaderMenu.tsx` · `functions/lib/shareCard.ts`（爬虫抓 `/a/*` 时的 Open Graph 卡片） |
 | 本地离线搜索 | `lib/localSearch.ts` · `screens/settings/LocalSearchScreen.tsx`（与 `web-catalog` 的联网站内搜索无关） |
+| 本地推荐预设 | `lib/recommend.ts`（已读画像 + 排序，纯本地） · `sources/categories.ts`（`recommend` 聚合分类） · `sources/presets.ts`（`builtin-foryou`）；接线在 `App.tsx` |
 | 功能引导 | `features/productTour/`（steps 纯定义 · Service 封装 driver.js · useProductTour 接 App）；目标元素用 `data-tour` 锚定；重看入口在 `screens/settings/AboutScreen.tsx` |
 | 站内正文 | `lib/resolveBody.ts` · `lib/sanitize.ts` · `lib/bodyCache.ts` · `screens/ReaderScreen.tsx` |
 | 翻译 | `features/translation/`（稳定边界：`types.ts`；新增引擎实现 Provider 并注册） |
@@ -173,6 +174,7 @@ npm run test:logger
 npm run test:share-og
 npm run test:config-backup
 npm run test:local-search
+npm run test:recommend
 npm run test:product-tour
 
 npm run android:run         # 轻量 cloud
