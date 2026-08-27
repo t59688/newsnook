@@ -10,6 +10,7 @@
 export type LogLevel = 'silent' | 'error' | 'warn' | 'info' | 'debug' | 'trace'
 
 export type LogNamespace =
+  | 'account'
   | 'app'
   | 'boot'
   | 'catalog'
@@ -19,6 +20,7 @@ export type LogNamespace =
   | 'reader'
   | 'sniffer'
   | 'storage'
+  | 'sync'
   | 'translation'
 
 export interface LogConfig {
@@ -56,6 +58,7 @@ const LEVEL_RANK: Record<LogLevel, number> = {
 }
 
 const ALL_NAMESPACES: LogNamespace[] = [
+  'account',
   'app',
   'boot',
   'catalog',
@@ -65,6 +68,7 @@ const ALL_NAMESPACES: LogNamespace[] = [
   'reader',
   'sniffer',
   'storage',
+  'sync',
   'translation',
 ]
 
@@ -252,6 +256,7 @@ export const logController: LogController = {
 /** 预置命名空间 logger，业务侧优先使用这些而非直接 console */
 export const log = {
   controller: logController,
+  account: createLogger('account'),
   app: createLogger('app'),
   boot: createLogger('boot'),
   catalog: createLogger('catalog'),
@@ -261,6 +266,7 @@ export const log = {
   reader: createLogger('reader'),
   sniffer: createLogger('sniffer'),
   storage: createLogger('storage'),
+  sync: createLogger('sync'),
   translation: createLogger('translation'),
 } as const
 

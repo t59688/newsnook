@@ -283,40 +283,4 @@ export const syncConflictResolveResponseSchema = z.object({
 })
 export type SyncConflictResolveResponse = z.infer<typeof syncConflictResolveResponseSchema>
 
-/**
- * 排序键工具：在 `before` 与 `after` 之间生成一个字典序落在中间的键。
- * 只做 V1 需要的最小实现（等分 base36 位），不引入重型 fractional-index 依赖。
- */
-const RANK_DIGITS = '0123456789abcdefghijklmnopqrstuvwxyz'
-const RANK_BASE = RANK_DIGITS.length
-
-function digitValue(char: string): number {
-  const index = RANK_DIGITS.indexOf(char)
-  return index < 0 ? 0 : index
-}
-
-export function rankBetween(before: string | null, after: string | null): string {
-  const lower = before ?? ''
-  const upper = after ?? ''
-  let prefix = ''
-  let position = 0
-
-  for (;;) {
-    const lowDigit = position < lower.length ? digitValue(lower[position]!) : 0
-    const highDigit = position < upper.length ? digitValue(upper[position]!) : RANK_BASE
-    if (highDigit - lowDigit > 1) {
-      const middle = Math.floor((lowDigit + highDigit) / 2)
-      return `${prefix}${RANK_DIGITS[middle]}`
-    }
-    prefix += RANK_DIGITS[lowDigit]
-    position += 1
-    // 上界与下界在这一位相邻或相等：继续向后一位细分
-    if (position > 64) return `${prefix}m`
-  }
-}
-
-/** 按序号生成初始 rank；同一批次内保持稳定且严格递增 */
-export function rankForIndex(index: number): string {
-  const normalized = Math.max(0, Math.floor(index)) + 1
-  return `${normalized.toString(RANK_BASE).padStart(6, '0')}`
-}
+export { rankBetween, rankForIndex } from './sortRank.js'

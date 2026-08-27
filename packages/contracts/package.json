@@ -12,6 +12,10 @@
     "./errors": {
       "types": "./dist/errors.d.ts",
       "default": "./dist/errors.js"
+    },
+    "./sort-rank": {
+      "types": "./dist/sortRank.d.ts",
+      "default": "./dist/sortRank.js"
     }
   },
   "files": [
