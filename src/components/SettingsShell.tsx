@@ -19,7 +19,9 @@ export function SettingsShell({ title, caption, action, onBack, children }: Prop
     <div
       className="absolute inset-0 z-30 flex flex-col bg-ink"
       style={{
-        paddingTop: 'var(--sat)',
+        // 挂在 AppShell 已 paddingTop: var(--sat) 的内容区里（main 为 containing block），
+        // 顶部再垫 --sat 会在 edge-to-edge + 新 WebView 上叠出双倍状态栏空白。
+        // 底部 AppShell 不垫 --sab，仍由本壳避让手势条。
         paddingBottom: 'var(--sab)',
         animation: reduced ? undefined : 'settings-in 320ms var(--ease-ink) both'
       }}
