@@ -119,7 +119,7 @@ export function syncStatusCaption(
       return '待选择首次同步方式'
     case 'error': {
       const id = shortRequestId(status.lastError?.requestId)
-      const base = status.lastError ? errorText(status.lastError.code) : '同步失败'
+      const base = status.lastError ? syncErrorText(status.lastError.code) : '同步失败'
       return id ? `${base}（编号 ${id}）` : base
     }
     default:
