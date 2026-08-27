@@ -9,6 +9,7 @@ import { DesktopSidebar } from './components/DesktopSidebar'
 import { TabBar, type TabKey } from './components/TabBar'
 import { SyncOnboardingPrompt } from './features/account/SyncOnboardingPrompt'
 import { useAccount } from './features/account/useAccount'
+import { syncRouteFromAppUrl } from './features/sync/nativeNotification'
 import { toastForSyncEvent, syncStatusCaption, type SyncToastModel } from './features/sync/notifier'
 import { useCloudSync } from './features/sync/useCloudSync'
 import { SyncToast } from './components/SyncToast'
@@ -757,6 +758,11 @@ export default function App() {
     const openFromUrl = (url: string) => {
       if (!url || handledUrls.has(url)) return
       handledUrls.add(url)
+      // 同步通知点开后落到「账户与同步」，不是分享深链
+      if (syncRouteFromAppUrl(url)) {
+        openAccountSync()
+        return
+      }
       const token = shareTokenFromAppUrl(url)
       if (!token) return
       const payload = decodeShareToken(token)
@@ -789,7 +795,7 @@ export default function App() {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [openArticle])
+  }, [openAccountSync, openArticle])
 
   /**
    * 「在 App 中打开」引导条：网页版打开分享深链、且是 Android 浏览器时才给。

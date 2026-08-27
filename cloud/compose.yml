@@ -1,0 +1,46 @@
+# 只有 API 与 PostgreSQL 两个服务：没有 Redis、消息队列、后台 worker。
+# 启动顺序里没有自动迁移——先跑一次 `npm run cloud:migrate`，再起 api。
+#
+#   docker compose -f cloud/compose.yml up -d db
+#   DATABASE_URL=... npm run cloud:migrate
+#   docker compose -f cloud/compose.yml up -d api
+
+name: newsnook-cloud
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-newsnook}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-newsnook}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-newsnook} -d ${POSTGRES_DB:-newsnook}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # 默认只暴露给同一 compose 网络；需要本机连库调试时再放开
+    # ports:
+    #   - '127.0.0.1:5432:5432'
+
+  api:
+    build:
+      context: ..
+      dockerfile: cloud/Dockerfile
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    env_file:
+      - .env
+    environment:
+      HOST: 0.0.0.0
+      PORT: 8787
+    ports:
+      - '127.0.0.1:8787:8787'
+
+volumes:
+  db-data:

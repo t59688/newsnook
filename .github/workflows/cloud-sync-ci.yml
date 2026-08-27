@@ -1,0 +1,148 @@
+name: Cloud Sync CI
+
+# 可选账户 + 云同步的守门人：契约、真实 PostgreSQL 上的服务端集成测试、
+# 客户端同步回归、lint 与整包构建。任何一步失败都不该合入。
+on:
+  push:
+    branches:
+      - main
+      - 'docs/account-cloud-sync-design'
+    paths:
+      - 'packages/contracts/**'
+      - 'cloud/**'
+      - 'src/features/account/**'
+      - 'src/features/sync/**'
+      - 'scripts/*sync*.test.ts'
+      - 'scripts/*cloud*.test.ts'
+      - 'scripts/account-*.test.ts'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/cloud-sync-ci.yml'
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: cloud-sync-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  cloud:
+    name: Contracts, cloud API and client sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: newsnook
+          POSTGRES_PASSWORD: newsnook
+          POSTGRES_DB: newsnook_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U newsnook -d newsnook_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # 只在 CI 里使用的假值：真实 OAuth / SMTP 凭证永远不进 PR 流水线
+      TEST_DATABASE_URL: postgres://newsnook:newsnook@127.0.0.1:5432/newsnook_test
+      DATABASE_URL: postgres://newsnook:newsnook@127.0.0.1:5432/newsnook_test
+      BETTER_AUTH_URL: http://127.0.0.1:8787
+      BETTER_AUTH_SECRET: ci-only-better-auth-secret-0123456789abcd
+      NEWSNOOK_DATA_ENCRYPTION_KEY: Y2ktb25seS1kYXRhLWtleS0zMi1ieXRlcy0hIQ==
+      CLIENT_ORIGINS: http://127.0.0.1:5173
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build shared contracts
+        run: npm run build:contracts
+
+      - name: Run database migrations
+        run: npm run cloud:migrate
+
+      - name: Contract tests
+        run: npm run test:cloud-contracts
+
+      - name: Cloud API tests (real PostgreSQL)
+        run: npm run test:cloud
+
+      - name: Client sync and account tests
+        run: |
+          npm run test:sync-projection
+          npm run test:sync-engine
+          npm run test:account-auth
+          npm run test:secure-secret-hydration
+          npm run test:cloud-sync-runtime
+          npm run test:account-sync-ui
+          npm run test:sync-notifier
+
+      - name: Client regression tests touched by sync
+        run: |
+          npm run test:product-tour
+          npm run test:config-backup
+          npm run test:logger
+          npm run test:layout-presets
+          npm run test:custom-sources
+          npm run test:webview-css-compat
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build cloud service
+        run: npm run cloud:build
+
+      - name: Build web client
+        run: npm run build
+
+  android:
+    name: Android Java compile
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Install dependencies
+        run: npm ci
+
+      # capacitor.build.gradle 依赖 cap update 生成的插件清单；这里不需要 web 产物
+      - name: Sync Capacitor Android project
+        run: |
+          mkdir -p android/app/src/main/assets/public
+          npx cap update android
+
+      # SecureStore / SyncNotification 是同步链路的原生半边，两个变体都要能编过
+      - name: Compile both flavors
+        working-directory: android
+        run: ./gradlew --no-daemon :app:compileCloudDebugJavaWithJavac :app:compileLocalDebugJavaWithJavac

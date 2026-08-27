@@ -17,6 +17,7 @@ import type { Preferences } from '../../sources/preferences'
 import type { PresetsState } from '../../sources/presets'
 import type { AccountAdapter } from '../account/types'
 import type { LocalRuntimeState } from './merge'
+import { notifySyncEvent } from './nativeNotification'
 import { projectLocalState } from './projection'
 import { createRuntimeSyncAdapter } from './runtimeAdapter'
 import { readSyncState } from './state'
@@ -60,6 +61,11 @@ const IDLE_STATUS: SyncStatus = {
 
 function devicePlatform(): 'android' | 'web' {
   return Capacitor.getPlatform() === 'android' ? 'android' : 'web'
+}
+
+function appVisibility(): 'foreground' | 'background' {
+  if (typeof document === 'undefined') return 'background'
+  return document.visibilityState === 'visible' ? 'foreground' : 'background'
 }
 
 function deviceName(): string {
@@ -127,6 +133,8 @@ export function useCloudSync(args: CloudSyncArgs): CloudSyncApi {
         if (event.type === 'status') setStatus(event.status)
         if (event.type === 'conflicts') setConflicts(event.conflicts)
         onEventRef.current?.(event)
+        // 前台一律走应用内 Toast；只有应用不在前台时才考虑通知栏
+        void notifySyncEvent(event, appVisibility())
       },
     })
   }, [account, authenticated, writeRuntime])

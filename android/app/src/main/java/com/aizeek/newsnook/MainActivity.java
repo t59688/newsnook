@@ -271,6 +271,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(MediaSnifferPlugin.class);
         registerPlugin(AppUpdatePlugin.class);
         registerPlugin(SecureStorePlugin.class);
+        registerPlugin(SyncNotificationPlugin.class);
         bridgeBuilder.addWebViewListener(
             new WebViewListener() {
                 @Override

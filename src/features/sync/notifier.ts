@@ -113,6 +113,77 @@ export function syncStatusCaption(
   return '已登录 · 等待首次同步'
 }
 
+/** 系统通知的稳定 id：同一类反复发生时覆盖而不是堆叠 */
+export const SYNC_NOTIFICATION_IDS = {
+  firstSync: 'sync-first-complete',
+  failure: 'sync-failure',
+  conflict: 'sync-conflict',
+} as const
+
+export type SyncNotificationId = (typeof SYNC_NOTIFICATION_IDS)[keyof typeof SYNC_NOTIFICATION_IDS]
+
+export interface SyncNotificationModel {
+  id: SyncNotificationId
+  title: string
+  body: string
+  /** 点开通知时要落到的页面；目前只有「账户与同步」 */
+  route: 'account-sync'
+}
+
+export type AppVisibility = 'foreground' | 'background'
+
+/**
+ * 系统通知策略。前台永远用应用内 Toast，通知栏只留给三件事：
+ * 首次同步完成、反复失败、需要用户裁决的冲突。
+ *
+ * 普通的后台同步成功、每次本地改动、前台同步一律返回 null——
+ * 同步是背景能力，不该在通知栏刷存在感。
+ */
+export function mapSyncEventToNotification(
+  event: SyncEvent,
+  visibility: AppVisibility,
+): SyncNotificationModel | null {
+  if (visibility === 'foreground') return null
+
+  switch (event.type) {
+    case 'first-sync-complete':
+      return {
+        id: SYNC_NOTIFICATION_IDS.firstSync,
+        title: '云端同步已开启',
+        body: '订阅、分类与应用配置会在这台设备与云端之间保持一致。',
+        route: 'account-sync',
+      }
+
+    case 'conflicts':
+      if (!event.conflicts.length) return null
+      return {
+        id: SYNC_NOTIFICATION_IDS.conflict,
+        title: '有改动需要你决定',
+        body: `${event.conflicts.length} 处改动在两台设备上不一致，点开选择保留哪一份。`,
+        route: 'account-sync',
+      }
+
+    case 'failed': {
+      const fatal =
+        event.code === 'AUTH_REQUIRED' ||
+        event.code === 'SESSION_EXPIRED' ||
+        event.code === 'DEVICE_REVOKED'
+      if (!fatal && event.attempt < NOISY_FAILURE_ATTEMPT) return null
+      const id = shortRequestId(event.requestId)
+      return {
+        id: SYNC_NOTIFICATION_IDS.failure,
+        title: '同步没能完成',
+        body: id ? `${errorText(event.code)}（编号 ${id}）` : errorText(event.code),
+        route: 'account-sync',
+      }
+    }
+
+    default:
+      // 'applied' / 'status'：后台同步成功是常态，绝不进通知栏
+      return null
+  }
+}
+
 export function relativeTime(timestamp: number, now = Date.now()): string {
   const diff = Math.max(0, now - timestamp)
   const minutes = Math.floor(diff / 60_000)

@@ -116,7 +116,8 @@
     "test:account-auth": "npx tsx scripts/account-auth.test.ts",
     "test:secure-secret-hydration": "npx tsx scripts/secure-secret-hydration.test.ts",
     "test:cloud-sync-runtime": "npx tsx scripts/cloud-sync-runtime.test.ts",
-    "test:account-sync-ui": "npm run build:contracts && npx tsx scripts/account-sync-ui.test.ts"
+    "test:account-sync-ui": "npm run build:contracts && npx tsx scripts/account-sync-ui.test.ts",
+    "test:sync-notifier": "npm run build:contracts && npx tsx scripts/sync-notifier.test.ts"
   },
   "dependencies": {
     "@capacitor-community/media": "^9.1.0",
