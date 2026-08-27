@@ -493,9 +493,30 @@ export class SyncEngine {
     conflictId: string,
     resolution: 'accept_local' | 'accept_server',
   ): Promise<void> {
-    await this.transport.resolveConflict(conflictId, resolution)
-    this.conflicts = this.conflicts.filter((conflict) => conflict.id !== conflictId)
-    this.emit({ type: 'conflicts', conflicts: this.conflicts })
+    await this.resolveConflicts([{ id: conflictId, resolution }])
+  }
+
+  /**
+   * 批量裁决：逐条落服务端、随时可通过 onProgress 汇报进度，
+   * 但整批只在最后跑一轮同步——N 项决定不该变成 N 轮全量收发。
+   * 中途失败会停下并抛错；已裁决的部分不回退，剩余的留在队列里可重试。
+   */
+  async resolveConflicts(
+    decisions: ReadonlyArray<{ id: string; resolution: 'accept_local' | 'accept_server' }>,
+    onProgress?: (done: number, total: number) => void,
+  ): Promise<void> {
+    if (!decisions.length) return
+    try {
+      let done = 0
+      for (const { id, resolution } of decisions) {
+        await this.transport.resolveConflict(id, resolution)
+        this.conflicts = this.conflicts.filter((conflict) => conflict.id !== id)
+        done += 1
+        onProgress?.(done, decisions.length)
+      }
+    } finally {
+      this.emit({ type: 'conflicts', conflicts: this.conflicts })
+    }
     await this.sync('manual')
   }
 

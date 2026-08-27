@@ -47,6 +47,11 @@ export interface CloudSyncApi {
   syncNow: () => Promise<void>
   refreshConflicts: () => Promise<void>
   resolveConflict: (id: string, resolution: 'accept_local' | 'accept_server') => Promise<void>
+  /** 批量裁决：整批只触发一轮同步；onProgress 用于面板上的进度条 */
+  resolveConflicts: (
+    decisions: ReadonlyArray<{ id: string; resolution: 'accept_local' | 'accept_server' }>,
+    onProgress?: (done: number, total: number) => void,
+  ) => Promise<void>
 }
 
 const IDLE_STATUS: SyncStatus = {
@@ -238,5 +243,16 @@ export function useCloudSync(args: CloudSyncArgs): CloudSyncApi {
     [engine],
   )
 
-  return { status, conflicts, engine, syncNow, refreshConflicts, resolveConflict }
+  const resolveConflicts = useCallback(
+    async (
+      decisions: ReadonlyArray<{ id: string; resolution: 'accept_local' | 'accept_server' }>,
+      onProgress?: (done: number, total: number) => void,
+    ) => {
+      if (!engine) return
+      await engine.resolveConflicts(decisions, onProgress)
+    },
+    [engine],
+  )
+
+  return { status, conflicts, engine, syncNow, refreshConflicts, resolveConflict, resolveConflicts }
 }

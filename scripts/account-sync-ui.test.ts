@@ -5,7 +5,22 @@
  */
 import assert from 'node:assert/strict'
 
+import type { SyncConflict } from '@newsnook/contracts'
+
 import { accountScreenModel } from '../src/features/account/screenModel'
+import {
+  CONFLICT_ENTITY_LABEL,
+  conflictReasonText,
+  conflictTitle,
+  decidedCount,
+  describeConflictSides,
+  filterConflicts,
+  materializeDecisions,
+  nextUndecidedIndex,
+  stageBulkDecision,
+  stageDecision,
+  summarizeConflicts,
+} from '../src/features/sync/conflictView'
 import { describeDevice } from '../src/features/sync/devices'
 import { countProjection, decideFirstSync, describeCounts } from '../src/features/sync/firstSync'
 import {
@@ -329,4 +344,182 @@ assert.equal(
 )
 
 console.log('account-sync devices: ok')
+
+// ---------- 冲突表达层 ----------
+
+function conflictOf(patch: Partial<SyncConflict>): SyncConflict {
+  return {
+    id: 'c0',
+    entityType: 'subscription',
+    entityId: 'source-x',
+    reason: 'stale_structural_update',
+    serverRevision: 10,
+    baseRevision: 8,
+    localChange: { operation: 'upsert', payload: {} },
+    serverState: { deleted: false, payload: {} },
+    createdAt: now,
+    resolvedAt: null,
+    ...patch,
+  }
+}
+
+const queue: SyncConflict[] = [
+  conflictOf({
+    id: 'sub-1',
+    entityType: 'subscription',
+    entityId: 'custom:blog',
+    reason: 'delete_vs_update',
+    localChange: { operation: 'delete', payload: null },
+    serverState: {
+      deleted: false,
+      payload: { kind: 'custom', enabled: true, name: '少数派', sortRank: 'a' },
+    },
+  }),
+  conflictOf({
+    id: 'sub-2',
+    entityType: 'subscription',
+    entityId: 'custom:pods',
+    localChange: {
+      operation: 'upsert',
+      payload: { kind: 'custom', enabled: false, name: '播客周刊', sortRank: 'b' },
+    },
+    serverState: { deleted: true, payload: null },
+    reason: 'update_vs_delete',
+  }),
+  conflictOf({
+    id: 'cat-1',
+    entityType: 'category',
+    entityId: 'tech',
+    reason: 'category_stale_mutation',
+    localChange: {
+      operation: 'upsert',
+      payload: { kind: 'builtin', visible: true, sortRank: 'c', sourceIds: ['a', 'b', 'c'] },
+    },
+    serverState: {
+      deleted: false,
+      payload: { kind: 'builtin', visible: false, sortRank: 'c', sourceIds: null },
+    },
+  }),
+  conflictOf({
+    id: 'secret-1',
+    entityType: 'secret',
+    entityId: 'translation.openai.apiKey',
+    localChange: { operation: 'upsert', payload: { redacted: true } },
+    serverState: { deleted: false, payload: { redacted: true } },
+  }),
+  conflictOf({
+    id: 'setting-1',
+    entityType: 'setting',
+    entityId: 'theme',
+    localChange: { operation: 'upsert', payload: { value: 'dark' } },
+    serverState: { deleted: false, payload: { value: 'light' } },
+  }),
+]
+
+// 摘要：按协议类型顺序分组，只含实际出现的类型
+const summary = summarizeConflicts(queue)
+assert.equal(summary.total, 5)
+assert.deepEqual(summary.groups, [
+  { entityType: 'subscription', count: 2 },
+  { entityType: 'category', count: 1 },
+  { entityType: 'setting', count: 1 },
+  { entityType: 'secret', count: 1 },
+])
+assert.equal(CONFLICT_ENTITY_LABEL.subscription, '订阅源')
+
+// 标题：优先用快照里的名字，密钥只露用途、不露值
+assert.equal(conflictTitle(queue[0]!), '少数派')
+assert.equal(conflictTitle(queue[1]!), '播客周刊')
+assert.equal(conflictTitle(queue[3]!), 'OpenAI 翻译密钥')
+assert.equal(conflictTitle(queue[4]!), '明暗主题')
+assert.equal(
+  conflictTitle(conflictOf({ entityType: 'setting', entityId: 'unknown-key' })),
+  'unknown-key',
+  '没登记的键退回 entityId',
+)
+
+// 双边描述：删除 / 保留 / payload 摘要都要能读懂
+const deleteVsUpdate = describeConflictSides(queue[0]!)
+assert.match(deleteVsUpdate.local.action, /已删除/)
+assert.match(deleteVsUpdate.server.action, /云端/)
+assert.match(deleteVsUpdate.server.detail!, /订阅中/)
+assert.match(deleteVsUpdate.server.detail!, /自建源/)
+
+const updateVsDelete = describeConflictSides(queue[1]!)
+assert.match(updateVsDelete.local.detail!, /已停用/)
+assert.match(updateVsDelete.server.action, /已删除/)
+assert.equal(updateVsDelete.server.detail, null, '云端已删除时没有内容摘要')
+
+const categorySides = describeConflictSides(queue[2]!)
+assert.match(categorySides.local.detail!, /3 个信源/)
+assert.match(categorySides.server.detail!, /默认信源/)
+
+const secretSides = describeConflictSides(queue[3]!)
+assert.match(secretSides.local.detail!, /不会展示/)
+
+// Secret 的值绝不能出现在任何输出里
+const secretConflict = conflictOf({
+  entityType: 'secret',
+  entityId: 'proxy.url',
+  localChange: { operation: 'upsert', payload: { value: 'socks5://user:hunter2@host' } },
+  serverState: { deleted: false, payload: { value: 'socks5://user:hunter2@host' } },
+})
+const secretRendered = JSON.stringify([conflictTitle(secretConflict), describeConflictSides(secretConflict)])
+assert.ok(!secretRendered.includes('hunter2'), '密钥值不进任何展示文案')
+
+assert.match(conflictReasonText('delete_vs_update'), /删除/)
+assert.match(conflictReasonText('made-up-reason'), /无法自动合并/)
+
+console.log('account-sync conflict view: ok')
+
+// ---------- 冲突决定的暂存与批量 ----------
+
+// 逐项：可选、可换边、再点一次同一边等于清除
+let staged = stageDecision({}, 'sub-1', 'accept_local')
+assert.deepEqual(staged, { 'sub-1': 'accept_local' })
+staged = stageDecision(staged, 'sub-1', 'accept_server')
+assert.deepEqual(staged, { 'sub-1': 'accept_server' })
+staged = stageDecision(staged, 'sub-1', null)
+assert.deepEqual(staged, {})
+
+// 批量：按类只覆盖那一类，范围外已做的决定原样保留
+staged = stageDecision({}, 'cat-1', 'accept_server')
+staged = stageBulkDecision(staged, queue, 'accept_local', 'subscription')
+assert.equal(staged['sub-1'], 'accept_local')
+assert.equal(staged['sub-2'], 'accept_local')
+assert.equal(staged['cat-1'], 'accept_server', '订阅的批量不动分类已有的决定')
+assert.equal(staged['secret-1'], undefined)
+
+// 全量批量
+const allLocal = stageBulkDecision({}, queue, 'accept_local')
+assert.equal(decidedCount(queue, allLocal), 5)
+
+// 计数只认还在队列里的冲突：服务端已裁决掉的过期决定不算
+assert.equal(decidedCount(queue, { 'sub-1': 'accept_local', ghost: 'accept_server' }), 1)
+
+// 应用载荷按队列顺序物化，跳过没决定的
+const payload = materializeDecisions(queue, {
+  'setting-1': 'accept_server',
+  'sub-1': 'accept_local',
+})
+assert.deepEqual(payload, [
+  { id: 'sub-1', resolution: 'accept_local' },
+  { id: 'setting-1', resolution: 'accept_server' },
+])
+
+// 类型过滤
+assert.deepEqual(
+  filterConflicts(queue, 'subscription').map((conflict) => conflict.id),
+  ['sub-1', 'sub-2'],
+)
+assert.equal(filterConflicts(queue, 'all').length, 5)
+
+// 逐项推进：从当前处向后找下一处未决定的，会绕回开头，全决定完返回 -1
+const partial = { 'sub-2': 'accept_local', 'cat-1': 'accept_local' } as const
+assert.equal(nextUndecidedIndex(queue, partial, 0), 3, '跳过已决定的 1、2，落到 secret')
+assert.equal(nextUndecidedIndex(queue, partial, 4), 0, '尾部之后绕回第一处')
+assert.equal(nextUndecidedIndex(queue, allLocal, 0), -1, '全部决定后交给应用按钮')
+assert.equal(nextUndecidedIndex([], {}, 0), -1)
+
+console.log('account-sync conflict decisions: ok')
 console.log('account-sync ui: all ok')

@@ -147,6 +147,7 @@ interface HarnessOptions {
   afterPush?: (response: SyncPushResponse) => void
   onPull?: () => void
   conflictsOnPush?: SyncConflict[]
+  onResolveConflict?: (conflictId: string, resolution: string) => void | Promise<void>
 }
 
 function createHarness(options: HarnessOptions = {}): Harness {
@@ -222,7 +223,9 @@ function createHarness(options: HarnessOptions = {}): Harness {
       return cloud.pull(since, pullLimit)
     },
     listConflicts: async () => [],
-    resolveConflict: async () => undefined,
+    resolveConflict: async (conflictId, resolution) => {
+      await options.onResolveConflict?.(conflictId, resolution)
+    },
   }
 
   const engine = new SyncEngine({
@@ -698,6 +701,67 @@ function withTheme(runtime: LocalRuntimeState, theme: 'dark' | 'light'): LocalRu
     [],
     '合并完成后应收敛',
   )
+}
+
+// -------------------------------------------------------------- 批量裁决
+
+{
+  // 批量裁决：逐条落服务端并汇报进度，但整批只跑一轮同步
+  const resolved: Array<[string, string]> = []
+  const progress: Array<[number, number]> = []
+  let pulls = 0
+  const harness = createHarness({
+    onResolveConflict: (conflictId, resolution) => {
+      resolved.push([conflictId, resolution])
+    },
+    onPull: () => {
+      pulls += 1
+    },
+  })
+
+  await harness.engine.resolveConflicts(
+    [
+      { id: 'c1', resolution: 'accept_local' },
+      { id: 'c2', resolution: 'accept_server' },
+      { id: 'c3', resolution: 'accept_local' },
+    ],
+    (done, total) => progress.push([done, total]),
+  )
+
+  assert.deepEqual(resolved, [
+    ['c1', 'accept_local'],
+    ['c2', 'accept_server'],
+    ['c3', 'accept_local'],
+  ])
+  assert.deepEqual(progress, [
+    [1, 3],
+    [2, 3],
+    [3, 3],
+  ])
+  assert.equal(pulls, 1, '三项决定只该触发一轮同步')
+}
+
+{
+  // 中途失败：停在出错那条，前面的不回退，错误抛给面板去展示重试
+  const resolved: string[] = []
+  const harness = createHarness({
+    onResolveConflict: (conflictId) => {
+      if (conflictId === 'c2') {
+        throw new SyncTransportError({ code: 'SERVICE_UNAVAILABLE', message: 'down', status: 503 })
+      }
+      resolved.push(conflictId)
+    },
+  })
+
+  await assert.rejects(
+    harness.engine.resolveConflicts([
+      { id: 'c1', resolution: 'accept_local' },
+      { id: 'c2', resolution: 'accept_server' },
+      { id: 'c3', resolution: 'accept_local' },
+    ]),
+    (error: unknown) => error instanceof SyncTransportError && error.code === 'SERVICE_UNAVAILABLE',
+  )
+  assert.deepEqual(resolved, ['c1'], '失败后停下，不再继续后面的裁决')
 }
 
 // -------------------------------------------------------------- 登出重置
