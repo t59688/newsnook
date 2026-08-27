@@ -41,3 +41,8 @@ logs/
 
 # wrangler dev 本地状态
 .wrangler/
+
+# cloud 服务的本地环境变量（只提交 cloud/.env.example）
+cloud/.env
+cloud/.env.*
+!cloud/.env.example

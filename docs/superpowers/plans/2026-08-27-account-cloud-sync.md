@@ -40,6 +40,13 @@ secret.entityId       = stable secret key
 
 只有同步专用对象使用 UUID：`deviceId`、`mutationId`、`conflictId`。这样保持 OPML、Preferences 与现有 source/category 语义不变。
 
+实现期补充（与设计文档 §29 同步）：
+
+- `packages/contracts` 是构建产物包（`tsc` → `dist`），并额外导出 `@newsnook/contracts/errors` 纯类型入口；客户端只 `import type` 协议类型，zod 不进 App 包体。根 `npm run build` 先跑 `build:contracts`。
+- 场景预设整体作为一个 `setting` 实体（`entityId = presets`）同步，不拆成细粒度实体。
+- cloud 测试按模块拆脚本：`test:cloud-health` / `test:cloud-auth` / `test:cloud-secrets` / `test:cloud-sync`，`test:cloud` 跑全部；不用 `--test-name-pattern` 过滤。
+- 需要真实 PostgreSQL 的测试读 `TEST_DATABASE_URL`；缺省时显式跳过并说明原因，CI 一定提供。
+
 ## Target File Structure
 
 ```text

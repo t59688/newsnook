@@ -1,7 +1,7 @@
 # NewsNook 账户与云同步设计
 
 > 日期：2026-08-27
-> 状态：已完成架构讨论，待实现计划
+> 状态：已实现（V1）；实现期的取舍见 §29「实现审查结论」
 > 范围：可选账户体系 + 配置/订阅多设备同步
 
 ## 1. 背景与产品边界
@@ -814,3 +814,45 @@ V1 完成后应满足：
 > NewsNook 核心阅读与本地数据路径保持 local-first；账户与云同步是可选增强能力。未登录、断网或 NewsNook Cloud 不可用时，现有本地核心功能必须继续工作。
 
 这不是把业务内容处理迁移到后端，也不允许未来代码因为存在账号体系就默认要求云端在线。
+
+## 29. 实现审查结论
+
+实现前对本设计与 [`实现计划`](../plans/2026-08-27-account-cloud-sync.md) 做了一次一致性审查：整体架构与仓库现状兼容，无需推翻。以下是落地时明确下来的细化，与本文其余部分并列生效。
+
+### 29.1 实体 id 不引入第二套 UUID
+
+§8.1 写的是「每条记录具有稳定 UUID」。NewsNook 的内置信源 id、分类 id、自建源 id 本身就是离线可确定的稳定 id，再叠一层 UUID 映射会破坏 OPML、Preferences 与预设快照的语义。因此：
+
+```text
+subscription.entityId = 现有 source id
+category.entityId     = 现有 category id
+setting.entityId      = 稳定 setting key
+secret.entityId       = 稳定 secret key
+```
+
+只有 `deviceId` / `mutationId` / `conflictId` 使用 UUID。
+
+### 29.2 共享协议包是构建产物，客户端只引类型
+
+`packages/contracts` 用 `tsc` 产出 `dist/`（ESM + `.d.ts`），并暴露两个入口：
+
+- `@newsnook/contracts`：完整协议（含 Zod schema），供 `cloud/` 与测试使用
+- `@newsnook/contracts/errors`：纯 TypeScript 错误码，不依赖 zod
+
+客户端 `src/` 只以 `import type` 引用协议类型、以 `/errors` 子路径引用错误码，因此 zod 不会进入 App 包体。根 `npm run build` 会先构建 contracts。
+
+### 29.3 场景预设作为单个 setting 实体同步
+
+§13 的实体表没有为「场景预设」单列一张表。V1 把整份 `PresetsState` 作为一个 `setting` 实体（`entityId = presets`）同步：预设是一份用户自选的整体布局快照，拆成细粒度实体只会制造大量无意义的结构冲突。
+
+### 29.4 冲突以 `sync_conflicts` 行的 UUID 为准
+
+§13.4 的 `sync_conflicts.id` 落地为 UUID，`POST /api/v1/sync/conflicts/:id/resolve` 只接受 `accept_local` / `accept_server` 两种动作。
+
+### 29.5 测试脚本按模块拆分而非按 name pattern 过滤
+
+仓库既有约定是大量细粒度 `npm run test:*`。cloud 侧同样拆成 `test:cloud-health` / `test:cloud-auth` / `test:cloud-secrets` / `test:cloud-sync`，`test:cloud` 跑全部，比 `--test-name-pattern` 更贴合现有习惯，也更容易在 CI 里定位失败。
+
+### 29.6 集成测试对 PostgreSQL 的依赖是显式的
+
+需要真实数据库的 cloud 测试读 `TEST_DATABASE_URL`；未提供时测试直接跳过并打印原因，本地开发不会因为没装 PostgreSQL 而红。CI 一定提供该变量，因此 §22.2 要求的 `FOR UPDATE`、并发 push、幂等、tombstone、跨用户隔离仍然是真实数据库上的断言。
