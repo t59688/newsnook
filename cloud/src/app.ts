@@ -85,6 +85,23 @@ export async function buildApp(options: BuildAppOptions): Promise<CloudApp> {
     keyGenerator: (request) => request.ip,
   })
 
+  // 无 body 的 POST（撤销设备等）仍可能带 content-type: application/json，
+  // 默认解析器会直接 400；这里把空 body 视作 {}，语义交给各路由的 schema 判定。
+  app.removeContentTypeParser('application/json')
+  app.addContentTypeParser<string>(
+    'application/json',
+    { parseAs: 'string' },
+    (_request, body, done) => {
+      const raw = body.trim()
+      if (!raw) return done(null, {})
+      try {
+        done(null, JSON.parse(raw) as unknown)
+      } catch {
+        done(new ApiError('VALIDATION_FAILED', 'Request body must be valid JSON'))
+      }
+    },
+  )
+
   app.setNotFoundHandler(async (request, reply) =>
     reply.code(404).send(apiErrorBody('NOT_FOUND', 'Route not found', request.id)),
   )

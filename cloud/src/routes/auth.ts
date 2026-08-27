@@ -32,7 +32,8 @@ export async function registerAuthRoutes(
   options: AuthRouteOptions,
 ): Promise<void> {
   await app.register(async (scope) => {
-    // Better Auth 需要原始 body；在这个封装作用域内关掉 JSON 解析
+    // Better Auth 需要原始 body；在这个封装作用域内关掉继承来的 JSON 解析
+    scope.removeContentTypeParser(['application/json', 'text/plain'])
     scope.addContentTypeParser(
       ['application/json', 'application/x-www-form-urlencoded', 'text/plain'],
       { parseAs: 'string' },

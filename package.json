@@ -89,7 +89,7 @@
     "test:product-tour": "npx tsx scripts/product-tour.test.ts",
     "test:webview-css-compat": "npx tsx scripts/webview-css-compat.test.ts",
     "test:cloud-contracts": "npm run build:contracts && npx tsx scripts/cloud-sync-contracts.test.ts",
-    "test:cloud": "npm run build:contracts && npx tsx --test cloud/tests/*.test.ts",
+    "test:cloud": "npm run build:contracts && npx tsx --test --test-concurrency=1 cloud/tests/*.test.ts",
     "test:cloud-health": "npm run build:contracts && npx tsx --test cloud/tests/health.test.ts",
     "test:cloud-auth": "npm run build:contracts && npx tsx --test cloud/tests/auth.test.ts",
     "test:cloud-secrets": "npm run build:contracts && npx tsx --test cloud/tests/secrets.test.ts",
