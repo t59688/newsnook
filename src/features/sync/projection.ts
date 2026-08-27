@@ -59,6 +59,72 @@ export interface ProjectionInput {
   presets: PresetsState
 }
 
+/**
+ * Secret 在 `Preferences` 里的落点。
+ *
+ * 同步、Keystore 迁移与运行时回填三处共用这张表：Secret 的键名只在这里定义一次，
+ * 新增一种密钥时不必再去改存储层。
+ */
+export interface SecretField {
+  key: string
+  read: (prefs: Preferences) => string
+  write: (prefs: Preferences, value: string) => Preferences
+}
+
+export const SECRET_FIELDS: readonly SecretField[] = [
+  ...CLOUD_TRANSLATION_PROVIDER_IDS.map((provider) => ({
+    key: translationSecretKey(provider),
+    read: (prefs: Preferences) => prefs.translation.cloud[provider]?.apiKey ?? '',
+    write: (prefs: Preferences, value: string): Preferences => ({
+      ...prefs,
+      translation: {
+        ...prefs.translation,
+        cloud: {
+          ...prefs.translation.cloud,
+          [provider]: { ...prefs.translation.cloud[provider], apiKey: value },
+        },
+      },
+    }),
+  })),
+  {
+    key: PROXY_URL_SECRET_KEY,
+    read: (prefs: Preferences) => prefs.proxy.proxyUrl ?? '',
+    write: (prefs: Preferences, value: string): Preferences => ({
+      ...prefs,
+      proxy: { ...prefs.proxy, proxyUrl: value },
+    }),
+  },
+]
+
+/** 当前偏好里所有非空 Secret；空值不出现在结果里 */
+export function collectSecrets(prefs: Preferences): Record<string, string> {
+  const values: Record<string, string> = {}
+  for (const field of SECRET_FIELDS) {
+    const value = field.read(prefs)
+    if (value) values[field.key] = value
+  }
+  return values
+}
+
+/** 把 Secret 字段清空，用于落盘前的净化（明文只留在内存与 Keystore） */
+export function stripSecrets(prefs: Preferences): Preferences {
+  let next = prefs
+  for (const field of SECRET_FIELDS) {
+    if (field.read(next)) next = field.write(next, '')
+  }
+  return next
+}
+
+/** 把安全存储里的明文回填到运行时偏好；缺失的键保持原值不动 */
+export function applySecrets(prefs: Preferences, values: Record<string, string>): Preferences {
+  let next = prefs
+  for (const field of SECRET_FIELDS) {
+    const value = values[field.key]
+    if (typeof value === 'string' && value !== field.read(next)) next = field.write(next, value)
+  }
+  return next
+}
+
 const BUILTIN_SOURCE_IDS = new Set(SOURCES.map((source) => source.id))
 const BUILTIN_CATEGORY_IDS = CATEGORIES.map((category) => category.id)
 

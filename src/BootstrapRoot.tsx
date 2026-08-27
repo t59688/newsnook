@@ -3,6 +3,10 @@ import { Capacitor } from '@capacitor/core'
 
 import App from './App'
 import { StartupSplash, type SplashMode } from './components/StartupSplash'
+import {
+  hydrateRuntimeSecrets,
+  migrateLegacyNativeSecretsOnce,
+} from './features/account/secretStore'
 import { initCompositorWakeListener } from './lib/compositorWake'
 import { applyNativeChrome } from './lib/nativeChrome'
 import { bootMark, bootMeasure } from './lib/startupPerf'
@@ -19,12 +23,23 @@ const SPLASH_ENABLED = Capacitor.getPlatform() === 'android' || import.meta.env.
 /** 启动页淡出时长，与 StartupSplash.css 的 --splash-exit 保持一致 */
 const SPLASH_EXIT_MS = 320
 
-/** 先恢复原生偏好，再挂载业务界面，避免首页用旧镜像反写原生存储。 */
+/**
+ * 先恢复原生偏好，再挂载业务界面，避免首页用旧镜像反写原生存储。
+ *
+ * Secret 的两步必须排在 App 挂载之前：先把历史遗留在普通偏好里的密钥搬进 Keystore，
+ * 再把 Keystore 里的明文读回内存，`usePreferences` 初始化时才拿得到完整配置，
+ * 翻译与代理不会出现「启动后短暂没有密钥」的窗口。
+ */
 async function bootstrap(): Promise<void> {
   bootMark('hydrate-start')
   await hydrateNativeStorage()
   bootMark('hydrate-done')
   bootMeasure('hydrate', 'hydrate-start', 'hydrate-done')
+
+  await migrateLegacyNativeSecretsOnce()
+  await hydrateRuntimeSecrets()
+  bootMark('secrets-done')
+
   const prefs = normalizePreferences(loadPreferences())
   applyThemeScheme(prefs.scheme, { custom: prefs.customScheme })
   const theme = applyTheme(prefs.theme)

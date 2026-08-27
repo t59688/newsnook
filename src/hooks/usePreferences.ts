@@ -2,6 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { applyNativeChrome } from '../lib/nativeChrome'
 import {
+  persistRuntimeSecrets,
+  sanitizeForPersistence,
+  withRuntimeSecrets,
+} from '../features/account/secretStore'
+import {
   isBergamotTranslationAvailable,
   isLocalTranslationAvailable,
 } from '../features/translation/native'
@@ -60,7 +65,8 @@ function resolveFallbackProvider(prefs: Preferences): Preferences['translation']
 
 export function usePreferences(): PreferencesApi {
   const [prefs, setPrefs] = useState<Preferences>(() => {
-    const normalized = normalizePreferences(loadPreferences())
+    // 原生上 Secret 明文来自 Keystore（BootstrapRoot 已在挂载前回填），普通存储里是空串
+    const normalized = withRuntimeSecrets(normalizePreferences(loadPreferences()))
     const provider = normalized.translation.provider
     if (!isLocalTranslationProviderId(provider)) {
       return normalized
@@ -82,7 +88,9 @@ export function usePreferences(): PreferencesApi {
   const schemeApplied = useRef(false)
 
   useEffect(() => {
-    savePreferences(prefs)
+    // 运行时 prefs 仍带明文，翻译/代理调用方不变；落盘的那份在原生上被净化
+    savePreferences(sanitizeForPersistence(prefs))
+    void persistRuntimeSecrets(prefs)
     applyTypography(prefs)
     setRuntimeProxyPrefs(prefs.proxy)
     setRuntimeWifiOnlyAutoLoadMedia(Boolean(prefs.wifiOnlyAutoLoadMedia))
