@@ -29,6 +29,15 @@ for (const requiredId of [
 assert.equal(PRODUCT_TOUR_STEPS[0].id, 'welcome')
 assert.equal(PRODUCT_TOUR_STEPS[0].selector, null, '欢迎卡无高亮目标，居中展示')
 
+// 云同步是可选加分项：引导必须继续说明「不用账号也能用」，且不得变成登录向导
+assert.match(PRODUCT_TOUR_STEPS[0].description, /无需账号/, '欢迎卡说明账号可选')
+for (const step of PRODUCT_TOUR_STEPS) {
+  assert.ok(
+    !/登录|注册|账户与同步/.test(step.title + step.description),
+    `${step.id}: 功能引导不承担登录流程`,
+  )
+}
+
 const validTabs: TourTab[] = ['today', 'me']
 for (const step of PRODUCT_TOUR_STEPS) {
   assert.ok(validTabs.includes(step.tab), `${step.id}: tab 合法`)

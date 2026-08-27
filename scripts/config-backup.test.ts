@@ -7,9 +7,14 @@ import {
   backupFileName,
   collectBackup,
   parseBackup,
+  captureSyncSafetySnapshot,
+  dropSyncSafetySnapshot,
+  readSyncSafetySnapshot,
   restoreBackup,
+  restoreSyncSafetySnapshot,
   serializeBackup,
   summarizeBackup,
+  SYNC_SAFETY_SECTIONS,
 } from '../src/lib/backup'
 import {
   READING_POSITION_LIMIT,
@@ -218,5 +223,38 @@ assert.equal(typeof healed.typography.fontScale, 'number')
 
 // 14. 文件名带时间戳，便于多份备份并存
 assert.equal(backupFileName(new Date(2026, 7, 24, 4, 5)), 'newsnook-backup-20260824-0405.json')
+
+// 15. 首次同步前的安全快照：只覆盖同步域，不碰阅读痕迹
+assert.equal(readSyncSafetySnapshot(), null, '没做过选择时没有快照')
+
+memory.setItem('newsnook:enabled', JSON.stringify(['sspai', 'ithome']))
+memory.setItem('newsnook:read', JSON.stringify(['r1', 'r2', 'r3']))
+const snapshot = captureSyncSafetySnapshot('1.6.8')
+assert.ok(snapshot.createdAt > 0)
+assert.deepEqual(SYNC_SAFETY_SECTIONS, ['preferences', 'presets', 'enabledSources'])
+// 正文缓存、稍后读、已读、阅读位置都不属于同步域，快照里也不该出现
+assert.equal(snapshot.payload.data.laterItems, undefined)
+assert.equal(snapshot.payload.data.readIds, undefined)
+assert.equal(snapshot.payload.data.readingPositions, undefined)
+assert.ok(snapshot.payload.data.preferences)
+
+// 同步把订阅改花了，用户回滚只应拿回配置，已读记录原样留着
+memory.setItem('newsnook:enabled', JSON.stringify(['cloud-overwrote-this']))
+memory.setItem('newsnook:read', JSON.stringify(['r1', 'r2', 'r3', 'r4']))
+const rolledBack = await restoreSyncSafetySnapshot()
+assert.ok(rolledBack)
+assert.ok(rolledBack!.restored.includes('enabledSources'))
+assert.deepEqual(JSON.parse(memory.getItem('newsnook:enabled')!), ['sspai', 'ithome'])
+assert.deepEqual(JSON.parse(memory.getItem('newsnook:read')!), ['r1', 'r2', 'r3', 'r4'])
+
+// 快照损坏当作没有：它是兜底，不该反过来卡住同步
+memory.setItem('newsnook:sync-safety-snapshot:v1', '{"createdAt":1,"payload":{"format":"nope"}}')
+assert.equal(readSyncSafetySnapshot(), null)
+
+dropSyncSafetySnapshot()
+assert.equal(readSyncSafetySnapshot(), null)
+assert.equal(await restoreSyncSafetySnapshot(), null, '没有快照时回滚是空操作')
+
+console.log('✓ pre-sync safety snapshot')
 
 console.log('Config backup & reading position tests: ALL PASSED')

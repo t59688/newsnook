@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 
 import { SettingsHint, SettingsSection, SettingsShell } from '../../components/SettingsShell'
+import { accountScreenModel } from '../../features/account/screenModel'
 import type { AccountApi } from '../../features/account/useAccount'
 import type { SocialProvider } from '../../features/account/types'
 import { describeDevice, listDevices, revokeDevice } from '../../features/sync/devices'
@@ -101,7 +102,13 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
 
   const authenticated = account.status === 'authenticated'
   const status = sync.status
-  const needsFirstSync = authenticated && !status.firstSyncCompleted
+  const { view } = accountScreenModel({
+    accountStatus: account.status,
+    firstSyncCompleted: status.firstSyncCompleted,
+    conflictCount: sync.conflicts.length,
+    hasSafetySnapshot: snapshotAt !== null,
+  })
+  const needsFirstSync = view === 'first-sync'
 
   const caption = syncStatusCaption(status, { authenticated })
 
@@ -209,7 +216,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
         </div>
       )}
 
-      {account.status === 'restoring' && (
+      {view === 'restoring' && (
         <SettingsSection title="账户">
           <Card>
             <p className="flex items-center gap-2 text-[13px] text-paper-muted">
@@ -220,7 +227,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
         </SettingsSection>
       )}
 
-      {account.status === 'anonymous' && (
+      {view === 'anonymous' && (
         <>
           <SettingsSection title={mode === 'sign-up' ? '注册' : mode === 'forgot' ? '找回密码' : '登录'}>
             <Card>
@@ -363,7 +370,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
         </SettingsSection>
       )}
 
-      {authenticated && !needsFirstSync && (
+      {view === 'ready' && (
         <>
           <SettingsSection title="同步状态">
             <Card>

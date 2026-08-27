@@ -19,7 +19,7 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     selector: null,
     title: '欢迎使用有所闻',
     description:
-      '一件本地阅读工具：无账号、无推荐算法，读什么由你决定。花半分钟认识常用功能，右上角可随时跳过。',
+      '一件本地阅读工具：无需账号也能使用、无推荐算法，读什么由你决定。花半分钟认识常用功能，右上角可随时跳过。',
   },
   {
     id: 'category-rail',
