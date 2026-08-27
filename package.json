@@ -53,6 +53,7 @@
     "test:chinese-variant": "rolldown scripts/chinese-variant.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/chinese-variant.test.mjs && node node_modules/.cache/newsnook/chinese-variant.test.mjs",
     "test:https-upgrade": "rolldown scripts/https-upgrade.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/https-upgrade.test.mjs && node node_modules/.cache/newsnook/https-upgrade.test.mjs",
     "test:resolve-body": "rolldown scripts/resolve-body-substantial.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/resolve-body-substantial.test.mjs && node node_modules/.cache/newsnook/resolve-body-substantial.test.mjs",
+    "test:openai-news-body": "npx tsx scripts/openai-news-body.test.ts",
     "test:embed-noise": "rolldown scripts/embed-noise.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/embed-noise.test.mjs && node node_modules/.cache/newsnook/embed-noise.test.mjs",
     "test:soft-404": "rolldown scripts/soft-404.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/soft-404.test.mjs && node node_modules/.cache/newsnook/soft-404.test.mjs",
     "test:typography": "rolldown scripts/paragraph-typography.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/paragraph-typography.test.mjs && node node_modules/.cache/newsnook/paragraph-typography.test.mjs",

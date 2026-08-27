@@ -369,7 +369,7 @@ Readability 兜底（实测正文块 2.4k–10.6k 字），站内全文成立。
 | `claude-academy-use-cases` | claude-academy | academy.claude.com 为 TanStack SSR 站，无 RSS，sitemap 无 lastmod。卡片 `<a href="/use-cases/<slug>"><h3>标题</h3></a>` 静态渲染；列表与详情均无日期 → `hasRealDate=false` + 递减伪时序（同 `paulgraham`，feed 层会排在有日期条目之后）。详情页为完整文字指南（实测 5.9k 字符文本），Readability 正常 |
 | `claude-academy-tutorials` | claude-academy | 同上卡片结构（31 条）。**详情为视频教程**，服务端只渲染标题 + 简介（约 375 字符），正文偏薄、播放器为客户端 SPA 组件；站内可读标题/简介，深入观看需打开原文，属已知限制 |
 | `openai-cookbook` | openai-cookbook | developers.openai.com 为 Astro 站。站级 `/rss.xml` 混入 YouTube 与 platform.openai.com 文档链接，不适合做列表源；解析 `/cookbook` 列表行（`line-clamp-1` 标题 + `text-right` 日期），Featured 卡片与列表行重复时带日期版本优先，90 条全带日期。详情页服务端渲染全文（实测 5.6 万字符），Readability 正常 |
-| `openai-news`（既有） | feed | RSS 复测正常（约 700KB 全量目录，`lastBuildDate` 当天）；由 `enabled: false` 改为 `true` |
+| `openai-news`（既有） | feed | RSS 复测正常（约 700KB 全量目录，`lastBuildDate` 当天）；由 `enabled: false` 改为 `true`。详情页 SSR 全文在 `<article>`，但多层 Tailwind 栅格会让 Readability 只抽导语；`extractOpenaiNewsBodyHtml` 走 article 定制抽取 |
 
 尾斜杠陷阱（与 `anthropic` 同类，代理 rewrite 不跟随重定向，注册 URL 一律无尾斜杠）：
 `academy.claude.com/use-cases/` 307 → 无斜杠；`developers.openai.com/cookbook/` 308 → 无斜杠；

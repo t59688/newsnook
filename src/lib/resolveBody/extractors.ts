@@ -191,6 +191,74 @@ function isUisdcPageUrl(pageUrl: string): boolean {
   }
 }
 
+/** OpenAI News 详情（openai.com/index/…）：SSR 全文在 `<article>`，但多层 Tailwind 栅格会让 Readability 只咬住导语几段。 */
+export function isOpenaiNewsArticleUrl(pageUrl: string): boolean {
+  try {
+    const parsed = new URL(pageUrl)
+    const host = parsed.hostname.toLowerCase()
+    if (host !== 'openai.com' && host !== 'www.openai.com') return false
+    return parsed.pathname.startsWith('/index/')
+  } catch {
+    return false
+  }
+}
+
+/**
+ * OpenAI News 正文：取 `<article>` 并去掉导航 / 分享 / TOC / 报告外链按钮等壳。
+ * 实测 Hugging Face 事件长文 Readability 仅约 9% 覆盖；本路径可收回几乎全部段落。
+ */
+export function extractOpenaiNewsBodyHtml(pageHtml: string): string | undefined {
+  const { document } = parseHTML(pageHtml)
+  const root = document.querySelector('article')
+  if (!root) return undefined
+
+  const clone = root.cloneNode(true) as typeof root
+  clone
+    .querySelectorAll(
+      [
+        'nav',
+        'header',
+        'footer',
+        'aside',
+        'form',
+        'script',
+        'style',
+        'noscript',
+        'button',
+        '[role="navigation"]',
+        '[aria-label*="Table of contents" i]',
+        '[aria-label*="Share" i]',
+      ].join(','),
+    )
+    .forEach((node) => node.remove())
+
+  clone.querySelectorAll('a').forEach((anchor) => {
+    const label = (anchor.textContent || '').replace(/\s+/g, ' ').trim()
+    if (
+      /^(share|copy link|linkedin|x|twitter|facebook|email)$/i.test(label) ||
+      /^read (the )?technical report$/i.test(label) ||
+      /^read metr report/i.test(label) ||
+      /^watch black hat/i.test(label)
+    ) {
+      const block = anchor.closest('div,li,p') || anchor
+      block.remove()
+    }
+  })
+
+  // Next.js streaming 占位
+  clone.querySelectorAll('*').forEach((node) => {
+    const text = (node.textContent || '').replace(/\s+/g, ' ').trim()
+    if (text === 'Loading…' || text === 'Loading...') {
+      node.remove()
+    }
+  })
+
+  const html = ((clone as { innerHTML?: string }).innerHTML ?? '').trim()
+  if (!html) return undefined
+  if (stripTags(html).length < 200) return undefined
+  return html
+}
+
 /** 公众号文章页（/s/<slug> 与 /s?__biz=… 两种形态同域） */
 export function isWechatArticleUrl(pageUrl: string): boolean {
   try {
@@ -239,6 +307,16 @@ export async function extractWithReadability(
 ): Promise<ResolvedBody> {
   if (isUisdcPageUrl(pageUrl)) {
     const custom = extractUisdcBodyHtml(pageHtml)
+    if (custom) {
+      return {
+        contentHtml: await absolutizeHtml(custom, pageUrl),
+        bodySource: 'readability',
+      }
+    }
+  }
+
+  if (isOpenaiNewsArticleUrl(pageUrl)) {
+    const custom = extractOpenaiNewsBodyHtml(pageHtml)
     if (custom) {
       return {
         contentHtml: await absolutizeHtml(custom, pageUrl),

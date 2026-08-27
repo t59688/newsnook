@@ -1,7 +1,7 @@
 /**
  * 站内正文解析入口。实现按边界拆在 resolveBody/ 子模块：
  * - guards：反爬/付费墙识别、摘要 Feed 判定、软降级正文
- * - extractors：Readability 主路径与优设/公众号站点定制抽取
+ * - extractors：Readability 主路径与优设/公众号/OpenAI News 站点定制抽取
  * - siteBodies：虎嗅/网易/知乎/机器之心详情接口正文
  * - video：视频占位正文与媒体嗅探增量更新
  * 对外导入路径保持 `lib/resolveBody` 不变。
