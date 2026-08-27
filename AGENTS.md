@@ -73,7 +73,9 @@ newsnook/
 | 分类 / 场景预设 | `sources/categories.ts` · `presets.ts` · `hooks/usePresets.ts` |
 | 列表拉取与缓存 | `hooks/useFeeds.ts` · `lib/http.ts` · `lib/storage.ts` |
 | 配置备份与恢复 | `lib/backup.ts` · `components/BackupPanel.tsx`（入口在 `screens/settings/StorageScreen.tsx`）；与云同步并存，本地文件备份不依赖账号 |
-| 账户 / 云同步 | `features/account/` · `features/sync/` · `screens/settings/AccountSyncScreen.tsx` · `cloud/` · `packages/contracts/`；规格 [`docs/superpowers/specs/2026-08-27-account-cloud-sync-design.md`](./docs/superpowers/specs/2026-08-27-account-cloud-sync-design.md) |
+| 账户（登录 / Session / SecureStore） | `features/account/`：`authClient.ts`（Better Auth HTTP + Web Cookie / Android Bearer） · `useAccount.ts` · `secureStore.ts` + `secretStore.ts`（Keystore 与 Secret 水合） · `mobileCallback.ts`（`newsnook://auth/callback`） · `screenModel.ts`（页面状态机） |
+| 云同步（客户端） | `features/sync/`：`projection.ts`（本地态 → 同步实体） · `reconcile.ts`（影子对账 + Outbox） · `SyncEngine.ts`（push/pull/apply/退避） · `merge.ts` · `runtimeAdapter.ts` + `useCloudSync.ts`（接 React） · `notifier.ts`（Toast / 通知分寸） · `firstSync.ts` · `devices.ts` |
+| 云同步（服务端与协议） | `cloud/`（Fastify + PostgreSQL + Better Auth；push 用 `pg_advisory_xact_lock` 串行化） · `packages/contracts/`（zod schema；`./protocol` 子路径供客户端免 zod 引用）；部署见 [`docs/cloud-deploy.md`](./docs/cloud-deploy.md)，规格见 [`docs/superpowers/specs/2026-08-27-account-cloud-sync-design.md`](./docs/superpowers/specs/2026-08-27-account-cloud-sync-design.md) |
 | 阅读位置记忆 | `lib/readingPosition.ts`（`newsnook:reading-pos`；滚动与墨水屏分页共用一张表） |
 | 分享 / 阅读器溢出菜单 | `lib/shareToken.ts`（v2 token 编解码，App 与边缘 worker 共用） · `lib/shareLink.ts`（站内短链 `news.aizeek.com/a/<token>` 组装 + 深链冷启动） · `lib/articleId.ts`（收发两端共用的条目 id 规则） · `lib/shareArticle.ts` · `components/ShareArticleSheet.tsx` · `components/ReaderMoreMenu.tsx` · `components/EinkReaderMenu.tsx` · `functions/lib/shareCard.ts`（爬虫抓 `/a/*` 时的 Open Graph 卡片） |
 | 本地离线搜索 | `lib/localSearch.ts` · `screens/settings/LocalSearchScreen.tsx`（与 `web-catalog` 的联网站内搜索无关） |
@@ -188,6 +190,21 @@ npm run test:local-search
 npm run test:recommend
 npm run test:product-tour
 
+# 账户与云同步（客户端）
+npm run test:sync-projection
+npm run test:sync-engine
+npm run test:account-auth
+npm run test:secure-secret-hydration
+npm run test:cloud-sync-runtime
+npm run test:account-sync-ui
+npm run test:sync-notifier
+
+# 账户与云同步（协议与服务端；cloud 需要 TEST_DATABASE_URL 指向真实 PostgreSQL）
+npm run test:cloud-contracts
+npm run test:cloud            # 或 test:cloud-{health,auth,secrets,sync}
+npm run cloud:migrate         # 显式迁移，API 启动不自动跑
+npm run cloud:build
+
 npm run android:run         # 轻量 cloud
 npm run android:run:local   # 完整 local（Bergamot 需先 bergamot:init）
 npm run bergamot:init
@@ -213,6 +230,7 @@ Android SDK / 签名 / 发版细节：[`docs/android-build.md`](./docs/android-b
 | [`docs/user-guide.md`](./docs/user-guide.md) | 用户操作手册 |
 | [`docs/local-recommend.md`](./docs/local-recommend.md) | 本地推荐：原理、权重与效果（与代码同步） |
 | [`docs/android-build.md`](./docs/android-build.md) | 构建、签名、CI |
+| [`docs/cloud-deploy.md`](./docs/cloud-deploy.md) | NewsNook Cloud 部署、迁移、备份与冒烟 |
 | [`docs/news-sources.md`](./docs/news-sources.md) | 源探测与频道笔记 |
 | [`docs/legal.md`](./docs/legal.md) | 法律与声明 |
 | [`SECURITY.md`](./SECURITY.md) | 安全报告 |

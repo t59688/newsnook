@@ -453,13 +453,44 @@ GET /a/<token>/og.png[?src=<上游首图>]   ← 卡片首图的同域端点（�
 **模块边界**
 
 ```text
-src/features/account/     登录、Session、设备身份、平台 auth 适配
-src/features/sync/        SyncEngine、Outbox、Cursor、Merge、ConflictResolver
+src/features/account/     authClient(Better Auth HTTP) · useAccount · secureStore/secretStore
+                          mobileCallback(newsnook://auth/callback) · screenModel
+src/features/sync/        projection → reconcile(影子 + Outbox) → SyncEngine(push/pull/apply)
+                          merge · runtimeAdapter/useCloudSync(接 React) · notifier · firstSync · devices
 cloud/                    Fastify + PostgreSQL + Better Auth
-packages/contracts/       共享协议与错误码
+packages/contracts/       共享协议与错误码（`./protocol` 子路径免 zod，供客户端引用）
 ```
 
-Web 用 HttpOnly Cookie Session；Android 用 Keystore-backed SecureStore。业务 API 从 Session 推导 `userId`，从不信任客户端 payload 内的用户 id。Secret 上传但不做 E2EE；服务端 AES-GCM 加密，日志禁止明文。
+**客户端数据流**：运行时真相仍是 `usePreferences` / `enabledIds` / `usePresets`。
+`projectLocalState` 把它们投影成同步实体并算指纹，`reconcileProjection` 与影子表比对生成 Outbox；
+push 成功后写回影子，delta pull 的记录经 apply journal 落地（崩溃后重放），
+再由 `runtimeAdapter` 写回 React 状态。应用远端记录时不产生反向 mutation，避免两台设备互相对推。
+
+**同步触发**：启动（已登录）、本地投影指纹变化后 debounce 1.5s、回到前台、网络恢复、手动。
+无轮询、无 WebSocket。失败按指数退避 + 抖动重试，429 遵守 `Retry-After`，401/403 直接暂停并提示重新登录。
+
+**首次同步闸门**：`LocalSyncState.firstSyncCompleted` 为 false 时日常同步不会跑，
+必须先由用户在「账户与同步」里选 使用本机 / 使用云端 / 合并。选择前自动留一份
+「同步前配置」本机快照（`lib/backup.ts` 的 `captureSyncSafetySnapshot`，只含 preferences/presets/enabledSources），
+可整包回滚，不依赖服务端。
+
+**本地键**（均在 `newsnook:` 前缀下，见 `lib/storage.ts`）：`sync-state:v1`（设备 id、影子、Outbox、游标）、
+`sync-journal:v1`（apply 重放）、`sync-onboarding-seen`、`sync-safety-snapshot:v1`。
+Outbox 落盘前 Secret 载荷会被抹成 null，真正的值在 push 前一刻从活投影里取。
+
+**会话与 Secret**：Web 用 HttpOnly Cookie Session；Android 用 Keystore-backed SecureStore
+（`SecureStorePlugin.java`，AES/GCM，密钥不出 Keystore），长期 Session 与同步下来的 Secret 明文只存这里，
+不落普通 Preferences/localStorage。Android 社交登录走系统浏览器 → 一次性令牌深链 → 换 Session，
+长期 token 绝不出现在深链里。业务 API 从 Session 推导 `userId`，从不信任客户端 payload 内的用户 id。
+Secret 上传但不做 E2EE；服务端 AES-256-GCM 加密（AAD 绑定 `userId:secretKey`），日志与推送摘要禁止明文。
+
+**服务端**：同一用户的并发 push 由 `pg_advisory_xact_lock` 串行化，整批在一个事务里应用，
+`sync_mutations` 记录 mutationId 实现幂等重试。没有 Redis / MQ / 分布式锁。
+部署、迁移、备份与冒烟见 [云端部署运维](./cloud-deploy.md)。
+
+**通知分寸**：前台一律用应用内 `SyncToast`；Android 通知栏只留给首次同步完成、连续失败、待裁决冲突三类
+（`features/sync/notifier.ts` 的 `mapSyncEventToNotification` + `SyncNotificationPlugin.java`，
+单一 `newsnook-sync` 低优先级渠道、稳定通知 id）。例行后台同步成功不发任何通知，也不为同步在冷启动索要通知权限。
 
 ## 9. HTTP、代理与网络安全
 
@@ -597,7 +628,7 @@ npm run android:apk | android:aab
 | 正文缓存 | `src/lib/bodyCache.ts` |
 | 持久化 | `src/lib/storage.ts` |
 | 配置备份 | `src/lib/backup.ts` · `src/components/BackupPanel.tsx` |
-| 账户 / 云同步 | `src/features/account/` · `src/features/sync/` · `src/screens/settings/AccountSyncScreen.tsx` · `cloud/` · `packages/contracts/` · [设计](./superpowers/specs/2026-08-27-account-cloud-sync-design.md) |
+| 账户 / 云同步 | `src/features/account/` · `src/features/sync/` · `src/screens/settings/AccountSyncScreen.tsx` · `src/components/SyncToast.tsx` · `cloud/` · `packages/contracts/` · [部署](./cloud-deploy.md) · [设计](./superpowers/specs/2026-08-27-account-cloud-sync-design.md) |
 | 阅读位置 | `src/lib/readingPosition.ts` |
 | 分享 | `src/lib/shareLink.ts` · `src/lib/shareToken.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` · `functions/lib/shareCard.ts` |
 | 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
