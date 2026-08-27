@@ -1,0 +1,32 @@
+{
+  "name": "@newsnook/cloud",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NewsNook Cloud：可选账户与配置同步 API（Fastify + PostgreSQL + Better Auth）。不托管文章内容。",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "tsx --test tests/*.test.ts",
+    "db:migrate": "tsx src/db/migrate.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.1.0",
+    "@fastify/rate-limit": "^10.3.0",
+    "@newsnook/contracts": "*",
+    "better-auth": "^1.7.2",
+    "fastify": "^5.6.1",
+    "nodemailer": "^7.0.9",
+    "pg": "^8.16.3",
+    "zod": "^4.1.14"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "@types/nodemailer": "^7.0.4",
+    "@types/pg": "^8.15.5",
+    "tsx": "^4.23.12",
+    "typescript": "~6.0.2"
+  }
+}
