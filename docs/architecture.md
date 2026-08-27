@@ -1,21 +1,22 @@
 # News Nook 应用架构
 
-> 日期：2026-08-12  
-> 范围：仓库根目录主工程（Vite + React + Capacitor Android）  
-> 相关文档：[产品设计](./superpowers/specs/2026-07-31-newsnook-mobile-app-design.md)、[信源探测笔记](./news-sources.md)、[构建说明](./android-build.md)、[用户手册](./user-guide.md)、[本地推荐](./local-recommend.md)
+> 日期：2026-08-27  
+> 范围：仓库根目录主工程（Vite + React + Capacitor Android）+ 可选 `cloud/` 同步服务  
+> 相关文档：[产品设计](./superpowers/specs/2026-07-31-newsnook-mobile-app-design.md)、[账户与云同步](./superpowers/specs/2026-08-27-account-cloud-sync-design.md)、[信源探测笔记](./news-sources.md)、[构建说明](./android-build.md)、[用户手册](./user-guide.md)、[本地推荐](./local-recommend.md)
 
 ## 1. 一句话
 
-News Nook（有所闻）是**无后端**移动新闻阅读客户端：静态源注册表驱动，客户端直连上游 RSS/JSON，站内解析全文，经 Capacitor 打包为 Android APK。
+News Nook（有所闻）是**本地优先**的移动新闻阅读客户端：静态源注册表驱动，客户端直连上游 RSS/JSON，站内解析全文，经 Capacitor 打包为 Android APK。可选账户与云同步仅增强跨设备配置，不是阅读必经路径。
 
 ## 2. 目标与约束
 
 | 约束 | 含义 |
 |---|---|
-| Backendless | 无自建 API、无账号、无云同步；列表与正文均由客户端直连上游 |
+| Local-first | 未登录、断网、NewsNook Cloud 故障均不能阻止订阅浏览、正文解析与离线缓存阅读 |
+| 可选云同步 | 可同步订阅 / 分类排序启停 / 跨设备设置 / Secret；列表与正文仍由客户端直连上游；**不同步**正文、缓存、稍后读、已读、阅读位置 |
 | 站内全文 | 点开条目必须在 App 内呈现可读正文；「打开原文」只能是次要操作 |
 | 双运行时 | Web 端（开发态靠 Vite 代理，生产态靠 Cloudflare Pages Functions 边缘代理）；App 运行态靠 `CapacitorHttp` 与用户可选代理隧道 |
-| 本地持久化 | 偏好、稍后读、已读、场景预设、列表/正文缓存全部落在本机 |
+| 本地持久化 | 偏好、稍后读、已读、场景预设、列表/正文缓存先落本机；云端是同步域投影，运行时真相仍在本地 |
 
 ## 3. 仓库布局
 
@@ -23,6 +24,8 @@ News Nook（有所闻）是**无后端**移动新闻阅读客户端：静态源�
 newsnook/
 ├── src/                      # React 应用
 ├── android/                  # Capacitor 原生工程（入库）
+├── cloud/                    # 可选账户与同步 API（Fastify + PostgreSQL）
+├── packages/contracts/       # 客户端与 cloud 共享的同步协议 / DTO
 ├── functions/                # 生产边缘：/api/* 反向代理 + /a/* 社交分享卡片
 ├── public/                   # favicon、品牌 SVG、字体
 ├── assets/                   # 启动图 / Android 图标源图
@@ -42,7 +45,8 @@ newsnook/
 | UI | React 19、TypeScript、Tailwind CSS v4、lucide-react、animejs |
 | 解析 | fast-xml-parser、@mozilla/readability、linkedom、DOMPurify |
 | 媒体 | hls.js（HLS）、dash.js（MPEG-DASH）、`features/mediaSniffer`（资源发现与媒体图） |
-| 原生 | Capacitor 8（App / Browser / Preferences / StatusBar / CapacitorHttp / Share）+ 可选 ML Kit / Bergamot 翻译 + DeviceMediaControls + VolumePageTurn + MediaSniffer |
+| 原生 | Capacitor 8（App / Browser / Preferences / StatusBar / CapacitorHttp / Share）+ 可选 ML Kit / Bergamot 翻译 + DeviceMediaControls + VolumePageTurn + MediaSniffer + SecureStore（账户 Session / Secret） |
+| 云同步（可选） | Fastify + PostgreSQL + Better Auth；协议共享包 `@newsnook/contracts` |
 | 构建 | Vite 8、oxlint、Gradle（minSdk 24 / targetSdk 36） |
 
 ## 5. 分层架构
@@ -57,6 +61,8 @@ newsnook/
 │  hooks/useFeeds · usePreferences · usePullToRefresh          │
 │  hooks/usePresets · usePagedReader                           │
 │  sources/registry · categories · preferences · presets       │
+│  features/account/       可选登录 / Session / 设备身份         │
+│  features/sync/          SyncEngine · Outbox · 合并与冲突      │
 │  features/translation/   TranslationService + Provider 接口    │
 │  features/proxy/         智能分流 / 隧道 / 原生 HTTP 封装       │
 │  features/comments/      跟贴 Provider（网易/知乎/煎蛋等）      │
@@ -66,14 +72,23 @@ newsnook/
 │  Data                                                        │
 │  lib/http · parseFeed · resolveBody · bodyCache · storage    │
 │  lib/opml · sanitize · normalizeImages · eink                │
+│  packages/contracts/     与 cloud 共享的同步协议 / DTO         │
 ├──────────────────────────────────────────────────────────────┤
-│  Runtime / Native                                            │
+│  Runtime / Native / Cloud                                    │
 │  Web: Vite /api 代理（开发）/ Cloudflare Functions（生产）      │
 │  App: CapacitorHttp + Preferences + 可选 ML Kit / Bergamot    │
+│  Cloud（可选）: cloud/ Fastify + PostgreSQL + Better Auth     │
 └──────────────────────────────────────────────────────────────┘
 ```
 
-依赖方向严格自上而下：UI 不直接拼上游 URL；源 URL 与 kind 只来自 `sources/registry.ts`（含用户自建源）。
+依赖方向严格自上而下：
+
+```text
+UI → account/sync features → local adapters / contracts → cloud API
+reading / feed / body path ------------------------------------→ upstream sites
+```
+
+UI 不直接拼上游 URL；源 URL 与 kind 只来自 `sources/registry.ts`（含用户自建源）。现有业务模块不得直接依赖云 API：变更先写本地，再由 Sync Engine 经 Outbox 异步上传。
 
 ## 6. 信息架构与导航
 
@@ -391,7 +406,8 @@ GET /a/<token>/og.png[?src=<上游首图>]   ← 卡片首图的同域端点（�
 - **校验与迁移**：`parseBackup` 检查 `format` / `version` / `data` 形状，逐分区做与运行态相同的 normalize；版本高于当前会拒绝导入，低版本走 `migrate` 补齐（当前仅 v1，新增字段一律「缺省即默认」以保持可逆）。
 - **范围**：只搬配置，不搬缓存——正文缓存、列表缓存、预存正文都可再生，稍后读只留元数据（`contentHtml` 被剥掉）。
 - **与 OPML 的分工**：`lib/opml.ts` 只覆盖自建订阅源，可与其它阅读器互通；备份是「有所闻」自有格式，覆盖偏好、预设、启用信源、稍后读、已读与阅读位置。
-- **落地方式**：Android 写入 `Directory.Cache` 后交给系统分享面板；Web 走 Blob 下载。导入两端都用 `<input type="file">`。全程本地文件，无账号、无云同步。
+- **与云同步的分工**：本地文件备份是离线/导出路径，不依赖账号；云同步是登录后的跨设备投影（V1 不含稍后读/已读/阅读位置）。两者可并存，互不替代。
+- **落地方式**：Android 写入 `Directory.Cache` 后交给系统分享面板；Web 走 Blob 下载。导入两端都用 `<input type="file">`。备份本身全程本地文件。
 - 恢复通过 `storage.writeRestoredKeys` 整段写回；该函数会等原生 Preferences 也落盘再 resolve（否则冷启动的 `hydrateNativeStorage` 会用旧值盖回来），随后由 UI 重载应用让内存态跟上。
 
 ### 8.8 持久化键
@@ -412,6 +428,38 @@ GET /a/<token>/og.png[?src=<上游首图>]   ← 卡片首图的同域端点（�
 | `feed-translation:*` | 列表标题译文缓存 |
 
 策略：小配置同步镜像到 Capacitor Preferences；大列表/正文只走 localStorage。启动顺序：`hydrateNativeStorage` + `applyNativeChrome` → 再 mount React。
+
+### 8.9 账户与云同步（可选）
+
+规格全文见 [账户与云同步设计](./superpowers/specs/2026-08-27-account-cloud-sync-design.md)；实现计划见 [账户与云同步计划](./superpowers/plans/2026-08-27-account-cloud-sync.md)。
+
+**产品原则**
+
+- 登录可选；首次引导可跳过；设置页长期保留入口。
+- 所有用户操作先落本地；Sync Engine 经 Outbox 异步 push / delta pull。
+- 首次登录由用户显式选择：使用本机 / 使用云端 / 合并；覆盖前先做本地恢复快照。
+- 日常自动同步 +「立即同步」；普通冲突自动解决，高风险冲突进 Conflict Queue，不阻塞同账户其它实体。
+
+**V1 同步域**
+
+| 同步 | 不同步 |
+|---|---|
+| 订阅源、分类、排序、启停 | 文章正文、列表/正文缓存 |
+| 适合跨设备的应用设置、场景预设 | 稍后读、已读、阅读历史、阅读位置 |
+| 用户 Secret（第三方 AI Key、代理凭据等） | 设备本地项（如 `einkMode`、`wifiOnlyAutoLoadMedia`、`prestore`） |
+
+**协议要点**：结构化记录 + 每用户单调 `revision` + Outbox + Tombstone；不采用整包 JSON 覆盖、CRDT、Event Sourcing、WebSocket。实体 id 复用现有 source/category/setting key，不为同步另造 UUID 映射。
+
+**模块边界**
+
+```text
+src/features/account/     登录、Session、设备身份、平台 auth 适配
+src/features/sync/        SyncEngine、Outbox、Cursor、Merge、ConflictResolver
+cloud/                    Fastify + PostgreSQL + Better Auth
+packages/contracts/       共享协议与错误码
+```
+
+Web 用 HttpOnly Cookie Session；Android 用 Keystore-backed SecureStore。业务 API 从 Session 推导 `userId`，从不信任客户端 payload 内的用户 id。Secret 上传但不做 E2EE；服务端 AES-GCM 加密，日志禁止明文。
 
 ## 9. HTTP、代理与网络安全
 
@@ -531,10 +579,11 @@ npm run android:apk | android:aab
 2. **Readability 空抽**：付费墙、强动态页可能抽不出正文；有重试，无破解。
 3. **防盗链 / 反爬**：UA 分源、图片 Referer、用户代理只能缓解，不能保证。
 4. **存储配额**：WebView localStorage 有限；正文预算约 3MB，列表禁止再缓存全文 HTML。
-5. **无服务端**：无法做账号同步、服务端清洗或统一反爬；扩展新源只能加客户端适配。
+5. **云能力边界**：NewsNook Cloud 只承载可选账户与配置同步，不做服务端正文抓取/清洗或统一反爬；扩展新源仍靠客户端适配。未登录与云故障必须可降级为纯本地使用。
 6. **跟贴与全文覆盖不均**：仅部分源有定制评论与正文路径；自建源体验弱于内置源。
 7. **Bergamot 平台限制**：当前仅 `arm64-v8a` 编入原生库；其余设备自动回退其它翻译引擎。
 8. **生产 Web 代理能力**：静态站无应用内 SOCKS/HTTP 隧道，国际源可用性依赖边缘 Functions。
+9. **同步冲突与 Secret**：高风险结构冲突需用户处理；Secret 非零知识，服务端可解密，依赖传输与落盘加密及访问控制。
 
 ## 15. 关键入口索引
 
@@ -548,6 +597,7 @@ npm run android:apk | android:aab
 | 正文缓存 | `src/lib/bodyCache.ts` |
 | 持久化 | `src/lib/storage.ts` |
 | 配置备份 | `src/lib/backup.ts` · `src/components/BackupPanel.tsx` |
+| 账户 / 云同步 | `src/features/account/` · `src/features/sync/` · `src/screens/settings/AccountSyncScreen.tsx` · `cloud/` · `packages/contracts/` · [设计](./superpowers/specs/2026-08-27-account-cloud-sync-design.md) |
 | 阅读位置 | `src/lib/readingPosition.ts` |
 | 分享 | `src/lib/shareLink.ts` · `src/lib/shareToken.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` · `functions/lib/shareCard.ts` |
 | 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
