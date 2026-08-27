@@ -281,3 +281,26 @@ export const syncConflictResolveResponseSchema = z.object({
 })
 export type SyncConflictResolveResponse = z.infer<typeof syncConflictResolveResponseSchema>
 
+/** 批量裁决：一次 HTTP 处理多条冲突，避免「全部应用」打出 N 次 /resolve 触发限流 */
+export const syncConflictBatchResolveRequestSchema = z.object({
+  protocolVersion: z.literal(SYNC_PROTOCOL_VERSION),
+  deviceId: uuidSchema,
+  decisions: z
+    .array(
+      z.object({
+        conflictId: uuidSchema,
+        resolution: syncConflictResolutionSchema,
+      }),
+    )
+    .min(1)
+    .max(SYNC_LIMITS.maxConflictResolutionsPerRequest),
+})
+export type SyncConflictBatchResolveRequest = z.infer<typeof syncConflictBatchResolveRequestSchema>
+
+export const syncConflictBatchResolveResponseSchema = z.object({
+  protocolVersion: z.literal(SYNC_PROTOCOL_VERSION),
+  resolved: z.number().int().nonnegative(),
+  currentRevision: z.number().int().nonnegative(),
+})
+export type SyncConflictBatchResolveResponse = z.infer<typeof syncConflictBatchResolveResponseSchema>
+

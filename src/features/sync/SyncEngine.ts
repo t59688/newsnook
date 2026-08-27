@@ -497,8 +497,7 @@ export class SyncEngine {
   }
 
   /**
-   * 批量裁决：逐条落服务端、随时可通过 onProgress 汇报进度，
-   * 但整批只在最后跑一轮同步——N 项决定不该变成 N 轮全量收发。
+   * 批量裁决：按协议上限分块，每块一次 HTTP；整批结束后只跑一轮同步。
    * 中途失败会停下并抛错；已裁决的部分不回退，剩余的留在队列里可重试。
    */
   async resolveConflicts(
@@ -506,13 +505,19 @@ export class SyncEngine {
     onProgress?: (done: number, total: number) => void,
   ): Promise<void> {
     if (!decisions.length) return
+    const total = decisions.length
+    const chunkSize = SYNC_LIMITS.maxConflictResolutionsPerRequest
     try {
       let done = 0
-      for (const { id, resolution } of decisions) {
-        await this.transport.resolveConflict(id, resolution)
-        this.conflicts = this.conflicts.filter((conflict) => conflict.id !== id)
-        done += 1
-        onProgress?.(done, decisions.length)
+      for (let offset = 0; offset < decisions.length; offset += chunkSize) {
+        const chunk = decisions.slice(offset, offset + chunkSize)
+        await this.transport.resolveConflicts(
+          chunk.map(({ id, resolution }) => ({ conflictId: id, resolution })),
+        )
+        const resolvedIds = new Set(chunk.map((item) => item.id))
+        this.conflicts = this.conflicts.filter((conflict) => !resolvedIds.has(conflict.id))
+        done += chunk.length
+        onProgress?.(done, total)
       }
     } finally {
       this.emit({ type: 'conflicts', conflicts: this.conflicts })

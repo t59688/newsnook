@@ -9,6 +9,7 @@ import {
   SYNC_LIMITS,
   SYNC_PROTOCOL_VERSION,
   syncBootstrapReplaceRequestSchema,
+  syncConflictBatchResolveRequestSchema,
   syncConflictResolveRequestSchema,
   syncPullQuerySchema,
   syncPushRequestSchema,
@@ -153,6 +154,25 @@ export async function registerSyncRoutes(
       return { conflicts: await service.listConflicts(session.userId) }
     },
   )
+
+  // 必须先于 /:id/resolve 注册，否则 path 里的 "resolve" 会被当成 id
+  app.post('/api/v1/sync/conflicts/resolve', { config: { rateLimit: SYNC_RATE_LIMIT } }, async (request) => {
+    const session = await app.requireSession(request)
+    assertProtocolVersion(request.body)
+
+    const parsed = syncConflictBatchResolveRequestSchema.safeParse(request.body)
+    if (!parsed.success) throw validationFailed('冲突批量处理请求无效')
+
+    const deviceId = requireDeviceId(request, parsed.data.deviceId)
+    await service.ensureDevice(session.userId, { deviceId })
+
+    const result = await service.resolveConflicts(session.userId, parsed.data.decisions, deviceId)
+    return {
+      protocolVersion: SYNC_PROTOCOL_VERSION,
+      resolved: result.resolved,
+      currentRevision: result.currentRevision,
+    }
+  })
 
   app.post<{ Params: { id: string } }>(
     '/api/v1/sync/conflicts/:id/resolve',

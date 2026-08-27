@@ -488,6 +488,7 @@ POST /api/v1/sync/bootstrap/replace
 POST /api/v1/sync/push
 GET  /api/v1/sync/pull?since=N&limit=500
 GET  /api/v1/sync/conflicts
+POST /api/v1/sync/conflicts/resolve
 POST /api/v1/sync/conflicts/:id/resolve
 ```
 

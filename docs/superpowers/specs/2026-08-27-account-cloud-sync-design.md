@@ -847,7 +847,7 @@ secret.entityId       = 稳定 secret key
 
 ### 29.4 冲突以 `sync_conflicts` 行的 UUID 为准
 
-§13.4 的 `sync_conflicts.id` 落地为 UUID，`POST /api/v1/sync/conflicts/:id/resolve` 只接受 `accept_local` / `accept_server` 两种动作。
+§13.4 的 `sync_conflicts.id` 落地为 UUID。单条 `POST /api/v1/sync/conflicts/:id/resolve` 与批量 `POST /api/v1/sync/conflicts/resolve` 都只接受 `accept_local` / `accept_server`；「全部应用」必须走批量接口，避免逐条请求打满 rate limit。
 
 ### 29.5 测试脚本按模块拆分而非按 name pattern 过滤
 

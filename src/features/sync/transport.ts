@@ -71,6 +71,9 @@ export interface SyncTransport {
   pull(since: number, limit?: number): Promise<SyncPullResponse>
   listConflicts(): Promise<SyncConflict[]>
   resolveConflict(conflictId: string, resolution: SyncConflictResolution): Promise<void>
+  resolveConflicts(
+    decisions: ReadonlyArray<{ conflictId: string; resolution: SyncConflictResolution }>,
+  ): Promise<void>
 }
 
 export interface DeviceIdentity {
@@ -182,6 +185,18 @@ export function createHttpSyncTransport(options: {
           protocolVersion: SYNC_PROTOCOL_VERSION,
           deviceId: identity().deviceId,
           resolution,
+        },
+      })
+    },
+
+    resolveConflicts: async (decisions) => {
+      if (!decisions.length) return
+      await call('/api/v1/sync/conflicts/resolve', {
+        method: 'POST',
+        body: {
+          protocolVersion: SYNC_PROTOCOL_VERSION,
+          deviceId: identity().deviceId,
+          decisions,
         },
       })
     },

@@ -729,6 +729,19 @@ describe('sync conflict resolution', { skip: skipWithoutDatabase }, () => {
     })
   }
 
+  function resolveBatch(
+    user: SignedInUser,
+    decisions: Array<{ conflictId: string; resolution: 'accept_local' | 'accept_server' }>,
+  ): Promise<LightMyRequestResponse> {
+    return cloud.app.inject({
+      method: 'POST',
+      url: '/api/v1/sync/conflicts/resolve',
+      headers: authHeaders(user),
+      remoteAddress: nextIp(),
+      payload: { protocolVersion: SYNC_PROTOCOL_VERSION, deviceId: user.deviceId, decisions },
+    })
+  }
+
   async function openConflicts(user: SignedInUser): Promise<unknown[]> {
     const response = await cloud.app.inject({
       method: 'GET',
@@ -814,5 +827,38 @@ describe('sync conflict resolution', { skip: skipWithoutDatabase }, () => {
     assert.equal(response.statusCode, 404)
     assert.equal(response.json().code, 'NOT_FOUND')
     assert.ok(response.json().requestId)
+  })
+
+  it('resolves many conflicts in one batch request', async () => {
+    const user = await createSignedInUser(cloud, 'batch-resolve')
+    const first = await seedCategoryConflict(user)
+
+    // 再造第二条：另一分类上的 stale mutation 冲突
+    const created = await push(user, [upsert('category', 'life', categoryPayload({ label: '生活' }))])
+    const base = created.results[0]!.revision!
+    await push(user, [
+      upsert('category', 'life', categoryPayload({ visible: false, label: '云端生活' }), base),
+    ])
+    const second = await push(user, [
+      upsert('category', 'life', categoryPayload({ visible: true, label: '本机生活' }), base),
+    ])
+    const secondId = second.conflicts[0]!.id
+
+    const response = await resolveBatch(user, [
+      { conflictId: first.conflictId, resolution: 'accept_local' },
+      { conflictId: secondId, resolution: 'accept_server' },
+    ])
+
+    assert.equal(response.statusCode, 200)
+    assert.equal(response.json().resolved, 2)
+    assert.ok(response.json().currentRevision > first.revisionBefore)
+    assert.deepEqual(await openConflicts(user), [])
+
+    const records = await pullAll(user, 100)
+    assert.equal((findRecord(records, 'category', 'tech')?.payload as { label?: string })?.label, '本机')
+    assert.equal(
+      (findRecord(records, 'category', 'life')?.payload as { label?: string })?.label,
+      '云端生活',
+    )
   })
 })

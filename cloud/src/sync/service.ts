@@ -402,47 +402,78 @@ export class SyncService {
     resolution: SyncConflictResolution,
     deviceId: string,
   ): Promise<{ resolved: boolean; currentRevision: number }> {
+    const result = await this.resolveConflicts(userId, [{ conflictId, resolution }], deviceId)
+    return { resolved: result.resolved > 0, currentRevision: result.currentRevision }
+  }
+
+  /**
+   * 批量裁决：同一事务里处理多条冲突，只占一次 HTTP / 一次 rate-limit 配额。
+   * 「全部应用」必须走这条路径，不能对每条冲突各打一次 /resolve。
+   */
+  async resolveConflicts(
+    userId: string,
+    decisions: ReadonlyArray<{ conflictId: string; resolution: SyncConflictResolution }>,
+    deviceId: string,
+  ): Promise<{ resolved: number; currentRevision: number }> {
+    if (!decisions.length) {
+      return this.withClient(async (client) => ({
+        resolved: 0,
+        currentRevision: await repo.readHead(client, userId),
+      }))
+    }
+
+    // 同一 conflictId 出现多次时，以后写覆盖先写（与 UI 最终决定一致）
+    const byId = new Map<string, SyncConflictResolution>()
+    for (const decision of decisions) {
+      byId.set(decision.conflictId, decision.resolution)
+    }
+
     return this.withTransaction(async (client) => {
-      const conflict = await repo.findConflict(client, userId, conflictId)
-      if (!conflict) throw notFound('Conflict not found')
-      if (conflict.resolvedAt) {
-        return { resolved: true, currentRevision: await repo.readHead(client, userId) }
-      }
-
       let revision = await repo.lockHead(client, userId)
+      let resolved = 0
 
-      if (resolution === 'accept_local') {
-        const localChange = conflict.localChange as
-          | { operation?: 'upsert' | 'delete'; payload?: unknown }
-          | null
-        if (conflict.entityType === 'secret') {
-          // Secret 的值不在冲突快照里，无法在服务端重放；客户端会重新 push 一次
-          throw validationFailed('Secret conflicts must be resolved by re-pushing the value')
+      for (const [conflictId, resolution] of byId) {
+        const conflict = await repo.findConflict(client, userId, conflictId)
+        if (!conflict) throw notFound('Conflict not found')
+        if (conflict.resolvedAt) {
+          resolved += 1
+          continue
         }
-        revision += 1
-        if (localChange?.operation === 'delete') {
-          await repo.tombstoneEntity(client, {
-            userId,
-            entityType: conflict.entityType,
-            entityId: conflict.entityId,
-            revision,
-          })
-        } else {
-          await repo.upsertEntity(client, {
-            userId,
-            entityType: conflict.entityType,
-            entityId: conflict.entityId,
-            revision,
-            payload: parsePayload(conflict.entityType, localChange?.payload),
-            cipher: this.cipher,
-          })
+
+        if (resolution === 'accept_local') {
+          const localChange = conflict.localChange as
+            | { operation?: 'upsert' | 'delete'; payload?: unknown }
+            | null
+          if (conflict.entityType === 'secret') {
+            throw validationFailed('Secret conflicts must be resolved by re-pushing the value')
+          }
+          revision += 1
+          if (localChange?.operation === 'delete') {
+            await repo.tombstoneEntity(client, {
+              userId,
+              entityType: conflict.entityType,
+              entityId: conflict.entityId,
+              revision,
+            })
+          } else {
+            await repo.upsertEntity(client, {
+              userId,
+              entityType: conflict.entityType,
+              entityId: conflict.entityId,
+              revision,
+              payload: parsePayload(conflict.entityType, localChange?.payload),
+              cipher: this.cipher,
+            })
+          }
+          await repo.writeHead(client, userId, revision)
         }
-        await repo.writeHead(client, userId, revision)
+
+        await repo.markConflictResolved(client, userId, conflictId)
+        resolved += 1
       }
 
-      await repo.markConflictResolved(client, userId, conflictId)
       await repo.touchDevice(client, { deviceId, userId })
-      return { resolved: true, currentRevision: revision }
+      return { resolved, currentRevision: revision }
     })
   }
 }

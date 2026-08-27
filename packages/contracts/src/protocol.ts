@@ -18,6 +18,8 @@ export const SYNC_LIMITS = {
   maxSecretValueLength: 8000,
   maxSourceIdsPerCategory: 500,
   maxEntitiesPerBootstrap: 4000,
+  /** 冲突批量裁决上限；「全部应用」应一次请求落地，避免逐条打满 rate limit */
+  maxConflictResolutionsPerRequest: 200,
 } as const
 
 export const SYNC_ENTITY_TYPES = ['subscription', 'category', 'setting', 'secret'] as const

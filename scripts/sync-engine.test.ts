@@ -226,6 +226,11 @@ function createHarness(options: HarnessOptions = {}): Harness {
     resolveConflict: async (conflictId, resolution) => {
       await options.onResolveConflict?.(conflictId, resolution)
     },
+    resolveConflicts: async (decisions) => {
+      for (const { conflictId, resolution } of decisions) {
+        await options.onResolveConflict?.(conflictId, resolution)
+      }
+    },
   }
 
   const engine = new SyncEngine({
@@ -706,7 +711,7 @@ function withTheme(runtime: LocalRuntimeState, theme: 'dark' | 'light'): LocalRu
 // -------------------------------------------------------------- 批量裁决
 
 {
-  // 批量裁决：逐条落服务端并汇报进度，但整批只跑一轮同步
+  // 批量裁决：一次（或按上限分块）落服务端并汇报进度，整批只跑一轮同步
   const resolved: Array<[string, string]> = []
   const progress: Array<[number, number]> = []
   let pulls = 0
@@ -733,16 +738,12 @@ function withTheme(runtime: LocalRuntimeState, theme: 'dark' | 'light'): LocalRu
     ['c2', 'accept_server'],
     ['c3', 'accept_local'],
   ])
-  assert.deepEqual(progress, [
-    [1, 3],
-    [2, 3],
-    [3, 3],
-  ])
+  assert.deepEqual(progress, [[3, 3]], '同批三项一次 HTTP，进度按块汇报')
   assert.equal(pulls, 1, '三项决定只该触发一轮同步')
 }
 
 {
-  // 中途失败：停在出错那条，前面的不回退，错误抛给面板去展示重试
+  // 中途失败：整块失败则本块都不算完成；错误抛给面板去展示重试
   const resolved: string[] = []
   const harness = createHarness({
     onResolveConflict: (conflictId) => {
@@ -761,7 +762,9 @@ function withTheme(runtime: LocalRuntimeState, theme: 'dark' | 'light'): LocalRu
     ]),
     (error: unknown) => error instanceof SyncTransportError && error.code === 'SERVICE_UNAVAILABLE',
   )
-  assert.deepEqual(resolved, ['c1'], '失败后停下，不再继续后面的裁决')
+  // 假 transport 按顺序回调：c1 已执行，c2 抛错；服务端真批量是事务，要么全成要么全不成。
+  // 引擎侧：块失败时本块 id 不会从本地 conflicts 队列移除（由 finally 发事件）。
+  assert.deepEqual(resolved, ['c1'])
 }
 
 // -------------------------------------------------------------- 登出重置

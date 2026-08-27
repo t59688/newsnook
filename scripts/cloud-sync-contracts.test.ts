@@ -19,6 +19,7 @@ import {
   secretPayloadSchema,
   subscriptionPayloadSchema,
   syncBootstrapReplaceRequestSchema,
+  syncConflictBatchResolveRequestSchema,
   syncConflictResolveRequestSchema,
   syncMutationSchema,
   syncPullQuerySchema,
@@ -217,6 +218,28 @@ assert.equal(
   false,
   '冲突处理只有两种明确动作',
 )
+
+assert.equal(
+  syncConflictBatchResolveRequestSchema.safeParse({
+    protocolVersion: 1,
+    deviceId: DEVICE_ID,
+    decisions: [
+      { conflictId: DEVICE_ID, resolution: 'accept_local' },
+      { conflictId: '8d6f3192-9f48-4cfb-8601-791d28f5513e', resolution: 'accept_server' },
+    ],
+  }).success,
+  true,
+)
+assert.equal(
+  syncConflictBatchResolveRequestSchema.safeParse({
+    protocolVersion: 1,
+    deviceId: DEVICE_ID,
+    decisions: [],
+  }).success,
+  false,
+  '批量裁决至少一条',
+)
+assert.equal(SYNC_LIMITS.maxConflictResolutionsPerRequest, 200)
 
 // ---------- 错误码 ----------
 

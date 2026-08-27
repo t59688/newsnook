@@ -439,6 +439,7 @@ GET /a/<token>/og.png[?src=<上游首图>]   ← 卡片首图的同域端点（�
 - 所有用户操作先落本地；Sync Engine 经 Outbox 异步 push / delta pull。
 - 首次登录由用户显式选择：使用本机 / 使用云端 / 合并；覆盖前先做本地恢复快照。
 - 日常自动同步 +「立即同步」；普通冲突自动解决，高风险冲突进 Conflict Queue，不阻塞同账户其它实体。
+- 「全部应用」走 `POST /api/v1/sync/conflicts/resolve` 批量裁决（单次最多 200 条），不得对每条冲突各打一次 HTTP。
 
 **V1 同步域**
 
