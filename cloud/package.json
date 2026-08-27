@@ -10,7 +10,8 @@
     "build": "tsc -p tsconfig.json",
     "start": "node --env-file-if-exists=.env dist/server.js",
     "test": "tsx --test tests/*.test.ts",
-    "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts",
+    "db:migrate:prod": "node dist/db/migrate.js"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",

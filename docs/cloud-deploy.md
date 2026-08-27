@@ -11,7 +11,7 @@
 | 组件 | 用途 |
 |---|---|
 | Fastify API（`cloud/src`） | Better Auth 认证、设备、push/pull/bootstrap/冲突 |
-| PostgreSQL 17+ | 唯一存储：认证表（`auth` schema）+ 同步表（`public` schema） |
+| 外部 PostgreSQL 17+ | 唯一存储：认证表（`auth` schema）+ 同步表（`public` schema）；由你自行提供，Compose 不内置数据库 |
 | SMTP（可选） | 邮箱验证与密码重置；不配置时邮件只写日志，仅适合本地开发 |
 
 没有 Redis、消息队列、WebSocket、后台 worker。并发 push 的串行化由
@@ -42,6 +42,10 @@ openssl rand -base64 32   # NEWSNOOK_DATA_ENCRYPTION_KEY
 迁移永远是**显式的一步**，API 启动时不会自动跑：
 
 ```bash
+# Docker（推荐）：自动进容器执行，不必手动 docker exec
+cd cloud && ./deploy db migrate
+
+# 本机 Node（开发）
 DATABASE_URL=postgres://... npm run cloud:migrate
 ```
 
@@ -51,19 +55,70 @@ DATABASE_URL=postgres://... npm run cloud:migrate
 
 ## 4. 部署
 
-### Docker Compose（单机）
+### Docker Compose（单机，推荐）
 
-`cloud/compose.yml` 只有 API 与 PostgreSQL 两个服务。
+`cloud/Dockerfile` + `cloud/compose.yml`：镜像基座 `node:24.18.0-alpine3.24`，**只跑 API**。
+PostgreSQL 使用**外部实例**（本机已有库、云托管 RDS 等均可）。同目录
+[`cloud/deploy`](../cloud/deploy) 负责 compose 与进容器执行运维命令。
 
 ```bash
-cp cloud/.env.example cloud/.env      # 填好再继续
-docker compose -f cloud/compose.yml up -d db
-DATABASE_URL=postgres://... npm run cloud:migrate
-docker compose -f cloud/compose.yml up -d api
+cd cloud
+cp .env.example .env
+# 必填 DATABASE_URL / BETTER_AUTH_* / NEWSNOOK_DATA_ENCRYPTION_KEY / CLIENT_ORIGINS
+# 宿主机 Postgres 示例：
+#   DATABASE_URL=postgres://newsnook:SECRET@host.docker.internal:5432/newsnook
+# 远程库示例：
+#   DATABASE_URL=postgres://newsnook:SECRET@db.example.com:5432/newsnook
+chmod +x deploy               # 首次
+./deploy build
+./deploy up
+./deploy db migrate           # 对外部库显式迁移
+./deploy health
 ```
 
-API 默认只绑到 `127.0.0.1:8787`，对外由反向代理终止 TLS。反代必须转发
-`X-Forwarded-For`（配合默认的 `TRUST_PROXY=true`），否则限流会退化成按代理 IP 计数。
+常用命令：
+
+| 命令 | 作用 |
+|---|---|
+| `./deploy up` | 后台启动 api |
+| `./deploy down` | 停止服务 |
+| `./deploy db migrate` | 在 api 镜像内对 `DATABASE_URL` 执行迁移 |
+| `./deploy db shell` | 临时 postgres 客户端进 `psql` |
+| `./deploy db dump [file]` | `pg_dump -Fc` 到文件 |
+| `./deploy api shell` | 进入 api 容器 |
+| `./deploy logs` | 跟踪 api 日志 |
+| `./deploy health` | 探测 live / ready |
+| `./deploy help` | 完整说明 |
+
+**连接串注意**：容器内的 `localhost` / `127.0.0.1` 指向容器自己，不是宿主机。
+Compose 已配置 `host.docker.internal`；宿主机上的 Postgres 请用该主机名。
+远程库写真实 DNS/IP，并确保安全组/防火墙放行 API 宿主机出口。
+
+### 跨机 Nginx 反代
+
+Nginx 与 API **不在同一台机器**时：
+
+```text
+客户端 → https://api-news.aizeek.com (Nginx 机, 443)
+       → http://10.0.160.5:59800     (API 机 Docker 发布端口)
+       → 容器内 :8787
+```
+
+API 机 `cloud/.env`：
+
+```bash
+BETTER_AUTH_URL=https://api-news.aizeek.com
+API_PUBLISH_HOST=0.0.0.0
+API_PUBLISH_PORT=59800
+TRUST_PROXY=true
+CLIENT_ORIGINS=https://news.aizeek.com   # 前端 origin，不是 API 域名
+```
+
+然后 `./deploy up`。防火墙只允许 **Nginx 机 IP → API 机:59800**，不要对公网开放该端口。
+
+完整 Nginx 样例见 [`cloud/nginx/api-news.aizeek.com.conf.example`](../cloud/nginx/api-news.aizeek.com.conf.example)。
+要点：转发 `Host` / `X-Forwarded-For` / `X-Forwarded-Proto`；`client_max_body_size 2m` 足够（同步 push 上限约 512KB）；
+V1 **无 WebSocket**，不要套大文件上传那套 `proxy_buffering off` / `Upgrade`。
 
 ### 直接跑 Node
 
@@ -78,6 +133,17 @@ node cloud/dist/server.js
 
 ```text
 备份数据库 → 显式迁移 → 部署新版本 → /health/live → /health/ready → auth 冒烟 → sync 冒烟
+```
+
+Docker 对应：
+
+```bash
+cd cloud
+./deploy db dump
+./deploy build
+./deploy up
+./deploy db migrate
+./deploy health
 ```
 
 ## 5. 健康检查与冒烟
@@ -114,7 +180,10 @@ curl -s -o /dev/null -w '%{http_code}\n' "$BASE/api/v1/sync/pull?since=0"
    没演练过的备份等于没有备份。
 
 ```bash
-# 备份
+# Docker
+cd cloud && ./deploy db dump
+
+# 本机
 pg_dump -Fc "$DATABASE_URL" > newsnook-$(date +%F).dump
 
 # 恢复到临时库并验证

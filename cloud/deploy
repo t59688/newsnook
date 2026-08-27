@@ -1,0 +1,264 @@
+#!/usr/bin/env sh
+# NewsNook Cloud 部署 CLI：在宿主机调用，自动 docker compose / 进容器执行。
+# 数据库为外部 PostgreSQL（.env 的 DATABASE_URL）。用法见：./deploy help
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname "$0")" && pwd)"
+COMPOSE_FILE="$ROOT/compose.yml"
+ENV_FILE="$ROOT/.env"
+PROJECT_DIR="$ROOT"
+PG_CLIENT_IMAGE="${NEWSNOOK_PG_CLIENT_IMAGE:-postgres:17-alpine}"
+
+die() {
+  printf '%s\n' "$*" >&2
+  exit 1
+}
+
+need_docker() {
+  command -v docker >/dev/null 2>&1 || die "需要 docker（含 compose 插件）"
+  docker compose version >/dev/null 2>&1 || die "需要 docker compose 插件"
+}
+
+compose() {
+  docker compose -f "$COMPOSE_FILE" --project-directory "$PROJECT_DIR" "$@"
+}
+
+env_get() {
+  key="$1"
+  [ -f "$ENV_FILE" ] || return 0
+  grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '\r' || true
+}
+
+need_env() {
+  [ -f "$ENV_FILE" ] || die "缺少 $ENV_FILE — 先复制 .env.example 并填好 DATABASE_URL 等变量"
+}
+
+need_database_url() {
+  need_env
+  DATABASE_URL="$(env_get DATABASE_URL)"
+  [ -n "$DATABASE_URL" ] || die "请在 .env 设置 DATABASE_URL（外部 PostgreSQL 连接串）"
+  case "$DATABASE_URL" in
+    *://*@localhost:*|*://*@localhost/*|*://*@127.0.0.1:*|*://*@127.0.0.1/*)
+      die "容器内不能用 localhost/127.0.0.1 连库。宿主机 Postgres 请改用 host.docker.internal；远程库写真实主机名。"
+      ;;
+  esac
+  export DATABASE_URL
+}
+
+service_running() {
+  service="$1"
+  compose ps --status running --services 2>/dev/null | grep -qx "$service"
+}
+
+# 一次性 Postgres 客户端容器（连外部库；支持 host.docker.internal）
+pg_client() {
+  docker run --rm \
+    --add-host=host.docker.internal:host-gateway \
+    -e DATABASE_URL \
+    "$PG_CLIENT_IMAGE" \
+    "$@"
+}
+
+cmd_help() {
+  cat <<'EOF'
+NewsNook Cloud 部署 CLI（外部 PostgreSQL）
+
+用法:
+  ./deploy <command> [args...]
+
+常用:
+  up [-d|--build...]   启动 api（默认 -d）
+  down                 停止并移除 compose 服务
+  build                重新构建 api 镜像
+  restart [service]    重启（默认 api）
+  ps                   查看服务状态
+  logs [-f] [service]  看日志（默认 -f api）
+  health               探测 /health/live 与 /health/ready
+
+数据库（外部，读 .env 的 DATABASE_URL）:
+  db migrate           在 api 镜像内执行显式迁移
+  db shell             用临时 postgres 客户端进 psql
+  db dump [file]       pg_dump -Fc 到文件（默认 newsnook-YYYY-MM-DD.dump）
+
+API:
+  api shell            进入 api 容器 shell
+  api exec <cmd...>    在运行中的 api 容器执行任意命令
+
+通用:
+  exec <service> <cmd...>   在已运行服务里执行命令
+  run <service> <cmd...>    一次性容器执行
+  help                      显示本说明
+
+示例:
+  cp .env.example .env
+  # DATABASE_URL=postgres://user:pass@host.docker.internal:5432/newsnook
+  # 或远程：postgres://user:pass@db.example.com:5432/newsnook
+  ./deploy build
+  ./deploy up
+  ./deploy db migrate
+  ./deploy health
+
+注意: 容器里写 localhost 只会连到容器自己。宿主机上的库请用 host.docker.internal。
+EOF
+}
+
+cmd_up() {
+  need_database_url
+  if [ "$#" -eq 0 ]; then
+    compose up -d
+  else
+    compose up "$@"
+  fi
+}
+
+cmd_down() {
+  compose down "$@"
+}
+
+cmd_build() {
+  need_env
+  compose build "$@"
+}
+
+cmd_restart() {
+  if [ "$#" -eq 0 ]; then
+    compose restart api
+  else
+    compose restart "$@"
+  fi
+}
+
+cmd_ps() {
+  compose ps "$@"
+}
+
+cmd_logs() {
+  if [ "$#" -eq 0 ]; then
+    compose logs -f api
+  else
+    compose logs "$@"
+  fi
+}
+
+cmd_health() {
+  base="${NEWSNOOK_HEALTH_BASE:-http://127.0.0.1:8787}"
+  printf 'GET %s/health/live\n' "$base"
+  curl -fsS "$base/health/live"
+  printf '\nGET %s/health/ready\n' "$base"
+  curl -fsS "$base/health/ready"
+  printf '\n'
+}
+
+cmd_db_migrate() {
+  need_database_url
+  printf '在 api 镜像内对外部库执行迁移…\n'
+  compose run --rm api node cloud/dist/db/migrate.js
+}
+
+cmd_db_shell() {
+  need_database_url
+  # -it 仅在终端里加；管道/脚本场景去掉 -t
+  if [ -t 0 ] && [ -t 1 ]; then
+    docker run --rm -it \
+      --add-host=host.docker.internal:host-gateway \
+      -e DATABASE_URL \
+      "$PG_CLIENT_IMAGE" \
+      psql "$DATABASE_URL" "$@"
+  else
+    pg_client psql "$DATABASE_URL" "$@"
+  fi
+}
+
+cmd_db_dump() {
+  need_database_url
+  out="${1:-newsnook-$(date +%F).dump}"
+  printf '导出到 %s\n' "$out"
+  pg_client pg_dump -Fc "$DATABASE_URL" >"$out"
+  printf '完成\n'
+}
+
+cmd_api_shell() {
+  if service_running api; then
+    compose exec api sh
+  else
+    die "api 未在运行。先 ./deploy up，或用：./deploy run api sh"
+  fi
+}
+
+cmd_api_exec() {
+  [ "$#" -ge 1 ] || die "用法: ./deploy api exec <command...>"
+  service_running api || die "api 未在运行。先 ./deploy up"
+  compose exec api "$@"
+}
+
+cmd_exec() {
+  [ "$#" -ge 2 ] || die "用法: ./deploy exec <service> <command...>"
+  service="$1"
+  shift
+  service_running "$service" || die "服务 $service 未在运行"
+  compose exec "$service" "$@"
+}
+
+cmd_run() {
+  [ "$#" -ge 2 ] || die "用法: ./deploy run <service> <command...>"
+  need_database_url
+  service="$1"
+  shift
+  compose run --rm "$service" "$@"
+}
+
+main() {
+  [ "$#" -ge 1 ] || {
+    cmd_help
+    exit 1
+  }
+
+  cmd="$1"
+  shift
+
+  case "$cmd" in
+    help|-h|--help)
+      cmd_help
+      exit 0
+      ;;
+  esac
+
+  need_docker
+
+  case "$cmd" in
+    up|start) cmd_up "$@" ;;
+    down|stop) cmd_down "$@" ;;
+    build) cmd_build "$@" ;;
+    restart) cmd_restart "$@" ;;
+    ps|status) cmd_ps "$@" ;;
+    logs) cmd_logs "$@" ;;
+    health) cmd_health "$@" ;;
+    migrate) cmd_db_migrate "$@" ;;
+    db)
+      [ "$#" -ge 1 ] || die "用法: ./deploy db <migrate|shell|dump>"
+      sub="$1"
+      shift
+      case "$sub" in
+        migrate) cmd_db_migrate "$@" ;;
+        shell|psql) cmd_db_shell "$@" ;;
+        dump|backup) cmd_db_dump "$@" ;;
+        *) die "未知子命令: db $sub（见 ./deploy help）" ;;
+      esac
+      ;;
+    api)
+      [ "$#" -ge 1 ] || die "用法: ./deploy api <shell|exec>"
+      sub="$1"
+      shift
+      case "$sub" in
+        shell|sh) cmd_api_shell "$@" ;;
+        exec) cmd_api_exec "$@" ;;
+        *) die "未知子命令: api $sub（见 ./deploy help）" ;;
+      esac
+      ;;
+    exec) cmd_exec "$@" ;;
+    run) cmd_run "$@" ;;
+    *) die "未知命令: $cmd（见 ./deploy help）" ;;
+  esac
+}
+
+main "$@"

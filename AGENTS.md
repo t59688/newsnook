@@ -203,6 +203,7 @@ npm run test:sync-notifier
 npm run test:cloud-contracts
 npm run test:cloud            # 或 test:cloud-{health,auth,secrets,sync}
 npm run cloud:migrate         # 显式迁移，API 启动不自动跑
+# Docker：cd cloud && ./deploy db migrate
 npm run cloud:build
 
 npm run android:run         # 轻量 cloud
@@ -211,6 +212,7 @@ npm run bergamot:init
 ```
 
 Android SDK / 签名 / 发版细节：[`docs/android-build.md`](./docs/android-build.md)。
+Cloud 单机部署：[`docs/cloud-deploy.md`](./docs/cloud-deploy.md)（`cloud/deploy` CLI）。
 
 ## 7. 验证清单（改完再声称完成）
 

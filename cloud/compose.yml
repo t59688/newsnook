@@ -1,46 +1,33 @@
-# 只有 API 与 PostgreSQL 两个服务：没有 Redis、消息队列、后台 worker。
-# 启动顺序里没有自动迁移——先跑一次 `npm run cloud:migrate`，再起 api。
+# NewsNook Cloud API。PostgreSQL 使用外部实例（不在本 compose 内起库）。
+# Nginx 在另一台机器时：把 API_PUBLISH_HOST 设为 0.0.0.0（或内网网卡 IP），
+# API_PUBLISH_PORT 设成反代 upstream 端口（例如 59800），并用防火墙只放行 Nginx 机。
 #
-#   docker compose -f cloud/compose.yml up -d db
-#   DATABASE_URL=... npm run cloud:migrate
-#   docker compose -f cloud/compose.yml up -d api
+#   ./deploy up
+#   ./deploy db migrate
+#   ./deploy health
+#
+# .env 的 DATABASE_URL 必须指向容器能访问到的地址（不要写 localhost）。
 
 name: newsnook-cloud
 
 services:
-  db:
-    image: postgres:17-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:-newsnook}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-newsnook}
-    volumes:
-      - db-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-newsnook} -d ${POSTGRES_DB:-newsnook}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    # 默认只暴露给同一 compose 网络；需要本机连库调试时再放开
-    # ports:
-    #   - '127.0.0.1:5432:5432'
-
   api:
     build:
       context: ..
       dockerfile: cloud/Dockerfile
+    image: newsnook-cloud-api:local
     restart: unless-stopped
-    depends_on:
-      db:
-        condition: service_healthy
     env_file:
       - .env
     environment:
       HOST: 0.0.0.0
       PORT: 8787
+      # 反代在另一台机时必须为 true，限流与日志才认 X-Forwarded-For
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     ports:
-      - '127.0.0.1:8787:8787'
-
-volumes:
-  db-data:
+      # 宿主机发布地址:容器内 8787
+      # 同机 Nginx：127.0.0.1:8787:8787
+      # 跨机 Nginx：0.0.0.0:59800:8787（再由 Nginx proxy_pass 到该机:59800）
+      - '${API_PUBLISH_HOST:-0.0.0.0}:${API_PUBLISH_PORT:-8787}:8787'

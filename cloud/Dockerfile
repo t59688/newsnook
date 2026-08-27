@@ -1,6 +1,6 @@
 # NewsNook Cloud：可选账户与配置同步 API。
-# 只跑 API，不跑迁移——迁移必须是显式的一步（见 docs/cloud-deploy.md）。
-FROM node:22-bookworm-slim AS build
+# 只跑 API，不跑迁移——迁移必须是显式的一步（见 docs/cloud-deploy.md / ./deploy db migrate）。
+FROM node:24.18.0-alpine3.24 AS build
 
 WORKDIR /app
 
@@ -19,7 +19,7 @@ RUN npm run build --workspace @newsnook/contracts \
 RUN npm prune --omit=dev --workspaces --include-workspace-root
 
 
-FROM node:22-bookworm-slim AS runtime
+FROM node:24.18.0-alpine3.24 AS runtime
 
 ENV NODE_ENV=production
 WORKDIR /app
