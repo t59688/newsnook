@@ -7,20 +7,32 @@
 
 import { z } from 'zod'
 
-export const SYNC_PROTOCOL_VERSION = 1 as const
+import {
+  DEVICE_PLATFORMS,
+  SYNC_CONFLICT_REASONS,
+  SYNC_CONFLICT_RESOLUTIONS,
+  SYNC_ENTITY_TYPES,
+  SYNC_LIMITS,
+  SYNC_MUTATION_OPERATIONS,
+  SYNC_PROTOCOL_VERSION,
+} from './protocol.js'
 
-/** 单次 push 的批量上限，服务端与客户端共用同一组常量 */
-export const SYNC_LIMITS = {
-  maxMutationsPerPush: 200,
-  maxPushBodyBytes: 512 * 1024,
-  maxPullLimit: 500,
-  defaultPullLimit: 500,
-  maxEntityIdLength: 200,
-  maxStringLength: 4000,
-  maxSecretValueLength: 8000,
-  maxSourceIdsPerCategory: 500,
-  maxEntitiesPerBootstrap: 4000,
-} as const
+export {
+  DEVICE_PLATFORMS,
+  SYNC_CONFLICT_REASONS,
+  SYNC_CONFLICT_RESOLUTIONS,
+  SYNC_ENTITY_TYPES,
+  SYNC_LIMITS,
+  SYNC_MUTATION_OPERATIONS,
+  SYNC_PROTOCOL_VERSION,
+  rankBetween,
+  rankForIndex,
+  type DevicePlatform,
+  type SyncConflictReason,
+  type SyncConflictResolution,
+  type SyncEntityType,
+  type SyncMutationOperation,
+} from './protocol.js'
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
 
@@ -30,12 +42,8 @@ export const entityIdSchema = z.string().min(1).max(SYNC_LIMITS.maxEntityIdLengt
 
 const shortTextSchema = z.string().max(SYNC_LIMITS.maxStringLength)
 
-export const SYNC_ENTITY_TYPES = ['subscription', 'category', 'setting', 'secret'] as const
-export type SyncEntityType = (typeof SYNC_ENTITY_TYPES)[number]
 export const syncEntityTypeSchema = z.enum(SYNC_ENTITY_TYPES)
 
-export const SYNC_MUTATION_OPERATIONS = ['upsert', 'delete'] as const
-export type SyncMutationOperation = (typeof SYNC_MUTATION_OPERATIONS)[number]
 export const syncMutationOperationSchema = z.enum(SYNC_MUTATION_OPERATIONS)
 
 /**
@@ -120,8 +128,6 @@ export type SyncRecord = z.infer<typeof syncRecordSchema>
 
 // ---------- device ----------
 
-export const DEVICE_PLATFORMS = ['web', 'android', 'ios', 'unknown'] as const
-export type DevicePlatform = (typeof DEVICE_PLATFORMS)[number]
 export const devicePlatformSchema = z.enum(DEVICE_PLATFORMS)
 
 export const deviceContextSchema = z.object({
@@ -161,13 +167,6 @@ export const syncPushRequestSchema = z.object({
 })
 export type SyncPushRequest = z.infer<typeof syncPushRequestSchema>
 
-export const SYNC_CONFLICT_REASONS = [
-  'delete_vs_update',
-  'update_vs_delete',
-  'stale_structural_update',
-  'category_stale_mutation',
-] as const
-export type SyncConflictReason = (typeof SYNC_CONFLICT_REASONS)[number]
 export const syncConflictReasonSchema = z.enum(SYNC_CONFLICT_REASONS)
 
 export const syncConflictSchema = z.object({
@@ -266,8 +265,7 @@ export const syncConflictListResponseSchema = z.object({
 })
 export type SyncConflictListResponse = z.infer<typeof syncConflictListResponseSchema>
 
-export const syncConflictResolutionSchema = z.enum(['accept_local', 'accept_server'])
-export type SyncConflictResolution = z.infer<typeof syncConflictResolutionSchema>
+export const syncConflictResolutionSchema = z.enum(SYNC_CONFLICT_RESOLUTIONS)
 
 export const syncConflictResolveRequestSchema = z.object({
   protocolVersion: z.literal(SYNC_PROTOCOL_VERSION),
@@ -283,4 +281,3 @@ export const syncConflictResolveResponseSchema = z.object({
 })
 export type SyncConflictResolveResponse = z.infer<typeof syncConflictResolveResponseSchema>
 
-export { rankBetween, rankForIndex } from './sortRank.js'

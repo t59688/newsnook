@@ -6,7 +6,7 @@
  * 同步不为自己另建一套配置存储。
  */
 
-import { rankForIndex } from '@newsnook/contracts/sort-rank'
+import { rankForIndex } from '@newsnook/contracts/protocol'
 
 import { CATEGORIES, type CategoryId } from '../../sources/categories'
 import { SOURCES, type NewsSource } from '../../sources/registry'
