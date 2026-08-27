@@ -6,11 +6,11 @@
   "description": "NewsNook Cloud：可选账户与配置同步 API（Fastify + PostgreSQL + Better Auth）。不托管文章内容。",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch --env-file=.env src/server.ts",
+    "dev": "tsx watch --env-file-if-exists=.env src/server.ts",
     "build": "tsc -p tsconfig.json",
-    "start": "node --env-file=.env dist/server.js",
+    "start": "node --env-file-if-exists=.env dist/server.js",
     "test": "tsx --test tests/*.test.ts",
-    "db:migrate": "tsx --env-file=.env src/db/migrate.ts"
+    "db:migrate": "tsx --env-file-if-exists=.env src/db/migrate.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.1.0",
