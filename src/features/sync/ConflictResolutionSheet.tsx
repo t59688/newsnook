@@ -365,7 +365,7 @@ export function ConflictResolutionSheet({ open, conflicts, onApply, onClose }: P
                 onClick={() => void apply()}
                 className="shrink-0 rounded-full border border-cinnabar/70 bg-cinnabar/15 px-5 py-2.5 font-mono text-[11.5px] font-medium text-cinnabar-soft transition-colors hover:bg-cinnabar/25 disabled:opacity-40"
               >
-                应用 {decided > 0 ? `${decided} 项` : ''}决定
+                {decided > 0 ? `应用 ${decided} 项决定` : '应用决定'}
               </button>
             </div>
           </footer>

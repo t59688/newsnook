@@ -39,7 +39,7 @@ import type { LocalRuntimeState } from '../../features/sync/merge'
 import { relativeTime, describeSyncError, syncStatusCaption } from '../../features/sync/notifier'
 import { projectLocalState } from '../../features/sync/projection'
 import { readSyncState, rotateDeviceId } from '../../features/sync/state'
-import type { SyncPhase } from '../../features/sync/SyncEngine'
+import type { SyncStatus } from '../../features/sync/SyncEngine'
 import { SyncTransportError } from '../../features/sync/transport'
 import type { CloudSyncApi } from '../../features/sync/useCloudSync'
 import {
@@ -90,13 +90,15 @@ function Card({ children, className = '' }: { children: React.ReactNode; classNa
   )
 }
 
-function StatusIcon({ phase }: { phase: SyncPhase }) {
-  if (phase === 'syncing')
+function StatusIcon({ status }: { status: SyncStatus }) {
+  if (status.phase === 'syncing')
     return <LoaderCircle size={13} strokeWidth={1.8} className="animate-spin text-paper-muted" />
-  if (phase === 'offline')
+  if (status.phase === 'offline')
     return <CloudOff size={13} strokeWidth={1.8} className="text-paper-faint" />
-  if (phase === 'paused' || phase === 'error')
+  if (status.phase === 'paused' || status.phase === 'error')
     return <CircleAlert size={13} strokeWidth={1.8} className="text-cinnabar-soft" />
+  if (status.conflictCount > 0)
+    return <AlertTriangle size={13} strokeWidth={1.8} className="text-cinnabar-soft" />
   return <Check size={13} strokeWidth={1.8} className="text-paper-faint" />
 }
 
@@ -628,7 +630,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                 </div>
 
                 <p className="mt-3 flex items-center gap-1.5 border-t border-haze/60 pt-3 font-mono text-[10.5px] text-paper-faint">
-                  <StatusIcon phase={status.phase} />
+                  <StatusIcon status={status} />
                   {caption}
                 </p>
 
