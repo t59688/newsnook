@@ -1,0 +1,26 @@
+# cloud 镜像构建上下文是仓库根目录（compose context: ..）
+# 只排除无关大目录与密钥，加快传输、避免误拷进 build context。
+
+.git
+.github
+.android-signing
+artifacts
+dist
+docs
+android
+functions
+public
+assets
+src
+scripts
+node_modules
+**/node_modules
+cloud/node_modules
+packages/contracts/node_modules
+cloud/.env
+cloud/.env.*
+!cloud/.env.example
+*.apk
+*.aab
+*.dump
+.DS_Store
