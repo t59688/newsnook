@@ -46,6 +46,12 @@ export interface PreferencesApi {
   /** 「跟随系统」解析后的实际明暗，供界面展示当前状态 */
   resolvedTheme: ResolvedTheme
   update: (updater: (prev: Preferences) => Preferences) => void
+  /**
+   * 云同步专用入口：整包替换偏好。
+   * 与 `update` 的区别只在语义——调用方是同步引擎而不是用户操作，
+   * 设备本地设置已在 `features/sync/runtimeAdapter` 里保住，这里照常走归一化与持久化。
+   */
+  replaceFromSync: (next: Preferences) => void
 }
 
 function resolveFallbackProvider(prefs: Preferences): Preferences['translation']['provider'] {
@@ -127,5 +133,9 @@ export function usePreferences(): PreferencesApi {
     setPrefs((prev) => updater(prev))
   }, [])
 
-  return { prefs, resolvedTheme, update }
+  const replaceFromSync = useCallback((next: Preferences) => {
+    setPrefs(normalizePreferences(next))
+  }, [])
+
+  return { prefs, resolvedTheme, update, replaceFromSync }
 }

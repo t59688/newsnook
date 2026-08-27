@@ -20,6 +20,8 @@ const LOCAL_CACHE_PREFIXES = [LIST_CACHE_PREFIX, 'body:']
 export const SYNC_STATE_KEY = 'sync-state:v1'
 export const SYNC_JOURNAL_KEY = 'sync-journal:v1'
 export const SYNC_ONBOARDING_KEY = 'sync-onboarding-seen'
+/** 首次同步基线选择前的本机快照，只落 localStorage（见 lib/backup.ts） */
+export const SYNC_SAFETY_SNAPSHOT_KEY = 'sync-safety-snapshot:v1'
 
 /**
  * 冷启动只镜像这些键。列表/正文缓存已是 localOnly，其余键延后清理即可。
@@ -285,6 +287,22 @@ export function saveSyncJournal(journal: unknown): void {
 
 export function clearSyncJournal(): void {
   removeKeys([SYNC_JOURNAL_KEY])
+}
+
+/**
+ * 首次同步前的本机安全快照：只存一份（新的覆盖旧的），只落 localStorage。
+ * 它是「云端基线选错了想反悔」的兜底，不参与冷启动镜像，也不进普通备份文件。
+ */
+export function loadSyncSafetySnapshot(): unknown {
+  return read<unknown>(SYNC_SAFETY_SNAPSHOT_KEY, null)
+}
+
+export function saveSyncSafetySnapshot(snapshot: unknown): void {
+  write(SYNC_SAFETY_SNAPSHOT_KEY, snapshot, { localOnly: true })
+}
+
+export function clearSyncSafetySnapshot(): void {
+  removeKeys([SYNC_SAFETY_SNAPSHOT_KEY])
 }
 
 /** 同步引导只提示一次；「稍后再说」与「去登录」都算已看过 */

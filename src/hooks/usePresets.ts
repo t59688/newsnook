@@ -67,6 +67,12 @@ export interface UsePresetsApi {
   restoreFactory: (id?: string) => void
   rename: (id: string, name: string) => void
   remove: (id: string) => void
+  /**
+   * 云同步专用入口：整包替换预设。
+   * 远端下发的运行时（偏好 + 启用信源）与预设在同一批里写回，
+   * 所以要跳过一次「按运行时回写活动快照」，否则刚收到的预设会被本机快照覆盖。
+   */
+  replaceFromSync: (next: PresetsState) => void
 }
 
 export function usePresets({
@@ -170,6 +176,11 @@ export function usePresets({
     setState(renameUserPreset(stateRef.current, id, name))
   }, [])
 
+  const replaceFromSync = useCallback((next: PresetsState) => {
+    skipSync.current = true
+    setState(ensureValidActivePreset(next))
+  }, [])
+
   const remove = useCallback(
     (id: string) => {
       const prev = stateRef.current
@@ -193,5 +204,6 @@ export function usePresets({
     restoreFactory,
     rename,
     remove,
+    replaceFromSync,
   }
 }

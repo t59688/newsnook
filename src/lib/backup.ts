@@ -15,12 +15,15 @@ import { Share } from '@capacitor/share'
 import { log } from './logger'
 import {
   READING_POSITION_KEY,
+  clearSyncSafetySnapshot,
   loadEnabledSources,
   loadIdSet,
   loadLaterArticles,
   loadPreferences,
   loadPresetsState,
   loadReadingPositions,
+  loadSyncSafetySnapshot,
+  saveSyncSafetySnapshot,
   writeRestoredKeys,
 } from './storage'
 import { normalizeReadingPositions, resetReadingPositionCache } from './readingPosition'
@@ -298,6 +301,62 @@ export async function restoreBackup(
   }
 
   return { restored, skipped }
+}
+
+/**
+ * 首次同步前的安全快照。
+ *
+ * 「使用云端数据」这类选择会整包替换同步域，用户后悔了得有地方找回来。
+ * 只抓同步范围内的三块（偏好 / 场景预设 / 启用信源）——稍后读、已读、
+ * 阅读历史与阅读位置本来就不参与同步，不会被覆盖，也就不必快照。
+ * 只保留最近一份，避免把 localStorage 撑爆。
+ */
+export const SYNC_SAFETY_SECTIONS: BackupSection[] = ['preferences', 'presets', 'enabledSources']
+
+export interface SyncSafetySnapshot {
+  createdAt: number
+  payload: BackupPayload
+}
+
+export function captureSyncSafetySnapshot(appVersion?: string): SyncSafetySnapshot {
+  const full = collectBackup(appVersion)
+  const data: BackupData = {}
+  if (full.data.preferences != null) data.preferences = full.data.preferences
+  if (full.data.presets != null) data.presets = full.data.presets
+  if (full.data.enabledSources?.length) data.enabledSources = full.data.enabledSources
+
+  const snapshot: SyncSafetySnapshot = {
+    createdAt: Date.now(),
+    payload: { ...full, data },
+  }
+  saveSyncSafetySnapshot(snapshot)
+  log.sync.info('captured pre-sync safety snapshot')
+  return snapshot
+}
+
+export function readSyncSafetySnapshot(): SyncSafetySnapshot | null {
+  const raw = loadSyncSafetySnapshot()
+  if (!isPlainObject(raw)) return null
+  try {
+    return {
+      createdAt: typeof raw.createdAt === 'number' ? raw.createdAt : 0,
+      payload: parseBackup(JSON.stringify(raw.payload)),
+    }
+  } catch {
+    // 快照损坏就当没有：它只是兜底，不该阻塞任何同步动作
+    return null
+  }
+}
+
+/** 「恢复同步前的配置」：只回滚同步域，调用方随后重载应用 */
+export async function restoreSyncSafetySnapshot(): Promise<RestoreResult | null> {
+  const snapshot = readSyncSafetySnapshot()
+  if (!snapshot) return null
+  return restoreBackup(snapshot.payload, SYNC_SAFETY_SECTIONS)
+}
+
+export function dropSyncSafetySnapshot(): void {
+  clearSyncSafetySnapshot()
 }
 
 export function backupFileName(now = new Date()): string {

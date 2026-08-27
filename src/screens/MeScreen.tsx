@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   Bookmark,
   ChevronRight,
+  CloudUpload,
   Contrast,
   Database,
   Globe,
@@ -32,6 +33,7 @@ interface Props {
   translationSummary: string
   proxySummary: string
   storageSummary: string
+  accountSummary: string
   hasUpdate?: boolean
   availableVersion?: string
   onOpenLater: () => void
@@ -45,6 +47,7 @@ interface Props {
   onOpenTranslationSettings: () => void
   onOpenProxySettings: () => void
   onOpenStorageSettings: () => void
+  onOpenAccountSync: () => void
   onOpenAbout: () => void
   /** 从阅读中区进入时：显示返回并回到原文 */
   onBackToReading?: () => void
@@ -100,6 +103,7 @@ export function MeScreen({
   translationSummary,
   proxySummary,
   storageSummary,
+  accountSummary,
   hasUpdate,
   availableVersion,
   onOpenLater,
@@ -113,6 +117,7 @@ export function MeScreen({
   onOpenTranslationSettings,
   onOpenProxySettings,
   onOpenStorageSettings,
+  onOpenAccountSync,
   onOpenAbout,
   onBackToReading,
 }: Props) {
@@ -242,6 +247,12 @@ export function MeScreen({
             title="离线存储与备份"
             caption={storageSummary}
             onClick={onOpenStorageSettings}
+          />
+          <SettingsRow
+            icon={CloudUpload}
+            title="账户与同步"
+            caption={accountSummary}
+            onClick={onOpenAccountSync}
           />
         </ul>
 

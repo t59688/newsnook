@@ -7,6 +7,11 @@ import { DlnaCastBanner } from './components/DlnaCastBanner'
 import { OpenInAppBanner } from './components/OpenInAppBanner'
 import { DesktopSidebar } from './components/DesktopSidebar'
 import { TabBar, type TabKey } from './components/TabBar'
+import { SyncOnboardingPrompt } from './features/account/SyncOnboardingPrompt'
+import { useAccount } from './features/account/useAccount'
+import { toastForSyncEvent, syncStatusCaption, type SyncToastModel } from './features/sync/notifier'
+import { useCloudSync } from './features/sync/useCloudSync'
+import { SyncToast } from './components/SyncToast'
 import { useFeeds } from './hooks/useFeeds'
 import { usePreferences } from './hooks/usePreferences'
 import { usePresets } from './hooks/usePresets'
@@ -41,10 +46,13 @@ import {
   type SharePayload,
 } from './lib/shareLink'
 import {
+  hasSeenProductTour,
+  hasSeenSyncOnboarding,
   listCacheStats,
   loadEnabledSources,
   loadIdSet,
   loadLaterArticles,
+  markSyncOnboardingSeen,
   saveEnabledSources,
   saveIdSet,
   saveLaterArticles,
@@ -57,6 +65,7 @@ import { FeedScreen } from './screens/FeedScreen'
 import { MeScreen } from './screens/MeScreen'
 import { SiteScreen } from './screens/SiteScreen'
 import { AboutScreen } from './screens/settings/AboutScreen'
+import { AccountSyncScreen } from './screens/settings/AccountSyncScreen'
 import { ChangelogScreen } from './screens/settings/ChangelogScreen'
 import { OpenSourceScreen } from './screens/settings/OpenSourceScreen'
 import { AppearanceScreen } from './screens/settings/AppearanceScreen'
@@ -168,6 +177,7 @@ type SettingsRoute =
   | { name: 'later' }
   | { name: 'history' }
   | { name: 'local-search' }
+  | { name: 'account-sync' }
   | { name: 'about' }
   | { name: 'changelog' }
   | { name: 'licenses' }
@@ -231,7 +241,7 @@ function prefetchBody(task: BodyPrefetchTask): void {
 }
 
 export default function App() {
-  const { prefs, resolvedTheme, update } = usePreferences()
+  const { prefs, resolvedTheme, update, replaceFromSync: replacePreferences } = usePreferences()
   const [tab, setTab] = useState<TabKey>('today')
   const [todayPullRefreshSeq, setTodayPullRefreshSeq] = useState(0)
   const [categoryId, setCategoryId] = useState<CategoryId>(
@@ -247,6 +257,38 @@ export default function App() {
     updatePrefs: update,
     setEnabledIds,
   })
+  /**
+   * 账户与云同步都是纯附加能力：未登录时 `useCloudSync` 不创建引擎、不发任何请求，
+   * 下面所有阅读、解析、缓存逻辑与它们完全解耦。
+   */
+  const account = useAccount()
+  const syncRuntime = useMemo(
+    () => ({ prefs, enabledIds, presets: presets.state }),
+    [prefs, enabledIds, presets.state],
+  )
+  const [syncToast, setSyncToast] = useState<SyncToastModel | null>(null)
+  const handleSyncEvent = useCallback((event: Parameters<typeof toastForSyncEvent>[0]) => {
+    const toast = toastForSyncEvent(event)
+    if (toast) setSyncToast(toast)
+  }, [])
+  const cloudSync = useCloudSync({
+    account: account.status === 'authenticated' ? account.adapter : null,
+    authenticated: account.status === 'authenticated',
+    runtime: syncRuntime,
+    replacePreferences,
+    replaceEnabledIds: setEnabledIds,
+    replacePresets: presets.replaceFromSync,
+    onEvent: handleSyncEvent,
+  })
+  const [syncOnboardingSeen, setSyncOnboardingSeen] = useState(() => hasSeenSyncOnboarding())
+  const dismissSyncOnboarding = useCallback(() => {
+    markSyncOnboardingSeen()
+    setSyncOnboardingSeen(true)
+  }, [])
+  const openAccountSync = useCallback(() => {
+    setTab('me')
+    setSettingsRoute({ name: 'account-sync' })
+  }, [])
   /**
    * 冷启动深链 `/a/<token>`：本地解码后直接进阅读器（正文仍走 resolveBody 站内抽取）。
    * 显式写成 lazy initializer，token 也留一份给「在 App 中打开」引导条拼深链。
@@ -768,6 +810,20 @@ export default function App() {
       sharedEntry?.payload &&
       reading.originUrl === sharedEntry.payload.originUrl,
   )
+  /**
+   * 同步介绍只在功能引导之后、首页无遮挡时露一次面，且只对未登录用户。
+   * 它是可选加分项，不参与 driver.js 的引导流程，两个按钮都会记下「看过」。
+   */
+  const showSyncOnboarding =
+    !syncOnboardingSeen &&
+    account.status === 'anonymous' &&
+    hasSeenProductTour() &&
+    tab === 'today' &&
+    !reading &&
+    !settingsRoute &&
+    !focusSourceId &&
+    !eggOpen &&
+    !deepLinkError
 
   const toggleLater = useCallback((article: Article) => {
     if (laterRef.current.some((item) => item.id === article.id)) {
@@ -1142,6 +1198,17 @@ export default function App() {
       )
     }
 
+    if (settingsRoute.name === 'account-sync') {
+      return (
+        <AccountSyncScreen
+          account={account}
+          sync={cloudSync}
+          runtime={syncRuntime}
+          onBack={() => setSettingsRoute(null)}
+        />
+      )
+    }
+
     if (settingsRoute.name === 'about') {
       return (
         <AboutScreen
@@ -1260,6 +1327,9 @@ export default function App() {
           translationSummary={translationSummary}
           proxySummary={proxySummary}
           storageSummary={storageSummary}
+          accountSummary={syncStatusCaption(cloudSync.status, {
+            authenticated: account.status === 'authenticated',
+          })}
           hasUpdate={appUpdate.hasUpdate}
           availableVersion={appUpdate.availableVersion}
           onBackToReading={readerReturnArticle ? restoreReaderFromSettings : undefined}
@@ -1274,6 +1344,7 @@ export default function App() {
           onOpenTranslationSettings={() => setSettingsRoute({ name: 'translation' })}
           onOpenProxySettings={() => setSettingsRoute({ name: 'proxy' })}
           onOpenStorageSettings={() => setSettingsRoute({ name: 'storage' })}
+          onOpenAccountSync={() => setSettingsRoute({ name: 'account-sync' })}
           onOpenAbout={() => setSettingsRoute({ name: 'about' })}
         />
       )
@@ -1458,6 +1529,23 @@ export default function App() {
       {showOpenInAppBanner && openInAppUrl && (
         <OpenInAppBanner href={openInAppUrl} onDismiss={() => setOpenInAppDismissed(true)} />
       )}
+
+      <SyncOnboardingPrompt
+        open={showSyncOnboarding}
+        onSignIn={() => {
+          dismissSyncOnboarding()
+          openAccountSync()
+        }}
+        onDismiss={dismissSyncOnboarding}
+      />
+
+      {/* 阅读器盖在最上层时不打扰，等回到列表再说 */}
+      <SyncToast
+        toast={reading ? null : syncToast}
+        onDismiss={() => setSyncToast(null)}
+        onAction={openAccountSync}
+      />
+
 
       <ConfirmDialog
         open={deepLinkError}

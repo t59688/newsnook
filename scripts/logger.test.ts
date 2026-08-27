@@ -78,4 +78,27 @@ assert.equal(cfg.level, 'trace')
 assert.equal(cfg.namespaces.sniffer, false)
 assert.equal(cfg.namespaces.boot, true)
 
+// 云同步的两个命名空间可以单独关掉：出问题时只留同步日志，不被 HTTP 刷屏
+logController.reset()
+logController.setConfig({ level: 'debug', namespaces: { account: false } })
+
+const account = createLogger('account')
+const sync = createLogger('sync')
+
+const cloudLines = withMockConsole(() => {
+  account.info('blocked')
+  sync.info('allowed')
+  sync.warn('sync cycle failed', { code: 'RATE_LIMITED' })
+})
+
+assert.equal(
+  cloudLines.some((line) => line.includes('blocked')),
+  false,
+  'account 命名空间可单独关闭',
+)
+assert.ok(cloudLines.some((line) => line.includes('[sync] allowed')))
+assert.ok(cloudLines.some((line) => line.includes('sync cycle failed')))
+
+logController.reset()
+
 console.log('logger: ok')
