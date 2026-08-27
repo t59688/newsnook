@@ -145,4 +145,6 @@ jobs:
       # SecureStore / SyncNotification 是同步链路的原生半边，两个变体都要能编过
       - name: Compile both flavors
         working-directory: android
-        run: ./gradlew --no-daemon :app:compileCloudDebugJavaWithJavac :app:compileLocalDebugJavaWithJavac
+        run: |
+          chmod +x gradlew
+          ./gradlew --no-daemon :app:compileCloudDebugJavaWithJavac :app:compileLocalDebugJavaWithJavac
