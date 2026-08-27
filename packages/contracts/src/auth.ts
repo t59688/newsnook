@@ -5,7 +5,10 @@
 
 import { z } from 'zod'
 
+import { MOBILE_AUTH_CALLBACK_URL } from './protocol.js'
 import { devicePlatformSchema, uuidSchema } from './sync.js'
+
+export { MOBILE_AUTH_CALLBACK_URL }
 
 export const meResponseSchema = z.object({
   user: z.object({
@@ -29,11 +32,10 @@ export type MeResponse = z.infer<typeof meResponseSchema>
 
 /**
  * Android 社交登录回流：系统浏览器完成 Better Auth callback 后带 Cookie 命中
- * `/api/v1/auth/mobile/complete`，服务端签发一次性 token 并 302 回固定深链。
+ * `/api/v1/auth/mobile/complete`，服务端签发一次性 token 并 302 回固定深链
+ * （`MOBILE_AUTH_CALLBACK_URL`，定义在无 zod 依赖的 `./protocol`）。
  * 长期 Session token 绝不出现在深链里。
  */
-export const MOBILE_AUTH_CALLBACK_URL = 'newsnook://auth/callback'
-
 export const mobileExchangeRequestSchema = z.object({
   token: z.string().min(8).max(200),
 })

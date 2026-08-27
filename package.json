@@ -112,7 +112,8 @@
     "android:apk:local": "npm run android:sync && node scripts/android-build.mjs apk local",
     "android:aab": "npm run android:sync && node scripts/android-build.mjs aab",
     "android:aab:cloud": "npm run android:sync && node scripts/android-build.mjs aab cloud",
-    "android:aab:local": "npm run android:sync && node scripts/android-build.mjs aab local"
+    "android:aab:local": "npm run android:sync && node scripts/android-build.mjs aab local",
+    "test:account-auth": "npx tsx scripts/account-auth.test.ts"
   },
   "dependencies": {
     "@capacitor-community/media": "^9.1.0",

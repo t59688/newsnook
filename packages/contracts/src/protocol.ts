@@ -41,6 +41,12 @@ export const SYNC_CONFLICT_RESOLUTIONS = ['accept_local', 'accept_server'] as co
 export type SyncConflictResolution = (typeof SYNC_CONFLICT_RESOLUTIONS)[number]
 
 /**
+ * Android 社交登录回流的固定深链目标。服务端只会 302 到这个地址，
+ * 客户端也只认这个前缀，避免任何一侧接受外部指定的跳转目标。
+ */
+export const MOBILE_AUTH_CALLBACK_URL = 'newsnook://auth/callback'
+
+/**
  * 可插入排序键：客户端在两个相邻 rank 之间生成新键，不必批量重写邻居。
  * 采用短字符串（base36 风格），比较用普通字典序。
  */

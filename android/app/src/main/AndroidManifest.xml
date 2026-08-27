@@ -41,6 +41,18 @@
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="newsnook" android:host="a" />
             </intent-filter>
+
+            <!--
+                社交登录回流 newsnook://auth/callback?ott=<一次性 token>：
+                系统浏览器完成 OAuth 后由服务端 302 回来。与分享深链分开一条 filter，
+                host 固定为 auth，App 侧也只认 /auth/callback 这一条路径。
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="newsnook" android:host="auth" />
+            </intent-filter>
         </activity>
 
         <service
