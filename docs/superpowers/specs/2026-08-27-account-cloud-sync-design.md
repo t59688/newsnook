@@ -856,3 +856,12 @@ secret.entityId       = 稳定 secret key
 ### 29.6 集成测试对 PostgreSQL 的依赖是显式的
 
 需要真实数据库的 cloud 测试读 `TEST_DATABASE_URL`；未提供时测试直接跳过并打印原因，本地开发不会因为没装 PostgreSQL 而红。CI 一定提供该变量，因此 §22.2 要求的 `FOR UPDATE`、并发 push、幂等、tombstone、跨用户隔离仍然是真实数据库上的断言。
+
+### 29.7 实现期补充的四条约定
+
+以下几条在编码时才定下来，一并记录：
+
+- **`@newsnook/contracts/protocol` 子入口**：除 §29.2 的 `/errors` 外，另有一个不含 zod 的 `protocol` 入口，导出协议版本、`SYNC_LIMITS`、枚举与 `rankBetween` / `rankForIndex`。客户端需要在运行时算排序键，只引类型不够，但也不该为此把 zod 打进 App 包。
+- **首次同步闸门**：`LocalSyncState.firstSyncCompleted` 为 false 时日常同步循环直接停在 `needs-first-sync`。没有这道闸，一台刚装好的设备会在用户做出 §6.3 的选择之前，就把默认配置推成云端基线。
+- **Outbox 不落 Secret 明文**：Outbox 持久化前 Secret 载荷抹成 null，真正的值在 push 前一刻从活投影里取。这同时避免了「Outbox 里躺着一份过期 Secret」的问题。
+- **通知落地走深链**：Android 同步通知点开后发的是 `newsnook://sync/account-sync`，与分享深链共用 Capacitor 的 `appUrlOpen` 通道，而不是自定义 intent extra。

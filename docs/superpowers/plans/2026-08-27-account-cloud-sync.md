@@ -107,7 +107,7 @@ export interface SyncRecord {
 }
 ```
 
-- [ ] **Step 1: Write the failing contract test**
+- [x] **Step 1: Write the failing contract test**
 
 Create `scripts/cloud-sync-contracts.test.ts`:
 
@@ -135,13 +135,13 @@ assert.equal(syncPullResponseSchema.safeParse({
 }).success, true)
 ```
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `npm run test:cloud-contracts`
 
 Expected: fails because the package/script does not exist.
 
-- [ ] **Step 3: Add the minimal workspace and protocol package**
+- [x] **Step 3: Add the minimal workspace and protocol package**
 
 Root `package.json` gains workspaces `cloud` and `packages/contracts`; contracts package exports Zod schemas and stable error codes:
 
@@ -168,11 +168,11 @@ export interface ApiErrorBody {
 }
 ```
 
-- [ ] **Step 4: Replace the obsolete Backendless hard rule**
+- [x] **Step 4: Replace the obsolete Backendless hard rule**
 
 Update `AGENTS.md` and `docs/architecture.md` to say cloud/account is optional but core reading remains local-first. Add `cloud/` and `packages/contracts/` to the architecture map. Do not weaken the rule that feed/body fetching remains client/upstream-oriented.
 
-- [ ] **Step 5: Green**
+- [x] **Step 5: Green**
 
 ```bash
 npm install
@@ -180,7 +180,7 @@ npm run test:cloud-contracts
 npm run lint
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add AGENTS.md docs/architecture.md package.json package-lock.json packages/contracts scripts/cloud-sync-contracts.test.ts
@@ -218,15 +218,15 @@ export async function buildApp(options?: {
 }): Promise<FastifyInstance>
 ```
 
-- [ ] **Step 1: Write failing health tests**
+- [x] **Step 1: Write failing health tests**
 
 Test `/health/live` without DB, `/health/ready` 200 when `SELECT 1` works, and 503 when injected pool rejects.
 
-- [ ] **Step 2: Verify red**
+- [x] **Step 2: Verify red**
 
 Run: `npm run test:cloud -- --test-name-pattern health`
 
-- [ ] **Step 3: Add cloud package**
+- [x] **Step 3: Add cloud package**
 
 Scripts:
 
@@ -242,22 +242,22 @@ Scripts:
 
 Dependencies: `fastify`, `@fastify/cors`, `@fastify/rate-limit`, `pg`, `zod`, `@newsnook/contracts`; dev dependencies include `tsx`, TypeScript and types.
 
-- [ ] **Step 4: Implement strict environment parsing and two pools**
+- [x] **Step 4: Implement strict environment parsing and two pools**
 
 Reject missing/short security secrets. Parse explicit origin allowlist. Use `appPool` for NewsNook tables and `authPool` with `search_path=auth` for Better Auth tables. No route creates its own pool.
 
-- [ ] **Step 5: Implement Fastify app/server split**
+- [x] **Step 5: Implement Fastify app/server split**
 
 `app.ts` owns CORS, body limit, rate limiting, health routes and structured Pino logs. `server.ts` only loads config, listens and closes on SIGTERM/SIGINT. Add error handler that returns stable code + `request.id`; sync log entries later reuse `requestId,userId,deviceId,fromRevision,toRevision,durationMs`.
 
-- [ ] **Step 6: Green**
+- [x] **Step 6: Green**
 
 ```bash
 npm run test:cloud
 npm run build --workspace cloud
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cloud package.json package-lock.json
@@ -289,7 +289,7 @@ bearer()
 oneTimeToken({ expiresIn: 3, storeToken: 'hashed', disableClientRequest: true })
 ```
 
-- [ ] **Step 1: Write failing auth tests**
+- [x] **Step 1: Write failing auth tests**
 
 Cover:
 
@@ -302,19 +302,19 @@ Cover:
 7. generated mobile OTT is single-use and expires;
 8. mobile exchange never places long-lived Session token in redirect URL.
 
-- [ ] **Step 2: Configure Better Auth**
+- [x] **Step 2: Configure Better Auth**
 
 Use `authPool`; enable email/password, required email verification, password reset, Google and GitHub providers, strict trusted origins. `mail.ts` provides injectable transport: in-memory capture for tests, SMTP in production.
 
-- [ ] **Step 3: Mount Better Auth through its Fastify-compatible handler**
+- [x] **Step 3: Mount Better Auth through its Fastify-compatible handler**
 
 Forward `GET/POST /api/auth/*` to `auth.handler`, preserving response headers/cookies. Do not reimplement OAuth callbacks.
 
-- [ ] **Step 4: Add reusable authenticated request middleware**
+- [x] **Step 4: Add reusable authenticated request middleware**
 
 Call `auth.api.getSession({ headers })`; attach trusted session/user server-side only. Client-supplied user id is ignored.
 
-- [ ] **Step 5: Implement Android OAuth handoff without exposing the Session in a deep link**
+- [x] **Step 5: Implement Android OAuth handoff without exposing the Session in a deep link**
 
 ```text
 App -> social signIn(disableRedirect=true)
@@ -331,18 +331,18 @@ App -> social signIn(disableRedirect=true)
 
 Compilation/type tests must use the documented public `session.token` field; do not query Better Auth internal tables to recover a token. The completion route has a fixed `newsnook://auth/callback` target and accepts no arbitrary redirect URL.
 
-- [ ] **Step 6: Support Android email/password bearer capture**
+- [x] **Step 6: Support Android email/password bearer capture**
 
 Bearer plugin exposes `set-auth-token` after successful sign-in. Android captures it and later sends `Authorization: Bearer`; Web continues using cookies. CORS exposes only required response headers.
 
-- [ ] **Step 7: Green**
+- [x] **Step 7: Green**
 
 ```bash
 npm run test:cloud
 npm run build --workspace cloud
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add cloud package-lock.json
@@ -363,11 +363,11 @@ git commit -m "feat(auth): add Better Auth and mobile session bridge"
 
 Use Better Auth user id as opaque `text`; do not FK business schema to Better Auth internals.
 
-- [ ] **Step 1: Write failing encryption/schema tests**
+- [x] **Step 1: Write failing encryption/schema tests**
 
 Assert AES-GCM round trip, random nonce, AAD mismatch failure, DB serialization contains no plaintext, and schema has required unique/index constraints.
 
-- [ ] **Step 2: Write the migration**
+- [x] **Step 2: Write the migration**
 
 Minimum core:
 
@@ -390,18 +390,18 @@ CREATE TABLE sync_mutations (
 
 `subscriptions` and `categories` must explicitly store `sort_rank text NOT NULL`; all four entity tables have `(user_id,entity_id)` uniqueness, `revision bigint`, `updated_at`, `deleted_at`. Subscription also stores `normalized_url` for custom-source dedupe. `user_secrets` stores ciphertext/nonce/key_version only. `sync_conflicts` never stores Secret plaintext.
 
-- [ ] **Step 3: Implement AES-256-GCM**
+- [x] **Step 3: Implement AES-256-GCM**
 
 Decode `NEWSNOOK_DATA_ENCRYPTION_KEY` to exactly 32 bytes once. Use random 12-byte nonce and AAD `${userId}:${secretKey}`. Store `key_version=1`.
 
-- [ ] **Step 4: Green against real disposable PostgreSQL**
+- [x] **Step 4: Green against real disposable PostgreSQL**
 
 ```bash
 TEST_DATABASE_URL=postgres://postgres:postgres@127.0.0.1:5432/newsnook_test npm run db:migrate --workspace cloud
 npm run test:cloud -- --test-name-pattern secret
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add cloud/migrations cloud/src/crypto cloud/src/db cloud/tests/secrets.test.ts
@@ -427,11 +427,11 @@ subscription delete vs newer row       -> conflict
 category stale mutation                -> conflict
 ```
 
-- [ ] **Step 1: Write failing real-Postgres tests**
+- [x] **Step 1: Write failing real-Postgres tests**
 
 Cover strictly increasing revisions, same-user concurrent push, different-user independence, mutation replay idempotency, 3 accepted + 1 conflict batch, and full transaction rollback on injected failure.
 
-- [ ] **Step 2: Implement per-user transaction lock**
+- [x] **Step 2: Implement per-user transaction lock**
 
 ```ts
 await client.query('BEGIN')
@@ -447,21 +447,21 @@ const head = await client.query(
 
 Allocate a new revision only for a newly accepted entity change.
 
-- [ ] **Step 3: Persist idempotency result in the same transaction**
+- [x] **Step 3: Persist idempotency result in the same transaction**
 
 Retrying `(user_id,mutation_id)` returns stored result without re-running conflict classification or encryption.
 
-- [ ] **Step 4: Implement Secret branch and safe logs**
+- [x] **Step 4: Implement Secret branch and safe logs**
 
 Validate → encrypt → write. Logs record `secretKey` name only, never value. Every push emits one structured summary with requestId, userId, deviceId, mutation/accepted/conflict counts, from/to revision and duration.
 
-- [ ] **Step 5: Run concurrency test five times**
+- [x] **Step 5: Run concurrency test five times**
 
 ```bash
 for i in 1 2 3 4 5; do npm run test:cloud -- --test-name-pattern sync; done
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add cloud/src/sync cloud/tests/sync.integration.test.ts
@@ -491,34 +491,34 @@ GET  /api/v1/sync/conflicts
 POST /api/v1/sync/conflicts/:id/resolve
 ```
 
-- [ ] **Step 1: Extend failing integration tests**
+- [x] **Step 1: Extend failing integration tests**
 
 Verify cross-user access rejection, revoked-device rejection, tombstone pull, bounded pagination, bootstrap replace tombstones missing rows, `accept_local` creates revision, `accept_server` only resolves conflict, bootstrap summary exposes counts/revision but not Secret values, and every error body includes requestId.
 
-- [ ] **Step 2: Implement device registration/update**
+- [x] **Step 2: Implement device registration/update**
 
 First authenticated cloud call upserts `(deviceId,userId)` with platform/appVersion/lastSeen. Reject a device id already owned by another user.
 
-- [ ] **Step 3: Implement delta pull**
+- [x] **Step 3: Implement delta pull**
 
 Fetch current rows from all four entity tables where `revision > since`, merge/sort by revision. Page size max 500. On non-final page cursor = last returned revision; final page may advance to `currentRevision`.
 
-- [ ] **Step 4: Implement `bootstrap/replace` as one transaction**
+- [x] **Step 4: Implement `bootstrap/replace` as one transaction**
 
 Lock head, create tombstones for old records missing from submitted snapshot, upsert submitted state, allocate revisions, commit once. Never `DELETE everything`.
 
-- [ ] **Step 5: Add request validation/limits and conflict resolution**
+- [x] **Step 5: Add request validation/limits and conflict resolution**
 
 All handlers consume contract Zod schemas; entity/device/conflict ownership is verified server-side.
 
-- [ ] **Step 6: Green**
+- [x] **Step 6: Green**
 
 ```bash
 npm run test:cloud
 npm run build --workspace cloud
 ```
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add cloud/src/routes cloud/src/sync cloud/src/app.ts cloud/tests
@@ -561,11 +561,11 @@ never projected:
   later/read/history/reading-pos/cache
 ```
 
-- [ ] **Step 1: Write failing projection tests**
+- [x] **Step 1: Write failing projection tests**
 
 Round-trip custom source/category, stable ids, Secret separation, device-local exclusion, rank stability, and “changing local-only setting generates zero mutations.”
 
-- [ ] **Step 2: Add persisted sync state**
+- [x] **Step 2: Add persisted sync state**
 
 ```ts
 export interface LocalSyncState {
@@ -581,17 +581,17 @@ export interface LocalSyncState {
 
 Persist as `newsnook:sync-state:v1`; add required sync-state/journal/onboarding keys to native bootstrap mirror. Do not place Session or Secret plaintext in these structures.
 
-- [ ] **Step 3: Implement projection reconciliation**
+- [x] **Step 3: Implement projection reconciliation**
 
 `reconcileProjection(current,shadow,outbox)` creates missing mutations from normalized fingerprints. If app dies after a local write but before Outbox persistence, next startup rebuilds the mutation from current projection vs shadow.
 
 A mutation retains the exact fingerprint/payload it represents; server ack advances shadow to that fingerprint, not blindly to the newest live UI state.
 
-- [ ] **Step 4: Hash Secret fingerprints only**
+- [x] **Step 4: Hash Secret fingerprints only**
 
 Use SHA-256 to detect changes; persist hash only, not plaintext.
 
-- [ ] **Step 5: Green/regression**
+- [x] **Step 5: Green/regression**
 
 ```bash
 npm run test:sync-projection
@@ -600,7 +600,7 @@ npm run test:custom-sources
 npm run test:category-order
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/features/sync src/lib/storage.ts scripts/sync-projection.test.ts package.json
@@ -634,11 +634,11 @@ export class SyncEngine {
 }
 ```
 
-- [ ] **Step 1: Write failing engine tests**
+- [x] **Step 1: Write failing engine tests**
 
 Cover normal push/pull, lost HTTP response, edit-while-push-in-flight, no sync echo, apply-journal crash replay, 401 pause, 429 Retry-After, 5xx exponential backoff+jitter, manual bypass of retry timer, and single-flight trigger coalescing.
 
-- [ ] **Step 2: Implement journal ordering**
+- [x] **Step 2: Implement journal ordering**
 
 ```text
 persist journal(records,targetCursor)
@@ -650,18 +650,18 @@ persist journal(records,targetCursor)
 
 Cold startup replays any journal before new pull.
 
-- [ ] **Step 3: Implement bounded backoff**
+- [x] **Step 3: Implement bounded backoff**
 
 1s,2s,4s,8s,16s… capped at 5 minutes with jitter. Offline pauses retries. Manual sync triggers immediately.
 
-- [ ] **Step 4: Green**
+- [x] **Step 4: Green**
 
 ```bash
 npm run test:sync-engine
 npm run test:webview-css-compat
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/features/sync scripts/sync-engine.test.ts package.json
@@ -680,11 +680,11 @@ git commit -m "feat(sync): add resilient client sync engine"
 - Create: `scripts/account-auth.test.ts`
 - Modify: `package.json`, lockfile
 
-- [ ] **Step 1: Write failing auth-adapter tests**
+- [x] **Step 1: Write failing auth-adapter tests**
 
 Parse only `newsnook://auth/callback?ott=...`; do not confuse `newsnook://a/...`. Web adapter must never write Session token into localStorage. Native adapter reports authenticated only after SecureStore has a valid token.
 
-- [ ] **Step 2: Implement `SecureStorePlugin`**
+- [x] **Step 2: Implement `SecureStorePlugin`**
 
 Use Android Keystore (`AndroidKeyStore`) AES key via `KeyGenParameterSpec`, `PURPOSE_ENCRYPT|PURPOSE_DECRYPT`, GCM/no-padding. Private SharedPreferences stores only `{iv,ciphertext}`. API:
 
@@ -696,15 +696,15 @@ remove({key}): Promise<void>
 
 Do not use deprecated `EncryptedSharedPreferences`.
 
-- [ ] **Step 3: Register plugin and auth deep link**
+- [x] **Step 3: Register plugin and auth deep link**
 
 Register in `MainActivity`; add dedicated `newsnook://auth/*` intent filter without changing existing share deep links.
 
-- [ ] **Step 4: Implement Web and Android auth clients**
+- [x] **Step 4: Implement Web and Android auth clients**
 
 Web uses Better Auth Cookie Session. Android captures bearer token after email/password and uses system browser + OTT exchange for social login. Long-lived bearer token goes only to SecureStore.
 
-- [ ] **Step 5: Green**
+- [x] **Step 5: Green**
 
 ```bash
 npm run test:account-auth
@@ -713,7 +713,7 @@ npm run build
 cd android && ./gradlew :app:compileCloudDebugJavaWithJavac
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/features/account android scripts/account-auth.test.ts package.json package-lock.json
@@ -733,11 +733,11 @@ git commit -m "feat(auth): add client adapters and secure Android session store"
 
 **Invariant:** On Android, synced Secret plaintext must not remain in ordinary `newsnook:preferences` / Capacitor Preferences.
 
-- [ ] **Step 1: Write failing migration/hydration tests**
+- [x] **Step 1: Write failing migration/hydration tests**
 
 Given legacy native prefs with an OpenAI API key and proxy URL: migrate to secure store, rewrite persisted normal prefs with blanks, hydrate runtime values before App mount, keep subsequent ordinary persistence secret-free. Web remains backward-compatible.
 
-- [ ] **Step 2: Extend bootstrap ordering**
+- [x] **Step 2: Extend bootstrap ordering**
 
 ```text
 hydrateNativeStorage()
@@ -747,11 +747,11 @@ hydrateNativeStorage()
  -> mount App
 ```
 
-- [ ] **Step 3: Keep runtime `Preferences` API stable**
+- [x] **Step 3: Keep runtime `Preferences` API stable**
 
 On native, sanitize before `savePreferences`; runtime translation/proxy still receives hydrated Secret values. Do not refactor all callers.
 
-- [ ] **Step 4: Green/regression**
+- [x] **Step 4: Green/regression**
 
 ```bash
 npm run test:secure-secret-hydration
@@ -760,7 +760,7 @@ npm run test:proxy
 npm run build
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add src/BootstrapRoot.tsx src/hooks/usePreferences.ts src/features/account src/features/sync/projection.ts src/sources/preferences/normalize.ts scripts/secure-secret-hydration.test.ts package.json
@@ -785,23 +785,23 @@ PreferencesApi.replaceFromSync(next: Preferences): void
 UsePresetsApi.replaceFromSync(next: PresetsState): void
 ```
 
-- [ ] **Step 1: Write failing runtime tests**
+- [x] **Step 1: Write failing runtime tests**
 
 Remote application updates prefs/enabled ids/presets without reload and without echo; device-local settings survive remote apply.
 
-- [ ] **Step 2: Add `account` and `sync` log namespaces**
+- [x] **Step 2: Add `account` and `sync` log namespaces**
 
 Update logger tests. Never log auth token or Secret payload.
 
-- [ ] **Step 3: Add remote replace entry points**
+- [x] **Step 3: Add remote replace entry points**
 
 Normalize remote state and use suppression scoped only around cloud dirty detection; normal local persistence still runs.
 
-- [ ] **Step 4: Implement `useCloudSync` triggers**
+- [x] **Step 4: Implement `useCloudSync` triggers**
 
 Trigger on restored authenticated startup, debounced local projection change, foreground, network offline→online, and manual sync. No polling/WebSocket.
 
-- [ ] **Step 5: Green**
+- [x] **Step 5: Green**
 
 ```bash
 npm run test:cloud-sync-runtime
@@ -810,7 +810,7 @@ npm run test:product-tour
 npm run build
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add src/hooks src/features/sync src/App.tsx src/lib/logger.ts scripts package.json
@@ -832,11 +832,11 @@ git commit -m "feat(sync): connect sync engine to NewsNook runtime"
 - Create: `scripts/account-sync-ui.test.ts`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write failing UI/presenter tests**
+- [x] **Step 1: Write failing UI/presenter tests**
 
 Assert not-logged-in caption, syncing/success/conflict statuses, product-tour wording “无需账号也能使用”, normal success no system notification, and account screen exposes expected actions by state.
 
-- [ ] **Step 2: Add a separate one-time sync onboarding prompt**
+- [x] **Step 2: Add a separate one-time sync onboarding prompt**
 
 Do not turn driver.js tour into auth wizard. After existing onboarding no longer blocks, show once:
 
@@ -848,7 +848,7 @@ Do not turn driver.js tour into auth wizard. After existing onboarding no longer
 
 Both actions mark `newsnook:sync-onboarding-seen`; login opens Account & Sync.
 
-- [ ] **Step 3: Add Account & Sync route and screen**
+- [x] **Step 3: Add Account & Sync route and screen**
 
 Add `{name:'account-sync'}` to `SettingsRoute`, row in `MeScreen`, normal back-stack behavior. Screen states:
 
@@ -858,23 +858,23 @@ first sync pending -> local/cloud counts + three choices
 authenticated -> last sync, sync now, conflicts, devices, linked methods, sign out
 ```
 
-- [ ] **Step 4: Implement explicit account linking**
+- [x] **Step 4: Implement explicit account linking**
 
 When already authenticated, “绑定 Google / GitHub” uses Better Auth's authenticated linking API (`linkSocial`/documented equivalent). Same-email unauthenticated OAuth remains blocked by `disableImplicitLinking`; never silently merge two users.
 
-- [ ] **Step 5: Implement device list/revoke UI**
+- [x] **Step 5: Implement device list/revoke UI**
 
 List current and other devices with platform/lastSeen. Revoking another device calls server revoke route. Revoking/current-session sign-out clears only that device's cloud credential and stops sync; uploaded user data remains.
 
-- [ ] **Step 6: Implement sign out**
+- [x] **Step 6: Implement sign out**
 
 Web calls Better Auth sign-out and clears sync session state; Android additionally removes `account.session` SecureStore entry. Keep local subscriptions/config/Secret runtime data; do not reset NewsNook.
 
-- [ ] **Step 7: Reuse backup machinery for pre-bootstrap safety snapshot**
+- [x] **Step 7: Reuse backup machinery for pre-bootstrap safety snapshot**
 
 Capture only sync-relevant local sections before first baseline choice. Keep one timestamped “同步前配置” snapshot and expose recovery. Do not include later/read/history/reading position/cache.
 
-- [ ] **Step 8: Implement three first-sync choices**
+- [x] **Step 8: Implement three first-sync choices**
 
 ```text
 使用本机 -> safety snapshot -> bootstrap/replace -> pull final -> mark complete
@@ -882,11 +882,11 @@ Capture only sync-relevant local sections before first baseline choice. Keep one
 合并     -> safety snapshot -> reconcile/push -> pull -> show high-risk conflicts
 ```
 
-- [ ] **Step 9: Implement conflict UI and sync Toast**
+- [x] **Step 9: Implement conflict UI and sync Toast**
 
 Only high-risk conflicts are shown; actions `accept_local` / `accept_server`. Secret values are never shown. Error toast includes short requestId/error number when present.
 
-- [ ] **Step 10: Green/regression**
+- [x] **Step 10: Green/regression**
 
 ```bash
 npm run test:account-sync-ui
@@ -895,7 +895,7 @@ npm run test:config-backup
 npm run build
 ```
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add src/screens src/components src/features/account src/features/sync src/App.tsx src/lib/storage.ts src/lib/backup.ts scripts package.json
@@ -921,19 +921,19 @@ never system-notify: normal automatic success, every local edit, foreground sync
 may system-notify: first cloud sync complete, repeated failure, actionable conflict
 ```
 
-- [ ] **Step 1: Write failing notification policy tests**
+- [x] **Step 1: Write failing notification policy tests**
 
 `mapSyncEventToNotification(event,visibility)` returns null for routine success and stable models for the three allowed cases.
 
-- [ ] **Step 2: Implement minimal native plugin**
+- [x] **Step 2: Implement minimal native plugin**
 
 Use `NotificationManager`/`NotificationCompat`, one `newsnook-sync` channel, stable ids so repeat failures update instead of stacking. Conflict notification opens app with intent data that routes to Account & Sync.
 
-- [ ] **Step 3: Register and connect**
+- [x] **Step 3: Register and connect**
 
 `POST_NOTIFICATIONS` is already in manifest. Do not request permission at cold start solely for sync; foreground always prefers in-app Toast.
 
-- [ ] **Step 4: Green**
+- [x] **Step 4: Green**
 
 ```bash
 npm run test:sync-notifier
@@ -941,7 +941,7 @@ npm run build
 cd android && ./gradlew :app:compileCloudDebugJavaWithJavac
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add android src/features/sync scripts/sync-notifier.test.ts package.json
@@ -958,7 +958,7 @@ git commit -m "feat(sync): add Android sync notifications"
 - Create: `docs/cloud-deploy.md`
 - Modify: `docs/user-guide.md`, `docs/architecture.md`, `AGENTS.md`, `README.md` as needed to match shipped optional-cloud behavior
 
-- [ ] **Step 1: Add CI with real PostgreSQL**
+- [x] **Step 1: Add CI with real PostgreSQL**
 
 Sequence:
 
@@ -970,11 +970,11 @@ checkout -> Node -> npm ci -> postgres healthy
 
 Use test-only auth/encryption/SMTP values; no production OAuth secrets in PR CI.
 
-- [ ] **Step 2: Add Dockerfile/Compose**
+- [x] **Step 2: Add Dockerfile/Compose**
 
 Compose contains only API + PostgreSQL. API startup never auto-runs migrations.
 
-- [ ] **Step 3: Add `.env.example`**
+- [x] **Step 3: Add `.env.example`**
 
 Names only, no real values:
 
@@ -995,7 +995,7 @@ SMTP_PASSWORD
 SMTP_FROM
 ```
 
-- [ ] **Step 4: Write deploy/backup runbook**
+- [x] **Step 4: Write deploy/backup runbook**
 
 Document:
 
@@ -1006,7 +1006,7 @@ backup -> explicit migration -> deploy -> /health/live -> /health/ready
 
 Daily PostgreSQL backup, off-host/object storage retention, restore drill, and separate storage of data-encryption key are mandatory operational notes.
 
-- [ ] **Step 5: Full verification gate**
+- [x] **Step 5: Full verification gate**
 
 ```bash
 npm ci
@@ -1031,7 +1031,7 @@ cd android && ./gradlew :app:compileCloudDebugJavaWithJavac :app:compileLocalDeb
 
 Every command must exit 0.
 
-- [ ] **Step 6: Manual staging / real-device acceptance**
+- [ ] **Step 6: Manual staging / real-device acceptance**（自动化实现阶段未执行：需要真实 staging 环境、真实 OAuth/SMTP 凭证与两台 Android 设备。发布前必须人工过一遍下列清单。）
 
 Record all of these:
 
@@ -1051,7 +1051,7 @@ Record all of these:
 14. Error toast/request log correlation works via requestId without exposing secrets.
 15. Old WebView compatibility device/version opens app/account screen without syntax regression.
 
-- [ ] **Step 7: Update user and architecture docs**
+- [x] **Step 7: Update user and architecture docs**
 
 Explicitly document:
 
@@ -1061,7 +1061,7 @@ with login: optional config/subscription/secret sync
 not synced: article bodies/cache/read/favorites/history/progress
 ```
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add .github cloud docs AGENTS.md README.md
@@ -1088,3 +1088,18 @@ Implementation is complete only when:
 - Error reports have requestId correlation without sensitive payloads.
 - Real PostgreSQL integration/concurrency tests, client regression tests, builds, lint and both Android Java variants pass.
 - Architecture/user/deployment documentation permits optional cloud while retaining local-first as the hard product rule.
+
+---
+
+## 实现记录（2026-08-27）
+
+Task 1–14 的代码步骤已全部实现并跑通；Task 14 Step 6 的真机 / staging 验收留待发布前人工执行（自动化环境没有真实 OAuth、SMTP 与第二台 Android 设备）。
+
+相较计划的落地差异：
+
+- **契约包分两个入口**：`@newsnook/contracts` 主入口带 zod schema 供服务端使用，`@newsnook/contracts/protocol` 只导出常量与 `rankBetween`/`rankForIndex`，客户端引用它以免把 zod 打进 App 包。
+- **首次同步闸门显式化**：`LocalSyncState.firstSyncCompleted` 为 false 时 `SyncEngine.runCycle` 直接停在 `needs-first-sync`，新设备不会先把默认配置推上云再让用户选。
+- **Outbox 不存 Secret 明文**：落盘前 Secret 载荷抹成 null，push 前一刻才从活投影里取值（`reconcile.materializeMutation`）。
+- **通知走深链而非 intent extra**：`SyncNotificationPlugin` 用 `newsnook://sync/account-sync` 触发 Capacitor 的 `appUrlOpen`，与分享深链共用同一条落地路径。
+- **页面状态机抽成纯函数**：`features/account/screenModel.ts` 让「账户与同步」四种形态可以在 Node 里直接断言，不需要渲染 React。
+- **CI 需要 `npx cap update android`**：`capacitor.build.gradle` 依赖它生成的插件清单，裸 `npm ci` 后直接 `gradlew` 会失败。
