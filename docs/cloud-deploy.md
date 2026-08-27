@@ -99,25 +99,24 @@ Compose 已配置 `host.docker.internal`；宿主机上的 Postgres 请用该主
 Nginx 与 API **不在同一台机器**时：
 
 ```text
-客户端 → https://api.xxxxx.com (Nginx 机, 443)
-       → http://10.0.160.5:59800     (API 机 Docker 发布端口)
+客户端 → https://api.example.com (Nginx 机, 443)
+       → http://<API 机内网地址>:<发布端口>   （由 API_PUBLISH_* 决定，勿把真实地址写进仓库）
        → 容器内 :8787
 ```
 
 API 机 `cloud/.env`：
 
 ```bash
-BETTER_AUTH_URL=https://api.xxxxx.com
+BETTER_AUTH_URL=https://api.example.com
 API_PUBLISH_HOST=0.0.0.0
-API_PUBLISH_PORT=59800
+API_PUBLISH_PORT=8787
 TRUST_PROXY=true
-CLIENT_ORIGINS=https://news.aizeek.com   # 前端 origin，不是 API 域名
+CLIENT_ORIGINS=https://app.example.com   # 前端 origin，不是 API 域名
 ```
 
-然后 `./deploy up`。防火墙只允许 **Nginx 机 IP → API 机:59800**，不要对公网开放该端口。
+然后 `./deploy up`。防火墙只允许 **Nginx 机 → API 机发布端口**，不要对公网开放该端口。
 
-完整 Nginx 样例见 [`cloud/nginx/api.xxxxx.com.conf.example`](../cloud/nginx/api.xxxxx.com.conf.example)。
-要点：转发 `Host` / `X-Forwarded-For` / `X-Forwarded-Proto`；`client_max_body_size 2m` 足够（同步 push 上限约 512KB）；
+Nginx 自行配置：`proxy_pass` 到 API 机的 `API_PUBLISH_HOST:API_PUBLISH_PORT`；转发 `Host` / `X-Forwarded-For` / `X-Forwarded-Proto`；`client_max_body_size 2m` 足够（同步 push 上限约 512KB）。
 V1 **无 WebSocket**，不要套大文件上传那套 `proxy_buffering off` / `Upgrade`。
 
 ### 直接跑 Node

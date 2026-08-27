@@ -1,6 +1,6 @@
 # NewsNook Cloud API。PostgreSQL 使用外部实例（不在本 compose 内起库）。
-# Nginx 在另一台机器时：把 API_PUBLISH_HOST 设为 0.0.0.0（或内网网卡 IP），
-# API_PUBLISH_PORT 设成反代 upstream 端口（例如 59800），并用防火墙只放行 Nginx 机。
+# Nginx 在另一台机器时：把 API_PUBLISH_HOST 设为 0.0.0.0，
+# API_PUBLISH_PORT 设成反代 upstream 端口，并用防火墙只放行 Nginx 机。
 #
 #   ./deploy up
 #   ./deploy db migrate
@@ -27,7 +27,6 @@ services:
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     ports:
-      # 宿主机发布地址:容器内 8787
-      # 同机 Nginx：127.0.0.1:8787:8787
-      # 跨机 Nginx：0.0.0.0:59800:8787（再由 Nginx proxy_pass 到该机:59800）
+      # 宿主机发布地址:容器内 8787（跨机时由 Nginx proxy_pass 到此发布端口）
+      # 同机 Nginx 可改为 127.0.0.1:8787:8787
       - '${API_PUBLISH_HOST:-0.0.0.0}:${API_PUBLISH_PORT:-8787}:8787'

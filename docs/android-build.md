@@ -39,6 +39,19 @@ NEWSNOOK_KEY_ALIAS
 NEWSNOOK_KEY_PASSWORD
 ```
 
+可选账户云同步的 API 地址由 Vite 在构建时写入前端包（`VITE_CLOUD_BASE_URL`）。正式发布请用环境变量注入，**不要**把真实地址写进仓库代码或注释。
+
+本机 **Web 开发 / Web 生产构建 / Android** 共用一个文件：仓库根目录 `.env.local`
+（Vite 在 `dev` 与 `build` 模式都会加载；`*.local` 已 gitignore）。
+不要用 `.env.production.local`  alone——`npm run dev` 读不到它，会落到占位默认值。
+
+| 场景 | 注入方式 |
+|---|---|
+| 本机 Web / Android | 根目录 `.env.local`（一份共用；改完需重启 `npm run dev`） |
+| GitHub Actions | 仓库 Variables 设 `VITE_CLOUD_BASE_URL`；`android-release` / `android-manual-build` 已挂到 job `env` |
+| Cloudflare Pages | 在 Pages 项目的 Build environment variables 中设置同名变量 |
+
+未注入时客户端回退到代码里的占位默认值；云不可达不影响本地阅读。
 ## 构建 Android
 
 默认同时生成两种签名 Release APK：

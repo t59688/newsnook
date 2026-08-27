@@ -21,6 +21,8 @@ jobs:
       NEWSNOOK_KEYSTORE_PASSWORD: ${{ secrets.NEWSNOOK_KEYSTORE_PASSWORD }}
       NEWSNOOK_KEY_ALIAS: ${{ secrets.NEWSNOOK_KEY_ALIAS }}
       NEWSNOOK_KEY_PASSWORD: ${{ secrets.NEWSNOOK_KEY_PASSWORD }}
+      # Optional; unset → client falls back to DEFAULT_CLOUD_BASE_URL placeholder
+      VITE_CLOUD_BASE_URL: ${{ vars.VITE_CLOUD_BASE_URL }}
 
     steps:
       - name: Checkout

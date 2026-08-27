@@ -266,8 +266,8 @@ assert.ok(!url.includes('sspai.com'), '主链接不得直接暴露原站地址')
 assert.equal(new URL(url).hostname, 'news.aizeek.com')
 
 // 6. 开发态可以指向本机 origin，路径结构保持一致
-const devUrl = buildShareUrl(payload, { origin: 'http://192.168.1.8:5173/' })
-assert.ok(devUrl.startsWith('http://192.168.1.8:5173/a/'), '开发态 origin 也走同一路径')
+const devUrl = buildShareUrl(payload, { origin: 'http://127.0.0.1:5173/' })
+assert.ok(devUrl.startsWith('http://127.0.0.1:5173/a/'), '开发态 origin 也走同一路径')
 
 // 7. 反向解析：整条 URL 与单独的 pathname 都能还原
 assert.equal(parseShareUrl(url)?.originUrl, article.originUrl)

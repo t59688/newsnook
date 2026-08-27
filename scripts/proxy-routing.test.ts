@@ -21,10 +21,10 @@ assert.equal(httpProxy.host, '127.0.0.1')
 assert.equal(httpProxy.port, 7890)
 
 // SOCKS5 地址
-const socksProxy = parseProxyAddress('socks5://user:pass@192.168.1.100:1080')
+const socksProxy = parseProxyAddress('socks5://user:pass@proxy.example.com:1080')
 assert.equal(socksProxy.isValid, true)
 assert.equal(socksProxy.protocol, 'socks5')
-assert.equal(socksProxy.host, '192.168.1.100')
+assert.equal(socksProxy.host, 'proxy.example.com')
 assert.equal(socksProxy.port, 1080)
 assert.equal(socksProxy.username, 'user')
 assert.equal(socksProxy.password, 'pass')
