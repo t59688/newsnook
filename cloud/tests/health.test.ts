@@ -125,5 +125,15 @@ describe('config parsing', () => {
 
   it('requires OAuth id and secret together', () => {
     assert.throws(() => loadConfig({ ...base, GOOGLE_CLIENT_ID: 'only-id' }), ConfigError)
+    assert.throws(() => loadConfig({ ...base, LINUXDO_CLIENT_ID: 'only-id' }), ConfigError)
+  })
+
+  it('accepts Linux DO Connect credentials', () => {
+    const config = loadConfig({
+      ...base,
+      LINUXDO_CLIENT_ID: 'ld-id',
+      LINUXDO_CLIENT_SECRET: 'ld-secret',
+    })
+    assert.deepEqual(config.linuxdo, { clientId: 'ld-id', clientSecret: 'ld-secret' })
   })
 })

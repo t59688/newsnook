@@ -8,7 +8,7 @@
     "cloud"
   ],
   "scripts": {
-    "dev": "vite --host",
+    "dev": "npm run build:contracts && vite --host",
     "fonts:easter-egg": "node scripts/build-easter-egg-font.mjs",
     "build:contracts": "npm run build --workspace @newsnook/contracts",
     "build": "npm run build:contracts && npm run fonts:easter-egg && tsc -b && vite build",

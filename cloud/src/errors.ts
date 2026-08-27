@@ -29,22 +29,26 @@ export function apiErrorBody(code: ApiErrorCode, message: string, requestId: str
 }
 
 export const authRequired = (): ApiError =>
-  new ApiError('AUTH_REQUIRED', 'Authentication is required for this endpoint')
+  new ApiError('AUTH_REQUIRED', '需要登录后才能访问')
 
 export const sessionExpired = (): ApiError =>
-  new ApiError('SESSION_EXPIRED', 'The session is no longer valid, sign in again')
+  new ApiError('SESSION_EXPIRED', '登录已失效，请重新登录')
 
 export const deviceRevoked = (): ApiError =>
-  new ApiError('DEVICE_REVOKED', 'This device has been revoked for the account')
+  new ApiError('DEVICE_REVOKED', '这台设备的同步已被撤销')
+
+/** 本机 deviceId 已绑定其他账户；客户端应换新 deviceId 后重试 */
+export const deviceInUse = (): ApiError =>
+  new ApiError('DEVICE_IN_USE', '这台设备已绑定到另一个账户，正在重新登记')
 
 export const validationFailed = (message: string, detail?: string): ApiError =>
   new ApiError('VALIDATION_FAILED', message, detail)
 
 export const protocolUnsupported = (): ApiError =>
-  new ApiError('SYNC_SCHEMA_UNSUPPORTED', 'This client sync protocol version is not supported')
+  new ApiError('SYNC_SCHEMA_UNSUPPORTED', '同步协议版本过旧，请升级应用')
 
-export const notFound = (message = 'Resource not found'): ApiError =>
+export const notFound = (message = '资源不存在'): ApiError =>
   new ApiError('NOT_FOUND', message)
 
-export const serviceUnavailable = (message = 'Service temporarily unavailable'): ApiError =>
+export const serviceUnavailable = (message = '服务暂时不可用，请稍后再试'): ApiError =>
   new ApiError('SERVICE_UNAVAILABLE', message)

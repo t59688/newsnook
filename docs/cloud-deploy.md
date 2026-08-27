@@ -139,6 +139,7 @@ DATABASE_URL=postgres://.../newsnook_restore npm run cloud:migrate
 |---|---|---|
 | 401 `AUTH_REQUIRED` / `SESSION_EXPIRED` | 会话失效 | 暂停同步并提示重新登录，本地数据不动 |
 | 403 `DEVICE_REVOKED` | 设备被撤销 | 停止同步，保留本机全部数据 |
+| 409 `DEVICE_IN_USE` | 本机 deviceId 已属其他账户 | 客户端换新 deviceId 后自动重试 |
 | 409 冲突 | 高风险冲突 | 进冲突队列，其余实体继续同步 |
 | 413 `PAYLOAD_TOO_LARGE` | 批次过大 | 客户端按 `SYNC_LIMITS` 分批 |
 | 429 `RATE_LIMITED` | 限流 | 按 `Retry-After` 退避 |
@@ -146,8 +147,10 @@ DATABASE_URL=postgres://.../newsnook_restore npm run cloud:migrate
 
 ## 8. OAuth 与邮件
 
-- Google / GitHub 的 client id/secret 不填就不启用对应入口，服务照常运行。
-- 回调地址是 `"$BETTER_AUTH_URL"/api/auth/callback/{google,github}`。
+- Google / GitHub / Linux DO 的 client id/secret 不填就不启用对应入口，服务照常运行。
+- 回调地址是 `"$BETTER_AUTH_URL"/api/auth/callback/{google,github,linuxdo}`。
+- Linux DO Connect 申请页：<https://connect.linux.do>；OIDC discovery：
+  `https://connect.linux.do/.well-known/openid-configuration`。
 - Android 不在深链里传长期 Session：浏览器完成登录后服务端签发**一次性令牌**，
   App 用它换 Session token 并存进 Android Keystore（见 `cloud/src/routes/mobileAuth.ts`）。
 - 同邮箱的不同登录方式**不会被自动合并**（`disableImplicitLinking: true`）；

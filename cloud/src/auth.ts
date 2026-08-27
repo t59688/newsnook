@@ -10,6 +10,7 @@
 
 import { betterAuth } from 'better-auth'
 import { bearer } from 'better-auth/plugins/bearer'
+import { genericOAuth } from 'better-auth/plugins/generic-oauth'
 import { oneTimeToken } from 'better-auth/plugins/one-time-token'
 import type { Pool } from 'pg'
 
@@ -17,6 +18,10 @@ import { MOBILE_AUTH_CALLBACK_URL } from '@newsnook/contracts'
 
 import type { CloudConfig } from './config.js'
 import type { Mailer } from './mail.js'
+
+/** Linux DO Connect 的 OIDC discovery；回调路径为 /api/auth/callback/linuxdo */
+export const LINUXDO_DISCOVERY_URL = 'https://connect.linux.do/.well-known/openid-configuration'
+export const LINUXDO_PROVIDER_ID = 'linuxdo' as const
 
 export interface CreateAuthOptions {
   config: CloudConfig
@@ -37,6 +42,51 @@ export function createAuth(options: CreateAuthOptions) {
   const socialProviders: Record<string, { clientId: string; clientSecret: string }> = {}
   if (config.google) socialProviders.google = config.google
   if (config.github) socialProviders.github = config.github
+
+  const plugins = [
+    bearer(),
+    oneTimeToken({
+      expiresIn: MOBILE_OTT_EXPIRES_IN_MINUTES,
+      storeToken: 'hashed',
+      // 只允许服务端在 /api/v1/auth/mobile/complete 里签发
+      disableClientRequest: true,
+    }),
+    ...(config.linuxdo
+      ? [
+          genericOAuth({
+            config: [
+              {
+                providerId: LINUXDO_PROVIDER_ID,
+                name: 'Linux DO',
+                discoveryUrl: LINUXDO_DISCOVERY_URL,
+                clientId: config.linuxdo.clientId,
+                clientSecret: config.linuxdo.clientSecret,
+                scopes: ['openid', 'profile', 'email'],
+                // discovery 支持 S256；保持默认 PKCE
+                pkce: true,
+                mapProfileToUser: (profile) => {
+                  const login =
+                    (typeof profile.username === 'string' && profile.username) ||
+                    (typeof profile.login === 'string' && profile.login) ||
+                    null
+                  return {
+                    name:
+                      (typeof profile.name === 'string' && profile.name) ||
+                      login ||
+                      undefined,
+                    email: typeof profile.email === 'string' ? profile.email : undefined,
+                    image:
+                      (typeof profile.avatar_url === 'string' && profile.avatar_url) ||
+                      (typeof profile.image === 'string' && profile.image) ||
+                      undefined,
+                  }
+                },
+              },
+            ],
+          }),
+        ]
+      : []),
+  ]
 
   return betterAuth({
     appName: 'NewsNook',
@@ -82,15 +132,7 @@ export function createAuth(options: CreateAuthOptions) {
         sameSite: 'lax',
       },
     },
-    plugins: [
-      bearer(),
-      oneTimeToken({
-        expiresIn: MOBILE_OTT_EXPIRES_IN_MINUTES,
-        storeToken: 'hashed',
-        // 只允许服务端在 /api/v1/auth/mobile/complete 里签发
-        disableClientRequest: true,
-      }),
-    ],
+    plugins,
   })
 }
 

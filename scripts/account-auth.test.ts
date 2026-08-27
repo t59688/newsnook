@@ -326,6 +326,26 @@ assert.equal(
   assert.equal(opened[1], 'https://github.test/login/oauth/link', '绑定走 link-social，不是重新登录')
 }
 
+{
+  const { fetchImpl, requests } = createFetchStub({
+    '/api/auth/sign-in/social': { body: { url: 'https://connect.linux.do/oauth2/authorize?x=1' } },
+  })
+  const opened: string[] = []
+  const adapter = createAccountAdapter({
+    platform: 'web',
+    baseUrl: BASE_URL,
+    secureStore: createMemorySecureStore(),
+    fetchImpl,
+    openExternal: (url) => {
+      opened.push(url)
+    },
+  })
+
+  assert.equal(await adapter.startSocialSignIn('linuxdo'), 'redirect')
+  assert.equal(opened[0], 'https://connect.linux.do/oauth2/authorize?x=1')
+  assert.equal((requests[0]!.body as { provider: string }).provider, 'linuxdo')
+}
+
 // --- 退出登录：只清凭证 ------------------------------------------------------
 
 {

@@ -27,6 +27,8 @@ export interface CloudConfig {
   clientOrigins: string[]
   google?: OAuthProviderConfig
   github?: OAuthProviderConfig
+  /** Linux DO Connect（标准 OAuth2/OIDC，经 Better Auth genericOAuth 接入） */
+  linuxdo?: OAuthProviderConfig
   smtp?: SmtpConfig
   /** 是否强制邮箱验证后才允许登录 */
   requireEmailVerification: boolean
@@ -168,6 +170,7 @@ export function loadConfig(env: Env = process.env): CloudConfig {
     clientOrigins: parseOrigins(required(env, 'CLIENT_ORIGINS')),
     google: parseProvider(env, 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'),
     github: parseProvider(env, 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'),
+    linuxdo: parseProvider(env, 'LINUXDO_CLIENT_ID', 'LINUXDO_CLIENT_SECRET'),
     smtp: parseSmtp(env),
     requireEmailVerification: boolFlag(env, 'REQUIRE_EMAIL_VERIFICATION', true),
     logLevel: optional(env, 'LOG_LEVEL') ?? 'info',

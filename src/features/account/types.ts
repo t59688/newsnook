@@ -13,7 +13,7 @@ import type { CloudFetch } from '../sync/transport'
 export type AccountPlatform = Extract<DevicePlatform, 'web' | 'android'>
 
 /** 邮箱密码登录记为 `credential`，其余是 OAuth provider id */
-export type SocialProvider = 'google' | 'github'
+export type SocialProvider = 'google' | 'github' | 'linuxdo'
 
 export interface AccountUser {
   id: string
@@ -25,7 +25,7 @@ export interface AccountUser {
 
 export interface AccountSession {
   user: AccountUser
-  /** 已绑定的登录方式：`credential` / `google` / `github` */
+  /** 已绑定的登录方式：`credential` / `google` / `github` / `linuxdo` */
   linkedProviders: string[]
 }
 

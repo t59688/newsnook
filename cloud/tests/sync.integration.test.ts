@@ -595,8 +595,8 @@ describe('sync devices and access control', { skip: skipWithoutDatabase }, () =>
     const stolen: SignedInUser = { ...bob, deviceId: alice.deviceId }
 
     const response = await pushRaw(stolen, [upsert('setting', 'theme', { value: 'light' })])
-    assert.equal(response.statusCode, 400)
-    assert.equal(response.json().code, 'VALIDATION_FAILED')
+    assert.equal(response.statusCode, 409)
+    assert.equal(response.json().code, 'DEVICE_IN_USE')
   })
 
   it('never leaks another account records or conflicts', async () => {

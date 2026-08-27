@@ -28,7 +28,7 @@ import {
 } from '@newsnook/contracts'
 
 import type { SecretCipher } from '../crypto/secrets.js'
-import { ApiError, deviceRevoked, notFound, validationFailed } from '../errors.js'
+import { ApiError, deviceInUse, deviceRevoked, notFound, validationFailed } from '../errors.js'
 import { classifyMutation, conflictSnapshot } from './conflicts.js'
 import * as repo from './repository.js'
 
@@ -91,7 +91,7 @@ export class SyncService {
     await this.withTransaction(async (client) => {
       const existing = await repo.findDevice(client, context.deviceId)
       if (existing && existing.user_id !== userId) {
-        throw validationFailed('This device id is already registered to another account')
+        throw deviceInUse()
       }
       if (existing?.revoked_at) throw deviceRevoked()
       await repo.touchDevice(client, {

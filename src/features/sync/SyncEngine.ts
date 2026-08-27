@@ -12,6 +12,7 @@ import type { BootstrapEntity, SyncConflict, SyncPushResponse, SyncRecord } from
 
 import { log } from '../../lib/logger'
 import { fingerprintOf } from './fingerprint'
+import { randomUuid } from './ids'
 import { materializeBatch } from './reconcile'
 import { reconcileProjection } from './reconcile'
 import { SyncTransportError, type SyncTransport } from './transport'
@@ -354,7 +355,17 @@ export class SyncEngine {
     const state = this.adapter.readState()
     const attempt = state.retryAttempt + 1
 
-    if (transportError.fatal) {
+    if (transportError.code === 'DEVICE_IN_USE') {
+      // 同机换账号：旧 deviceId 还挂在别的用户上。换新 id 立刻再试，不打扰用户。
+      this.adapter.writeState({
+        ...state,
+        deviceId: randomUuid(),
+        retryAttempt: 0,
+        nextRetryAt: this.now(),
+      })
+      this.setPhase('error')
+      log.sync.info('device id owned by another account; rotated and retrying')
+    } else if (transportError.fatal) {
       // 需要用户重新登录或处理设备撤销：停掉自动重试，避免无谓地打服务端
       this.adapter.writeState({ ...state, retryAttempt: 0, nextRetryAt: null })
       this.setPhase('paused')

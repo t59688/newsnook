@@ -8,6 +8,7 @@
  */
 
 import type { SyncEvent, SyncStatus } from './SyncEngine'
+import { SyncTransportError } from './transport'
 
 export type SyncToastTone = 'info' | 'success' | 'warn' | 'error'
 
@@ -34,11 +35,29 @@ const ERROR_TEXT: Record<string, string> = {
   AUTH_REQUIRED: '登录已过期，请重新登录后继续同步',
   SESSION_EXPIRED: '登录已过期，请重新登录后继续同步',
   DEVICE_REVOKED: '这台设备的同步已被撤销，本地数据不受影响',
+  DEVICE_IN_USE: '这台设备已绑定到另一个账户，正在重新登记…',
   PROTOCOL_UNSUPPORTED: '同步协议版本过旧，请升级到最新版本',
+  VALIDATION_FAILED: '同步请求无效，请稍后重试',
 }
 
-function errorText(code: string): string {
+function syncErrorText(code: string): string {
   return ERROR_TEXT[code] ?? '同步失败，稍后会自动重试'
+}
+
+/** 把同步/设备接口错误收成中文；优先用稳定 code，避免直接展示英文 message */
+export function describeSyncError(error: unknown, fallback = '操作失败，请稍后再试'): string {
+  if (error instanceof SyncTransportError) {
+    return ERROR_TEXT[error.code] ?? (looksEnglish(error.message) ? fallback : error.message)
+  }
+  if (error instanceof Error) {
+    return looksEnglish(error.message) ? fallback : error.message
+  }
+  return fallback
+}
+
+function looksEnglish(text: string): boolean {
+  const letters = text.replace(/[^A-Za-z]/g, '')
+  return letters.length >= 8 && letters.length >= text.length * 0.4
 }
 
 /** 引擎事件 → 应用内 Toast；返回 null 表示这次不该打扰用户 */
@@ -71,7 +90,7 @@ export function toastForSyncEvent(event: SyncEvent): SyncToastModel | null {
       const id = shortRequestId(event.requestId)
       return {
         tone: 'error',
-        text: id ? `${errorText(event.code)}（编号 ${id}）` : errorText(event.code),
+        text: id ? `${syncErrorText(event.code)}（编号 ${id}）` : syncErrorText(event.code),
         action: fatal ? 'open-account-sync' : undefined,
         actionLabel: fatal ? '去处理' : undefined,
       }
@@ -173,7 +192,7 @@ export function mapSyncEventToNotification(
       return {
         id: SYNC_NOTIFICATION_IDS.failure,
         title: '同步没能完成',
-        body: id ? `${errorText(event.code)}（编号 ${id}）` : errorText(event.code),
+        body: id ? `${syncErrorText(event.code)}（编号 ${id}）` : syncErrorText(event.code),
         route: 'account-sync',
       }
     }

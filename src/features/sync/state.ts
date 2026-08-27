@@ -122,6 +122,15 @@ export function writeSyncState(state: LocalSyncState): void {
   saveSyncState(redactForPersistence(state))
 }
 
+/** 换账号同机同步时：旧 deviceId 已绑定别的账户，发一个新的继续用 */
+export function rotateDeviceId(): string {
+  const state = readSyncState()
+  const deviceId = randomUuid()
+  writeSyncState({ ...state, deviceId })
+  log.sync.info('rotated device id after ownership conflict')
+  return deviceId
+}
+
 export function normalizeApplyJournal(raw: unknown): SyncApplyJournal | null {
   const input = raw as Partial<SyncApplyJournal> | null
   if (!input || !Array.isArray(input.records)) return null

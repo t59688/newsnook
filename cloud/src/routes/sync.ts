@@ -34,7 +34,7 @@ function assertProtocolVersion(body: unknown): void {
 
 function requireDeviceId(request: FastifyRequest, fromBody?: string): string {
   const deviceId = fromBody ?? deviceIdFromHeader(request)
-  if (!deviceId) throw validationFailed('A device id is required for sync requests')
+      if (!deviceId) throw validationFailed('同步请求需要设备标识')
   return deviceId
 }
 
@@ -64,7 +64,7 @@ export async function registerSyncRoutes(
       const session = await app.requireSession(request)
       assertProtocolVersion(request.body)
       const parsed = syncBootstrapReplaceRequestSchema.safeParse(request.body)
-      if (!parsed.success) throw validationFailed('Invalid bootstrap payload')
+      if (!parsed.success) throw validationFailed('首次同步请求无效')
 
       await service.ensureDevice(session.userId, { deviceId: parsed.data.deviceId })
       return service.bootstrapReplace(session.userId, parsed.data.deviceId, parsed.data.entities)
@@ -83,7 +83,7 @@ export async function registerSyncRoutes(
       const parsed = syncPushRequestSchema.safeParse(request.body)
       if (!parsed.success) {
         throw validationFailed(
-          'Invalid sync push payload',
+          '同步推送内容无效',
           parsed.error.issues.map((issue) => issue.path.join('.')).join(','),
         )
       }
@@ -121,7 +121,7 @@ export async function registerSyncRoutes(
   app.get('/api/v1/sync/pull', { config: { rateLimit: SYNC_RATE_LIMIT } }, async (request) => {
     const session = await app.requireSession(request)
     const parsed = syncPullQuerySchema.safeParse(request.query)
-    if (!parsed.success) throw validationFailed('Invalid pull query')
+    if (!parsed.success) throw validationFailed('同步拉取参数无效')
 
     const deviceId = deviceIdFromHeader(request)
     if (deviceId) await service.ensureDevice(session.userId, { deviceId })
@@ -161,10 +161,10 @@ export async function registerSyncRoutes(
       const session = await app.requireSession(request)
       assertProtocolVersion(request.body)
       const conflictId = uuidSchema.safeParse(request.params.id)
-      if (!conflictId.success) throw validationFailed('Conflict id must be a UUID')
+      if (!conflictId.success) throw validationFailed('冲突标识无效')
 
       const parsed = syncConflictResolveRequestSchema.safeParse(request.body)
-      if (!parsed.success) throw validationFailed('Invalid conflict resolution payload')
+      if (!parsed.success) throw validationFailed('冲突处理请求无效')
 
       const deviceId = requireDeviceId(request, parsed.data.deviceId)
       await service.ensureDevice(session.userId, { deviceId })

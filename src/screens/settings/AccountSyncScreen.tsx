@@ -23,9 +23,10 @@ import {
   type FirstSyncDecision,
 } from '../../features/sync/firstSync'
 import type { LocalRuntimeState } from '../../features/sync/merge'
-import { relativeTime, syncStatusCaption } from '../../features/sync/notifier'
+import { relativeTime, describeSyncError, syncStatusCaption } from '../../features/sync/notifier'
 import { projectLocalState } from '../../features/sync/projection'
-import { readSyncState } from '../../features/sync/state'
+import { readSyncState, rotateDeviceId } from '../../features/sync/state'
+import { SyncTransportError } from '../../features/sync/transport'
 import type { CloudSyncApi } from '../../features/sync/useCloudSync'
 import {
   captureSyncSafetySnapshot,
@@ -45,6 +46,7 @@ const PROVIDER_LABEL: Record<string, string> = {
   credential: '邮箱密码',
   google: 'Google',
   github: 'GitHub',
+  linuxdo: 'Linux DO',
 }
 
 const CONFLICT_REASON_LABEL: Record<string, string> = {
@@ -123,14 +125,26 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
     if (!needsFirstSync || !sync.engine) return
     let disposed = false
     setBootstrapError(null)
-    void sync.engine
-      .bootstrapSummary()
-      .then((summary) => {
+
+    const load = async (allowRotate: boolean): Promise<void> => {
+      try {
+        const summary = await sync.engine!.bootstrapSummary()
         if (!disposed) setBootstrap(summary)
-      })
-      .catch((error: unknown) => {
-        if (!disposed) setBootstrapError(error instanceof Error ? error.message : '云端摘要读取失败')
-      })
+      } catch (error: unknown) {
+        if (
+          allowRotate &&
+          error instanceof SyncTransportError &&
+          error.code === 'DEVICE_IN_USE'
+        ) {
+          rotateDeviceId()
+          await load(false)
+          return
+        }
+        if (!disposed) setBootstrapError(describeSyncError(error, '云端摘要读取失败'))
+      }
+    }
+
+    void load(true)
     return () => {
       disposed = true
     }
@@ -142,7 +156,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
     try {
       setDevices(await listDevices(account.adapter.fetchCloud, readSyncState().deviceId))
     } catch (error: unknown) {
-      setDeviceError(error instanceof Error ? error.message : '设备列表读取失败')
+      setDeviceError(describeSyncError(error, '设备列表读取失败'))
     }
   }, [account.adapter, authenticated])
 
@@ -285,6 +299,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
               <div className="flex flex-wrap gap-2">
                 {social('google', '用 Google 登录')}
                 {social('github', '用 GitHub 登录')}
+                {social('linuxdo', '用 Linux DO 登录')}
               </div>
               <p className="mt-3 text-[11.5px] leading-relaxed text-paper-faint">
                 同邮箱的不同登录方式不会被自动合并成一个账户。登录后可以在这里显式绑定另一种方式。
@@ -376,7 +391,14 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
             <Card>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="truncate text-[14px] text-paper">{account.session?.user.email}</p>
+                  <p className="truncate text-[14px] text-paper">
+                    {account.session?.user.name?.trim() || account.session?.user.email}
+                  </p>
+                  {account.session?.user.name?.trim() && account.session.user.email && (
+                    <p className="mt-0.5 truncate font-mono text-[10.5px] text-paper-faint">
+                      {account.session.user.email}
+                    </p>
+                  )}
                   <p className="mt-1 font-mono text-[10.5px] text-paper-faint">{caption}</p>
                 </div>
                 <button
@@ -504,6 +526,14 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                   className={SECONDARY_BUTTON}
                 >
                   绑定 GitHub
+                </button>
+                <button
+                  type="button"
+                  disabled={account.busy}
+                  onClick={() => void account.linkSocial('linuxdo')}
+                  className={SECONDARY_BUTTON}
+                >
+                  绑定 Linux DO
                 </button>
               </div>
             </Card>
