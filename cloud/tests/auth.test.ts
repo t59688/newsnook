@@ -184,7 +184,17 @@ describe('auth', { skip: skipWithoutDatabase }, () => {
         (response.headers.location as string).includes('github'),
       '应重定向到 GitHub 授权页',
     )
-    assert.ok(response.headers['set-cookie'], '应在 Custom Tab 上下文写入 OAuth state Cookie')
+    const cookies = response.headers['set-cookie'] as string | string[] | undefined
+    assert.ok(cookies, '应在 Custom Tab 上下文写入 OAuth state Cookie')
+    const stateCookie = (Array.isArray(cookies) ? cookies : [cookies]).find((entry) =>
+      entry.split('=')[0]?.endsWith('.state'),
+    )
+    assert.ok(stateCookie)
+    assert.match(
+      stateCookie,
+      /Max-Age=600/i,
+      'state Cookie 与服务端校验行同为 10 分钟：在授权页多停留一会儿不该变成 state_mismatch',
+    )
 
     await githubCloud.close()
   })

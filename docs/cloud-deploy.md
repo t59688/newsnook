@@ -230,6 +230,12 @@ DATABASE_URL=postgres://.../newsnook_restore npm run cloud:migrate
   绑定流程的 Session 靠一次性令牌交接，回跳固定是 `newsnook://auth/callback?linked=<provider>`。
 - 这些路由不需要新的环境变量：`BETTER_AUTH_URL` 仍须与真实回调域名（反代对外的 host）
   完全一致，反代前置时保持 `TRUST_PROXY=true` 并转发 `X-Forwarded-Proto` / `X-Forwarded-Host`。
+- Web 端的 `CLIENT_ORIGINS` 域名应与 `BETTER_AUTH_URL` 同一个注册域
+  （如 `news.example.com` 与 `api-news.example.com`）。跨注册域部署时，
+  浏览器会把 `link-social` / `sign-in/social` 响应里的 `SameSite=Lax` state Cookie
+  当第三方 Cookie 拦掉，回调同样报 `state_mismatch`。
+- state Cookie 的存活时间与服务端校验行对齐到 10 分钟
+  （`OAUTH_STATE_MAX_AGE_SECONDS`）；在 provider 授权页停留过久不再变成 `state_mismatch`。
 
 ## 9. CI
 

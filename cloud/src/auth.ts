@@ -32,6 +32,9 @@ export interface CreateAuthOptions {
 /** 一次性 token 的有效期（分钟）；只够浏览器跳回 App 完成一次交换 */
 export const MOBILE_OTT_EXPIRES_IN_MINUTES = 3
 
+/** OAuth state Cookie 的存活秒数，与 Better Auth 写进 verification 的 10 分钟一致 */
+export const OAUTH_STATE_MAX_AGE_SECONDS = 600
+
 /**
  * 返回类型刻意保持推断：Better Auth 的 `api` 形状由启用的插件决定，
  * 写成 `Auth<BetterAuthOptions>` 会把 bearer / one-time-token 的端点擦掉。
@@ -131,6 +134,12 @@ export function createAuth(options: CreateAuthOptions) {
         httpOnly: true,
         secure: config.betterAuthUrl.startsWith('https://'),
         sameSite: 'lax',
+      },
+      cookies: {
+        // state Cookie 默认只活 5 分钟，服务端那条 verification 却是 10 分钟。
+        // 在 provider 授权页多犹豫一会儿，Cookie 先过期、校验行还在，
+        // 回调就报 state_security_mismatch。两边对齐，过期与否只由校验行说了算。
+        state: { attributes: { maxAge: OAUTH_STATE_MAX_AGE_SECONDS } },
       },
     },
     plugins,
