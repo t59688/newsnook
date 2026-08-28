@@ -482,7 +482,11 @@ Outbox 落盘前 Secret 载荷会被抹成 null，真正的值在 push 前一刻
 **会话与 Secret**：Web 用 HttpOnly Cookie Session；Android 用 Keystore-backed SecureStore
 （`SecureStorePlugin.java`，AES/GCM，密钥不出 Keystore），长期 Session 与同步下来的 Secret 明文只存这里，
 不落普通 Preferences/localStorage。Android 社交登录走系统浏览器 → 一次性令牌深链 → 换 Session，
-长期 token 绝不出现在深链里。业务 API 从 Session 推导 `userId`，从不信任客户端 payload 内的用户 id。
+长期 token 绝不出现在深链里。绑定第三方身份同理：App 先在 WebView 里换一枚一次性令牌，
+再由 Custom Tab 打开 `/api/v1/auth/mobile/link/:provider?ott=…` 发起 OAuth——
+OAuth state Cookie 必须写在真正接住回调的那个浏览器上，否则回调只会 `state_mismatch`；
+绑定完成后回跳 `newsnook://auth/callback?linked=<provider>`，会话不变，App 只刷新已绑定列表。
+业务 API 从 Session 推导 `userId`，从不信任客户端 payload 内的用户 id。
 Secret 上传但不做 E2EE；服务端 AES-256-GCM 加密（AAD 绑定 `userId:secretKey`），日志与推送摘要禁止明文。
 
 **服务端**：同一用户的并发 push 由 `sync_heads` 那一行的 `SELECT ... FOR UPDATE` 事务行锁串行化，

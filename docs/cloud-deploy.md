@@ -223,6 +223,13 @@ DATABASE_URL=postgres://.../newsnook_restore npm run cloud:migrate
   App 用它换 Session token 并存进 Android Keystore（见 `cloud/src/routes/mobileAuth.ts`）。
 - 同邮箱的不同登录方式**不会被自动合并**（`disableImplicitLinking: true`）；
   绑定必须由已登录用户在「账户与同步」里显式发起。
+- Android 的登录与绑定都必须由 Custom Tab 自己向服务端发起
+  （`GET /api/v1/auth/mobile/start/:provider`、`GET /api/v1/auth/mobile/link/:provider?ott=…`）。
+  在 WebView 里 fetch `sign-in/social` 或 `link-social` 再把授权 URL 丢给浏览器，
+  OAuth state Cookie 会留在 WebView，回调必然 `state_mismatch`。
+  绑定流程的 Session 靠一次性令牌交接，回跳固定是 `newsnook://auth/callback?linked=<provider>`。
+- 这些路由不需要新的环境变量：`BETTER_AUTH_URL` 仍须与真实回调域名（反代对外的 host）
+  完全一致，反代前置时保持 `TRUST_PROXY=true` 并转发 `X-Forwarded-Proto` / `X-Forwarded-Host`。
 
 ## 9. CI
 
