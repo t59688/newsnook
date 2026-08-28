@@ -485,8 +485,10 @@ Outbox 落盘前 Secret 载荷会被抹成 null，真正的值在 push 前一刻
 长期 token 绝不出现在深链里。业务 API 从 Session 推导 `userId`，从不信任客户端 payload 内的用户 id。
 Secret 上传但不做 E2EE；服务端 AES-256-GCM 加密（AAD 绑定 `userId:secretKey`），日志与推送摘要禁止明文。
 
-**服务端**：同一用户的并发 push 由 `pg_advisory_xact_lock` 串行化，整批在一个事务里应用，
-`sync_mutations` 记录 mutationId 实现幂等重试。没有 Redis / MQ / 分布式锁。
+**服务端**：同一用户的并发 push 由 `sync_heads` 那一行的 `SELECT ... FOR UPDATE` 事务行锁串行化，
+整批在一个事务里应用，`sync_mutations` 记录 mutationId 实现幂等重试。没有 Redis / MQ / 分布式锁。
+设备是访问主体：每条同步路由都必须带 `x-newsnook-device`，`device_sessions` 记下「会话 ↔ 设备」，
+撤销设备会一并作废它手里的会话，换个 deviceId 也绕不过去。
 部署、迁移、备份与冒烟见 [云端部署运维](./cloud-deploy.md)。
 
 **通知分寸**：前台一律用应用内 `SyncToast`；Android 通知栏只留给首次同步完成、连续失败、待裁决冲突三类

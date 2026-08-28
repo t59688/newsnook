@@ -15,7 +15,7 @@
 | SMTP（可选） | 邮箱验证与密码重置；不配置时邮件只写日志，仅适合本地开发 |
 
 没有 Redis、消息队列、WebSocket、后台 worker。并发 push 的串行化由
-PostgreSQL 的 `pg_advisory_xact_lock` 完成，不引入分布式锁。
+PostgreSQL 对 `sync_heads` 那一行的 `SELECT ... FOR UPDATE` 事务行锁完成，不引入分布式锁。
 
 ## 2. 环境变量
 
