@@ -18,7 +18,7 @@ import type { MeResponse, MobileExchangeResponse, AuthConfigResponse } from '@ne
 import { log } from '../../lib/logger'
 import type { CloudFetch, CloudRequestInit } from '../sync/transport'
 import { resolveCloudBaseUrl } from './config'
-import { oneTimeTokenFromAppUrl } from './mobileCallback'
+import { authCallbackFromAppUrl } from './mobileCallback'
 import {
   clearStoredSession,
   getSecureStore,
@@ -269,18 +269,41 @@ export function createAccountAdapter(options: AccountAdapterOptions): AccountAda
     },
 
     async linkSocial(provider: SocialProvider): Promise<SocialSignInMode> {
-      // 已登录绑定仍走 WebView fetch；Android 上 bearer 与 state Cookie 上下文仍可能分裂
+      if (native) {
+        // 与登录同理：state Cookie 必须写在 Custom Tab 上，WebView 里 fetch 出来的必然对不上。
+        // 服务端换一枚一次性 token，真正的 link-social 由 Custom Tab 自己发起。
+        const { data } = await callAuth<{ url?: string }>(
+          `/api/v1/auth/mobile/link/${provider}`,
+          {},
+        )
+        if (!data.url) throw new AccountError('OAUTH_URL_MISSING', '无法开始绑定，请稍后再试')
+        await options.openExternal(data.url)
+        return 'external'
+      }
       const url = await socialUrl('/api/auth/link-social', provider)
       await options.openExternal(url)
-      return native ? 'external' : 'redirect'
+      return 'redirect'
     },
 
     async handleAuthDeepLink(url: string): Promise<AccountSession | null> {
-      const ott = oneTimeTokenFromAppUrl(url)
-      if (!ott) return null
+      const params = authCallbackFromAppUrl(url)
+      if (!params) return null
+
+      if (params.error) {
+        log.account.warn('oauth callback failed', { code: params.error })
+        throw new AccountError('OAUTH_CALLBACK_FAILED', '第三方账号授权没能完成，请重试')
+      }
+
+      if (params.linked) {
+        // 绑定不换会话，本机 bearer 照旧；只要把已绑定列表刷新回来
+        log.account.info('linked social account', { provider: params.linked })
+        return fetchMe()
+      }
+
+      if (!params.ott) return null
 
       const { data } = await callAuth<MobileExchangeResponse>('/api/v1/auth/mobile/exchange', {
-        token: ott,
+        token: params.ott,
       })
       if (!data?.sessionToken) throw new AccountError('SESSION_MISSING', '登录回流失败，请重新登录')
 

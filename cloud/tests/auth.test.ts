@@ -184,7 +184,117 @@ describe('auth', { skip: skipWithoutDatabase }, () => {
         (response.headers.location as string).includes('github'),
       '应重定向到 GitHub 授权页',
     )
-    assert.ok(response.headers['set-cookie'], '应在 Custom Tab 上下文写入 OAuth state Cookie')
+    const cookies = response.headers['set-cookie'] as string | string[] | undefined
+    assert.ok(cookies, '应在 Custom Tab 上下文写入 OAuth state Cookie')
+    const stateCookie = (Array.isArray(cookies) ? cookies : [cookies]).find((entry) =>
+      entry.split('=')[0]?.endsWith('.state'),
+    )
+    assert.ok(stateCookie)
+    assert.match(
+      stateCookie,
+      /Max-Age=600/i,
+      'state Cookie 与服务端校验行同为 10 分钟：在授权页多停留一会儿不该变成 state_mismatch',
+    )
+
+    await githubCloud.close()
+  })
+
+  it('rejects the OAuth callback when link-social was started outside the browser', async () => {
+    // 复现线上故障：App 在 WebView 里 fetch link-social，state Cookie 落在 WebView，
+    // 回调却发生在 Custom Tab —— 校验行还在库里，Cookie 却对不上。
+    const githubCloud = await startTestCloud({
+      github: { clientId: 'gh-test-id', clientSecret: 'gh-test-secret' },
+    })
+    const user = await createSignedInUser(githubCloud, 'link-webview')
+
+    const started = await githubCloud.app.inject({
+      method: 'POST',
+      url: '/api/auth/link-social',
+      payload: { provider: 'github', callbackURL: 'http://127.0.0.1:5173/', disableRedirect: true },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${user.bearerToken}` },
+    })
+    assert.equal(started.statusCode, 200)
+    const state = new URL(started.json().url).searchParams.get('state') ?? ''
+    assert.ok(state.length > 8)
+
+    const callback = await githubCloud.app.inject({
+      method: 'GET',
+      url: `/api/auth/callback/github?code=fake-code&state=${encodeURIComponent(state)}`,
+    })
+    assert.equal(callback.statusCode, 302)
+    assert.match(callback.headers.location as string, /error=state_mismatch/)
+
+    await githubCloud.close()
+  })
+
+  it('hands the link flow to the browser so the state cookie matches the callback', async () => {
+    const githubCloud = await startTestCloud({
+      github: { clientId: 'gh-test-id', clientSecret: 'gh-test-secret' },
+    })
+    const user = await createSignedInUser(githubCloud, 'link-mobile')
+
+    const anonymous = await githubCloud.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/mobile/link/github',
+    })
+    assert.equal(anonymous.statusCode, 401, '未登录不能发起绑定')
+
+    const unsupported = await githubCloud.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/mobile/link/google',
+      headers: { authorization: `Bearer ${user.bearerToken}` },
+    })
+    assert.ok(unsupported.statusCode >= 400, '未启用的 provider 不接受')
+
+    const started = await githubCloud.app.inject({
+      method: 'POST',
+      url: '/api/v1/auth/mobile/link/github',
+      headers: { authorization: `Bearer ${user.bearerToken}` },
+    })
+    assert.equal(started.statusCode, 200)
+
+    const startUrl = new URL(started.json().url)
+    assert.equal(startUrl.pathname, '/api/v1/auth/mobile/link/github')
+    const ott = startUrl.searchParams.get('ott') ?? ''
+    assert.ok(ott.length > 8)
+    assert.ok(
+      !started.body.includes(user.bearerToken ?? 'never'),
+      '交给浏览器的只有一次性 token，没有长期 Session',
+    )
+
+    const redirect = await githubCloud.app.inject({
+      method: 'GET',
+      url: `${startUrl.pathname}${startUrl.search}`,
+    })
+    assert.equal(redirect.statusCode, 302)
+    const authorizeUrl = new URL(redirect.headers.location as string)
+    assert.match(authorizeUrl.host, /github/)
+    const state = authorizeUrl.searchParams.get('state') ?? ''
+    assert.ok(state.length > 8)
+
+    const cookies = redirect.headers['set-cookie'] as string | string[] | undefined
+    const stateCookie = (Array.isArray(cookies) ? cookies : [cookies ?? '']).find((entry) =>
+      entry.split('=')[0]?.endsWith('.state'),
+    )
+    assert.ok(stateCookie, 'state Cookie 必须写在真正会接住回调的浏览器上')
+    const signed = decodeURIComponent(stateCookie.split(';')[0]?.split('=')[1] ?? '')
+    assert.ok(
+      signed.startsWith(`${state}.`),
+      'Cookie 里的 state 与授权 URL 上的 state 一致，回调才不会 state_mismatch',
+    )
+
+    const replay = await githubCloud.app.inject({
+      method: 'GET',
+      url: `${startUrl.pathname}${startUrl.search}`,
+    })
+    assert.equal(replay.statusCode, 401, '一次性 token 用后即焚')
+    assert.match(replay.body, /绑定链接已失效/)
+
+    const missing = await githubCloud.app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/mobile/link/github',
+    })
+    assert.equal(missing.statusCode, 400)
 
     await githubCloud.close()
   })
