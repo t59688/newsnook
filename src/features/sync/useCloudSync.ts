@@ -136,6 +136,7 @@ export function useCloudSync(args: CloudSyncArgs): CloudSyncApi {
       isOnline: () => (typeof navigator === 'undefined' ? true : navigator.onLine !== false),
       onEvent: (event) => {
         if (event.type === 'status') setStatus(event.status)
+        // 引擎发的是它持有的全量列表（多批 push 已在引擎内合并），这里直接替换
         if (event.type === 'conflicts') setConflicts(event.conflicts)
         onEventRef.current?.(event)
         // 前台一律走应用内 Toast；只有应用不在前台时才考虑通知栏

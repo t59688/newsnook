@@ -19,6 +19,7 @@ import { SyncTransportError, type SyncTransport } from './transport'
 import {
   DELETED_FINGERPRINT,
   entityKey,
+  type ConflictMarker,
   type LocalProjection,
   type LocalSyncState,
   type OutboxEntry,
@@ -201,7 +202,7 @@ export class SyncEngine {
   private async pushPending(): Promise<void> {
     for (let round = 0; round < 5; round += 1) {
       const projection = await this.adapter.project()
-      const state = this.adapter.readState()
+      const state = this.pruneConflictMarkers(this.adapter.readState())
       const reconciled = reconcileProjection(projection, state)
 
       if (reconciled.added.length) {
@@ -212,6 +213,40 @@ export class SyncEngine {
 
       await this.pushOutbox(projection)
     }
+  }
+
+  /**
+   * 冲突标记的自动解除条件：shadow 越过了冲突发生时的 revision，
+   * 说明服务端那一版已经拉下来应用过，分歧消化完，这个实体可以恢复正常对账。
+   */
+  private pruneConflictMarkers(state: LocalSyncState): LocalSyncState {
+    const keys = Object.keys(state.conflicted)
+    if (!keys.length) return state
+
+    const stale = keys.filter(
+      (key) => (state.shadow[key]?.revision ?? 0) > state.conflicted[key]!.shadowRevision,
+    )
+    if (!stale.length) return state
+
+    const conflicted = { ...state.conflicted }
+    for (const key of stale) delete conflicted[key]
+
+    const next = { ...state, conflicted }
+    this.adapter.writeState(next)
+    return next
+  }
+
+  /** 用户裁决完（或冲突已在别处消失）后解除占用，让这些实体重新参与对账 */
+  private releaseConflictMarkers(conflictIds: ReadonlySet<string>): void {
+    const state = this.adapter.readState()
+    const keys = Object.keys(state.conflicted).filter((key) =>
+      conflictIds.has(state.conflicted[key]!.conflictId),
+    )
+    if (!keys.length) return
+
+    const conflicted = { ...state.conflicted }
+    for (const key of keys) delete conflicted[key]
+    this.adapter.writeState({ ...state, conflicted })
   }
 
   private async pushOutbox(projection: LocalProjection): Promise<void> {
@@ -247,15 +282,29 @@ export class SyncEngine {
     const byMutationId = new Map(batch.map((entry) => [entry.mutationId, entry]))
     const settled = new Set(dropped.map((entry) => entry.mutationId))
     const shadow = { ...state.shadow }
+    const conflicted: Record<string, ConflictMarker> = { ...state.conflicted }
 
     for (const result of response.results) {
       const entry = byMutationId.get(result.mutationId)
       if (!entry) continue
       settled.add(result.mutationId)
 
-      if (result.status === 'conflict') continue
-
       const key = entityKey(entry.entityType, entry.entityId)
+
+      if (result.status === 'conflict') {
+        /**
+         * mutation 从 Outbox 里拿掉了，但分歧还在。占住这个实体，
+         * 直到拉到服务端那一版（shadow 追上）或用户裁决，否则本轮会立刻重推。
+         */
+        if (result.conflictId) {
+          conflicted[key] = {
+            conflictId: result.conflictId,
+            shadowRevision: state.shadow[key]?.revision ?? 0,
+          }
+        }
+        continue
+      }
+
       shadow[key] = {
         revision: result.revision ?? state.shadow[key]?.revision ?? 0,
         fingerprint: entry.fingerprint,
@@ -264,13 +313,15 @@ export class SyncEngine {
     }
 
     if (response.conflicts.length) {
-      this.conflicts = [...this.conflicts, ...response.conflicts]
-      this.emit({ type: 'conflicts', conflicts: response.conflicts })
+      // 多批 push 各带一部分冲突：面板要看到累计全量，不能只剩最后一批
+      this.conflicts = mergeConflicts(this.conflicts, response.conflicts)
+      this.emit({ type: 'conflicts', conflicts: this.conflicts })
     }
 
     return {
       ...state,
       shadow,
+      conflicted,
       outbox: state.outbox.filter((entry) => !settled.has(entry.mutationId)),
     }
   }
@@ -314,6 +365,12 @@ export class SyncEngine {
       shadow: advanceShadow(state.shadow, applicable),
       cursor: Math.max(state.cursor, targetCursor),
     })
+    /**
+     * 有分歧的实体在这里会被服务端那一版覆盖，本机那一版不会因此丢失——
+     * 它完整留在冲突的 localChange 里，用户选「使用本机」就能拿回来。
+     * 拉到服务端版本正是解除占用的信号，顺手清掉标记。
+     */
+    this.pruneConflictMarkers(this.adapter.readState())
     this.adapter.clearApplyJournal()
 
     this.emit({ type: 'applied', records: applicable.length })
@@ -429,6 +486,7 @@ export class SyncEngine {
       ...state,
       shadow,
       outbox: [],
+      conflicted: {},
       cursor: 0,
       firstSyncCompleted: true,
     })
@@ -442,7 +500,7 @@ export class SyncEngine {
   /** 「使用云端」：丢掉本机配置差异，整包换成云端状态 */
   async adoptCloud(): Promise<void> {
     const state = this.adapter.readState()
-    this.adapter.writeState({ ...state, shadow: {}, outbox: [], cursor: 0 })
+    this.adapter.writeState({ ...state, shadow: {}, outbox: [], conflicted: {}, cursor: 0 })
 
     const collected: SyncRecord[] = []
     let cursor = 0
@@ -485,6 +543,16 @@ export class SyncEngine {
 
   async refreshConflicts(): Promise<SyncConflict[]> {
     this.conflicts = await this.transport.listConflicts()
+    // 服务端说已经没了的冲突，本地标记也要跟着松开，否则那个实体会被永久锁住
+    const open = new Set(this.conflicts.map((conflict) => conflict.id))
+    const state = this.adapter.readState()
+    this.releaseConflictMarkers(
+      new Set(
+        Object.values(state.conflicted)
+          .map((marker) => marker.conflictId)
+          .filter((id) => !open.has(id)),
+      ),
+    )
     this.emit({ type: 'conflicts', conflicts: this.conflicts })
     return this.conflicts
   }
@@ -516,6 +584,8 @@ export class SyncEngine {
         )
         const resolvedIds = new Set(chunk.map((item) => item.id))
         this.conflicts = this.conflicts.filter((conflict) => !resolvedIds.has(conflict.id))
+        // 裁决完这个实体就恢复正常对账：accept_local 要靠它把本机那版重新推上去
+        this.releaseConflictMarkers(resolvedIds)
         done += chunk.length
         onProgress?.(done, total)
       }
@@ -537,12 +607,26 @@ export class SyncEngine {
       cursor: 0,
       shadow: {},
       outbox: [],
+      conflicted: {},
       firstSyncCompleted: false,
       retryAttempt: 0,
       nextRetryAt: null,
     })
     this.setPhase('idle')
   }
+}
+
+/**
+ * 按 id 合并冲突列表：服务端对同一实体只维护一条冲突，
+ * 多批 push 拿回来的是同一条的不同快照，后到的覆盖先到的。
+ */
+export function mergeConflicts(
+  existing: SyncConflict[],
+  incoming: SyncConflict[],
+): SyncConflict[] {
+  const byId = new Map(existing.map((conflict) => [conflict.id, conflict]))
+  for (const conflict of incoming) byId.set(conflict.id, conflict)
+  return [...byId.values()]
 }
 
 /**

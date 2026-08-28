@@ -53,6 +53,9 @@ export interface ReconcileResult {
 /**
  * 生成把服务端推到当前投影所需的最小 mutation 集合。
  * 幂等：投影与 shadow/outbox 已经一致时返回空集，不产生任何噪声。
+ *
+ * 已经开出待裁决冲突的实体整个跳过：那处分歧的裁决权在用户手上，
+ * 在此之前每轮都重推一遍只会把一处分歧刷成成排的冲突。
  */
 export function reconcileProjection(
   projection: LocalProjection,
@@ -64,6 +67,7 @@ export function reconcileProjection(
   const keys = Object.keys(projection).sort()
   for (const key of keys) {
     const entity = projection[key]!
+    if (state.conflicted[key]) continue
     if (intendedFingerprint(key, state, pending) === entity.fingerprint) continue
 
     added.push({
@@ -81,6 +85,7 @@ export function reconcileProjection(
   for (const key of Object.keys(state.shadow).sort()) {
     const shadow = state.shadow[key]!
     if (shadow.deleted) continue
+    if (state.conflicted[key]) continue
     if (projection[key]) continue
     if (pending.get(key)?.operation === 'delete') continue
 

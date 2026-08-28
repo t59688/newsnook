@@ -55,12 +55,32 @@ export interface OutboxEntry extends SyncMutation {
   fingerprint: string
 }
 
+/**
+ * 服务端已经就这个实体开出冲突、还没裁决。
+ *
+ * 有它在，对账就不再为这个实体生成新的 mutation：否则同一轮同步里
+ * 「投影 → push → 冲突 → 丢掉 mutation → 再投影」会原地打转，
+ * 每轮换一个 mutationId 再推一次，把一处分歧刷成成排的冲突。
+ */
+export interface ConflictMarker {
+  conflictId: string
+  /**
+   * 记下冲突发生那一刻 shadow 里这个实体的 revision。
+   * shadow 越过它就说明服务端那一版已经拉下来应用过，分歧消化完，占用可以解除。
+   * 用「严格大于」而不是服务端上报的 revision：后者在实体尚未建立时是 0，
+   * 拿它比较会让标记刚写下就被清掉。
+   */
+  shadowRevision: number
+}
+
 export interface LocalSyncState {
   deviceId: string
   /** 已完整应用到本机的服务端 revision */
   cursor: number
   shadow: Record<SyncEntityKey, ShadowEntry>
   outbox: OutboxEntry[]
+  /** 待裁决冲突占住的实体；键与 shadow / 投影同构 */
+  conflicted: Record<SyncEntityKey, ConflictMarker>
   /** 首次登录的数据归属选择是否已经做过 */
   firstSyncCompleted: boolean
   retryAttempt: number

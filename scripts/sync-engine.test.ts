@@ -17,7 +17,7 @@ import type {
   SyncRecord,
 } from '@newsnook/contracts'
 
-import { SyncEngine, type SyncRuntimeAdapter } from '../src/features/sync/SyncEngine'
+import { SyncEngine, mergeConflicts, type SyncRuntimeAdapter } from '../src/features/sync/SyncEngine'
 import { applyRemoteRecords, type LocalRuntimeState } from '../src/features/sync/merge'
 import { SETTING_KEYS, projectLocalState } from '../src/features/sync/projection'
 import { reconcileProjection } from '../src/features/sync/reconcile'
@@ -49,14 +49,58 @@ class FakeCloud {
   private readonly results = new Map<string, SyncMutationResult>()
   pushCount = 0
 
+  /** 这些实体键上的 mutation 一律判冲突，用来复刻服务端「陈旧改动」的分支 */
+  readonly conflictKeys = new Set<string>()
+  /** 与服务端一致：同一实体只维护一条未裁决冲突，重复 push 复用同一个 id */
+  private readonly conflictIds = new Map<string, string>()
+  /** 每个实体收到过多少笔冲突 mutation；C1 的核心断言就看它 */
+  readonly conflictPushes = new Map<string, number>()
+
   push(mutations: SyncMutation[]): SyncPushResponse {
     this.pushCount += 1
     const results: SyncMutationResult[] = []
+    const conflicts = new Map<string, SyncConflict>()
 
     for (const mutation of mutations) {
       const replayed = this.results.get(mutation.mutationId)
       if (replayed) {
         results.push(replayed)
+        continue
+      }
+
+      const conflictKey = `${mutation.entityType}:${mutation.entityId}`
+      if (this.conflictKeys.has(conflictKey)) {
+        this.conflictPushes.set(conflictKey, (this.conflictPushes.get(conflictKey) ?? 0) + 1)
+
+        let conflictId = this.conflictIds.get(conflictKey)
+        if (!conflictId) {
+          conflictId = `conflict-${this.conflictIds.size + 1}`
+          this.conflictIds.set(conflictKey, conflictId)
+        }
+        const serverRevision = this.entities.get(conflictKey)?.revision ?? 0
+
+        const result: SyncMutationResult = {
+          mutationId: mutation.mutationId,
+          entityType: mutation.entityType,
+          entityId: mutation.entityId,
+          status: 'conflict',
+          revision: serverRevision,
+          conflictId,
+        }
+        this.results.set(mutation.mutationId, result)
+        results.push(result)
+        conflicts.set(conflictId, {
+          id: conflictId,
+          entityType: mutation.entityType,
+          entityId: mutation.entityId,
+          reason: 'category_stale_mutation',
+          serverRevision,
+          baseRevision: mutation.baseRevision,
+          localChange: { operation: mutation.operation, payload: mutation.payload },
+          serverState: { deleted: false, payload: this.entities.get(conflictKey)?.payload ?? null },
+          createdAt: 0,
+          resolvedAt: null,
+        })
         continue
       }
 
@@ -80,7 +124,20 @@ class FakeCloud {
       results.push(result)
     }
 
-    return { protocolVersion: 1, results, conflicts: [], currentRevision: this.revision }
+    return {
+      protocolVersion: 1,
+      results,
+      conflicts: [...conflicts.values()],
+      currentRevision: this.revision,
+    }
+  }
+
+  /** 用户裁决之后服务端不再判冲突；`accept_local` 会把那份内容落成新 revision */
+  resolveConflict(conflictKey: string, payload: unknown): void {
+    this.conflictKeys.delete(conflictKey)
+    this.conflictIds.delete(conflictKey)
+    this.revision += 1
+    this.entities.set(conflictKey, { payload, revision: this.revision, deleted: false })
   }
 
   pull(since: number, limit: number): SyncPullResponse {
@@ -126,6 +183,7 @@ interface Harness {
   engine: SyncEngine
   cloud: FakeCloud
   adapter: SyncRuntimeAdapter
+  transport: SyncTransport
   runtime: () => LocalRuntimeState
   setRuntime: (next: LocalRuntimeState) => void
   state: () => LocalSyncState
@@ -245,6 +303,7 @@ function createHarness(options: HarnessOptions = {}): Harness {
     engine,
     cloud,
     adapter,
+    transport,
     runtime: () => runtime,
     setRuntime: (next) => {
       runtime = next
@@ -706,6 +765,159 @@ function withTheme(runtime: LocalRuntimeState, theme: 'dark' | 'light'): LocalRu
     [],
     '合并完成后应收敛',
   )
+}
+
+// ------------------------------------------------- 冲突不在同一轮里重复上报
+
+function hideCategory(runtime: LocalRuntimeState, id: string): LocalRuntimeState {
+  return {
+    ...runtime,
+    prefs: normalizePreferences({
+      ...runtime.prefs,
+      hiddenCategoryIds: [...(runtime.prefs.hiddenCategoryIds ?? []), id],
+    }),
+  }
+}
+
+/** 投影里任取一个内置分类，作为「会起冲突的那个实体」 */
+function firstCategoryId(runtime: LocalRuntimeState): string {
+  const entity = Object.values(projectLocalState(runtime)).find(
+    (candidate) => candidate.entityType === 'category',
+  )
+  assert.ok(entity, '投影里应当有内置分类')
+  return entity.entityId
+}
+
+{
+  // 服务端判了冲突：这一轮同步里绝不能换个 mutationId 把同一处分歧再推一遍
+  const cloud = new FakeCloud()
+  const harness = createHarness({ cloud })
+  const categoryId = firstCategoryId(harness.runtime())
+  const conflictKey = `category:${categoryId}`
+  cloud.conflictKeys.add(conflictKey)
+
+  harness.setRuntime(hideCategory(harness.runtime(), categoryId))
+  await harness.engine.sync('local-change')
+
+  assert.equal(
+    cloud.conflictPushes.get(conflictKey),
+    1,
+    '一轮同步里同一处分歧只该上报一次，不能被 pushPending 的重试轮次放大',
+  )
+  assert.equal(harness.engine.getConflicts().length, 1)
+  assert.equal(harness.state().outbox.length, 0, '冲突的 mutation 不留在 Outbox 里空转')
+  assert.ok(harness.state().conflicted[conflictKey], '冲突实体被标记占用')
+
+  // 后续几轮同步同样不该重推：裁决权在用户手上
+  await harness.engine.sync('foreground')
+  await harness.engine.sync('local-change')
+  assert.equal(cloud.conflictPushes.get(conflictKey), 1, '跨轮次也不能重复上报同一处分歧')
+  assert.equal(harness.engine.getConflicts().length, 1, '冲突列表不该堆积重复项')
+
+  // 冲突期间其它实体照常同步，不能被一处分歧拖住整个同步
+  harness.setRuntime(withTheme(harness.runtime(), 'dark'))
+  await harness.engine.sync('local-change')
+  assert.deepEqual(cloud.entities.get(`setting:${SETTING_KEYS.theme}`)?.payload, { value: 'dark' })
+
+  // 用户选「使用本机」：解除占用，本机那一版重新推上去并收敛
+  cloud.resolveConflict(conflictKey, projectLocalState(harness.runtime())[conflictKey]!.payload)
+  await harness.engine.resolveConflicts([{ id: 'conflict-1', resolution: 'accept_local' }])
+
+  assert.equal(harness.engine.getConflicts().length, 0)
+  assert.deepEqual(harness.state().conflicted, {}, '裁决后不再占用该实体')
+  assert.deepEqual(
+    reconcileProjection(projectLocalState(harness.runtime()), harness.state()).added,
+    [],
+    '裁决后应当收敛',
+  )
+}
+
+{
+  // 拉到服务端那一版就等于分歧消化完：标记自动解除，本机改动留在冲突里没有丢
+  const cloud = new FakeCloud()
+  const harness = createHarness({ cloud })
+  const categoryId = firstCategoryId(harness.runtime())
+  const conflictKey = `category:${categoryId}`
+  cloud.conflictKeys.add(conflictKey)
+
+  harness.setRuntime(hideCategory(harness.runtime(), categoryId))
+  await harness.engine.sync('local-change')
+  assert.ok(harness.state().conflicted[conflictKey])
+
+  const conflict = harness.engine.getConflicts()[0]!
+  assert.deepEqual(
+    (conflict.localChange as { payload?: { visible?: boolean } }).payload?.visible,
+    false,
+    '本机那一版完整保存在冲突里，用户随时能取回',
+  )
+
+  // 服务端就这个实体发布了新版本，客户端拉下来应用
+  cloud.conflictKeys.delete(conflictKey)
+  cloud.revision += 1
+  cloud.entities.set(conflictKey, {
+    payload: { kind: 'builtin', visible: true, sortRank: '000001', sourceIds: null },
+    revision: cloud.revision,
+    deleted: false,
+  })
+
+  await harness.engine.sync('manual')
+  assert.deepEqual(harness.state().conflicted, {}, 'shadow 追上服务端后标记自动解除')
+}
+
+{
+  // 多批 push 各带一部分冲突：面板拿到的必须是累计全量，不是最后一批
+  const make = (id: string, serverRevision: number): SyncConflict => ({
+    id,
+    entityType: 'category',
+    entityId: id,
+    reason: 'category_stale_mutation',
+    serverRevision,
+    baseRevision: 0,
+    localChange: null,
+    serverState: null,
+    createdAt: 0,
+    resolvedAt: null,
+  })
+
+  const merged = mergeConflicts(
+    [make('a', 1), make('b', 1)],
+    [make('b', 9), make('c', 1)],
+  )
+
+  assert.deepEqual(
+    merged.map((conflict) => conflict.id),
+    ['a', 'b', 'c'],
+    '后一批不能顶掉前一批',
+  )
+  assert.equal(
+    merged.find((conflict) => conflict.id === 'b')?.serverRevision,
+    9,
+    '同一条冲突以最新快照为准，不重复堆叠',
+  )
+}
+
+{
+  // 引擎发出的冲突事件本身就是累计全量：UI 直接替换即可，不必自己去合并
+  const cloud = new FakeCloud()
+  const emitted: SyncConflict[][] = []
+  const harness = createHarness({ cloud })
+  const categoryId = firstCategoryId(harness.runtime())
+  cloud.conflictKeys.add(`category:${categoryId}`)
+
+  const engine = new SyncEngine({
+    adapter: harness.adapter,
+    transport: harness.transport,
+    now: () => harness.clock.value,
+    onEvent: (event) => {
+      if (event.type === 'conflicts') emitted.push(event.conflicts)
+    },
+  })
+
+  harness.setRuntime(hideCategory(harness.runtime(), categoryId))
+  await engine.sync('local-change')
+
+  assert.ok(emitted.length, '出现冲突必须发事件')
+  assert.deepEqual(emitted.at(-1), engine.getConflicts(), '事件带的就是引擎持有的全量列表')
 }
 
 // -------------------------------------------------------------- 批量裁决
