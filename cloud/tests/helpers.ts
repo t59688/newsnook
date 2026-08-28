@@ -36,6 +36,7 @@ export function testConfig(overrides: Partial<CloudConfig> = {}): CloudConfig {
     dataEncryptionKey: TEST_ENCRYPTION_KEY,
     clientOrigins: ['http://127.0.0.1:5173'],
     requireEmailVerification: true,
+    emailSignUpEnabled: true,
     logLevel: 'silent',
     trustProxy: false,
     ...overrides,
