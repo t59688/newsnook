@@ -404,6 +404,71 @@ function recordsFromProjection(state: LocalRuntimeState): SyncRecord[] {
   assert.equal(secondPass.outbox.length, 2, '在途 mutation 不被就地改写')
 }
 
+{
+  // 待裁决冲突占住的实体整个跳过对账：否则同一处分歧每轮都会被重推一次
+  const local = baseState()
+  const state = shadowFromProjection(local)
+  const themeKey = entityKey('setting', SETTING_KEYS.theme)
+
+  const changed: LocalRuntimeState = {
+    ...local,
+    prefs: normalizePreferences({ ...local.prefs, theme: 'dark' }),
+  }
+
+  assert.equal(
+    reconcileProjection(projectLocalState(changed), state).added.length,
+    1,
+    '没有冲突时照常生成 mutation',
+  )
+  assert.deepEqual(
+    reconcileProjection(projectLocalState(changed), {
+      ...state,
+      conflicted: { [themeKey]: { conflictId: 'c1', shadowRevision: 1 } },
+    }).added,
+    [],
+    '被冲突占住的实体不再生成 mutation',
+  )
+}
+
+{
+  // 占用同样挡住删除：不能一边等用户裁决，一边偷偷把它删掉
+  const local = baseState()
+  const state = shadowFromProjection(local)
+  const removedId = BUILTIN_ENABLED[0]!
+  const key = entityKey('subscription', removedId)
+
+  const disabled: LocalRuntimeState = {
+    ...local,
+    enabledIds: local.enabledIds.filter((id) => id !== removedId),
+  }
+
+  const { added } = reconcileProjection(projectLocalState(disabled), {
+    ...state,
+    conflicted: { [key]: { conflictId: 'c2', shadowRevision: 1 } },
+  })
+  assert.deepEqual(
+    added.filter((entry) => entry.entityId === removedId),
+    [],
+  )
+}
+
+{
+  // 冲突标记要能跨冷启动存活，否则重启一次就又开始重推
+  const restored = normalizeSyncState({
+    deviceId: '11111111-2222-4333-8444-555555555555',
+    conflicted: {
+      'category:tech': { conflictId: 'c3', shadowRevision: 7 },
+      'category:broken': { conflictId: 42 },
+    },
+  })
+  assert.deepEqual(restored.conflicted['category:tech'], {
+    conflictId: 'c3',
+    shadowRevision: 7,
+  })
+  assert.equal(restored.conflicted['category:broken'], undefined, '结构不对的标记直接丢掉')
+  assert.deepEqual(normalizeSyncState({}).conflicted, {}, '旧版本状态没有这个字段也要能读')
+}
+
 // ------------------------------------------------- Secret 不落盘 / 现取现发
 
 {

@@ -123,12 +123,16 @@ export function createHttpSyncTransport(options: {
 }): SyncTransport {
   const { fetchCloud, identity } = options
 
-  async function call<T>(path: string, init?: CloudRequestInit): Promise<T> {
+  /**
+   * `deviceId` 只解析一次：服务端要求请求头与请求体里的设备标识一致，
+   * 两处各读一次状态的话，正好赶上换 id 的那一刻就会自相矛盾。
+   */
+  async function call<T>(path: string, init?: CloudRequestInit, deviceId?: string): Promise<T> {
     let response: Response
     try {
       response = await fetchCloud(path, {
         ...init,
-        headers: { ...init?.headers, [DEVICE_HEADER]: identity().deviceId },
+        headers: { ...init?.headers, [DEVICE_HEADER]: deviceId ?? identity().deviceId },
       })
     } catch (error) {
       throw new SyncTransportError({
@@ -145,29 +149,35 @@ export function createHttpSyncTransport(options: {
   return {
     bootstrap: () => call<SyncBootstrapResponse>('/api/v1/sync/bootstrap'),
 
-    bootstrapReplace: (entities) =>
-      call<SyncBootstrapReplaceResponse>('/api/v1/sync/bootstrap/replace', {
-        method: 'POST',
-        body: {
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          deviceId: identity().deviceId,
-          entities,
+    bootstrapReplace: (entities) => {
+      const { deviceId } = identity()
+      return call<SyncBootstrapReplaceResponse>(
+        '/api/v1/sync/bootstrap/replace',
+        {
+          method: 'POST',
+          body: { protocolVersion: SYNC_PROTOCOL_VERSION, deviceId, entities },
         },
-      }),
+        deviceId,
+      )
+    },
 
     push: (mutations) => {
       const device = identity()
-      return call<SyncPushResponse>('/api/v1/sync/push', {
-        method: 'POST',
-        body: {
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          deviceId: device.deviceId,
-          deviceName: device.deviceName,
-          platform: device.platform,
-          appVersion: device.appVersion,
-          mutations,
+      return call<SyncPushResponse>(
+        '/api/v1/sync/push',
+        {
+          method: 'POST',
+          body: {
+            protocolVersion: SYNC_PROTOCOL_VERSION,
+            deviceId: device.deviceId,
+            deviceName: device.deviceName,
+            platform: device.platform,
+            appVersion: device.appVersion,
+            mutations,
+          },
         },
-      })
+        device.deviceId,
+      )
     },
 
     pull: (since, limit = SYNC_LIMITS.defaultPullLimit) =>
@@ -179,26 +189,28 @@ export function createHttpSyncTransport(options: {
     },
 
     resolveConflict: async (conflictId, resolution) => {
-      await call(`/api/v1/sync/conflicts/${encodeURIComponent(conflictId)}/resolve`, {
-        method: 'POST',
-        body: {
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          deviceId: identity().deviceId,
-          resolution,
+      const { deviceId } = identity()
+      await call(
+        `/api/v1/sync/conflicts/${encodeURIComponent(conflictId)}/resolve`,
+        {
+          method: 'POST',
+          body: { protocolVersion: SYNC_PROTOCOL_VERSION, deviceId, resolution },
         },
-      })
+        deviceId,
+      )
     },
 
     resolveConflicts: async (decisions) => {
       if (!decisions.length) return
-      await call('/api/v1/sync/conflicts/resolve', {
-        method: 'POST',
-        body: {
-          protocolVersion: SYNC_PROTOCOL_VERSION,
-          deviceId: identity().deviceId,
-          decisions,
+      const { deviceId } = identity()
+      await call(
+        '/api/v1/sync/conflicts/resolve',
+        {
+          method: 'POST',
+          body: { protocolVersion: SYNC_PROTOCOL_VERSION, deviceId, decisions },
         },
-      })
+        deviceId,
+      )
     },
   }
 }

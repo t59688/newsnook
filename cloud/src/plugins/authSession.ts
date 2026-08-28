@@ -15,6 +15,8 @@ export interface SessionContext {
   name: string | null
   image: string | null
   sessionToken: string
+  /** Better Auth 的 session 行 id；设备撤销时据此作废会话，不落 token */
+  sessionId: string
 }
 
 declare module 'fastify' {
@@ -61,6 +63,7 @@ export async function registerAuthPlugin(
       name: result.user.name ?? null,
       image: result.user.image ?? null,
       sessionToken: result.session.token,
+      sessionId: result.session.id,
     }
   })
 

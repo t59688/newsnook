@@ -36,6 +36,7 @@ export function testConfig(overrides: Partial<CloudConfig> = {}): CloudConfig {
     dataEncryptionKey: TEST_ENCRYPTION_KEY,
     clientOrigins: ['http://127.0.0.1:5173'],
     requireEmailVerification: true,
+    emailSignUpEnabled: true,
     logLevel: 'silent',
     trustProxy: false,
     ...overrides,
@@ -63,6 +64,7 @@ const BUSINESS_TABLES = [
   'categories',
   'user_settings',
   'user_secrets',
+  'device_sessions',
   'devices',
 ]
 
@@ -188,6 +190,26 @@ export async function createSignedInUser(
     email,
     password,
     userId: rows[0]!.id,
+    cookie: session.cookie,
+    bearerToken: session.bearerToken,
+    deviceId: randomUUID(),
+  }
+}
+
+/**
+ * 同一账户在另一台设备上重新登录：新会话 + 新 deviceId。
+ * 撤销设备的用例必须用它，不能拿被撤销设备的会话换个 deviceId 冒充另一台机器。
+ */
+export async function signInOnAnotherDevice(
+  cloud: TestCloud,
+  user: SignedInUser,
+): Promise<SignedInUser> {
+  const session = await signIn(cloud, user.email, user.password)
+  if (session.statusCode >= 400) {
+    throw new Error(`sign-in failed: ${session.statusCode} ${session.body}`)
+  }
+  return {
+    ...user,
     cookie: session.cookie,
     bearerToken: session.bearerToken,
     deviceId: randomUUID(),

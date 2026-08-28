@@ -26,6 +26,7 @@ import { SyncService } from '../src/sync/service.js'
 import {
   authHeaders,
   createSignedInUser,
+  signInOnAnotherDevice,
   skipWithoutDatabase,
   startTestCloud,
   type SignedInUser,
@@ -581,10 +582,124 @@ describe('sync devices and access control', { skip: skipWithoutDatabase }, () =>
     assert.equal(blocked.statusCode, 403)
     assert.equal(blocked.json().code, 'DEVICE_REVOKED')
 
-    // 账号数据不受影响，另一台设备照常读
-    const other: SignedInUser = { ...user, deviceId: randomUUID() }
+    // 账号数据不受影响：另一台真的重新登录过的设备照常读
+    const other = await signInOnAnotherDevice(cloud, user)
     const records = await pullAll(other, 100)
     assert.deepEqual(findRecord(records, 'setting', 'theme')?.payload, { value: 'dark' })
+  })
+
+  it('keeps a revoked device out even if it rotates its device id', async () => {
+    const user = await createSignedInUser(cloud, 'rotate')
+    await push(user, [upsert('setting', 'theme', { value: 'dark' })])
+
+    const revoke = await cloud.app.inject({
+      method: 'POST',
+      url: `/api/v1/devices/${user.deviceId}/revoke`,
+      headers: authHeaders(user),
+      remoteAddress: nextIp(),
+    })
+    assert.equal(revoke.statusCode, 200)
+
+    // 撤销挡的是「这台机器」，不是一串 uuid：换个 deviceId 但拿同一个会话仍要被拒
+    const rotated: SignedInUser = { ...user, deviceId: randomUUID() }
+    for (const response of [
+      await pushRaw(rotated, [upsert('setting', 'scheme', { value: 'ink' })]),
+      await cloud.app.inject({
+        method: 'GET',
+        url: '/api/v1/sync/pull?since=0',
+        headers: authHeaders(rotated),
+        remoteAddress: nextIp(),
+      }),
+      await cloud.app.inject({
+        method: 'GET',
+        url: '/api/v1/sync/bootstrap',
+        headers: authHeaders(rotated),
+        remoteAddress: nextIp(),
+      }),
+    ]) {
+      assert.equal(response.statusCode, 403, response.body)
+      assert.equal(response.json().code, 'DEVICE_REVOKED')
+    }
+  })
+
+  it('kills the session a revoked device was holding', async () => {
+    const owner = await createSignedInUser(cloud, 'owner-session')
+    await push(owner, [upsert('setting', 'theme', { value: 'dark' })])
+
+    // 第二台设备登记自己的会话，随后被第一台撤销
+    const laptop = await signInOnAnotherDevice(cloud, owner)
+    await push(laptop, [upsert('setting', 'scheme', { value: 'ink' })])
+
+    const revoke = await cloud.app.inject({
+      method: 'POST',
+      url: `/api/v1/devices/${laptop.deviceId}/revoke`,
+      headers: authHeaders(owner),
+      remoteAddress: nextIp(),
+    })
+    assert.equal(revoke.statusCode, 200)
+
+    // 被撤销设备的会话本身失效：连认证这一关都过不去，换 deviceId 也没用
+    const blocked = await pushRaw(laptop, [upsert('setting', 'theme', { value: 'light' })])
+    assert.equal(blocked.statusCode, 401, blocked.body)
+    assert.equal(blocked.json().code, 'AUTH_REQUIRED')
+
+    const rotated: SignedInUser = { ...laptop, deviceId: randomUUID() }
+    const stillBlocked = await pushRaw(rotated, [upsert('setting', 'theme', { value: 'light' })])
+    assert.equal(stillBlocked.statusCode, 401, stillBlocked.body)
+
+    // 发起撤销的这台设备不受影响，不该把自己踢下线
+    const ok = await pushRaw(owner, [upsert('setting', 'theme', { value: 'sepia' })])
+    assert.equal(ok.statusCode, 200, ok.body)
+  })
+
+  it('requires a device header on every sync route', async () => {
+    const user = await createSignedInUser(cloud, 'nodevice')
+    const headers = { cookie: user.cookie, 'content-type': 'application/json' }
+
+    for (const [method, url, payload] of [
+      ['GET', '/api/v1/sync/bootstrap', undefined],
+      ['GET', '/api/v1/sync/pull?since=0', undefined],
+      ['GET', '/api/v1/sync/conflicts', undefined],
+      [
+        'POST',
+        '/api/v1/sync/push',
+        { protocolVersion: SYNC_PROTOCOL_VERSION, deviceId: user.deviceId, mutations: [] },
+      ],
+      [
+        'POST',
+        '/api/v1/sync/bootstrap/replace',
+        { protocolVersion: SYNC_PROTOCOL_VERSION, deviceId: user.deviceId, entities: [] },
+      ],
+    ] as const) {
+      const response = await cloud.app.inject({
+        method,
+        url,
+        headers,
+        remoteAddress: nextIp(),
+        payload,
+      })
+      assert.equal(response.statusCode, 400, `${method} ${url}: ${response.body}`)
+      assert.equal(response.json().code, 'VALIDATION_FAILED')
+    }
+  })
+
+  it('refuses a push whose body device id disagrees with the header', async () => {
+    const user = await createSignedInUser(cloud, 'mismatch')
+    const response = await cloud.app.inject({
+      method: 'POST',
+      url: '/api/v1/sync/push',
+      headers: authHeaders(user),
+      remoteAddress: nextIp(),
+      payload: {
+        protocolVersion: SYNC_PROTOCOL_VERSION,
+        deviceId: randomUUID(),
+        mutations: [upsert('setting', 'theme', { value: 'dark' })],
+      },
+    })
+
+    assert.equal(response.statusCode, 400, response.body)
+    assert.equal(response.json().code, 'VALIDATION_FAILED')
+    assert.equal(await headRevision(user), 0)
   })
 
   it('refuses a device id that already belongs to another account', async () => {
@@ -818,6 +933,96 @@ describe('sync conflict resolution', { skip: skipWithoutDatabase }, () => {
 
     const records = await pullAll(user, 100)
     assert.equal(findRecord(records, 'subscription', 'feed:unrelated')?.deleted, false)
+  })
+
+  it('reuses one open conflict when the same divergence is pushed again', async () => {
+    const user = await createSignedInUser(cloud, 'dedup')
+    const created = await push(user, [upsert('category', 'tech', categoryPayload())])
+    const base = created.results[0]!.revision!
+    await push(user, [upsert('category', 'tech', categoryPayload({ label: '云端' }), base)])
+
+    // 客户端反复重推同一份分歧（每次都是新的 mutationId，绕过幂等表）
+    const ids = new Set<string>()
+    for (let round = 0; round < 5; round += 1) {
+      const conflicted = await push(user, [
+        upsert('category', 'tech', categoryPayload({ label: `本机-${round}` }), base),
+      ])
+      assert.equal(conflicted.conflicts.length, 1)
+      ids.add(conflicted.conflicts[0]!.id)
+    }
+
+    assert.equal(ids.size, 1, '同一实体只该有一条冲突')
+    const open = (await openConflicts(user)) as Record<string, unknown>[]
+    assert.equal(open.length, 1)
+    // 刷新过的冲突带的是最后一次本地改动，用户裁决的永远是当前分歧
+    assert.ok(JSON.stringify(open[0]?.localChange).includes('本机-4'))
+  })
+
+  it('collapses repeated stale mutations inside one push batch', async () => {
+    const user = await createSignedInUser(cloud, 'batch-dedup')
+    const created = await push(user, [upsert('category', 'tech', categoryPayload())])
+    const base = created.results[0]!.revision!
+    await push(user, [upsert('category', 'tech', categoryPayload({ label: '云端' }), base)])
+
+    const conflicted = await push(user, [
+      upsert('category', 'tech', categoryPayload({ label: '甲' }), base),
+      upsert('category', 'tech', categoryPayload({ label: '乙' }), base),
+      upsert('category', 'tech', categoryPayload({ label: '丙' }), base),
+    ])
+
+    assert.equal(conflicted.results.filter((r) => r.status === 'conflict').length, 3)
+    assert.equal(conflicted.conflicts.length, 1, '一批里的同实体分歧合成一条冲突')
+    assert.equal((await openConflicts(user)).length, 1)
+  })
+
+  it('accepts a stale category mutation that matches the server byte for byte', async () => {
+    const user = await createSignedInUser(cloud, 'echo')
+    const created = await push(user, [upsert('category', 'tech', categoryPayload())])
+    const base = created.results[0]!.revision!
+
+    // 另一台设备把同一份内容又写了一遍：revision 前进，内容没变
+    await push(user, [upsert('category', 'tech', categoryPayload(), base)])
+    const headAfterEcho = await headRevision(user)
+
+    // 本机基于旧 revision 提交同样的内容——陈旧但毫无分歧，不该打扰用户
+    const stale = await push(user, [upsert('category', 'tech', categoryPayload(), base)])
+    assert.equal(stale.results[0]?.status, 'noop')
+    assert.deepEqual(stale.conflicts, [])
+    assert.equal(await headRevision(user), headAfterEcho, 'noop 不分配 revision')
+    assert.deepEqual(await openConflicts(user), [])
+  })
+
+  it('produces no conflicts when two fresh installs merge identical defaults', async () => {
+    const first = await createSignedInUser(cloud, 'fresh-a')
+    const second = await signInOnAnotherDevice(cloud, first)
+
+    // 两台全新设备的默认分类逐字相同，只是键序不同
+    const defaults = (index: number) => [
+      { kind: 'builtin', visible: true, sortRank: `00000${index}`, sourceIds: null },
+      { sourceIds: null, sortRank: `00000${index}`, visible: true, kind: 'builtin' },
+    ]
+
+    const categoryIds = Array.from({ length: 12 }, (_, index) => `cat-${index}`)
+    await push(
+      first,
+      categoryIds.map((id, index) => upsert('category', id, defaults(index)[0])),
+    )
+
+    // 第二台从未同步过，baseRevision 全是 null 时先各自 accept；
+    // 真正要验的是它带着陈旧 baseRevision 再推一遍时不刷冲突
+    const base = await headRevision(first)
+    const echo = await push(
+      second,
+      categoryIds.map((id, index) => upsert('category', id, defaults(index)[1], 0)),
+    )
+
+    assert.deepEqual(echo.conflicts, [], '内容一致的默认分类不该产生冲突')
+    assert.ok(
+      echo.results.every((result) => result.status === 'noop'),
+      '陈旧但内容相同的分类应当收敛成 noop',
+    )
+    assert.equal(await headRevision(first), base, '没有实质改动就不该推进 head')
+    assert.deepEqual(await openConflicts(first), [])
   })
 
   it('returns NOT_FOUND for an unknown conflict id', async () => {

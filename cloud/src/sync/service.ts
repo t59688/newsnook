@@ -84,11 +84,22 @@ export class SyncService {
   }
 
   /**
-   * 每次带 deviceId 的调用都刷新设备记录。设备 id 已属于别的用户时直接拒绝，
-   * 避免一个账号猜到另一个账号的 deviceId 后蹭进它的同步流。
+   * 每次同步调用都刷新设备记录并把当前会话绑到这台设备上。
+   *
+   * 三道闸：设备 id 已属于别的用户直接拒绝（防止猜 deviceId 蹭进别人的同步流）；
+   * 设备本身被撤销拒绝；**这个会话曾经绑在已撤销的设备上**也拒绝——
+   * 否则撤销只挡住 deviceId 这一层，换个新 id 就能用同一个 token 绕过去。
    */
-  async ensureDevice(userId: string, context: DeviceContext): Promise<void> {
+  async ensureDevice(
+    userId: string,
+    context: DeviceContext,
+    sessionId: string | null = null,
+  ): Promise<void> {
     await this.withTransaction(async (client) => {
+      if (sessionId && (await repo.sessionBelongsToRevokedDevice(client, userId, sessionId))) {
+        throw deviceRevoked()
+      }
+
       const existing = await repo.findDevice(client, context.deviceId)
       if (existing && existing.user_id !== userId) {
         throw deviceInUse()
@@ -101,6 +112,9 @@ export class SyncService {
         platform: context.platform,
         appVersion: context.appVersion,
       })
+      if (sessionId) {
+        await repo.bindDeviceSession(client, { userId, deviceId: context.deviceId, sessionId })
+      }
     })
   }
 
@@ -118,12 +132,29 @@ export class SyncService {
     }))
   }
 
-  /** 撤销只切断该设备后续访问，不删除它上传过的任何数据 */
-  async revokeDevice(userId: string, deviceId: string): Promise<void> {
-    const revoked = await this.withTransaction((client) =>
-      repo.revokeDevice(client, userId, deviceId),
-    )
-    if (!revoked) throw notFound('Device not found or already revoked')
+  /**
+   * 撤销切断该设备后续访问，但不删除它上传过的任何数据。
+   *
+   * 除了打 `revoked_at`，还要作废那台设备手里的登录会话——只标记设备的话，
+   * 它换一个 deviceId 重新登记就能继续同步，撤销形同虚设。
+   * 发起撤销的那个会话保留：从「设备列表」撤掉本机不应该顺手把自己踢下线，
+   * 它后续的同步请求仍会被上面两道闸拦住。
+   */
+  async revokeDevice(
+    userId: string,
+    deviceId: string,
+    currentSessionId: string | null = null,
+  ): Promise<{ revokedSessions: number }> {
+    return this.withTransaction(async (client) => {
+      const revoked = await repo.revokeDevice(client, userId, deviceId)
+      if (!revoked) throw notFound('Device not found or already revoked')
+      const revokedSessions = await repo.deleteDeviceSessions(client, {
+        userId,
+        deviceId,
+        keepSessionId: currentSessionId,
+      })
+      return { revokedSessions }
+    })
   }
 
   async bootstrap(userId: string): Promise<SyncBootstrapResponse> {
@@ -173,7 +204,8 @@ export class SyncService {
       let revision = fromRevision
 
       const results: SyncMutationResult[] = []
-      const conflicts: SyncConflict[] = []
+      // 按 id 收敛：一批里对同一实体的多笔陈旧 mutation 复用同一条冲突
+      const conflictsById = new Map<string, SyncConflict>()
       let acceptedCount = 0
       let conflictCount = 0
       let noopCount = 0
@@ -215,23 +247,9 @@ export class SyncService {
         }
 
         if (decision.kind === 'conflict') {
-          const serverState =
-            mutation.entityType === 'secret'
-              ? conflictSnapshot(mutation.entityType, null)
-              : conflictSnapshot(
-                  mutation.entityType,
-                  await repo.loadEntityPayload(client, {
-                    userId,
-                    entityType: mutation.entityType,
-                    entityId: mutation.entityId,
-                  }),
-                )
+          const serverState = conflictSnapshot(mutation.entityType, existing?.payload ?? null)
 
-          const conflict = await repo.insertConflict(client, {
-            id: randomUUID(),
-            userId,
-            entityType: mutation.entityType,
-            entityId: mutation.entityId,
+          const details = {
             reason: decision.reason,
             serverRevision: existing?.revision ?? 0,
             baseRevision: mutation.baseRevision,
@@ -240,7 +258,26 @@ export class SyncService {
               payload: conflictSnapshot(mutation.entityType, mutation.payload),
             },
             serverState: { deleted: existing?.deleted ?? false, payload: serverState },
+          }
+
+          /**
+           * 同一实体已经有一条待裁决冲突时刷新它，不再插新行。
+           * 客户端重试或多轮 push 推同一份分歧，用户也只该看到一条。
+           */
+          const open = await repo.findOpenConflictForEntity(client, {
+            userId,
+            entityType: mutation.entityType,
+            entityId: mutation.entityId,
           })
+          const conflict = open
+            ? await repo.refreshConflict(client, { id: open.id, userId, ...details })
+            : await repo.insertConflict(client, {
+                id: randomUUID(),
+                userId,
+                entityType: mutation.entityType,
+                entityId: mutation.entityId,
+                ...details,
+              })
 
           const result: SyncMutationResult = {
             mutationId: mutation.mutationId,
@@ -251,7 +288,7 @@ export class SyncService {
             conflictId: conflict.id,
           }
           results.push(result)
-          conflicts.push(conflict)
+          conflictsById.set(conflict.id, conflict)
           conflictCount += 1
           await repo.recordMutationResult(client, {
             userId,
@@ -289,7 +326,7 @@ export class SyncService {
         response: {
           protocolVersion: SYNC_PROTOCOL_VERSION,
           results,
-          conflicts,
+          conflicts: [...conflictsById.values()],
           currentRevision: revision,
         },
         summary: {

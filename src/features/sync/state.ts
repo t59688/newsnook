@@ -17,7 +17,13 @@ import {
   saveSyncState,
 } from '../../lib/storage'
 import { randomUuid } from './ids'
-import type { LocalSyncState, OutboxEntry, ShadowEntry, SyncApplyJournal } from './types'
+import type {
+  ConflictMarker,
+  LocalSyncState,
+  OutboxEntry,
+  ShadowEntry,
+  SyncApplyJournal,
+} from './types'
 
 const ENTITY_TYPES: SyncEntityType[] = ['subscription', 'category', 'setting', 'secret']
 const OPERATIONS: SyncMutationOperation[] = ['upsert', 'delete']
@@ -28,6 +34,7 @@ export function createInitialSyncState(deviceId = randomUuid()): LocalSyncState 
     cursor: 0,
     shadow: {},
     outbox: [],
+    conflicted: {},
     firstSyncCompleted: false,
     retryAttempt: 0,
     nextRetryAt: null,
@@ -52,6 +59,24 @@ function normalizeShadow(raw: unknown): Record<string, ShadowEntry> {
     }
   }
   return shadow
+}
+
+function normalizeConflicted(raw: unknown): Record<string, ConflictMarker> {
+  const conflicted: Record<string, ConflictMarker> = {}
+  if (!raw || typeof raw !== 'object') return conflicted
+
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    const marker = value as Partial<ConflictMarker> | null
+    if (!marker || typeof marker.conflictId !== 'string') continue
+    conflicted[key] = {
+      conflictId: marker.conflictId,
+      shadowRevision:
+        typeof marker.shadowRevision === 'number' && marker.shadowRevision >= 0
+          ? marker.shadowRevision
+          : 0,
+    }
+  }
+  return conflicted
 }
 
 function normalizeOutbox(raw: unknown): OutboxEntry[] {
@@ -92,6 +117,7 @@ export function normalizeSyncState(raw: unknown): LocalSyncState {
     cursor: typeof input.cursor === 'number' && input.cursor >= 0 ? input.cursor : 0,
     shadow: normalizeShadow(input.shadow),
     outbox: normalizeOutbox(input.outbox),
+    conflicted: normalizeConflicted(input.conflicted),
     firstSyncCompleted: input.firstSyncCompleted === true,
     retryAttempt: typeof input.retryAttempt === 'number' && input.retryAttempt >= 0 ? input.retryAttempt : 0,
     nextRetryAt: typeof input.nextRetryAt === 'number' ? input.nextRetryAt : null,

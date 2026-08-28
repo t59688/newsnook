@@ -10,6 +10,8 @@ import type { SyncConflictReason, SyncEntityType, SyncMutation } from '@newsnook
 export interface ExistingEntityState {
   revision: number
   deleted: boolean
+  /** 云端当前内容；用来识别「陈旧但内容一致」的伪冲突。Secret 永远为 null */
+  payload?: unknown
 }
 
 export type MutationDecision =
@@ -29,8 +31,37 @@ export function isStale(
   return existing.revision > (baseRevision ?? 0)
 }
 
+/**
+ * 顺序无关的深比较：payload 从 jsonb 与 HTTP body 两条路进来，
+ * 键序不同不代表内容不同，不能直接 `JSON.stringify` 对比。
+ */
+export function samePayload(left: unknown, right: unknown): boolean {
+  if (left === right) return true
+  if (left === null || right === null) return false
+  if (typeof left !== 'object' || typeof right !== 'object') return false
+
+  if (Array.isArray(left) || Array.isArray(right)) {
+    if (!Array.isArray(left) || !Array.isArray(right)) return false
+    if (left.length !== right.length) return false
+    return left.every((item, index) => samePayload(item, right[index]))
+  }
+
+  const leftEntries = Object.entries(left as Record<string, unknown>).filter(
+    ([, value]) => value !== undefined,
+  )
+  const rightRecord = right as Record<string, unknown>
+  const rightKeys = Object.keys(rightRecord).filter((key) => rightRecord[key] !== undefined)
+  if (leftEntries.length !== rightKeys.length) return false
+
+  return leftEntries.every(
+    ([key, value]) =>
+      Object.prototype.hasOwnProperty.call(rightRecord, key) &&
+      samePayload(value, rightRecord[key]),
+  )
+}
+
 export function classifyMutation(
-  mutation: Pick<SyncMutation, 'entityType' | 'operation' | 'baseRevision'>,
+  mutation: Pick<SyncMutation, 'entityType' | 'operation' | 'baseRevision' | 'payload'>,
   existing: ExistingEntityState | null,
 ): MutationDecision {
   const { entityType, operation } = mutation
@@ -44,13 +75,14 @@ export function classifyMutation(
 
   if (!isStale(existing, mutation.baseRevision)) return { kind: 'accept' }
 
-  return classifyStale(entityType, operation, existing)
+  return classifyStale(entityType, operation, existing, mutation.payload)
 }
 
 function classifyStale(
   entityType: SyncEntityType,
   operation: 'upsert' | 'delete',
   existing: ExistingEntityState,
+  payload: unknown,
 ): MutationDecision {
   switch (entityType) {
     // 普通设置与 Secret：后提交的 mutation 生效，服务端提交顺序即真相
@@ -69,10 +101,21 @@ function classifyStale(
       return { kind: 'conflict', reason: 'delete_vs_update' }
 
     case 'category':
-      // 分类结构冲突会改变订阅归属，一律显式处理
-      return existing.deleted && operation === 'upsert'
-        ? { kind: 'conflict', reason: 'update_vs_delete' }
-        : { kind: 'conflict', reason: 'category_stale_mutation' }
+      if (existing.deleted) {
+        return operation === 'upsert'
+          ? { kind: 'conflict', reason: 'update_vs_delete' }
+          : { kind: 'noop' }
+      }
+      /**
+       * 两台设备各自基于默认分类做同一件事（典型场景：都是全新安装后合并），
+       * 提交的内容与云端逐字相同。这种「陈旧但无分歧」的 mutation 只是回声，
+       * 判成冲突会一次刷出上百条要用户裁决的伪冲突。
+       */
+      if (operation === 'upsert' && samePayload(existing.payload, payload)) {
+        return { kind: 'noop' }
+      }
+      // 剩下的分类分歧会改变订阅归属，一律显式处理
+      return { kind: 'conflict', reason: 'category_stale_mutation' }
   }
 }
 
