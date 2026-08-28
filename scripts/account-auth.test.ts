@@ -7,7 +7,11 @@ import assert from 'node:assert/strict'
 
 import { shareTokenFromAppUrl } from '../src/lib/appDeepLink'
 import { createAccountAdapter } from '../src/features/account/authClient'
-import { isAuthCallbackUrl, oneTimeTokenFromAppUrl } from '../src/features/account/mobileCallback'
+import {
+  authCallbackFromAppUrl,
+  isAuthCallbackUrl,
+  oneTimeTokenFromAppUrl,
+} from '../src/features/account/mobileCallback'
 import {
   SECURE_KEYS,
   createMemorySecureStore,
@@ -109,6 +113,18 @@ assert.equal(
 
 assert.ok(isAuthCallbackUrl('newsnook://auth/callback?ott=x'))
 assert.ok(!isAuthCallbackUrl('newsnook://a/token'))
+
+assert.deepEqual(
+  authCallbackFromAppUrl('newsnook://auth/callback?linked=github'),
+  { ott: null, linked: 'github', error: null },
+  '绑定回流带 provider，不带一次性 token',
+)
+assert.deepEqual(
+  authCallbackFromAppUrl('newsnook://auth/callback?error=state_mismatch'),
+  { ott: null, linked: null, error: 'state_mismatch' },
+  '失败回流带错误码',
+)
+assert.equal(authCallbackFromAppUrl('newsnook://a/share-token'), null, '分享深链不是认证回流')
 assert.equal(
   shareTokenFromAppUrl('newsnook://auth/callback?ott=abc123'),
   null,
@@ -302,6 +318,9 @@ assert.equal(
   const { fetchImpl, requests } = createFetchStub({
     '/api/auth/sign-in/social': { body: { url: 'https://github.test/login/oauth' } },
     '/api/auth/link-social': { body: { url: 'https://github.test/login/oauth/link' } },
+    '/api/v1/auth/mobile/link/github': {
+      body: { url: `${BASE_URL}/api/v1/auth/mobile/link/github?ott=handoff` },
+    },
   })
   const opened: string[] = []
   const adapter = createAccountAdapter({
@@ -323,7 +342,59 @@ assert.equal(
   assert.equal(requests.length, 0, '不再经 WebView fetch sign-in/social')
 
   assert.equal(await adapter.linkSocial('github'), 'external')
-  assert.equal(opened[1], 'https://github.test/login/oauth/link', '绑定走 link-social，不是重新登录')
+  assert.equal(
+    opened[1],
+    `${BASE_URL}/api/v1/auth/mobile/link/github?ott=handoff`,
+    '绑定同样由 Custom Tab 发起，state Cookie 不会落在 WebView 里',
+  )
+  assert.ok(
+    !requests.some((request) => request.url.endsWith('/api/auth/link-social')),
+    'WebView 不再直接 fetch link-social：那样拿到的 state Cookie 回调时用不上',
+  )
+  assert.equal(requests[0]!.url, `${BASE_URL}/api/v1/auth/mobile/link/github`)
+  assert.equal(requests[0]!.method, 'POST')
+  assert.equal(requests[0]!.credentials, 'omit', 'Android 靠 bearer，不指望 WebView Cookie')
+}
+
+// --- Android 绑定回流：刷新已绑定列表，不换会话 -------------------------------
+
+{
+  const { fetchImpl, requests } = createFetchStub({
+    '/api/v1/me': {
+      body: {
+        user: { id: 'user-1', email: 'reader@example.test', name: null, emailVerified: true, image: null },
+        linkedProviders: ['credential', 'github'],
+        device: null,
+      },
+    },
+  })
+  const store = createMemorySecureStore()
+  await writeStoredSession(store, { token: 'kept-token', userId: 'user-1', expiresAt: 0 })
+
+  const adapter = createAccountAdapter({
+    platform: 'android',
+    baseUrl: BASE_URL,
+    secureStore: store,
+    fetchImpl,
+    openExternal: () => {},
+  })
+
+  const session = await adapter.handleAuthDeepLink('newsnook://auth/callback?linked=github')
+  assert.deepEqual(session?.linkedProviders, ['credential', 'github'])
+  assert.equal((await readStoredSession(store))?.token, 'kept-token', '绑定不动本机长期凭证')
+  assert.ok(
+    !requests.some((request) => request.url.includes('/mobile/exchange')),
+    '绑定回流不换会话，不该走一次性 token 交换',
+  )
+
+  await assert.rejects(
+    () => adapter.handleAuthDeepLink('newsnook://auth/callback?error=state_mismatch'),
+    (error: unknown) => {
+      assert.ok(error instanceof AccountError)
+      assert.equal(error.code, 'OAUTH_CALLBACK_FAILED')
+      return true
+    },
+  )
 }
 
 {
