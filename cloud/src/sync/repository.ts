@@ -108,31 +108,28 @@ export async function recordMutationResult(
 
 // ---------------------------------------------------------------- entities
 
+/** Secret 表没有 payload 列，值也不该参与冲突判定，只取版本与墓碑状态 */
 export async function loadEntityState(
   client: PoolClient,
   params: { userId: string; entityType: SyncEntityType; entityId: string },
 ): Promise<ExistingEntityState | null> {
   const table = ENTITY_TABLES[params.entityType]
-  const { rows } = await client.query<{ revision: string; deleted_at: Date | null }>(
-    `SELECT revision, deleted_at FROM ${table} WHERE user_id = $1 AND entity_id = $2`,
+  const payloadColumn = params.entityType === 'secret' ? 'NULL AS payload' : 'payload'
+  const { rows } = await client.query<{
+    revision: string
+    deleted_at: Date | null
+    payload: unknown
+  }>(
+    `SELECT revision, deleted_at, ${payloadColumn} FROM ${table} WHERE user_id = $1 AND entity_id = $2`,
     [params.userId, params.entityId],
   )
   const row = rows[0]
   if (!row) return null
-  return { revision: toNumber(row.revision), deleted: row.deleted_at !== null }
-}
-
-export async function loadEntityPayload(
-  client: PoolClient,
-  params: { userId: string; entityType: SyncEntityType; entityId: string },
-): Promise<unknown> {
-  if (params.entityType === 'secret') return null
-  const table = ENTITY_TABLES[params.entityType]
-  const { rows } = await client.query<{ payload: unknown }>(
-    `SELECT payload FROM ${table} WHERE user_id = $1 AND entity_id = $2`,
-    [params.userId, params.entityId],
-  )
-  return rows[0]?.payload ?? null
+  return {
+    revision: toNumber(row.revision),
+    deleted: row.deleted_at !== null,
+    payload: row.payload ?? null,
+  }
 }
 
 export interface UpsertParams {
@@ -520,6 +517,58 @@ export async function insertConflict(
   return toConflict(rows[0]!)
 }
 
+/** 同一实体同时只该有一条未裁决冲突；push 前先查它，避免重复 push 刷出成排冲突 */
+export async function findOpenConflictForEntity(
+  client: PoolClient,
+  params: { userId: string; entityType: SyncEntityType; entityId: string },
+): Promise<SyncConflict | null> {
+  const { rows } = await client.query<RawConflictRow>(
+    `SELECT id, entity_type, entity_id, reason, server_revision, base_revision, local_change, server_state, created_at, resolved_at
+       FROM sync_conflicts
+      WHERE user_id = $1 AND entity_type = $2 AND entity_id = $3 AND resolved_at IS NULL
+      ORDER BY created_at ASC
+      LIMIT 1
+      FOR UPDATE`,
+    [params.userId, params.entityType, params.entityId],
+  )
+  const row = rows[0]
+  return row ? toConflict(row) : null
+}
+
+/**
+ * 同一实体的分歧又推了一次：刷新既有冲突里的本地改动与服务端快照，
+ * 而不是再插一行。用户看到的永远是「这个实体现在有分歧」，只需裁决一次。
+ */
+export async function refreshConflict(
+  client: PoolClient,
+  params: {
+    id: string
+    userId: string
+    reason: SyncConflictReason
+    serverRevision: number
+    baseRevision: number | null
+    localChange: unknown
+    serverState: unknown
+  },
+): Promise<SyncConflict> {
+  const { rows } = await client.query<RawConflictRow>(
+    `UPDATE sync_conflicts
+        SET reason = $3, server_revision = $4, base_revision = $5, local_change = $6, server_state = $7
+      WHERE user_id = $1 AND id = $2
+      RETURNING id, entity_type, entity_id, reason, server_revision, base_revision, local_change, server_state, created_at, resolved_at`,
+    [
+      params.userId,
+      params.id,
+      params.reason,
+      params.serverRevision,
+      params.baseRevision,
+      JSON.stringify(params.localChange ?? null),
+      JSON.stringify(params.serverState ?? null),
+    ],
+  )
+  return toConflict(rows[0]!)
+}
+
 export async function listOpenConflicts(
   client: PoolClient,
   userId: string,
@@ -627,4 +676,60 @@ export async function revokeDevice(
     [userId, deviceId],
   )
   return Boolean(rowCount)
+}
+
+// --------------------------------------------------------- device ↔ session
+
+/** 记住「这个会话正在这台设备上用」；撤销设备时据此定位要作废的会话 */
+export async function bindDeviceSession(
+  client: PoolClient,
+  params: { userId: string; deviceId: string; sessionId: string },
+): Promise<void> {
+  await client.query(
+    `INSERT INTO device_sessions (user_id, device_id, session_id)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (device_id, session_id) DO UPDATE SET last_seen_at = now()`,
+    [params.userId, params.deviceId, params.sessionId],
+  )
+}
+
+/**
+ * 这个会话是否绑在某台已撤销的设备上。
+ * 撤销后换一个新 deviceId 重新登记，也要在这里被拦下来。
+ */
+export async function sessionBelongsToRevokedDevice(
+  client: PoolClient,
+  userId: string,
+  sessionId: string,
+): Promise<boolean> {
+  const { rows } = await client.query<{ exists: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+         FROM device_sessions ds
+         JOIN devices d ON d.id = ds.device_id
+        WHERE ds.user_id = $1 AND ds.session_id = $2 AND d.revoked_at IS NOT NULL
+     ) AS exists`,
+    [userId, sessionId],
+  )
+  return rows[0]?.exists === true
+}
+
+/** 撤销设备时作废它手里的会话；`keepSessionId` 是发起撤销的那个会话 */
+export async function deleteDeviceSessions(
+  client: PoolClient,
+  params: { userId: string; deviceId: string; keepSessionId: string | null },
+): Promise<number> {
+  const { rows } = await client.query<{ session_id: string }>(
+    `SELECT session_id FROM device_sessions
+      WHERE user_id = $1 AND device_id = $2 AND ($3::text IS NULL OR session_id <> $3)`,
+    [params.userId, params.deviceId, params.keepSessionId],
+  )
+  const sessionIds = rows.map((row) => row.session_id)
+  if (!sessionIds.length) return 0
+
+  await client.query('DELETE FROM auth."session" WHERE "userId" = $1 AND id = ANY($2::text[])', [
+    params.userId,
+    sessionIds,
+  ])
+  return sessionIds.length
 }

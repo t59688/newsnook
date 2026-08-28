@@ -48,7 +48,21 @@ export async function registerDeviceRoutes(
       const session = await app.requireSession(request)
       const parsed = uuidSchema.safeParse(request.params.id)
       if (!parsed.success) throw validationFailed('设备标识无效')
-      await options.service.revokeDevice(session.userId, parsed.data)
+      const { revokedSessions } = await options.service.revokeDevice(
+        session.userId,
+        parsed.data,
+        session.sessionId,
+      )
+      request.log.info(
+        {
+          requestId: request.id,
+          operation: 'device.revoke',
+          userId: session.userId,
+          deviceId: parsed.data,
+          revokedSessions,
+        },
+        'device revoked',
+      )
       return { revoked: true }
     },
   )

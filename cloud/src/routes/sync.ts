@@ -33,10 +33,16 @@ function assertProtocolVersion(body: unknown): void {
   if (version !== undefined && version !== SYNC_PROTOCOL_VERSION) throw protocolUnsupported()
 }
 
+/**
+ * 每条同步路由都必须自报设备。设备是访问主体：没有它就无法把会话绑到设备上，
+ * 「撤销设备」也就拦不住换了 deviceId 的同一个 token。
+ * 请求体里另带 deviceId 时两者必须一致，避免一边登记 A、一边以 B 的名义写入。
+ */
 function requireDeviceId(request: FastifyRequest, fromBody?: string): string {
-  const deviceId = fromBody ?? deviceIdFromHeader(request)
-      if (!deviceId) throw validationFailed('同步请求需要设备标识')
-  return deviceId
+  const fromHeader = deviceIdFromHeader(request)
+  if (!fromHeader) throw validationFailed('同步请求需要设备标识')
+  if (fromBody && fromBody !== fromHeader) throw validationFailed('设备标识与请求头不一致')
+  return fromHeader
 }
 
 export async function registerSyncRoutes(
@@ -50,8 +56,8 @@ export async function registerSyncRoutes(
     { config: { rateLimit: SYNC_RATE_LIMIT } },
     async (request) => {
       const session = await app.requireSession(request)
-      const deviceId = deviceIdFromHeader(request)
-      if (deviceId) await service.ensureDevice(session.userId, { deviceId })
+      const deviceId = requireDeviceId(request)
+      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
       return service.bootstrap(session.userId)
     },
   )
@@ -67,8 +73,9 @@ export async function registerSyncRoutes(
       const parsed = syncBootstrapReplaceRequestSchema.safeParse(request.body)
       if (!parsed.success) throw validationFailed('首次同步请求无效')
 
-      await service.ensureDevice(session.userId, { deviceId: parsed.data.deviceId })
-      return service.bootstrapReplace(session.userId, parsed.data.deviceId, parsed.data.entities)
+      const deviceId = requireDeviceId(request, parsed.data.deviceId)
+      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
+      return service.bootstrapReplace(session.userId, deviceId, parsed.data.entities)
     },
   )
 
@@ -89,12 +96,17 @@ export async function registerSyncRoutes(
         )
       }
 
-      await service.ensureDevice(session.userId, {
-        deviceId: parsed.data.deviceId,
-        deviceName: parsed.data.deviceName,
-        platform: parsed.data.platform,
-        appVersion: parsed.data.appVersion,
-      })
+      const deviceId = requireDeviceId(request, parsed.data.deviceId)
+      await service.ensureDevice(
+        session.userId,
+        {
+          deviceId,
+          deviceName: parsed.data.deviceName,
+          platform: parsed.data.platform,
+          appVersion: parsed.data.appVersion,
+        },
+        session.sessionId,
+      )
 
       const startedAt = Date.now()
       const { response, summary } = await service.push(session.userId, parsed.data)
@@ -124,8 +136,8 @@ export async function registerSyncRoutes(
     const parsed = syncPullQuerySchema.safeParse(request.query)
     if (!parsed.success) throw validationFailed('同步拉取参数无效')
 
-    const deviceId = deviceIdFromHeader(request)
-    if (deviceId) await service.ensureDevice(session.userId, { deviceId })
+    const deviceId = requireDeviceId(request)
+    await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
 
     const startedAt = Date.now()
     const result = await service.pull(session.userId, parsed.data.since, parsed.data.limit)
@@ -151,6 +163,8 @@ export async function registerSyncRoutes(
     { config: { rateLimit: SYNC_RATE_LIMIT } },
     async (request): Promise<SyncConflictListResponse> => {
       const session = await app.requireSession(request)
+      const deviceId = requireDeviceId(request)
+      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
       return { conflicts: await service.listConflicts(session.userId) }
     },
   )
@@ -164,7 +178,7 @@ export async function registerSyncRoutes(
     if (!parsed.success) throw validationFailed('冲突批量处理请求无效')
 
     const deviceId = requireDeviceId(request, parsed.data.deviceId)
-    await service.ensureDevice(session.userId, { deviceId })
+    await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
 
     const result = await service.resolveConflicts(session.userId, parsed.data.decisions, deviceId)
     return {
@@ -187,7 +201,7 @@ export async function registerSyncRoutes(
       if (!parsed.success) throw validationFailed('冲突处理请求无效')
 
       const deviceId = requireDeviceId(request, parsed.data.deviceId)
-      await service.ensureDevice(session.userId, { deviceId })
+      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
 
       const result = await service.resolveConflict(
         session.userId,
