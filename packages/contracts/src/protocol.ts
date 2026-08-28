@@ -48,6 +48,10 @@ export type SyncConflictResolution = (typeof SYNC_CONFLICT_RESOLUTIONS)[number]
  */
 export const MOBILE_AUTH_CALLBACK_URL = 'newsnook://auth/callback'
 
+/** Better Auth 社交登录 provider id；与 cloud `*_OAUTH_ENABLED` 配置对齐 */
+export const SOCIAL_OAUTH_PROVIDER_IDS = ['google', 'github', 'linuxdo'] as const
+export type SocialOAuthProviderId = (typeof SOCIAL_OAUTH_PROVIDER_IDS)[number]
+
 /**
  * 可插入排序键：客户端在两个相邻 rank 之间生成新键，不必批量重写邻居。
  * 采用短字符串（base36 风格），比较用普通字典序。

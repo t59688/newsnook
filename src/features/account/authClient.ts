@@ -13,7 +13,7 @@
 
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
-import type { MeResponse, MobileExchangeResponse } from '@newsnook/contracts'
+import type { MeResponse, MobileExchangeResponse, AuthConfigResponse } from '@newsnook/contracts'
 
 import { log } from '../../lib/logger'
 import type { CloudFetch, CloudRequestInit } from '../sync/transport'
@@ -258,13 +258,18 @@ export function createAccountAdapter(options: AccountAdapterOptions): AccountAda
     },
 
     async startSocialSignIn(provider: SocialProvider): Promise<SocialSignInMode> {
+      if (native) {
+        // Custom Tab 与 WebView Cookie 不共享；经服务端 GET 启动 OAuth，state 与回调同上下文
+        await options.openExternal(`${baseUrl}/api/v1/auth/mobile/start/${provider}`)
+        return 'external'
+      }
       const url = await socialUrl('/api/auth/sign-in/social', provider)
       await options.openExternal(url)
-      return native ? 'external' : 'redirect'
+      return 'redirect'
     },
 
     async linkSocial(provider: SocialProvider): Promise<SocialSignInMode> {
-      // 已登录时的显式绑定；未登录的同邮箱 OAuth 由服务端的 disableImplicitLinking 挡住
+      // 已登录绑定仍走 WebView fetch；Android 上 bearer 与 state Cookie 上下文仍可能分裂
       const url = await socialUrl('/api/auth/link-social', provider)
       await options.openExternal(url)
       return native ? 'external' : 'redirect'
@@ -293,6 +298,18 @@ export function createAccountAdapter(options: AccountAdapterOptions): AccountAda
         log.account.warn('sign out request failed', { error })
       }
       await dropBearer()
+    },
+
+    async fetchAuthConfig(): Promise<AuthConfigResponse> {
+      const fallback: AuthConfigResponse = { socialSignIn: [], emailSignUp: true }
+      try {
+        const response = await fetchCloud('/api/v1/auth/config')
+        if (!response.ok) return fallback
+        return (await response.json()) as AuthConfigResponse
+      } catch (error) {
+        log.account.debug('auth config request failed', { error })
+        return fallback
+      }
     },
   }
 }

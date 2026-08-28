@@ -37,6 +37,10 @@ export interface AccountApi {
   linkSocial: (provider: SocialProvider) => Promise<boolean>
   signOut: () => Promise<void>
   refresh: () => Promise<void>
+  /** 云端当前启用的社交登录入口 */
+  socialSignInProviders: SocialProvider[]
+  /** 云端是否开放邮箱注册 */
+  emailSignUpEnabled: boolean
 }
 
 /** Better Auth 的错误码翻译；未知码回落到服务端文案 */
@@ -63,6 +67,8 @@ export function useAccount(): AccountApi {
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
+  const [socialSignInProviders, setSocialSignInProviders] = useState<SocialProvider[]>([])
+  const [emailSignUpEnabled, setEmailSignUpEnabled] = useState(true)
 
   const mounted = useRef(true)
   useEffect(() => {
@@ -87,6 +93,17 @@ export function useAccount(): AccountApi {
         settle(null)
       })
   }, [adapter, settle])
+
+  useEffect(() => {
+    void adapter
+      .fetchAuthConfig()
+      .then((config) => {
+        if (!mounted.current) return
+        setSocialSignInProviders(config.socialSignIn)
+        setEmailSignUpEnabled(config.emailSignUp)
+      })
+      .catch(() => {})
+  }, [adapter])
 
   /** Android 社交登录回流：`newsnook://auth/callback?ott=...` */
   useEffect(() => {
@@ -246,5 +263,7 @@ export function useAccount(): AccountApi {
     linkSocial,
     signOut,
     refresh,
+    socialSignInProviders,
+    emailSignUpEnabled,
   }
 }

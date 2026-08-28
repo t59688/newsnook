@@ -7,6 +7,7 @@
  */
 
 import type { DevicePlatform } from '@newsnook/contracts/protocol'
+import type { AuthConfigResponse } from '@newsnook/contracts'
 
 import type { CloudFetch } from '../sync/transport'
 
@@ -92,4 +93,7 @@ export interface AccountAdapter {
 
   /** 只清掉本机云端凭证：本地订阅、配置、缓存一律保留 */
   signOut(): Promise<void>
+
+  /** 读取云端启用的登录能力；失败或离线时回落到保守默认 */
+  fetchAuthConfig(): Promise<AuthConfigResponse>
 }

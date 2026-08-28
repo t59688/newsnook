@@ -36,6 +36,7 @@ export async function registerBusinessRoutes(
   await registerAuthPlugin(app, { auth })
   await registerAuthRoutes(app, {
     auth,
+    config: options.config,
     resolveDevice: async (request, userId) => {
       const deviceId = deviceIdFromHeader(request)
       if (!deviceId) return null
@@ -45,7 +46,11 @@ export async function registerBusinessRoutes(
       return { id: current.id, platform: current.platform, revoked: current.revokedAt !== null }
     },
   })
-  await registerMobileAuthRoutes(app, { auth })
+  await registerMobileAuthRoutes(app, {
+    auth,
+    betterAuthUrl: options.config.betterAuthUrl,
+    config: options.config,
+  })
   await registerDeviceRoutes(app, { service })
   await registerSyncRoutes(app, { service })
 }

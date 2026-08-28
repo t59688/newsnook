@@ -5,7 +5,7 @@
 
 import { z } from 'zod'
 
-import { MOBILE_AUTH_CALLBACK_URL } from './protocol.js'
+import { MOBILE_AUTH_CALLBACK_URL, SOCIAL_OAUTH_PROVIDER_IDS } from './protocol.js'
 import { devicePlatformSchema, uuidSchema } from './sync.js'
 
 export { MOBILE_AUTH_CALLBACK_URL }
@@ -29,6 +29,14 @@ export const meResponseSchema = z.object({
     .nullable(),
 })
 export type MeResponse = z.infer<typeof meResponseSchema>
+
+/** 未登录也可读：当前云端启用的登录能力 */
+export const authConfigResponseSchema = z.object({
+  socialSignIn: z.array(z.enum(SOCIAL_OAUTH_PROVIDER_IDS)),
+  /** 是否开放邮箱密码注册 */
+  emailSignUp: z.boolean(),
+})
+export type AuthConfigResponse = z.infer<typeof authConfigResponseSchema>
 
 /**
  * Android 社交登录回流：系统浏览器完成 Better Auth callback 后带 Cookie 命中

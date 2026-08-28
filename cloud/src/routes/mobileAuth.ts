@@ -1,7 +1,8 @@
 /**
  * Android Session 交接。
  *
- *   App -> social signIn(disableRedirect) -> 系统浏览器 -> provider
+ *   App -> GET /api/v1/auth/mobile/start/:provider（Custom Tab，state Cookie 与回调同上下文）
+ *       -> 系统浏览器 -> provider
  *       -> Better Auth callback（浏览器拿到 Cookie）
  *       -> GET /api/v1/auth/mobile/complete
  *       -> generateOneTimeToken(当前 Session)
@@ -11,9 +12,12 @@
  *
  * 重点：长期 Session token 绝不出现在深链 URL 里，一次性 token 短时有效且用后即焚；
  * 回跳目标是写死的 `newsnook://auth/callback`，不接受任何客户端指定的跳转地址。
+ *
+ * 勿在 WebView 里 fetch sign-in/social 再开 Custom Tab：OAuth state Cookie 落在 WebView，
+ * 回调在 Chrome Custom Tab，会 state_mismatch 并落到 `/?error=state_mismatch`（根路径 404）。
  */
 
-import type { FastifyInstance } from 'fastify'
+import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify'
 
 import {
   MOBILE_AUTH_CALLBACK_URL,
@@ -22,14 +26,70 @@ import {
 } from '@newsnook/contracts'
 
 import type { NewsNookAuth } from '../auth.js'
+import { listEnabledSocialOAuthProviders, type CloudConfig } from '../config.js'
 import { ApiError, authRequired, validationFailed } from '../errors.js'
 import { toWebHeaders } from '../plugins/authSession.js'
 
 export interface MobileAuthRouteOptions {
   auth: NewsNookAuth
+  betterAuthUrl: string
+  config: CloudConfig
 }
 
 const MOBILE_RATE_LIMIT = { max: 30, timeWindow: '1 minute' }
+
+function mobileCompleteCallbackUrl(betterAuthUrl: string): string {
+  return `${betterAuthUrl.replace(/\/$/, '')}/api/v1/auth/mobile/complete`
+}
+
+function forwardSetCookies(response: Response, reply: FastifyReply): void {
+  const setCookies = response.headers.getSetCookie?.() ?? []
+  for (const cookie of setCookies) reply.header('set-cookie', cookie)
+}
+
+async function redirectSocialOAuth(
+  auth: NewsNookAuth,
+  betterAuthUrl: string,
+  authPath: '/api/auth/sign-in/social' | '/api/auth/link-social',
+  provider: string,
+  request: FastifyRequest,
+  reply: FastifyReply,
+): Promise<void> {
+  const callbackURL = mobileCompleteCallbackUrl(betterAuthUrl)
+  const webRequest = new Request(`${betterAuthUrl}${authPath}`, {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      ...toWebHeaders(request),
+    },
+    body: JSON.stringify({ provider, callbackURL, disableRedirect: true }),
+  })
+
+  const response = await auth.handler(webRequest)
+  const text = await response.text()
+
+  if (!response.ok) {
+    reply.status(response.status)
+    response.headers.forEach((value, key) => {
+      if (key.toLowerCase() === 'set-cookie') return
+      reply.header(key, value)
+    })
+    forwardSetCookies(response, reply)
+    return reply.send(text.length ? text : null)
+  }
+
+  forwardSetCookies(response, reply)
+
+  let data: { url?: string }
+  try {
+    data = JSON.parse(text) as { url?: string }
+  } catch {
+    throw new ApiError('INTERNAL_ERROR', 'Failed to start OAuth')
+  }
+
+  if (!data.url) throw new ApiError('INTERNAL_ERROR', 'Failed to start OAuth')
+  return reply.redirect(data.url, 302)
+}
 
 interface VerifiedOneTimeToken {
   session: { token: string; expiresAt: Date | string }
@@ -40,6 +100,40 @@ export async function registerMobileAuthRoutes(
   app: FastifyInstance,
   options: MobileAuthRouteOptions,
 ): Promise<void> {
+  app.get('/', async (request, reply) => {
+    const error = (request.query as { error?: string }).error
+    if (typeof error === 'string' && error.length > 0) {
+      const safe = error.replace(/[<>&]/g, '')
+      return reply
+        .code(400)
+        .type('text/html; charset=utf-8')
+        .send(
+          `<h1>登录未完成</h1><p>原因：${safe}</p><p>请关闭此页，回到「有所闻」重新发起登录。</p>`,
+        )
+    }
+    return reply.code(404).send({ code: 'NOT_FOUND', message: 'Route not found', requestId: request.id })
+  })
+
+  app.get(
+    '/api/v1/auth/mobile/start/:provider',
+    { config: { rateLimit: MOBILE_RATE_LIMIT } },
+    async (request, reply) => {
+      const provider = (request.params as { provider: string }).provider
+      const enabled = new Set(listEnabledSocialOAuthProviders(options.config))
+      if (!enabled.has(provider as 'google' | 'github' | 'linuxdo')) {
+        throw validationFailed('Unsupported social provider')
+      }
+      return redirectSocialOAuth(
+        options.auth,
+        options.betterAuthUrl,
+        '/api/auth/sign-in/social',
+        provider,
+        request,
+        reply,
+      )
+    },
+  )
+
   app.get(
     '/api/v1/auth/mobile/complete',
     { config: { rateLimit: MOBILE_RATE_LIMIT } },

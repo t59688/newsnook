@@ -16,6 +16,10 @@ export interface OAuthProviderConfig {
   clientSecret: string
 }
 
+export type SocialOAuthProviderId = 'google' | 'github' | 'linuxdo'
+
+const SOCIAL_OAUTH_PROVIDER_ORDER: SocialOAuthProviderId[] = ['google', 'github', 'linuxdo']
+
 export interface CloudConfig {
   port: number
   host: string
@@ -32,6 +36,8 @@ export interface CloudConfig {
   smtp?: SmtpConfig
   /** 是否强制邮箱验证后才允许登录 */
   requireEmailVerification: boolean
+  /** 是否允许邮箱密码注册；关闭后仍可登录与找回密码 */
+  emailSignUpEnabled: boolean
   logLevel: string
   trustProxy: boolean
 }
@@ -123,6 +129,29 @@ function parseProvider(
   return { clientId, clientSecret }
 }
 
+/** 凭证齐全且对应 `*_OAUTH_ENABLED` 为 true 时才注册该第三方登录 */
+function parseOAuthProvider(
+  env: Env,
+  idKey: string,
+  secretKey: string,
+  enabledKey: string,
+  defaultEnabled: boolean,
+): OAuthProviderConfig | undefined {
+  const creds = parseProvider(env, idKey, secretKey)
+  if (!creds) return undefined
+  if (!boolFlag(env, enabledKey, defaultEnabled)) return undefined
+  return creds
+}
+
+/** 当前已启用、可向客户端展示的社交登录入口 */
+export function listEnabledSocialOAuthProviders(config: CloudConfig): SocialOAuthProviderId[] {
+  const enabled: SocialOAuthProviderId[] = []
+  for (const id of SOCIAL_OAUTH_PROVIDER_ORDER) {
+    if (config[id]) enabled.push(id)
+  }
+  return enabled
+}
+
 function parseSmtp(env: Env): SmtpConfig | undefined {
   const host = optional(env, 'SMTP_HOST')
   if (!host) return undefined
@@ -168,11 +197,30 @@ export function loadConfig(env: Env = process.env): CloudConfig {
     betterAuthSecret,
     dataEncryptionKey,
     clientOrigins: parseOrigins(required(env, 'CLIENT_ORIGINS')),
-    google: parseProvider(env, 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'),
-    github: parseProvider(env, 'GITHUB_CLIENT_ID', 'GITHUB_CLIENT_SECRET'),
-    linuxdo: parseProvider(env, 'LINUXDO_CLIENT_ID', 'LINUXDO_CLIENT_SECRET'),
+    google: parseOAuthProvider(
+      env,
+      'GOOGLE_CLIENT_ID',
+      'GOOGLE_CLIENT_SECRET',
+      'GOOGLE_OAUTH_ENABLED',
+      false,
+    ),
+    github: parseOAuthProvider(
+      env,
+      'GITHUB_CLIENT_ID',
+      'GITHUB_CLIENT_SECRET',
+      'GITHUB_OAUTH_ENABLED',
+      true,
+    ),
+    linuxdo: parseOAuthProvider(
+      env,
+      'LINUXDO_CLIENT_ID',
+      'LINUXDO_CLIENT_SECRET',
+      'LINUXDO_OAUTH_ENABLED',
+      true,
+    ),
     smtp: parseSmtp(env),
     requireEmailVerification: boolFlag(env, 'REQUIRE_EMAIL_VERIFICATION', true),
+    emailSignUpEnabled: boolFlag(env, 'EMAIL_SIGN_UP_ENABLED', true),
     logLevel: optional(env, 'LOG_LEVEL') ?? 'info',
     trustProxy: boolFlag(env, 'TRUST_PROXY', true),
   }

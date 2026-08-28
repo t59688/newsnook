@@ -315,12 +315,12 @@ assert.equal(
   })
 
   assert.equal(await adapter.startSocialSignIn('github'), 'external')
-  assert.equal(opened[0], 'https://github.test/login/oauth')
   assert.equal(
-    (requests[0]!.body as { callbackURL: string }).callbackURL,
-    `${BASE_URL}/api/v1/auth/mobile/complete`,
-    'Android 回调固定走服务端交接页',
+    opened[0],
+    `${BASE_URL}/api/v1/auth/mobile/start/github`,
+    'Android 经 Custom Tab 打开服务端启动页，state Cookie 与 OAuth 回调同上下文',
   )
+  assert.equal(requests.length, 0, '不再经 WebView fetch sign-in/social')
 
   assert.equal(await adapter.linkSocial('github'), 'external')
   assert.equal(opened[1], 'https://github.test/login/oauth/link', '绑定走 link-social，不是重新登录')

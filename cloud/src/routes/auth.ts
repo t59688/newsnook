@@ -5,13 +5,16 @@
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
-import type { MeResponse } from '@newsnook/contracts'
+import type { AuthConfigResponse, MeResponse } from '@newsnook/contracts'
 
 import type { NewsNookAuth } from '../auth.js'
+import type { CloudConfig } from '../config.js'
+import { listEnabledSocialOAuthProviders } from '../config.js'
 import { toWebHeaders } from '../plugins/authSession.js'
 
 export interface AuthRouteOptions {
   auth: NewsNookAuth
+  config: CloudConfig
   /** 请求头带了设备 id 时补上该设备的状态；同步模块提供实现 */
   resolveDevice?: (
     request: FastifyRequest,
@@ -69,6 +72,15 @@ export async function registerAuthRoutes(
       },
     })
   })
+
+  app.get(
+    '/api/v1/auth/config',
+    { config: { rateLimit: { max: 120, timeWindow: '1 minute' } } },
+    async (): Promise<AuthConfigResponse> => ({
+      socialSignIn: listEnabledSocialOAuthProviders(options.config),
+      emailSignUp: options.config.emailSignUpEnabled,
+    }),
+  )
 
   app.get(
     '/api/v1/me',

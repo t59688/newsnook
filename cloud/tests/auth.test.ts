@@ -128,6 +128,77 @@ describe('auth', { skip: skipWithoutDatabase }, () => {
     assert.deepEqual(response.json().linkedProviders, ['credential'])
   })
 
+  it('exposes enabled social sign-in providers without a session', async () => {
+    const githubCloud = await startTestCloud({
+      github: { clientId: 'gh-test-id', clientSecret: 'gh-test-secret' },
+    })
+
+    const response = await githubCloud.app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/config',
+    })
+    assert.equal(response.statusCode, 200)
+    assert.deepEqual(response.json().socialSignIn, ['github'])
+    assert.equal(response.json().emailSignUp, true)
+
+    await githubCloud.close()
+  })
+
+  it('rejects email sign-up when EMAIL_SIGN_UP_ENABLED is false', async () => {
+    const closedCloud = await startTestCloud({ emailSignUpEnabled: false })
+
+    const configResponse = await closedCloud.app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/config',
+    })
+    assert.equal(configResponse.statusCode, 200)
+    assert.equal(configResponse.json().emailSignUp, false)
+
+    const signUpResponse = await closedCloud.app.inject({
+      method: 'POST',
+      url: '/api/auth/sign-up/email',
+      payload: {
+        email: uniqueEmail('closed-signup'),
+        password: 'correct-horse-1',
+        name: 'Closed',
+      },
+      headers: { 'content-type': 'application/json' },
+    })
+    assert.ok(signUpResponse.statusCode >= 400, '关闭注册后 sign-up 应被拒绝')
+
+    await closedCloud.close()
+  })
+
+  it('starts mobile OAuth from the browser context with a state cookie', async () => {
+    const githubCloud = await startTestCloud({
+      github: { clientId: 'gh-test-id', clientSecret: 'gh-test-secret' },
+    })
+
+    const response = await githubCloud.app.inject({
+      method: 'GET',
+      url: '/api/v1/auth/mobile/start/github',
+    })
+    assert.equal(response.statusCode, 302)
+    assert.ok(
+      (response.headers.location as string).includes('github.com') ||
+        (response.headers.location as string).includes('github'),
+      '应重定向到 GitHub 授权页',
+    )
+    assert.ok(response.headers['set-cookie'], '应在 Custom Tab 上下文写入 OAuth state Cookie')
+
+    await githubCloud.close()
+  })
+
+  it('shows a friendly page when OAuth fails and lands on /?error=', async () => {
+    const response = await cloud.app.inject({
+      method: 'GET',
+      url: '/?error=state_mismatch',
+    })
+    assert.equal(response.statusCode, 400)
+    assert.match(response.body as string, /登录未完成/)
+    assert.match(response.body as string, /state_mismatch/)
+  })
+
   it('hands off a single-use token to the app without exposing the session', async () => {
     const user = await createSignedInUser(cloud, 'mobile')
 

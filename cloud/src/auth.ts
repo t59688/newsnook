@@ -98,6 +98,7 @@ export function createAuth(options: CreateAuthOptions) {
     trustedOrigins: [...config.clientOrigins, 'newsnook://'],
     emailAndPassword: {
       enabled: true,
+      disableSignUp: !config.emailSignUpEnabled,
       requireEmailVerification: config.requireEmailVerification,
       sendResetPassword: async ({ user, url }) => {
         await mailer.send({

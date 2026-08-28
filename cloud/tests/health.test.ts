@@ -136,4 +136,36 @@ describe('config parsing', () => {
     })
     assert.deepEqual(config.linuxdo, { clientId: 'ld-id', clientSecret: 'ld-secret' })
   })
+
+  it('keeps Google OAuth off unless explicitly enabled', () => {
+    const withCreds = loadConfig({
+      ...base,
+      GOOGLE_CLIENT_ID: 'g-id',
+      GOOGLE_CLIENT_SECRET: 'g-secret',
+    })
+    assert.equal(withCreds.google, undefined)
+
+    const enabled = loadConfig({
+      ...base,
+      GOOGLE_CLIENT_ID: 'g-id',
+      GOOGLE_CLIENT_SECRET: 'g-secret',
+      GOOGLE_OAUTH_ENABLED: 'true',
+    })
+    assert.deepEqual(enabled.google, { clientId: 'g-id', clientSecret: 'g-secret' })
+  })
+
+  it('can disable GitHub OAuth while credentials remain configured', () => {
+    const config = loadConfig({
+      ...base,
+      GITHUB_CLIENT_ID: 'gh-id',
+      GITHUB_CLIENT_SECRET: 'gh-secret',
+      GITHUB_OAUTH_ENABLED: 'false',
+    })
+    assert.equal(config.github, undefined)
+  })
+
+  it('can disable email sign-up while keeping other auth defaults', () => {
+    const config = loadConfig({ ...base, EMAIL_SIGN_UP_ENABLED: 'false' })
+    assert.equal(config.emailSignUpEnabled, false)
+  })
 })

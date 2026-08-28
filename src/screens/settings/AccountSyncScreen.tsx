@@ -160,9 +160,14 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
   const caption = syncStatusCaption(status, { authenticated })
 
   const setMode = (next: AuthMode) => {
+    if (next === 'sign-up' && !account.emailSignUpEnabled) return
     setModeState(next)
     account.clearMessages()
   }
+
+  useEffect(() => {
+    if (!account.emailSignUpEnabled && mode === 'sign-up') setModeState('sign-in')
+  }, [account.emailSignUpEnabled, mode])
 
   const decision: FirstSyncDecision | null = useMemo(() => {
     if (!bootstrap) return null
@@ -275,6 +280,19 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
   const displayName = user?.name?.trim() || user?.email || ''
   const initial = (displayName[0] ?? '闻').toUpperCase()
   const linkedProviders = account.session?.linkedProviders ?? []
+  const enabledSocialProviders = SOCIAL_PROVIDERS.filter((provider) =>
+    account.socialSignInProviders.includes(provider.id),
+  )
+  const visibleSocialProviders = SOCIAL_PROVIDERS.filter(
+    (provider) =>
+      account.socialSignInProviders.includes(provider.id) || linkedProviders.includes(provider.id),
+  )
+  const socialSignInGridClass =
+    enabledSocialProviders.length <= 1
+      ? 'grid-cols-1'
+      : enabledSocialProviders.length === 2
+        ? 'grid-cols-2'
+        : 'grid-cols-3'
 
   return (
     <SettingsShell title="账户与同步" caption={caption} onBack={onBack}>
@@ -322,32 +340,36 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
             <Card>
               {mode !== 'forgot' ? (
                 <>
-                  <div className="flex rounded-full border border-haze bg-ink p-1" role="tablist">
-                    {(
-                      [
-                        ['sign-in', '登录'],
-                        ['sign-up', '注册'],
-                      ] as Array<[AuthMode, string]>
-                    ).map(([value, label]) => (
-                      <button
-                        key={value}
-                        type="button"
-                        role="tab"
-                        aria-selected={mode === value}
-                        onClick={() => setMode(value)}
-                        className={`flex-1 rounded-full py-2 font-mono text-[11.5px] transition-colors ${
-                          mode === value
-                            ? 'bg-ink-raised font-medium text-paper shadow-[var(--shadow-lift)]'
-                            : 'text-paper-faint hover:text-paper'
-                        }`}
-                      >
-                        {label}
-                      </button>
-                    ))}
-                  </div>
+                  {account.emailSignUpEnabled ? (
+                    <div className="flex rounded-full border border-haze bg-ink p-1" role="tablist">
+                      {(
+                        [
+                          ['sign-in', '登录'],
+                          ['sign-up', '注册'],
+                        ] as Array<[AuthMode, string]>
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          type="button"
+                          role="tab"
+                          aria-selected={mode === value}
+                          onClick={() => setMode(value)}
+                          className={`flex-1 rounded-full py-2 font-mono text-[11.5px] transition-colors ${
+                            mode === value
+                              ? 'bg-ink-raised font-medium text-paper shadow-[var(--shadow-lift)]'
+                              : 'text-paper-faint hover:text-paper'
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="font-mono text-[11px] tracking-[0.2em] text-paper-faint">邮箱登录</p>
+                  )}
 
                   <form
-                    className="mt-4 space-y-3.5"
+                    className={`space-y-3.5 ${account.emailSignUpEnabled ? 'mt-4' : 'mt-3'}`}
                     onSubmit={(event) => {
                       event.preventDefault()
                       void submitAuth()
@@ -371,7 +393,11 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                         <input
                           className={`${FIELD_CLASS} pr-11`}
                           type={showPassword ? 'text' : 'password'}
-                          autoComplete={mode === 'sign-up' ? 'new-password' : 'current-password'}
+                          autoComplete={
+                            mode === 'sign-up' && account.emailSignUpEnabled
+                              ? 'new-password'
+                              : 'current-password'
+                          }
                           placeholder="至少 8 位"
                           value={password}
                           onChange={(event) => setPassword(event.target.value)}
@@ -397,7 +423,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                       className={CTA_BUTTON}
                     >
                       {account.busy && <LoaderCircle size={15} className="animate-spin" />}
-                      {mode === 'sign-in' ? '登录' : '注册'}
+                      {mode === 'sign-in' || !account.emailSignUpEnabled ? '登录' : '注册'}
                     </button>
                   </form>
 
@@ -411,11 +437,11 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                         忘记密码？
                       </button>
                     </div>
-                  ) : (
+                  ) : account.emailSignUpEnabled ? (
                     <p className="mt-3 text-[11px] leading-relaxed text-paper-faint">
                       注册后需要点开验证邮件里的链接才能登录。
                     </p>
-                  )}
+                  ) : null}
                 </>
               ) : (
                 <>
@@ -468,33 +494,37 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
               )}
             </Card>
 
-            <div className="mt-5 flex items-center gap-3 px-1">
-              <span className="h-px flex-1 bg-haze" aria-hidden />
-              <span className="font-mono text-[10px] tracking-[0.28em] text-paper-faint">
-                第三方登录
-              </span>
-              <span className="h-px flex-1 bg-haze" aria-hidden />
-            </div>
-
-            <div className="mt-3 grid grid-cols-3 gap-2">
-              {SOCIAL_PROVIDERS.map((provider) => (
-                <button
-                  key={provider.id}
-                  type="button"
-                  disabled={account.busy}
-                  onClick={() => void account.signInWithSocial(provider.id)}
-                  className="flex flex-col items-center gap-1.5 rounded-2xl border border-haze bg-ink-raised px-2 py-3 transition-colors hover:border-paper-faint disabled:opacity-40"
-                >
-                  <span className="flex h-8 w-8 items-center justify-center rounded-full border border-haze bg-ink font-mono text-[11px] text-paper-muted">
-                    {provider.monogram}
+            {enabledSocialProviders.length > 0 && (
+              <>
+                <div className="mt-5 flex items-center gap-3 px-1">
+                  <span className="h-px flex-1 bg-haze" aria-hidden />
+                  <span className="font-mono text-[10px] tracking-[0.28em] text-paper-faint">
+                    第三方登录
                   </span>
-                  <span className="text-[11px] text-paper-muted">{provider.label}</span>
-                </button>
-              ))}
-            </div>
-            <p className="mt-3 px-1 text-[10.5px] leading-relaxed text-paper-faint">
-              同邮箱的不同登录方式不会被自动合并成一个账户，登录后可以在这里显式绑定另一种方式。
-            </p>
+                  <span className="h-px flex-1 bg-haze" aria-hidden />
+                </div>
+
+                <div className={`mt-3 grid gap-2 ${socialSignInGridClass}`}>
+                  {enabledSocialProviders.map((provider) => (
+                    <button
+                      key={provider.id}
+                      type="button"
+                      disabled={account.busy}
+                      onClick={() => void account.signInWithSocial(provider.id)}
+                      className="flex flex-col items-center gap-1.5 rounded-2xl border border-haze bg-ink-raised px-2 py-3 transition-colors hover:border-paper-faint disabled:opacity-40"
+                    >
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full border border-haze bg-ink font-mono text-[11px] text-paper-muted">
+                        {provider.monogram}
+                      </span>
+                      <span className="text-[11px] text-paper-muted">{provider.label}</span>
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-3 px-1 text-[10.5px] leading-relaxed text-paper-faint">
+                  同邮箱的不同登录方式不会被自动合并成一个账户，登录后可以在这里显式绑定另一种方式。
+                </p>
+              </>
+            )}
 
             <p className="mt-6 border-t border-haze/60 px-1 pt-4 text-[11px] leading-relaxed text-paper-faint">
               不登录也能完整使用「有所闻」：订阅、正文抽取、离线缓存与全部本地设置都不依赖账户。
@@ -755,7 +785,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                       </span>
                     </li>
                   )}
-                  {SOCIAL_PROVIDERS.map((provider) => {
+                  {visibleSocialProviders.map((provider) => {
                     const linked = linkedProviders.includes(provider.id)
                     return (
                       <li key={provider.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
@@ -768,7 +798,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                             <BadgeCheck size={13} strokeWidth={1.8} />
                             已绑定
                           </span>
-                        ) : (
+                        ) : account.socialSignInProviders.includes(provider.id) ? (
                           <button
                             type="button"
                             disabled={account.busy}
@@ -777,7 +807,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                           >
                             绑定
                           </button>
-                        )}
+                        ) : null}
                       </li>
                     )
                   })}
