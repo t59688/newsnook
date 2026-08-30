@@ -645,7 +645,10 @@ export async function touchDevice(
      VALUES ($1, $2, $3, $4, $5, now())
      ON CONFLICT (id) DO UPDATE SET
        name = COALESCE(EXCLUDED.name, devices.name),
-       platform = COALESCE(EXCLUDED.platform, devices.platform),
+       platform = CASE
+         WHEN EXCLUDED.platform IS NOT NULL AND EXCLUDED.platform <> 'unknown' THEN EXCLUDED.platform
+         ELSE devices.platform
+       END,
        app_version = COALESCE(EXCLUDED.app_version, devices.app_version),
        last_seen_at = now()`,
     [

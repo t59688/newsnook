@@ -19,6 +19,8 @@ const LOCAL_CACHE_PREFIXES = [LIST_CACHE_PREFIX, 'body:']
  */
 export const SYNC_STATE_KEY = 'sync-state:v1'
 export const SYNC_JOURNAL_KEY = 'sync-journal:v1'
+/** 与 sync-state 分开存，避免同步域重置时向云端登记成新设备 */
+export const DEVICE_ID_KEY = 'device-id'
 export const SYNC_ONBOARDING_KEY = 'sync-onboarding-seen'
 /** 首次同步基线选择前的本机快照，只落 localStorage（见 lib/backup.ts） */
 export const SYNC_SAFETY_SNAPSHOT_KEY = 'sync-safety-snapshot:v1'
@@ -39,6 +41,7 @@ const BOOTSTRAP_MIRROR_KEYS = [
   'appUpdate',
   SYNC_STATE_KEY,
   SYNC_JOURNAL_KEY,
+  DEVICE_ID_KEY,
   SYNC_ONBOARDING_KEY,
 ] as const
 
@@ -271,6 +274,15 @@ export function loadSyncState(): unknown {
 
 export function saveSyncState(state: unknown): void {
   write(SYNC_STATE_KEY, state)
+}
+
+export function loadPersistedDeviceId(): string | null {
+  const value = read<string | null>(DEVICE_ID_KEY, null)
+  return typeof value === 'string' && value ? value : null
+}
+
+export function savePersistedDeviceId(deviceId: string): void {
+  write(DEVICE_ID_KEY, deviceId)
 }
 
 export function clearSyncState(): void {

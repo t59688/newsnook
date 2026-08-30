@@ -27,7 +27,7 @@ import type { AccountApi } from '../../features/account/useAccount'
 import type { SocialProvider } from '../../features/account/types'
 import { ConflictResolutionSheet } from '../../features/sync/ConflictResolutionSheet'
 import { CONFLICT_ENTITY_LABEL, summarizeConflicts } from '../../features/sync/conflictView'
-import { describeDevice, listDevices, revokeDevice } from '../../features/sync/devices'
+import { describeDevice, formatDeviceLabel, listDevices, revokeDevice } from '../../features/sync/devices'
 import {
   countProjection,
   decideFirstSync,
@@ -138,6 +138,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
   const [confirmChoice, setConfirmChoice] = useState<FirstSyncChoice | null>(null)
   const [devices, setDevices] = useState<DeviceSummary[] | null>(null)
   const [deviceError, setDeviceError] = useState<string | null>(null)
+  const [showRevokedDevices, setShowRevokedDevices] = useState(false)
   const [revokeTarget, setRevokeTarget] = useState<DeviceSummary | null>(null)
   const [revoking, setRevoking] = useState(false)
   const [conflictSheetOpen, setConflictSheetOpen] = useState(false)
@@ -722,46 +723,76 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                     正在读取设备列表…
                   </p>
                 )}
-                <ul className="divide-y divide-haze/60">
-                  {devices?.map((device) => (
-                    <li key={device.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                      <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-haze bg-ink">
-                        {device.platform === 'android' ? (
-                          <Smartphone size={15} strokeWidth={1.6} className="text-paper-muted" />
-                        ) : (
-                          <Monitor size={15} strokeWidth={1.6} className="text-paper-muted" />
-                        )}
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-1.5">
-                          <span className="truncate text-[13.5px] text-paper">
-                            {device.name ?? '未命名设备'}
-                          </span>
-                          {device.current && (
-                            <span className="shrink-0 rounded-full border border-cinnabar/50 bg-cinnabar/10 px-2 py-0.5 font-mono text-[9px] tracking-[0.1em] text-cinnabar-soft">
-                              本机
-                            </span>
+                {devices && (
+                  <>
+                    {(() => {
+                      const active = devices.filter((device) => !device.revokedAt)
+                      const revoked = devices.filter((device) => device.revokedAt)
+                      const visibleRevoked = showRevokedDevices ? revoked : []
+                      const rows = [...active, ...visibleRevoked]
+                      return (
+                        <>
+                          {active.length === 0 && revoked.length > 0 && !showRevokedDevices && (
+                            <p className="mb-3 text-[12px] leading-relaxed text-paper-muted">
+                              当前没有活跃设备。若你只在用这一台手机，展开下方已撤销条目并清理重复记录即可。
+                            </p>
                           )}
-                        </span>
-                        <span className="mt-0.5 block truncate font-mono text-[10px] text-paper-faint">
-                          {describeDevice(device)}
-                          {device.appVersion ? ` · v${device.appVersion}` : ''}
-                        </span>
-                      </span>
-                      {!device.current && !device.revokedAt && (
-                        <button
-                          type="button"
-                          onClick={() => setRevokeTarget(device)}
-                          className={`${SECONDARY_BUTTON} shrink-0`}
-                        >
-                          撤销
-                        </button>
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                          <ul className="divide-y divide-haze/60">
+                            {rows.map((device) => (
+                              <li key={device.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-haze bg-ink">
+                                  {device.platform === 'android' || device.platform === 'ios' ? (
+                                    <Smartphone size={15} strokeWidth={1.6} className="text-paper-muted" />
+                                  ) : (
+                                    <Monitor size={15} strokeWidth={1.6} className="text-paper-muted" />
+                                  )}
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                  <span className="flex items-center gap-1.5">
+                                    <span className="truncate text-[13.5px] text-paper">
+                                      {formatDeviceLabel(device)}
+                                    </span>
+                                    {device.current && (
+                                      <span className="shrink-0 rounded-full border border-cinnabar/50 bg-cinnabar/10 px-2 py-0.5 font-mono text-[9px] tracking-[0.1em] text-cinnabar-soft">
+                                        本机
+                                      </span>
+                                    )}
+                                  </span>
+                                  <span className="mt-0.5 block truncate font-mono text-[10px] text-paper-faint">
+                                    {describeDevice(device)}
+                                    {device.appVersion ? ` · v${device.appVersion}` : ''}
+                                  </span>
+                                </span>
+                                {!device.current && !device.revokedAt && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setRevokeTarget(device)}
+                                    className={`${SECONDARY_BUTTON} shrink-0`}
+                                  >
+                                    撤销
+                                  </button>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                          {revoked.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setShowRevokedDevices((open) => !open)}
+                              className="mt-3 text-[11px] text-paper-muted underline-offset-2 hover:text-paper hover:underline"
+                            >
+                              {showRevokedDevices
+                                ? '收起已撤销设备'
+                                : `查看已撤销设备（${revoked.length}）`}
+                            </button>
+                          )}
+                        </>
+                      )
+                    })()}
+                  </>
+                )}
                 <p className="mt-3 border-t border-haze/60 pt-3 text-[11px] leading-relaxed text-paper-faint">
-                  撤销只让那台设备停止云端同步，它本机已有的订阅与配置照旧可用。
+                  撤销只让那台设备停止云端同步，它本机已有的订阅与配置照旧可用。同一台手机若出现多条记录，通常是历史遗留，保留带「本机」的一条即可。
                 </p>
               </Card>
             </div>
@@ -889,7 +920,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
       <ConfirmDialog
         open={revokeTarget !== null}
         title="撤销这台设备？"
-        message={`「${revokeTarget?.name ?? '未命名设备'}」将停止云端同步，它本机已有的订阅与配置照旧可用；之后重新登录即可恢复同步。`}
+        message={`「${revokeTarget ? formatDeviceLabel(revokeTarget) : '未命名设备'}」将停止云端同步，它本机已有的订阅与配置照旧可用；之后重新登录即可恢复同步。`}
         confirmLabel={revoking ? '撤销中…' : '撤销'}
         onConfirm={() => void confirmRevoke()}
         onCancel={() => {

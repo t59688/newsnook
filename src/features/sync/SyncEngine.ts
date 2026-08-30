@@ -12,7 +12,7 @@ import type { BootstrapEntity, SyncConflict, SyncPushResponse, SyncRecord } from
 
 import { log } from '../../lib/logger'
 import { fingerprintOf } from './fingerprint'
-import { randomUuid } from './ids'
+import { rotateDeviceId } from './state'
 import { materializeBatch } from './reconcile'
 import { reconcileProjection } from './reconcile'
 import { SyncTransportError, type SyncTransport } from './transport'
@@ -414,9 +414,9 @@ export class SyncEngine {
 
     if (transportError.code === 'DEVICE_IN_USE') {
       // 同机换账号：旧 deviceId 还挂在别的用户上。换新 id 立刻再试，不打扰用户。
+      rotateDeviceId()
       this.adapter.writeState({
-        ...state,
-        deviceId: randomUuid(),
+        ...this.adapter.readState(),
         retryAttempt: 0,
         nextRetryAt: this.now(),
       })

@@ -16,6 +16,7 @@ import {
   saveSyncJournal,
   saveSyncState,
 } from '../../lib/storage'
+import { assignDeviceId, resolveDeviceId } from './deviceIdentity'
 import { randomUuid } from './ids'
 import type {
   ConflictMarker,
@@ -28,7 +29,8 @@ import type {
 const ENTITY_TYPES: SyncEntityType[] = ['subscription', 'category', 'setting', 'secret']
 const OPERATIONS: SyncMutationOperation[] = ['upsert', 'delete']
 
-export function createInitialSyncState(deviceId = randomUuid()): LocalSyncState {
+export function createInitialSyncState(deviceId = resolveDeviceId()): LocalSyncState {
+  assignDeviceId(deviceId)
   return {
     deviceId,
     cursor: 0,
@@ -110,7 +112,9 @@ function normalizeOutbox(raw: unknown): OutboxEntry[] {
 
 export function normalizeSyncState(raw: unknown): LocalSyncState {
   const input = (raw ?? {}) as Partial<LocalSyncState>
-  const deviceId = typeof input.deviceId === 'string' && input.deviceId ? input.deviceId : randomUuid()
+  const deviceId = resolveDeviceId(
+    typeof input.deviceId === 'string' && input.deviceId ? input.deviceId : null,
+  )
 
   return {
     deviceId,
@@ -145,6 +149,7 @@ export function readSyncState(): LocalSyncState {
 }
 
 export function writeSyncState(state: LocalSyncState): void {
+  assignDeviceId(state.deviceId)
   saveSyncState(redactForPersistence(state))
 }
 
@@ -152,6 +157,7 @@ export function writeSyncState(state: LocalSyncState): void {
 export function rotateDeviceId(): string {
   const state = readSyncState()
   const deviceId = randomUuid()
+  assignDeviceId(deviceId)
   writeSyncState({ ...state, deviceId })
   log.sync.info('rotated device id after ownership conflict')
   return deviceId
