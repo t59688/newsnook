@@ -32,6 +32,7 @@ import { deferMediaInHtml, DEFERRED_SRC_ATTR, type DeferredHostPhase } from '../
 import { stageYoutubeEmbedsInHtml } from '../lib/youtubeEmbeds'
 import { shouldAutoLoadMedia } from '../lib/mediaLoadPolicy'
 import { revealReader } from '../lib/motion'
+import { SCROLL_SURFACE_ATTR } from '../lib/gestureStyles'
 import {
   flushReadingPositions,
   forgetReadingPosition,
@@ -1217,6 +1218,7 @@ export function ReaderScreen({
 
         <div
           ref={rootRef}
+          {...{ [SCROLL_SURFACE_ATTR]: '' }}
           onScroll={einkMode ? undefined : handleScroll}
           className={`scroll-hidden min-h-0 flex-1 overflow-x-hidden ${
             einkMode

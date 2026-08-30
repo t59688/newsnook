@@ -1,6 +1,8 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { Check } from 'lucide-react'
 
+import { lockBodyScroll } from '../lib/bodyScrollLock'
+
 /** 弹窗次要操作：描边取消钮 */
 const DIALOG_CANCEL_CLASS =
   'rounded-full border border-haze bg-transparent px-4 py-1.5 font-mono text-[11px] text-paper-muted transition-colors hover:text-paper'
@@ -39,11 +41,10 @@ export function OptionPickerDialog<T extends string>({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onCancel()
     }
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockBodyScroll()
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = previousOverflow
+      unlock()
       window.removeEventListener('keydown', onKey)
     }
   }, [open, onCancel])

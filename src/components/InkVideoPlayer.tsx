@@ -24,6 +24,7 @@ import {
   needsMediaHotlinkBypass,
 } from '../lib/mediaFetch'
 import { setNativeFullScreen } from '../lib/nativeChrome'
+import { recoverAppScrollSurfaces } from '../lib/gestureStyles'
 import { getVideoStatusMessage } from '../lib/videoStatus'
 import {
   createBrightnessControl,
@@ -193,6 +194,7 @@ export function InkVideoPlayer({ src, poster, title, format, sourcePage, request
 function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHeaders, extraUrls, resources, onSelectResource, onRefreshSource, onPlaybackError, fullscreenHandleRef }: Props & { onSelectResource?: (resource: MediaResourceDescriptor) => void }) {
   const rootRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
+  const gestureSurfaceRef = useRef<HTMLDivElement>(null)
   const videoRef = useRef<HTMLVideoElement>(null)
   const hlsRef = useRef<Hls | null>(null)
   const dashRef = useRef<{ reset: () => void } | null>(null)
@@ -751,14 +753,32 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
 
   useEffect(() => {
     if (!immersive) return
+    const root = rootRef.current
     // Entry/exit are awaited in toggleFullscreen so the Activity transition is
     // ordered. This cleanup only covers unmount/source replacement while fullscreen.
     return () => {
-      if (!Capacitor.isNativePlatform()) return
-      void setVideoFullscreen(false).then((applied) => {
-        if (!applied) void setNativeFullScreen(false)
-      })
+      void (async () => {
+        if (Capacitor.isNativePlatform()) {
+          const applied = await setVideoFullscreen(false)
+          if (!applied) await setNativeFullScreen(false)
+        } else {
+          if (root && document.fullscreenElement === root) {
+            try {
+              await document.exitFullscreen()
+            } catch {
+              // Keep current browser fullscreen state if exit is rejected.
+            }
+          }
+          await setNativeFullScreen(false)
+        }
+        recoverAppScrollSurfaces()
+      })()
     }
+  }, [immersive])
+
+  useEffect(() => {
+    if (immersive) return
+    recoverAppScrollSurfaces()
   }, [immersive])
 
   /** 进入全屏时对齐当前系统档位，退出时把亮度还给系统。 */
@@ -798,12 +818,19 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
       if (longPressTimerRef.current != null) window.clearTimeout(longPressTimerRef.current)
       if (hudTimerRef.current != null) window.clearTimeout(hudTimerRef.current)
       if (toastTimerRef.current != null) window.clearTimeout(toastTimerRef.current)
+      const surface = gestureSurfaceRef.current
+      if (surface) {
+        activePointersRef.current.forEach((_, pointerId) => {
+          if (surface.hasPointerCapture(pointerId)) surface.releasePointerCapture(pointerId)
+        })
+      }
       activePointersRef.current.clear()
       pinchRef.current = null
       // 卸载时若仍在全屏，窗口亮度必须归还系统，否则整个应用会一直停在调暗状态
       brightnessControl.release()
       volumeControl.release()
       void releasePlayerScreenOrientation()
+      recoverAppScrollSurfaces()
     },
     [brightnessControl, releasePlayerScreenOrientation, volumeControl],
   )
@@ -1244,6 +1271,9 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
   }
 
   const onGesturePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
     const { point } = pointerLocation(event)
     activePointersRef.current.delete(event.pointerId)
     clearGestureTimers()
@@ -1315,7 +1345,10 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
     }, DOUBLE_TAP_MS)
   }
 
-  const onGesturePointerCancel = () => {
+  const onGesturePointerCancel = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId)
+    }
     activePointersRef.current.clear()
     pinchRef.current = null
     multiTouchRef.current = false
@@ -1392,6 +1425,7 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
 
         {ready && !fatal && (
           <div
+            ref={gestureSurfaceRef}
             data-video-gesture-surface=""
             className="absolute inset-0 z-[1] touch-none select-none"
             onPointerDown={onGesturePointerDown}
