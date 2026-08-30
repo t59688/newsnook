@@ -20,7 +20,7 @@ import {
   Smartphone,
 } from 'lucide-react'
 
-import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { AlertDialog, ConfirmDialog } from '../../components/ConfirmDialog'
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { accountScreenModel } from '../../features/account/screenModel'
 import type { AccountApi } from '../../features/account/useAccount'
@@ -77,10 +77,30 @@ const SECONDARY_BUTTON =
 const CTA_BUTTON =
   'flex w-full items-center justify-center gap-2 rounded-xl border border-cinnabar/70 bg-cinnabar/15 px-4 py-3 text-[13.5px] font-medium text-cinnabar-soft transition-colors hover:bg-cinnabar/25 disabled:opacity-40'
 const FIELD_CLASS =
-  'w-full rounded-xl border border-haze bg-ink px-3.5 py-3 text-[14px] text-paper outline-none placeholder:text-paper-faint focus:border-cinnabar/50'
+  'w-full rounded-xl border bg-ink px-3.5 py-3 text-[14px] text-paper outline-none placeholder:text-paper-faint focus:border-cinnabar/50'
 const FIELD_LABEL = 'mb-1.5 block font-mono text-[10px] tracking-[0.16em] text-paper-faint'
+const FIELD_HINT = 'mt-1.5 text-[11px] leading-relaxed text-cinnabar-soft'
 
 type AuthMode = 'sign-in' | 'sign-up' | 'forgot'
+
+type AuthFieldErrors = { email?: string; password?: string }
+
+function fieldClass(hasError: boolean): string {
+  return `${FIELD_CLASS} ${hasError ? 'border-cinnabar/60' : 'border-haze'}`
+}
+
+function validateEmail(email: string): string | null {
+  const trimmed = email.trim()
+  if (!trimmed) return '请输入邮箱'
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) return '请输入有效的邮箱地址'
+  return null
+}
+
+function validatePassword(password: string, mode: 'sign-in' | 'sign-up'): string | null {
+  if (!password) return '请输入密码'
+  if (mode === 'sign-up' && password.length < 8) return '密码至少 8 位'
+  return null
+}
 
 function Card({ children, className = '' }: { children: React.ReactNode; className?: string }) {
   return (
@@ -131,6 +151,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
   const [mode, setModeState] = useState<AuthMode>('sign-in')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({})
   const [showPassword, setShowPassword] = useState(false)
   const [bootstrap, setBootstrap] = useState<SyncBootstrapResponse | null>(null)
   const [bootstrapError, setBootstrapError] = useState<string | null>(null)
@@ -163,7 +184,32 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
   const setMode = (next: AuthMode) => {
     if (next === 'sign-up' && !account.emailSignUpEnabled) return
     setModeState(next)
+    setFieldErrors({})
     account.clearMessages()
+  }
+
+  const clearFieldError = (field: keyof AuthFieldErrors) => {
+    setFieldErrors((prev) => {
+      if (!prev[field]) return prev
+      const next = { ...prev }
+      delete next[field]
+      return next
+    })
+  }
+
+  const validateAuthForm = (): boolean => {
+    const errors: AuthFieldErrors = {}
+    const emailError = validateEmail(email)
+    if (emailError) errors.email = emailError
+    if (mode !== 'forgot') {
+      const passwordError = validatePassword(
+        password,
+        mode === 'sign-up' && account.emailSignUpEnabled ? 'sign-up' : 'sign-in',
+      )
+      if (passwordError) errors.password = passwordError
+    }
+    setFieldErrors(errors)
+    return Object.keys(errors).length === 0
   }
 
   useEffect(() => {
@@ -222,16 +268,18 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
   }, [authenticated, needsFirstSync, loadDevices])
 
   const submitAuth = async () => {
+    if (!validateAuthForm()) return
+
     if (mode === 'sign-in') {
-      await account.signIn(email, password)
+      await account.signIn(email.trim(), password)
       return
     }
     if (mode === 'sign-up') {
-      const ok = await account.signUp({ email, password })
+      const ok = await account.signUp({ email: email.trim(), password })
       if (ok) setModeState('sign-in')
       return
     }
-    await account.requestPasswordReset(email)
+    await account.requestPasswordReset(email.trim())
   }
 
   /** 三选一都先留一份本机安全快照，选错了还能整包回滚同步域 */
@@ -297,14 +345,6 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
 
   return (
     <SettingsShell title="账户与同步" caption={caption} onBack={onBack}>
-      {account.error && (
-        <div className="page-x pt-4">
-          <p className="flex items-start gap-2 rounded-xl border border-cinnabar/40 bg-cinnabar/10 px-3 py-2.5 text-[12px] leading-relaxed text-cinnabar-soft">
-            <CircleAlert size={14} strokeWidth={1.8} className="mt-0.5 shrink-0" />
-            <span className="min-w-0">{account.error}</span>
-          </p>
-        </div>
-      )}
       {account.notice && (
         <div className="page-x pt-4">
           <p className="flex items-start gap-2 rounded-xl border border-haze bg-ink-raised px-3 py-2.5 text-[12px] leading-relaxed text-paper-muted">
@@ -370,6 +410,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                   )}
 
                   <form
+                    noValidate
                     className={`space-y-3.5 ${account.emailSignUpEnabled ? 'mt-4' : 'mt-3'}`}
                     onSubmit={(event) => {
                       event.preventDefault()
@@ -379,29 +420,45 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                     <label className="block">
                       <span className={FIELD_LABEL}>邮箱</span>
                       <input
-                        className={FIELD_CLASS}
-                        type="email"
+                        className={fieldClass(Boolean(fieldErrors.email))}
+                        type="text"
                         autoComplete="email"
                         inputMode="email"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        aria-invalid={Boolean(fieldErrors.email)}
                         placeholder="you@example.com"
                         value={email}
-                        onChange={(event) => setEmail(event.target.value)}
+                        onChange={(event) => {
+                          setEmail(event.target.value)
+                          clearFieldError('email')
+                        }}
                       />
+                      {fieldErrors.email && (
+                        <p role="status" aria-live="polite" className={FIELD_HINT}>
+                          {fieldErrors.email}
+                        </p>
+                      )}
                     </label>
                     <label className="block">
                       <span className={FIELD_LABEL}>密码</span>
                       <span className="relative block">
                         <input
-                          className={`${FIELD_CLASS} pr-11`}
+                          className={`${fieldClass(Boolean(fieldErrors.password))} pr-11`}
                           type={showPassword ? 'text' : 'password'}
                           autoComplete={
                             mode === 'sign-up' && account.emailSignUpEnabled
                               ? 'new-password'
                               : 'current-password'
                           }
+                          aria-invalid={Boolean(fieldErrors.password)}
                           placeholder="至少 8 位"
                           value={password}
-                          onChange={(event) => setPassword(event.target.value)}
+                          onChange={(event) => {
+                            setPassword(event.target.value)
+                            clearFieldError('password')
+                          }}
                         />
                         <button
                           type="button"
@@ -416,11 +473,16 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                           )}
                         </button>
                       </span>
+                      {fieldErrors.password && (
+                        <p role="status" aria-live="polite" className={FIELD_HINT}>
+                          {fieldErrors.password}
+                        </p>
+                      )}
                     </label>
 
                     <button
                       type="submit"
-                      disabled={account.busy || !email || !password}
+                      disabled={account.busy}
                       className={CTA_BUTTON}
                     >
                       {account.busy && <LoaderCircle size={15} className="animate-spin" />}
@@ -451,6 +513,7 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                     输入注册邮箱，我们会发送一封重置密码的邮件。
                   </p>
                   <form
+                    noValidate
                     className="mt-4 space-y-3.5"
                     onSubmit={(event) => {
                       event.preventDefault()
@@ -460,16 +523,28 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
                     <label className="block">
                       <span className={FIELD_LABEL}>邮箱</span>
                       <input
-                        className={FIELD_CLASS}
-                        type="email"
+                        className={fieldClass(Boolean(fieldErrors.email))}
+                        type="text"
                         autoComplete="email"
                         inputMode="email"
+                        autoCapitalize="off"
+                        autoCorrect="off"
+                        spellCheck={false}
+                        aria-invalid={Boolean(fieldErrors.email)}
                         placeholder="you@example.com"
                         value={email}
-                        onChange={(event) => setEmail(event.target.value)}
+                        onChange={(event) => {
+                          setEmail(event.target.value)
+                          clearFieldError('email')
+                        }}
                       />
+                      {fieldErrors.email && (
+                        <p role="status" aria-live="polite" className={FIELD_HINT}>
+                          {fieldErrors.email}
+                        </p>
+                      )}
                     </label>
-                    <button type="submit" disabled={account.busy || !email} className={CTA_BUTTON}>
+                    <button type="submit" disabled={account.busy} className={CTA_BUTTON}>
                       {account.busy && <LoaderCircle size={15} className="animate-spin" />}
                       发送重置邮件
                     </button>
@@ -898,6 +973,13 @@ export function AccountSyncScreen({ account, sync, runtime, onBack }: Props) {
         conflicts={sync.conflicts}
         onApply={(decisions, onProgress) => sync.resolveConflicts(decisions, onProgress)}
         onClose={() => setConflictSheetOpen(false)}
+      />
+
+      <AlertDialog
+        open={account.error !== null}
+        title="操作未能完成"
+        message={account.error ?? ''}
+        onClose={() => account.clearMessages()}
       />
 
       <ConfirmDialog
