@@ -12,6 +12,7 @@ import { usePullToRefresh } from '../hooks/usePullToRefresh'
 import { useReducedMotion } from '../hooks/useReducedMotion'
 import { useSwipeCategory, type SwipeDirection } from '../hooks/useSwipeCategory'
 import { inkPulse, markRevealedAll, revealItems } from '../lib/motion'
+import { SCROLL_SURFACE_ATTR } from '../lib/gestureStyles'
 import type { PaginationViewState } from '../lib/feedPagination'
 import { chineseDate, dayBucket, relativeTime } from '../lib/time'
 import type { Article, RefreshProgress, SourceStatus } from '../lib/types'
@@ -794,6 +795,7 @@ export const FeedScreen = memo(function FeedScreen({
   const listScroller = (
     <div
       ref={containerRef}
+      {...{ [SCROLL_SURFACE_ATTR]: '' }}
       onScroll={onListScroll}
       className="scroll-hidden h-full overflow-x-hidden overflow-y-auto overscroll-contain bg-ink"
       style={{

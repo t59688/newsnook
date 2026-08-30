@@ -25,6 +25,7 @@ import {
   syncBodyPins,
 } from './lib/bodyCache'
 import { sortArticles } from './lib/feedPagination'
+import { recoverAppScrollAfterNavigation } from './lib/gestureStyles'
 import { log } from './lib/logger'
 import {
   buildReadingProfile,
@@ -492,6 +493,7 @@ export default function App() {
   const closeReader = useCallback(() => {
     setReading(null)
     clearShareLocation()
+    recoverAppScrollAfterNavigation()
   }, [])
 
   const dismissDeepLinkError = useCallback(() => {

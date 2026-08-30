@@ -31,6 +31,7 @@ import {
   type ConflictScope,
 } from './conflictView'
 import { describeSyncError } from './notifier'
+import { lockBodyScroll } from '../../lib/bodyScrollLock'
 
 const ENTITY_ICON: Record<SyncEntityType, typeof Rss> = {
   subscription: Rss,
@@ -91,11 +92,10 @@ export function ConflictResolutionSheet({ open, conflicts, onApply, onClose }: P
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape' && !applying) onClose()
     }
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockBodyScroll()
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = previousOverflow
+      unlock()
       window.removeEventListener('keydown', onKey)
     }
   }, [open, applying, onClose])

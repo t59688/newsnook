@@ -10,6 +10,8 @@ import {
 import { Download, Share2, X } from 'lucide-react'
 
 import { saveImageToGallery, shareImage } from '../lib/imageActions'
+import { lockBodyScroll } from '../lib/bodyScrollLock'
+import { recoverAppScrollSurfaces } from '../lib/gestureStyles'
 
 interface Props {
   src: string
@@ -126,13 +128,27 @@ export function ImageLightbox({ src, alt = '', onClose, overlayCloserRef }: Prop
     [applyTransform, clampTranslation],
   )
 
-  useEffect(() => {
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previousOverflow
-    }
+  const releaseStageCaptures = useCallback(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    pointersRef.current.forEach((_, pointerId) => {
+      if (stage.hasPointerCapture(pointerId)) stage.releasePointerCapture(pointerId)
+    })
+    pointersRef.current.clear()
+    pinchStartRef.current = null
+    panStartRef.current = null
+    closingSwipeRef.current.active = false
   }, [])
+
+  useEffect(() => {
+    const unlock = lockBodyScroll()
+    return () => {
+      clearLongPress()
+      releaseStageCaptures()
+      unlock()
+      recoverAppScrollSurfaces()
+    }
+  }, [clearLongPress, releaseStageCaptures])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

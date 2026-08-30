@@ -6,6 +6,7 @@ import { useEffect } from 'react'
 import { ListVideo } from 'lucide-react'
 
 import type { MediaResourceDescriptor } from '../../features/mediaSniffer/types'
+import { lockBodyScroll } from '../../lib/bodyScrollLock'
 
 export function MediaResourceOverlay({
   resources,
@@ -25,11 +26,10 @@ export function MediaResourceOverlay({
     const onKey = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onToggle()
     }
-    const previousOverflow = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
+    const unlock = lockBodyScroll()
     window.addEventListener('keydown', onKey)
     return () => {
-      document.body.style.overflow = previousOverflow
+      unlock()
       window.removeEventListener('keydown', onKey)
     }
   }, [open, onToggle])
