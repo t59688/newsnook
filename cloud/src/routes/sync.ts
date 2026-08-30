@@ -19,7 +19,7 @@ import {
 
 import { protocolUnsupported, validationFailed } from '../errors.js'
 import type { SyncService } from '../sync/service.js'
-import { deviceIdFromHeader } from './devices.js'
+import { deviceContextFromRequest, deviceIdFromHeader } from './devices.js'
 
 export interface SyncRouteOptions {
   service: SyncService
@@ -57,7 +57,11 @@ export async function registerSyncRoutes(
     async (request) => {
       const session = await app.requireSession(request)
       const deviceId = requireDeviceId(request)
-      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
+      await service.ensureDevice(
+        session.userId,
+        deviceContextFromRequest(request, deviceId),
+        session.sessionId,
+      )
       return service.bootstrap(session.userId)
     },
   )
@@ -74,7 +78,11 @@ export async function registerSyncRoutes(
       if (!parsed.success) throw validationFailed('首次同步请求无效')
 
       const deviceId = requireDeviceId(request, parsed.data.deviceId)
-      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
+      await service.ensureDevice(
+        session.userId,
+        deviceContextFromRequest(request, deviceId),
+        session.sessionId,
+      )
       return service.bootstrapReplace(session.userId, deviceId, parsed.data.entities)
     },
   )
@@ -97,13 +105,14 @@ export async function registerSyncRoutes(
       }
 
       const deviceId = requireDeviceId(request, parsed.data.deviceId)
+      const headerContext = deviceContextFromRequest(request, deviceId)
       await service.ensureDevice(
         session.userId,
         {
           deviceId,
-          deviceName: parsed.data.deviceName,
-          platform: parsed.data.platform,
-          appVersion: parsed.data.appVersion,
+          deviceName: parsed.data.deviceName ?? headerContext.deviceName,
+          platform: parsed.data.platform ?? headerContext.platform,
+          appVersion: parsed.data.appVersion ?? headerContext.appVersion,
         },
         session.sessionId,
       )
@@ -137,7 +146,11 @@ export async function registerSyncRoutes(
     if (!parsed.success) throw validationFailed('同步拉取参数无效')
 
     const deviceId = requireDeviceId(request)
-    await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
+    await service.ensureDevice(
+      session.userId,
+      deviceContextFromRequest(request, deviceId),
+      session.sessionId,
+    )
 
     const startedAt = Date.now()
     const result = await service.pull(session.userId, parsed.data.since, parsed.data.limit)
@@ -164,7 +177,11 @@ export async function registerSyncRoutes(
     async (request): Promise<SyncConflictListResponse> => {
       const session = await app.requireSession(request)
       const deviceId = requireDeviceId(request)
-      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
+      await service.ensureDevice(
+        session.userId,
+        deviceContextFromRequest(request, deviceId),
+        session.sessionId,
+      )
       return { conflicts: await service.listConflicts(session.userId) }
     },
   )
@@ -178,7 +195,11 @@ export async function registerSyncRoutes(
     if (!parsed.success) throw validationFailed('冲突批量处理请求无效')
 
     const deviceId = requireDeviceId(request, parsed.data.deviceId)
-    await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
+    await service.ensureDevice(
+      session.userId,
+      deviceContextFromRequest(request, deviceId),
+      session.sessionId,
+    )
 
     const result = await service.resolveConflicts(session.userId, parsed.data.decisions, deviceId)
     return {
@@ -201,7 +222,11 @@ export async function registerSyncRoutes(
       if (!parsed.success) throw validationFailed('冲突处理请求无效')
 
       const deviceId = requireDeviceId(request, parsed.data.deviceId)
-      await service.ensureDevice(session.userId, { deviceId }, session.sessionId)
+      await service.ensureDevice(
+        session.userId,
+        deviceContextFromRequest(request, deviceId),
+        session.sessionId,
+      )
 
       const result = await service.resolveConflict(
         session.userId,

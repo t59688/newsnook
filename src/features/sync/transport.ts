@@ -21,6 +21,9 @@ import type {
 } from '@newsnook/contracts'
 
 export const DEVICE_HEADER = 'x-newsnook-device'
+export const DEVICE_NAME_HEADER = 'x-newsnook-device-name'
+export const DEVICE_PLATFORM_HEADER = 'x-newsnook-device-platform'
+export const APP_VERSION_HEADER = 'x-newsnook-app-version'
 
 /** 网络层失败与业务错误码统一成这一个类型，引擎据此决定重试还是暂停 */
 export class SyncTransportError extends Error {
@@ -127,12 +130,23 @@ export function createHttpSyncTransport(options: {
    * `deviceId` 只解析一次：服务端要求请求头与请求体里的设备标识一致，
    * 两处各读一次状态的话，正好赶上换 id 的那一刻就会自相矛盾。
    */
+  function deviceHeaders(deviceId?: string): Record<string, string> {
+    const device = identity()
+    const headers: Record<string, string> = {
+      [DEVICE_HEADER]: deviceId ?? device.deviceId,
+    }
+    if (device.deviceName) headers[DEVICE_NAME_HEADER] = device.deviceName
+    if (device.platform) headers[DEVICE_PLATFORM_HEADER] = device.platform
+    if (device.appVersion) headers[APP_VERSION_HEADER] = device.appVersion
+    return headers
+  }
+
   async function call<T>(path: string, init?: CloudRequestInit, deviceId?: string): Promise<T> {
     let response: Response
     try {
       response = await fetchCloud(path, {
         ...init,
-        headers: { ...init?.headers, [DEVICE_HEADER]: deviceId ?? identity().deviceId },
+        headers: { ...deviceHeaders(deviceId), ...init?.headers },
       })
     } catch (error) {
       throw new SyncTransportError({

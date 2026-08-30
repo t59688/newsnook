@@ -5,12 +5,17 @@
 
 import type { FastifyInstance, FastifyRequest } from 'fastify'
 
-import { uuidSchema, type DeviceListResponse } from '@newsnook/contracts'
+import { uuidSchema, type DeviceContext, type DeviceListResponse } from '@newsnook/contracts'
 
 import { validationFailed } from '../errors.js'
 import type { SyncService } from '../sync/service.js'
 
 export const DEVICE_HEADER = 'x-newsnook-device'
+export const DEVICE_NAME_HEADER = 'x-newsnook-device-name'
+export const DEVICE_PLATFORM_HEADER = 'x-newsnook-device-platform'
+export const APP_VERSION_HEADER = 'x-newsnook-app-version'
+
+const PLATFORM_VALUES = new Set(['web', 'android', 'ios', 'unknown'])
 
 export interface DeviceRouteOptions {
   service: SyncService
@@ -24,6 +29,32 @@ export function deviceIdFromHeader(request: FastifyRequest): string | null {
   return uuidSchema.safeParse(value).success ? value : null
 }
 
+function readHeader(request: FastifyRequest, name: string, maxLength: number): string | undefined {
+  const raw = request.headers[name]
+  const value = Array.isArray(raw) ? raw[0] : raw
+  if (typeof value !== 'string') return undefined
+  const trimmed = value.trim()
+  return trimmed ? trimmed.slice(0, maxLength) : undefined
+}
+
+/** 每条同步/设备请求都带上本机型号与平台，便于刷新 devices 行 */
+export function deviceContextFromRequest(
+  request: FastifyRequest,
+  deviceId: string,
+): DeviceContext {
+  const platformRaw = readHeader(request, DEVICE_PLATFORM_HEADER, 16)
+  const platform =
+    platformRaw && PLATFORM_VALUES.has(platformRaw)
+      ? (platformRaw as DeviceContext['platform'])
+      : undefined
+  return {
+    deviceId,
+    deviceName: readHeader(request, DEVICE_NAME_HEADER, 120),
+    platform,
+    appVersion: readHeader(request, APP_VERSION_HEADER, 40),
+  }
+}
+
 export async function registerDeviceRoutes(
   app: FastifyInstance,
   options: DeviceRouteOptions,
@@ -33,9 +64,17 @@ export async function registerDeviceRoutes(
     { config: { rateLimit: { max: 60, timeWindow: '1 minute' } } },
     async (request): Promise<DeviceListResponse> => {
       const session = await app.requireSession(request)
+      const deviceId = deviceIdFromHeader(request)
+      if (deviceId) {
+        await options.service.ensureDevice(
+          session.userId,
+          deviceContextFromRequest(request, deviceId),
+          session.sessionId,
+        )
+      }
       const devices = await options.service.listDevices(
         session.userId,
-        deviceIdFromHeader(request),
+        deviceId,
       )
       return { devices }
     },

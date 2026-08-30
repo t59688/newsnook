@@ -9,13 +9,13 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
-import { Capacitor } from '@capacitor/core'
 import type { SyncConflict } from '@newsnook/contracts'
 
 import { log } from '../../lib/logger'
 import type { Preferences } from '../../sources/preferences'
 import type { PresetsState } from '../../sources/presets'
 import type { AccountAdapter } from '../account/types'
+import { readDeviceIdentity } from './deviceIdentity'
 import type { LocalRuntimeState } from './merge'
 import { notifySyncEvent } from './nativeNotification'
 import { projectLocalState } from './projection'
@@ -64,20 +64,9 @@ const IDLE_STATUS: SyncStatus = {
   firstSyncCompleted: false,
 }
 
-function devicePlatform(): 'android' | 'web' {
-  return Capacitor.getPlatform() === 'android' ? 'android' : 'web'
-}
-
 function appVisibility(): 'foreground' | 'background' {
   if (typeof document === 'undefined') return 'background'
   return document.visibilityState === 'visible' ? 'foreground' : 'background'
-}
-
-function deviceName(): string {
-  if (typeof navigator === 'undefined') return 'NewsNook'
-  const ua = navigator.userAgent
-  const model = /Android[^;]*;\s*([^)]+)\)/.exec(ua)?.[1]?.split(' Build')[0]
-  return (model ?? (devicePlatform() === 'android' ? 'Android' : 'Web')).slice(0, 60)
 }
 
 export function useCloudSync(args: CloudSyncArgs): CloudSyncApi {
@@ -124,9 +113,7 @@ export function useCloudSync(args: CloudSyncArgs): CloudSyncApi {
       fetchCloud: account.fetchCloud,
       identity: () => ({
         deviceId: readSyncState().deviceId,
-        deviceName: deviceName(),
-        platform: devicePlatform(),
-        appVersion: __APP_VERSION__,
+        ...readDeviceIdentity(),
       }),
     })
 
