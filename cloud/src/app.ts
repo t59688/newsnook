@@ -13,6 +13,12 @@ import type { CloudConfig } from './config.js'
 import { createPools, type CloudPools } from './db/pools.js'
 import { ApiError, apiErrorBody } from './errors.js'
 import type { Mailer } from './mail.js'
+import {
+  APP_VERSION_HEADER,
+  DEVICE_HEADER,
+  DEVICE_NAME_HEADER,
+  DEVICE_PLATFORM_HEADER,
+} from './routes/devices.js'
 import { registerHealthRoutes } from './routes/health.js'
 
 export interface BuildAppOptions {
@@ -72,7 +78,14 @@ export async function buildApp(options: BuildAppOptions): Promise<CloudApp> {
     origin: config.clientOrigins,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['content-type', 'authorization', 'x-newsnook-device'],
+    allowedHeaders: [
+      'content-type',
+      'authorization',
+      DEVICE_HEADER,
+      DEVICE_NAME_HEADER,
+      DEVICE_PLATFORM_HEADER,
+      APP_VERSION_HEADER,
+    ],
     // Android 通过这个响应头拿到 bearer token；不额外暴露其它头
     exposedHeaders: ['set-auth-token'],
     maxAge: 600,
