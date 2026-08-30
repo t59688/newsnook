@@ -20,6 +20,10 @@ import {
   writeStoredSession,
 } from '../src/features/account/secureStore'
 import { AccountError } from '../src/features/account/types'
+import {
+  describeLinkedProvider,
+  describeOAuthCallbackError,
+} from '../src/features/account/oauthErrors'
 
 console.log('Testing account adapters...')
 
@@ -391,7 +395,8 @@ assert.equal(
     () => adapter.handleAuthDeepLink('newsnook://auth/callback?error=state_mismatch'),
     (error: unknown) => {
       assert.ok(error instanceof AccountError)
-      assert.equal(error.code, 'OAUTH_CALLBACK_FAILED')
+      assert.equal(error.code, 'state_mismatch')
+      assert.match(error.message, /授权状态/)
       return true
     },
   )
@@ -514,6 +519,14 @@ assert.equal(
 
   const result = await adapter.signUp({ email: 'new@example.test', password: 'correct-horse-1' })
   assert.equal(result.verificationRequired, true, '未返回会话即代表要先验证邮箱')
+}
+
+// --- OAuth 绑定错误与成功文案 -----------------------------------------------
+
+{
+  assert.match(describeOAuthCallbackError('email_does_not_match'), /邮箱/)
+  assert.match(describeLinkedProvider('github'), /GitHub/)
+  assert.match(describeLinkedProvider('linuxdo'), /Linux DO/)
 }
 
 console.log('All account adapter tests passed.')

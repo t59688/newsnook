@@ -9,7 +9,8 @@ import { Capacitor } from '@capacitor/core'
 
 import { log } from '../../lib/logger'
 import { createPlatformAccountAdapter } from './authClient'
-import { isAuthCallbackUrl } from './mobileCallback'
+import { isAuthCallbackUrl, authCallbackFromAppUrl } from './mobileCallback'
+import { describeLinkedProvider, describeOAuthCallbackError } from './oauthErrors'
 import {
   AccountError,
   type AccountAdapter,
@@ -53,6 +54,14 @@ const ERROR_MESSAGES: Record<string, string> = {
   RATE_LIMITED: '操作太频繁，缓一会儿再试',
   SESSION_MISSING: '登录没能建立会话，请重试',
   OAUTH_URL_MISSING: '暂时无法开始第三方登录，稍后再试',
+  OAUTH_CALLBACK_FAILED: '第三方账号授权没能完成，请重试',
+  email_does_not_match: '第三方账号邮箱与当前账户不一致，暂时无法绑定',
+  unable_to_link_account: '暂时无法绑定该第三方账号，请确认已在授权页完成登录',
+  account_already_linked_to_different_user: '该第三方账号已绑定到其他用户',
+  email_not_verified: '第三方账号邮箱尚未验证，请先在对应平台完成验证',
+  LINKING_NOT_ALLOWED: '暂时无法绑定该登录方式',
+  LINKING_DIFFERENT_EMAILS_NOT_ALLOWED: '第三方账号邮箱与当前账户不一致，暂时无法绑定',
+  SOCIAL_ACCOUNT_ALREADY_LINKED: '该第三方账号已绑定到其他用户',
 }
 
 function describe(error: unknown): string {
@@ -114,13 +123,22 @@ export function useAccount(): AccountApi {
 
     const consume = (url: string) => {
       if (!isAuthCallbackUrl(url)) return
+      const callback = authCallbackFromAppUrl(url)
       void adapter
         .handleAuthDeepLink(url)
         .then((next) => {
-          if (next) settle(next)
+          if (!next || !mounted.current) return
+          settle(next)
+          if (callback?.linked) setNotice(describeLinkedProvider(callback.linked))
         })
         .catch((deepLinkError: unknown) => {
-          if (mounted.current) setError(describe(deepLinkError))
+          if (!mounted.current) return
+          if (deepLinkError instanceof AccountError && deepLinkError.code !== 'OAUTH_CALLBACK_FAILED') {
+            setError(ERROR_MESSAGES[deepLinkError.code] ?? deepLinkError.message)
+            return
+          }
+          const code = callback?.error
+          setError(code ? describeOAuthCallbackError(code) : describe(deepLinkError))
         })
     }
 
