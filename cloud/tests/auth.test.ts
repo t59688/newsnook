@@ -106,15 +106,39 @@ describe('auth', { skip: skipWithoutDatabase }, () => {
     // 直接模拟「另一个 provider 用同一个邮箱注册」：配置层已禁止隐式合并，
     // 这里断言配置确实生效，且不存在把两个身份并到同一 user 的路径。
     const options = cloud.app.newsnookAuth.options as {
-      account?: { accountLinking?: { disableImplicitLinking?: boolean } }
+      account?: {
+        accountLinking?: {
+          enabled?: boolean
+          disableImplicitLinking?: boolean
+          allowDifferentEmails?: boolean
+          trustedProviders?: string[]
+        }
+      }
     }
-    assert.equal(options.account?.accountLinking?.disableImplicitLinking, true)
+    const linking = options.account?.accountLinking
+    assert.equal(linking?.enabled, true)
+    assert.equal(linking?.disableImplicitLinking, true)
+    assert.equal(linking?.allowDifferentEmails, true, '显式绑定应允许各平台邮箱不一致')
 
     const { rows } = await cloud.pools.app.query<{ total: string }>(
       'SELECT count(*)::text AS total FROM auth."user" WHERE email = $1',
       [user.email],
     )
     assert.equal(rows[0]?.total, '1')
+  })
+
+  it('includes every enabled OAuth provider in accountLinking.trustedProviders', async () => {
+    const multiCloud = await startTestCloud({
+      github: { clientId: 'gh-test-id', clientSecret: 'gh-test-secret' },
+      linuxdo: { clientId: 'ld-test-id', clientSecret: 'ld-test-secret' },
+    })
+    const linking = (
+      multiCloud.app.newsnookAuth.options as {
+        account?: { accountLinking?: { trustedProviders?: string[] } }
+      }
+    ).account?.accountLinking
+    assert.deepEqual(linking?.trustedProviders, ['github', 'linuxdo'])
+    await multiCloud.close()
   })
 
   it('lists linked providers for the authenticated user', async () => {

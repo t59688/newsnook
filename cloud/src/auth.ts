@@ -17,6 +17,7 @@ import type { Pool } from 'pg'
 import { MOBILE_AUTH_CALLBACK_URL } from '@newsnook/contracts'
 
 import type { CloudConfig } from './config.js'
+import { listEnabledSocialOAuthProviders } from './config.js'
 import type { Mailer } from './mail.js'
 
 /** Linux DO Connect 的 OIDC discovery；回调路径为 /api/auth/callback/linuxdo */
@@ -125,8 +126,15 @@ export function createAuth(options: CreateAuthOptions) {
       },
     },
     account: {
-      // 同邮箱不静默合并：第三方身份必须由已登录账号显式绑定
-      accountLinking: { disableImplicitLinking: true },
+      // 同邮箱不静默合并：第三方身份必须由已登录账号显式绑定。
+      // 显式绑定时允许各平台邮箱不一致（Linux DO / GitHub 常用不同邮箱）；
+      // trustedProviders 覆盖 genericOAuth 的 linuxdo，避免未标记 verified 时被拒。
+      accountLinking: {
+        enabled: true,
+        disableImplicitLinking: true,
+        trustedProviders: listEnabledSocialOAuthProviders(config),
+        allowDifferentEmails: true,
+      },
     },
     socialProviders,
     advanced: {

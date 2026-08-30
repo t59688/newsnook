@@ -26,6 +26,7 @@ import {
   writeStoredSession,
   type SecureStore,
 } from './secureStore'
+import { describeOAuthCallbackError } from './oauthErrors'
 import {
   AccountError,
   type AccountAdapter,
@@ -291,7 +292,7 @@ export function createAccountAdapter(options: AccountAdapterOptions): AccountAda
 
       if (params.error) {
         log.account.warn('oauth callback failed', { code: params.error })
-        throw new AccountError('OAUTH_CALLBACK_FAILED', '第三方账号授权没能完成，请重试')
+        throw new AccountError(params.error, describeOAuthCallbackError(params.error))
       }
 
       if (params.linked) {
