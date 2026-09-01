@@ -9,7 +9,7 @@ import {
 } from '../features/mediaSniffer/native'
 import { reduceLiveObservations } from '../features/mediaSniffer/liveCandidate'
 import type { MediaDescriptor, MediaObservation } from '../features/mediaSniffer/types'
-import { InkVideoPlayer } from './InkVideoPlayer'
+import { InkVideoPlayer, type InkVideoPlayerFullscreenHandle } from './InkVideoPlayer'
 
 type Mode = 'origin' | 'custom'
 
@@ -96,11 +96,17 @@ export function OriginPlayerSurface({
   const slotRef = useRef<HTMLDivElement | null>(null)
   const lastBoundsKeyRef = useRef('')
   const sessionReadyRef = useRef(false)
+  const playerFullscreenRef = useRef<InkVideoPlayerFullscreenHandle | null>(null)
 
   useEffect(() => {
     if (!closeHandleRef) return
     closeHandleRef.current = {
       closeCustom: () => {
+        const fullscreen = playerFullscreenRef.current
+        if (fullscreen?.immersive) {
+          fullscreen.exit()
+          return true
+        }
         if (mode !== 'custom') return false
         setMode('origin')
         void setNativeLiveSessionVisible(true)
@@ -246,6 +252,7 @@ export function OriginPlayerSurface({
               resources={candidate.resources}
               onRefreshSource={backToOrigin}
               onPlaybackError={backToOrigin}
+              fullscreenHandleRef={playerFullscreenRef}
             />
           ) : null}
         </div>

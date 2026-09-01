@@ -78,7 +78,11 @@ import {
 } from './inkVideoPlayer/playback'
 import { CastOverlay } from './inkVideoPlayer/CastOverlay'
 import { GestureHudOverlay } from './inkVideoPlayer/GestureHudOverlay'
-import { MediaResourceOverlay } from './inkVideoPlayer/MediaResourceOverlay'
+import {
+  MediaResourceOverlay,
+  MediaResourcePageProvider,
+  MediaResourceScreen,
+} from './inkVideoPlayer/MediaResourceOverlay'
 import { PlayerBatteryIcon } from './inkVideoPlayer/PlayerBatteryIcon'
 import { useCastControls } from './inkVideoPlayer/useCastControls'
 
@@ -97,6 +101,13 @@ interface Props {
   onPlaybackError?: () => void
   /** 宿主页面（阅读器）读取该句柄，让系统返回键在全屏时先退出全屏而不是关文章 */
   fullscreenHandleRef?: MutableRefObject<InkVideoPlayerFullscreenHandle | null>
+  /** 为 false 时仅内嵌切换资源，不打开独立媒体页（媒体页内嵌播放器用） */
+  mediaPageHost?: boolean
+}
+
+type MediaResourcePageState = {
+  active: MediaResourceDescriptor
+  resources: MediaResourceDescriptor[]
 }
 
 /** 宿主页面可读取的全屏句柄：immersive 表示当前是否全屏，exit 请求退出全屏。 */
@@ -115,9 +126,59 @@ export interface InkVideoPlayerFullscreenHandle {
  *   双击专职播放 / 暂停；上半屏与内嵌一致。
  * - 通用：双指缩放与双指拖动画面；放大后单指手势仍可调进度 / 亮度 / 音量；顶部按钮旋转 / 还原画面。
  */
-export function InkVideoPlayer({ src, poster, title, format, sourcePage, requestHeaders, extraUrls, resources, deferLoad, onUnlocked, onRefreshSource, onPlaybackError, fullscreenHandleRef }: Props) {
+export function InkVideoPlayer({
+  src,
+  poster,
+  title,
+  format,
+  sourcePage,
+  requestHeaders,
+  extraUrls,
+  resources,
+  deferLoad,
+  onUnlocked,
+  onRefreshSource,
+  onPlaybackError,
+  fullscreenHandleRef,
+  mediaPageHost = true,
+}: Props) {
   const [allowed, setAllowed] = useState(!deferLoad)
   const [selectedResource, setSelectedResource] = useState<MediaResourceDescriptor | null>(null)
+  const [mediaPage, setMediaPage] = useState<MediaResourcePageState | null>(null)
+  const mediaPageRef = useRef(mediaPage)
+  mediaPageRef.current = mediaPage
+  const innerFullscreenRef = useRef<InkVideoPlayerFullscreenHandle | null>(null)
+
+  const openMediaResourcePage = useCallback((
+    resource: MediaResourceDescriptor,
+    resourceList: MediaResourceDescriptor[],
+  ) => {
+    setMediaPage({ active: resource, resources: resourceList })
+  }, [])
+
+  const syncHostFullscreenHandle = useCallback(() => {
+    if (!fullscreenHandleRef || !mediaPageHost) return
+    const inner = innerFullscreenRef.current
+    fullscreenHandleRef.current = {
+      immersive: !!mediaPageRef.current || (inner?.immersive ?? false),
+      exit: () => {
+        if (mediaPageRef.current) {
+          setMediaPage(null)
+          return
+        }
+        inner?.exit()
+      },
+    }
+  }, [fullscreenHandleRef, mediaPageHost])
+
+  const onInnerFullscreenChange = useCallback(() => {
+    syncHostFullscreenHandle()
+  }, [syncHostFullscreenHandle])
+
+  useEffect(() => {
+    syncHostFullscreenHandle()
+  }, [syncHostFullscreenHandle, mediaPage])
+
   const resourceOptions = useMemo<MediaResourceDescriptor[]>(() => {
     if (resources?.length) return resources
     return [{
@@ -138,6 +199,7 @@ export function InkVideoPlayer({ src, poster, title, format, sourcePage, request
 
   useEffect(() => {
     setSelectedResource(null)
+    setMediaPage(null)
   }, [src, resources])
 
   useEffect(() => {
@@ -174,24 +236,94 @@ export function InkVideoPlayer({ src, poster, title, format, sourcePage, request
     ...(active?.relatedUrls ?? []),
     ...(extraUrls ?? []),
   ]))
-  return <InkVideoPlayerReady
-    key={`${active?.id || active?.type || format || 'media'}:${active?.url || src}`}
-    src={active?.url || src}
-    poster={poster}
-    title={title}
-    format={active?.type || format}
-    sourcePage={active?.pageUrl || sourcePage}
-    requestHeaders={active?.requestHeaders || requestHeaders}
-    extraUrls={activeExtraUrls.length ? activeExtraUrls : undefined}
-    resources={resourceOptions}
-    onSelectResource={setSelectedResource}
-    onRefreshSource={onRefreshSource}
-    onPlaybackError={onPlaybackError}
-    fullscreenHandleRef={fullscreenHandleRef}
-  />
+  const playerKey = `${active?.id || active?.type || format || 'media'}:${active?.url || src}`
+  const player = (
+    <InkVideoPlayerReady
+      key={playerKey}
+      src={active?.url || src}
+      poster={poster}
+      title={title}
+      format={active?.type || format}
+      sourcePage={active?.pageUrl || sourcePage}
+      requestHeaders={active?.requestHeaders || requestHeaders}
+      extraUrls={activeExtraUrls.length ? activeExtraUrls : undefined}
+      resources={resourceOptions}
+      onSelectResource={setSelectedResource}
+      onRefreshSource={onRefreshSource}
+      onPlaybackError={onPlaybackError}
+      fullscreenHandleRef={mediaPageHost ? innerFullscreenRef : fullscreenHandleRef}
+      onFullscreenChange={mediaPageHost ? onInnerFullscreenChange : undefined}
+    />
+  )
+
+  if (!mediaPageHost) return player
+
+  const mediaPageExtraUrls = mediaPage
+    ? Array.from(new Set([
+        ...(mediaPage.active.relatedUrls ?? []),
+        ...(extraUrls ?? []),
+      ]))
+    : undefined
+
+  return (
+    <>
+      <MediaResourcePageProvider open={openMediaResourcePage}>
+        {mediaPage ? (
+          <div className="aspect-video w-full bg-[#0c0d10]" aria-hidden data-reader-block />
+        ) : (
+          player
+        )}
+      </MediaResourcePageProvider>
+      {mediaPage && typeof document !== 'undefined' && createPortal(
+        <MediaResourceScreen
+          title={title}
+          resources={mediaPage.resources}
+          activeResource={mediaPage.active}
+          onClose={() => setMediaPage(null)}
+          onSelect={(resource) => {
+            setMediaPage((current) => current ? { ...current, active: resource } : current)
+          }}
+        >
+          <InkVideoPlayer
+            mediaPageHost={false}
+            key={`${mediaPage.active.id || mediaPage.active.type}:${mediaPage.active.url}`}
+            src={mediaPage.active.url}
+            poster={poster}
+            title={title}
+            format={mediaPage.active.type}
+            sourcePage={mediaPage.active.pageUrl || sourcePage}
+            requestHeaders={mediaPage.active.requestHeaders || requestHeaders}
+            extraUrls={mediaPageExtraUrls}
+            resources={mediaPage.resources}
+            onRefreshSource={onRefreshSource}
+            onPlaybackError={onPlaybackError}
+            fullscreenHandleRef={innerFullscreenRef}
+          />
+        </MediaResourceScreen>,
+        document.body,
+      )}
+    </>
+  )
 }
 
-function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHeaders, extraUrls, resources, onSelectResource, onRefreshSource, onPlaybackError, fullscreenHandleRef }: Props & { onSelectResource?: (resource: MediaResourceDescriptor) => void }) {
+function InkVideoPlayerReady({
+  src,
+  poster,
+  title,
+  format,
+  sourcePage,
+  requestHeaders,
+  extraUrls,
+  resources,
+  onSelectResource,
+  onRefreshSource,
+  onPlaybackError,
+  fullscreenHandleRef,
+  onFullscreenChange,
+}: Props & {
+  onSelectResource?: (resource: MediaResourceDescriptor) => void
+  onFullscreenChange?: () => void
+}) {
   const rootRef = useRef<HTMLDivElement>(null)
   const stageRef = useRef<HTMLDivElement>(null)
   const gestureSurfaceRef = useRef<HTMLDivElement>(null)
@@ -1065,10 +1197,12 @@ function InkVideoPlayerReady({ src, poster, title, format, sourcePage, requestHe
       },
     }
     fullscreenHandleRef.current = handle
+    onFullscreenChange?.()
     return () => {
       if (fullscreenHandleRef.current === handle) fullscreenHandleRef.current = null
+      onFullscreenChange?.()
     }
-  }, [fullscreenHandleRef, immersive])
+  }, [fullscreenHandleRef, immersive, onFullscreenChange])
 
   const pointerPair = () => {
     const pointers = Array.from(activePointersRef.current.values())
