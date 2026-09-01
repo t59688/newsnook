@@ -7,6 +7,7 @@ import {
   formatFontScaleHud,
   pinchFontScale,
   readerFontSizeCss,
+  shouldResetReaderPinchSequence,
 } from '../src/lib/readerFontPinch.ts'
 
 assert.equal(clampReaderFontScale(0.5), READER_FONT_SCALE_MIN)
@@ -26,5 +27,29 @@ assert.equal(formatFontScaleHud(0.88), '字号 88%')
 
 assert.equal(readerFontSizeCss(1), '15.50px')
 assert.equal(readerFontSizeCss(1.1), '17.05px')
+
+// A fresh primary touch while an old touch is still recorded means WebView
+// swallowed the terminal event from the previous contact sequence. A genuine
+// second finger is non-primary and must remain eligible for pinch zoom.
+assert.equal(
+  shouldResetReaderPinchSequence(0, { pointerType: 'touch', isPrimary: true }),
+  false,
+)
+assert.equal(
+  shouldResetReaderPinchSequence(1, { pointerType: 'touch', isPrimary: false }),
+  false,
+)
+assert.equal(
+  shouldResetReaderPinchSequence(1, { pointerType: 'touch', isPrimary: true }),
+  true,
+)
+assert.equal(
+  shouldResetReaderPinchSequence(2, { pointerType: 'touch', isPrimary: true }),
+  true,
+)
+assert.equal(
+  shouldResetReaderPinchSequence(1, { pointerType: 'pen', isPrimary: true }),
+  false,
+)
 
 console.log('reader-font-pinch: ok')
