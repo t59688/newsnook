@@ -1,3 +1,4 @@
+import { resolveAiFeatureConfig } from './aiConfig'
 import { normalizeChineseVariant } from './chineseVariant'
 import { cleanOpenAiTranslation } from './openai'
 import { detectLanguage, sampleTextForDetection } from './detectLanguage'
@@ -252,6 +253,8 @@ export class TranslationService {
 export function createTranslationService(prefs: TranslationPrefs): TranslationService {
   const config = isLocalTranslationProviderId(prefs.provider)
     ? undefined
-    : prefs.cloud[prefs.provider]
+    : prefs.provider === 'openai'
+      ? resolveAiFeatureConfig(prefs, 'translation')
+      : prefs.cloud[prefs.provider]
   return new TranslationService(createTranslationProvider(prefs.provider, config))
 }

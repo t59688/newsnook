@@ -51,7 +51,7 @@ export function AiSpeedReadPanel({
               )}
             </div>
             <p className="mt-0.5 truncate font-mono text-[9.5px] tracking-[0.06em] text-paper-faint">
-              {model ? `${model} · 仅基于当前原文` : '使用「我的 → 翻译」中的 OpenAI 兼容配置'}
+              {model ? `${model} · 仅基于当前原文` : '请先在「我的 → 翻译」配置 AI 速读模型'}
             </p>
           </div>
           {state === 'loading' && (

@@ -17,6 +17,7 @@ import {
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { ConfirmDialog, OptionPickerDialog } from '../../components/ConfirmDialog'
 import { ToggleSwitch } from '../../components/ToggleSwitch'
+import { AiProviderSettings } from './AiProviderSettings'
 import {
   TRANSLATION_LANGUAGES,
   TRANSLATION_PROVIDERS,
@@ -168,9 +169,10 @@ export function TranslationScreen({ prefs, onChange, onBack }: Props) {
     }
   }, [prefs.provider, bergamotAvailable, source, target])
 
-  const activeCloud = isLocalTranslationProviderId(prefs.provider)
-    ? null
-    : prefs.cloud[prefs.provider]
+  const activeCloud =
+    isLocalTranslationProviderId(prefs.provider) || prefs.provider === 'openai'
+      ? null
+      : prefs.cloud[prefs.provider]
   const providerName = translationProviderLabel(prefs.provider)
   const availableProviders = TRANSLATION_PROVIDERS.filter(
     (provider) =>
@@ -732,6 +734,8 @@ export function TranslationScreen({ prefs, onChange, onBack }: Props) {
           </div>
         </div>
       ) : null}
+
+      <AiProviderSettings prefs={prefs} onChange={onChange} />
 
       <OptionPickerDialog
         open={modelPickerOpen && remoteModels.length > 0}

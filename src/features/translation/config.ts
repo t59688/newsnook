@@ -1,3 +1,4 @@
+import { DEFAULT_AI_PREFS, normalizeAiPrefs, withLegacyOpenAiMirror } from './aiConfig'
 import type {
   CloudTranslationConfig,
   TranslationDisplayMode,
@@ -42,7 +43,7 @@ export const TRANSLATION_PROVIDERS: {
   { id: 'azure', label: 'Microsoft Translator', caption: 'Azure Translator' },
   { id: 'deepl', label: 'DeepL', caption: 'Free / Pro API' },
   { id: 'deeplx', label: 'DeepLX', caption: '自建服务' },
-  { id: 'openai', label: 'AI 翻译', caption: '自备接口与密钥' },
+  { id: 'openai', label: 'AI 翻译', caption: '从 AI 提供商中选择模型' },
 ]
 
 const DEFAULT_CLOUD: TranslationPrefs['cloud'] = {
@@ -79,6 +80,7 @@ export const DEFAULT_TRANSLATION_PREFS: TranslationPrefs = {
   targetLanguage: 'zh-Hans',
   translateFeed: true,
   cloud: DEFAULT_CLOUD,
+  ai: DEFAULT_AI_PREFS,
 }
 
 const PROVIDER_IDS = new Set(TRANSLATION_PROVIDERS.map((provider) => provider.id))
@@ -135,8 +137,9 @@ export function normalizeTranslationPrefs(value: unknown): TranslationPrefs {
     typeof input.translateFeed === 'boolean'
       ? input.translateFeed
       : DEFAULT_TRANSLATION_PREFS.translateFeed
+  const legacyOpenAi = normalizeCloud(cloud.openai, DEFAULT_CLOUD.openai)
 
-  return {
+  return withLegacyOpenAiMirror({
     provider,
     displayMode: DISPLAY_MODES.has(input.displayMode as TranslationDisplayMode)
       ? (input.displayMode as TranslationDisplayMode)
@@ -149,9 +152,10 @@ export function normalizeTranslationPrefs(value: unknown): TranslationPrefs {
       azure: normalizeCloud(cloud.azure, DEFAULT_CLOUD.azure),
       deepl: normalizeCloud(cloud.deepl, DEFAULT_CLOUD.deepl),
       deeplx: normalizeCloud(cloud.deeplx, DEFAULT_CLOUD.deeplx),
-      openai: normalizeCloud(cloud.openai, DEFAULT_CLOUD.openai),
+      openai: legacyOpenAi,
     },
-  }
+    ai: normalizeAiPrefs(input.ai, legacyOpenAi),
+  })
 }
 
 export function translationProviderLabel(id: TranslationProviderId): string {

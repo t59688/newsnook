@@ -58,6 +58,7 @@ import { articleCoverUrl } from '../lib/articleAudio'
 import { articleRelativeTime } from '../lib/time'
 import type { Article } from '../lib/types'
 import type { TypographyPrefs } from '../sources/preferences'
+import { resolveAiFeatureConfig } from '../features/translation/aiConfig'
 import { createTranslationService } from '../features/translation/service'
 import {
   translationDisplayModeLabel,
@@ -735,7 +736,7 @@ export function ReaderScreen({
     [article, resolvedTitle],
   )
 
-  const speedReadConfig = translationPrefs.cloud.openai
+  const speedReadConfig = resolveAiFeatureConfig(translationPrefs, 'speedRead')
   const speedReadKey = useMemo(
     () => speedReadCacheKey(article.id, canonicalTitle, html, speedReadConfig),
     [article.id, canonicalTitle, html, speedReadConfig],

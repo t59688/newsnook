@@ -30,6 +30,29 @@ export interface CloudTranslationConfig {
   concurrency?: number
 }
 
+export interface AiProviderConfig {
+  /** 稳定同步标识；用户改名称不会造成 Key 与功能选择错配。 */
+  id: string
+  name: string
+  endpoint: string
+  apiKey: string
+}
+
+export interface AiModelSelection {
+  providerId: string
+  model: string
+}
+
+export interface AiTranslationSelection extends AiModelSelection {
+  concurrency: number
+}
+
+export interface AiPrefs {
+  providers: AiProviderConfig[]
+  translation: AiTranslationSelection
+  speedRead: AiModelSelection
+}
+
 export interface TranslationPrefs {
   provider: TranslationProviderId
   displayMode: TranslationDisplayMode
@@ -38,6 +61,8 @@ export interface TranslationPrefs {
   /** 是否自动翻译信息流（首页及各分类）中的外文标题与摘要 */
   translateFeed?: boolean
   cloud: Record<CloudTranslationProviderId, CloudTranslationConfig>
+  /** OpenAI-compatible AI Provider，以及各 AI 功能独立的 Provider/Model 选择。 */
+  ai: AiPrefs
 }
 
 export interface TranslatedFeedItem {

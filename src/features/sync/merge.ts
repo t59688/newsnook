@@ -14,13 +14,15 @@ import type { NewsCategory, CategoryId } from '../../sources/categories'
 import { normalizeSourceKind, type NewsSource, type SourceGroup } from '../../sources/registry'
 import { normalizePreferences, type Preferences } from '../../sources/preferences'
 import { ensureValidActivePreset, normalizePresetsState, type PresetsState } from '../../sources/presets'
-import type { CloudTranslationProviderId } from '../translation/types'
+import { normalizeTranslationPrefs } from '../translation/config'
 import {
-  CLOUD_TRANSLATION_PROVIDER_IDS,
-  PROXY_URL_SECRET_KEY,
+  LEGACY_OPENAI_SECRET_KEY,
   SETTING_KEYS,
+  aiProviderSecretKey,
+  applyLegacyOpenAiSecretFallback,
+  applySecrets as hydratePreferenceSecrets,
   projectLocalState,
-  translationSecretKey,
+  stripSecrets,
 } from './projection'
 import { entityKey, type LocalProjection } from './types'
 
@@ -160,8 +162,8 @@ function applySettings(prefs: Preferences, merged: Map<string, MergedEntity>): P
 
   const translation = readSetting(SETTING_KEYS.translation)
   if (translation !== undefined) {
-    // 远端的 translation 设置里 apiKey 一律是空串，密钥由 secret 分支单独补回
-    next.translation = translation as Preferences['translation']
+    // 先完成旧 cloud.openai → 新 ai.providers 迁移，再回填动态 Secret。
+    next.translation = normalizeTranslationPrefs(translation)
   }
 
   const proxy = readSetting(SETTING_KEYS.proxy)
@@ -188,22 +190,57 @@ function applySettings(prefs: Preferences, merged: Map<string, MergedEntity>): P
   return next
 }
 
-/** Secret 只回填运行时值，不参与普通设置的 diff */
-function applySecrets(prefs: Preferences, merged: Map<string, MergedEntity>): Preferences {
-  const cloud = { ...prefs.translation.cloud }
+/** Secret 实体全集就是当前真相：缺失表示已删除，因此先清空再回填。 */
+function applySyncedSecrets(prefs: Preferences, merged: Map<string, MergedEntity>): Preferences {
+  const values: Record<string, string> = {}
+  for (const entity of merged.values()) {
+    if (entity.entityType !== 'secret') continue
+    const value = text(entity.payload.value)
+    if (value) values[entity.entityId] = value
+  }
+  const hydrated = hydratePreferenceSecrets(stripSecrets(prefs), values)
+  return applyLegacyOpenAiSecretFallback(hydrated, values)
+}
 
-  for (const provider of CLOUD_TRANSLATION_PROVIDER_IDS) {
-    const entity = merged.get(entityKey('secret', translationSecretKey(provider)))
-    const value = entity ? text(entity.payload.value) ?? '' : ''
-    cloud[provider] = { ...cloud[provider], apiKey: value }
+/**
+ * 旧客户端只会修改 `translation.openai.apiKey`。当本次增量只包含旧 Secret 时，
+ * 把这次明确的远端变更提升为当前 AI 翻译 Provider 的 Key；若新旧动态 Secret 同批到达，
+ * 则以新结构为准。这样升级期间的旧设备仍可修改/清空 AI 翻译 Key，并会在下一次对账收敛。
+ */
+function applyLegacyOpenAiRemoteMutation(
+  prefs: Preferences,
+  records: SyncRecord[],
+): Preferences {
+  let legacyRecord: SyncRecord | undefined
+  for (const record of records) {
+    if (record.entityType === 'secret' && record.entityId === LEGACY_OPENAI_SECRET_KEY) {
+      legacyRecord = record
+    }
+  }
+  if (!legacyRecord) return prefs
+
+  const selectedId = prefs.translation.ai.translation.providerId
+  const dynamicSecretId = aiProviderSecretKey(selectedId)
+  if (
+    records.some(
+      (record) => record.entityType === 'secret' && record.entityId === dynamicSecretId,
+    )
+  ) {
+    return prefs
   }
 
-  const proxySecret = merged.get(entityKey('secret', PROXY_URL_SECRET_KEY))
-
+  const value = legacyRecord.deleted ? '' : (text(asRecord(legacyRecord.payload).value) ?? '')
   return {
     ...prefs,
-    translation: { ...prefs.translation, cloud },
-    proxy: { ...prefs.proxy, proxyUrl: proxySecret ? (text(proxySecret.payload.value) ?? '') : '' },
+    translation: {
+      ...prefs.translation,
+      ai: {
+        ...prefs.translation.ai,
+        providers: prefs.translation.ai.providers.map((provider) =>
+          provider.id === selectedId ? { ...provider, apiKey: value } : provider,
+        ),
+      },
+    },
   }
 }
 
@@ -281,7 +318,8 @@ export function applyRemoteRecords(
   const subscriptions = applySubscriptions(prefs, merged)
   prefs = subscriptions.prefs
   prefs = applySettings(prefs, merged)
-  prefs = applySecrets(prefs, merged)
+  prefs = applySyncedSecrets(prefs, merged)
+  prefs = applyLegacyOpenAiRemoteMutation(prefs, records)
 
   return {
     prefs: normalizePreferences(prefs),
@@ -290,4 +328,4 @@ export function applyRemoteRecords(
   }
 }
 
-export type { CloudTranslationProviderId }
+export type { CloudTranslationProviderId } from '../translation/types'

@@ -8,6 +8,8 @@
 
 import { rankForIndex } from '@newsnook/contracts/protocol'
 
+import { resolveAiFeatureConfig } from '../translation/aiConfig'
+import { normalizeTranslationPrefs } from '../translation/config'
 import { CATEGORIES, type CategoryId } from '../../sources/categories'
 import { SOURCES, type NewsSource } from '../../sources/registry'
 import type { Preferences } from '../../sources/preferences'
@@ -47,10 +49,23 @@ export const CLOUD_TRANSLATION_PROVIDER_IDS: CloudTranslationProviderId[] = [
   'openai',
 ]
 
+const NON_AI_CLOUD_PROVIDER_IDS: CloudTranslationProviderId[] = [
+  'google',
+  'azure',
+  'deepl',
+  'deeplx',
+]
+
 export const PROXY_URL_SECRET_KEY = 'proxy.url'
 
 export function translationSecretKey(provider: CloudTranslationProviderId): string {
   return `translation.${provider}.apiKey`
+}
+
+export const LEGACY_OPENAI_SECRET_KEY = translationSecretKey('openai')
+
+export function aiProviderSecretKey(providerId: string): string {
+  return `ai.provider.${providerId}.apiKey`
 }
 
 export interface ProjectionInput {
@@ -62,8 +77,8 @@ export interface ProjectionInput {
 /**
  * Secret 在 `Preferences` 里的落点。
  *
- * 同步、Keystore 迁移与运行时回填三处共用这张表：Secret 的键名只在这里定义一次，
- * 新增一种密钥时不必再去改存储层。
+ * 同步、Keystore 迁移与运行时回填共用字段描述。AI Provider 是动态列表，
+ * 因此通过 `secretFieldsFor` 在运行时补入，不把 Provider id 写死在存储层。
  */
 export interface SecretField {
   key: string
@@ -96,10 +111,37 @@ export const SECRET_FIELDS: readonly SecretField[] = [
   },
 ]
 
+function aiSecretField(providerId: string): SecretField {
+  return {
+    key: aiProviderSecretKey(providerId),
+    read: (prefs) =>
+      prefs.translation.ai.providers.find((provider) => provider.id === providerId)?.apiKey ?? '',
+    write: (prefs, value) => ({
+      ...prefs,
+      translation: {
+        ...prefs.translation,
+        ai: {
+          ...prefs.translation.ai,
+          providers: prefs.translation.ai.providers.map((provider) =>
+            provider.id === providerId ? { ...provider, apiKey: value } : provider,
+          ),
+        },
+      },
+    }),
+  }
+}
+
+export function secretFieldsFor(prefs: Preferences): readonly SecretField[] {
+  return [
+    ...SECRET_FIELDS,
+    ...prefs.translation.ai.providers.map((provider) => aiSecretField(provider.id)),
+  ]
+}
+
 /** 当前偏好里所有非空 Secret；空值不出现在结果里 */
 export function collectSecrets(prefs: Preferences): Record<string, string> {
   const values: Record<string, string> = {}
-  for (const field of SECRET_FIELDS) {
+  for (const field of secretFieldsFor(prefs)) {
     const value = field.read(prefs)
     if (value) values[field.key] = value
   }
@@ -109,7 +151,7 @@ export function collectSecrets(prefs: Preferences): Record<string, string> {
 /** 把 Secret 字段清空，用于落盘前的净化（明文只留在内存与 Keystore） */
 export function stripSecrets(prefs: Preferences): Preferences {
   let next = prefs
-  for (const field of SECRET_FIELDS) {
+  for (const field of secretFieldsFor(prefs)) {
     if (field.read(next)) next = field.write(next, '')
   }
   return next
@@ -118,11 +160,25 @@ export function stripSecrets(prefs: Preferences): Preferences {
 /** 把安全存储里的明文回填到运行时偏好；缺失的键保持原值不动 */
 export function applySecrets(prefs: Preferences, values: Record<string, string>): Preferences {
   let next = prefs
-  for (const field of SECRET_FIELDS) {
+  for (const field of secretFieldsFor(prefs)) {
     const value = values[field.key]
     if (typeof value === 'string' && value !== field.read(next)) next = field.write(next, value)
   }
   return next
+}
+
+/** 旧客户端只有 translation.openai.apiKey；新动态 Secret 缺失时再定向补到当前 AI 翻译 Provider。 */
+export function applyLegacyOpenAiSecretFallback(
+  prefs: Preferences,
+  values: Record<string, string>,
+): Preferences {
+  const selectedId = prefs.translation.ai.translation.providerId
+  const selectedKey = aiProviderSecretKey(selectedId)
+  const legacyValue = values[LEGACY_OPENAI_SECRET_KEY]
+  if (typeof legacyValue !== 'string' || !legacyValue || typeof values[selectedKey] === 'string') {
+    return prefs
+  }
+  return aiSecretField(selectedId).write(prefs, legacyValue)
 }
 
 const BUILTIN_SOURCE_IDS = new Set(SOURCES.map((source) => source.id))
@@ -244,14 +300,22 @@ function projectCategories(target: LocalProjection, input: ProjectionInput): voi
   })
 }
 
-/** 翻译设置去掉 apiKey：密钥单独作为 secret 实体走加密通道 */
+/** 翻译设置去掉所有 API Key：密钥单独作为 secret 实体走加密通道 */
 function translationSetting(prefs: Preferences): unknown {
+  const mirrored = normalizeTranslationPrefs(prefs.translation)
   const cloud: Record<string, unknown> = {}
   for (const provider of CLOUD_TRANSLATION_PROVIDER_IDS) {
-    const config = prefs.translation.cloud[provider]
+    const config = mirrored.cloud[provider]
     cloud[provider] = { ...config, apiKey: '' }
   }
-  return { ...prefs.translation, cloud }
+  return {
+    ...mirrored,
+    cloud,
+    ai: {
+      ...mirrored.ai,
+      providers: mirrored.ai.providers.map((provider) => ({ ...provider, apiKey: '' })),
+    },
+  }
 }
 
 function proxySetting(prefs: Preferences): unknown {
@@ -282,16 +346,28 @@ function projectSettings(target: LocalProjection, input: ProjectionInput): void 
 }
 
 /**
- * Secret 投影：值为空表示用户清掉了密钥，直接不投影，
- * reconcile 会据此生成 delete，让另一台设备也把它清掉。
+ * Secret 投影：动态 AI Provider 各自独立；同时镜像当前 AI 翻译 Key 到旧 secret id，
+ * 让旧客户端继续可用。AI 速读的独立模型只在新协议字段中生效。
  */
 function projectSecrets(target: LocalProjection, input: ProjectionInput): void {
   const { prefs } = input
+  const translation = normalizeTranslationPrefs(prefs.translation)
 
-  for (const provider of CLOUD_TRANSLATION_PROVIDER_IDS) {
-    const apiKey = prefs.translation.cloud[provider]?.apiKey ?? ''
+  for (const provider of NON_AI_CLOUD_PROVIDER_IDS) {
+    const apiKey = translation.cloud[provider]?.apiKey ?? ''
     if (!apiKey) continue
     project(target, 'secret', translationSecretKey(provider), { value: apiKey })
+  }
+
+  for (const provider of translation.ai.providers) {
+    if (!provider.apiKey) continue
+    project(target, 'secret', aiProviderSecretKey(provider.id), { value: provider.apiKey })
+  }
+
+  const selectedAiConfig = resolveAiFeatureConfig(translation, 'translation')
+  const legacyOpenAiKey = selectedAiConfig.apiKey || translation.cloud.openai.apiKey
+  if (legacyOpenAiKey) {
+    project(target, 'secret', LEGACY_OPENAI_SECRET_KEY, { value: legacyOpenAiKey })
   }
 
   const proxyUrl = prefs.proxy.proxyUrl ?? ''

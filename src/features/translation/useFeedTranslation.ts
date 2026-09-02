@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { log } from '../../lib/logger'
+import { resolveAiFeatureConfig } from './aiConfig'
 import { cleanOpenAiTranslation } from './openai'
 import { normalizeChineseVariant } from './chineseVariant'
 import {
@@ -138,7 +139,9 @@ export function useFeedTranslation(
 
     const config = isLocalTranslationProviderId(prefs.provider)
       ? undefined
-      : prefs.cloud[prefs.provider]
+      : prefs.provider === 'openai'
+        ? resolveAiFeatureConfig(prefs, 'translation')
+        : prefs.cloud[prefs.provider]
     const provider = createTranslationProvider(prefs.provider, config)
 
     /** 本轮已处理过的条目，避免 onBatch 与最终结果循环对同一译文双重校验与写入 */

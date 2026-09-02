@@ -1,7 +1,7 @@
 /**
  * Secret 的运行时保管。
  *
- * Android 上「同步范围内的 Secret」（翻译 API Key、代理地址）明文不允许留在
+ * Android 上「同步范围内的 Secret」（翻译 API Key、AI Provider Key、代理地址）明文不允许留在
  * `newsnook:preferences` / Capacitor Preferences 里——那是普通 SharedPreferences，
  * 备份与调试工具都能读到。改成：
  *
@@ -18,7 +18,14 @@ import { Capacitor } from '@capacitor/core'
 import { log } from '../../lib/logger'
 import { loadPreferences, savePreferences } from '../../lib/storage'
 import { normalizePreferences, type Preferences } from '../../sources/preferences'
-import { SECRET_FIELDS, applySecrets, collectSecrets, stripSecrets } from '../sync/projection'
+import {
+  LEGACY_OPENAI_SECRET_KEY,
+  applyLegacyOpenAiSecretFallback,
+  applySecrets,
+  collectSecrets,
+  secretFieldsFor,
+  stripSecrets,
+} from '../sync/projection'
 import { getSecureStore, secureSecretKey, type SecureStore } from './secureStore'
 
 let nativeOverride: boolean | null = null
@@ -45,6 +52,21 @@ export function resetRuntimeSecretsForTests(): void {
   runtimeSecrets = {}
 }
 
+function legacyOpenAiMirrorValue(prefs: Preferences): string {
+  const selected = prefs.translation.ai.providers.find(
+    (provider) => provider.id === prefs.translation.ai.translation.providerId,
+  )
+  return selected?.apiKey ?? ''
+}
+
+function collectSecretsWithLegacyMirror(prefs: Preferences): Record<string, string> {
+  const values = collectSecrets(prefs)
+  const legacyValue = legacyOpenAiMirrorValue(prefs)
+  if (legacyValue) values[LEGACY_OPENAI_SECRET_KEY] = legacyValue
+  else delete values[LEGACY_OPENAI_SECRET_KEY]
+  return values
+}
+
 /**
  * 历史版本把 API Key 直接写进了普通偏好。冷启动时搬一次家：
  * 读出来 -> 写进 Keystore -> 用空串重写普通偏好（同时镜像回原生 Preferences）。
@@ -56,7 +78,7 @@ export async function migrateLegacyNativeSecretsOnce(
   if (!secretsGoToSecureStore()) return
 
   const prefs = normalizePreferences(loadPreferences())
-  const legacy = collectSecrets(prefs)
+  const legacy = collectSecretsWithLegacyMirror(prefs)
   const keys = Object.keys(legacy)
   if (!keys.length) return
 
@@ -72,15 +94,16 @@ export async function migrateLegacyNativeSecretsOnce(
   log.account.info('migrated secrets into secure store', { count: keys.length })
 }
 
-/** 冷启动回填：把 Keystore 里的明文读进内存，供 App 挂载时合并进 Preferences */
+/** 冷启动回填：根据已保存的 Provider id 动态读取 Keystore，供 App 挂载时合并进 Preferences */
 export async function hydrateRuntimeSecrets(
   store: SecureStore = getSecureStore(),
 ): Promise<Record<string, string>> {
   if (!secretsGoToSecureStore()) return runtimeSecrets
 
+  const prefs = normalizePreferences(loadPreferences())
   const values: Record<string, string> = {}
   await Promise.all(
-    SECRET_FIELDS.map(async (field) => {
+    secretFieldsFor(prefs).map(async (field) => {
       const value = await store.get(secureSecretKey(field.key))
       if (value) values[field.key] = value
     }),
@@ -92,12 +115,13 @@ export async function hydrateRuntimeSecrets(
 /** 供 `usePreferences` 初始化：把回填到的明文合并进运行时偏好 */
 export function withRuntimeSecrets(prefs: Preferences): Preferences {
   if (!secretsGoToSecureStore()) return prefs
-  return applySecrets(prefs, runtimeSecrets)
+  return applyLegacyOpenAiSecretFallback(applySecrets(prefs, runtimeSecrets), runtimeSecrets)
 }
 
 /**
- * 用户改了密钥、或同步下发了新值时调用：更新内存副本并写回 Keystore。
- * 清空视为删除，连带把 Keystore 里的条目移除。
+ * 用户改了密钥、Provider、或同步下发了新值时调用：更新内存副本并写回 Keystore。
+ * 清空/删除 Provider 会连带移除旧动态条目。旧 OpenAI secret 同步维护为 AI 翻译镜像，
+ * 这样降级到旧客户端时仍能读取当前 AI 翻译 Key。
  */
 export async function persistRuntimeSecrets(
   prefs: Preferences,
@@ -105,14 +129,19 @@ export async function persistRuntimeSecrets(
 ): Promise<void> {
   if (!secretsGoToSecureStore()) return
 
-  const next = collectSecrets(prefs)
+  const next = collectSecretsWithLegacyMirror(prefs)
+  const keys = new Set([
+    ...Object.keys(runtimeSecrets),
+    ...secretFieldsFor(prefs).map((field) => field.key),
+    LEGACY_OPENAI_SECRET_KEY,
+  ])
   const changed: Promise<void>[] = []
 
-  for (const field of SECRET_FIELDS) {
-    const value = next[field.key] ?? ''
-    if (value === (runtimeSecrets[field.key] ?? '')) continue
+  for (const key of keys) {
+    const value = next[key] ?? ''
+    if (value === (runtimeSecrets[key] ?? '')) continue
     changed.push(
-      value ? store.set(secureSecretKey(field.key), value) : store.remove(secureSecretKey(field.key)),
+      value ? store.set(secureSecretKey(key), value) : store.remove(secureSecretKey(key)),
     )
   }
 
