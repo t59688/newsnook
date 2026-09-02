@@ -18,6 +18,8 @@ interface Props {
   onRefreshSource?: () => void
   /** 播放器全屏句柄：让阅读器返回键在全屏时先退出全屏 */
   fullscreenHandleRef?: MutableRefObject<InkVideoPlayerFullscreenHandle | null>
+  /** 阅读器浮层打开时隐藏嗅探 FAB */
+  suppressResourceFab?: boolean
 }
 
 interface MountedInlineVideo extends InlineVideoDescriptor {
@@ -43,6 +45,7 @@ export function InlineArticleVideos({
   onUnlocked,
   onRefreshSource,
   fullscreenHandleRef,
+  suppressResourceFab = false,
 }: Props) {
   const [mounted, setMounted] = useState<MountedInlineVideo[]>([])
 
@@ -124,6 +127,7 @@ export function InlineArticleVideos({
           deferLoad={deferLoad}
           onUnlocked={() => onUnlocked?.(video.src)}
           fullscreenHandleRef={fullscreenHandleRef}
+          suppressResourceFab={suppressResourceFab}
         />
       ),
       host,

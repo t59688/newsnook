@@ -119,10 +119,16 @@
   background: var(--red);
   color: #fff6ec;
   font-size: 12px;
-  letter-spacing: 0.24em;
+  letter-spacing: 0.14em;
   padding: 6px 12px 5px 14px;
   border-radius: 3px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  word-break: keep-all;
 }
 
 /* ================= 01 暖纸手记 ================= */
@@ -175,15 +181,23 @@
   opacity: 0.92;
 }
 
-.sr-share-root .v1 .seal span {
-  writing-mode: vertical-rl;
-  text-orientation: upright;
+.sr-share-root .v1 .seal span.seal-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
   font-family: "Noto Serif SC", serif;
   font-weight: 900;
   font-size: 21px;
   color: rgba(194, 64, 42, 0.9);
-  letter-spacing: 5px;
+  letter-spacing: 0;
   line-height: 1;
+}
+
+.sr-share-root .v1 .seal .seal-char {
+  display: block;
+  line-height: 1.05;
 }
 
 .sr-share-root .v1 h1 {
@@ -391,9 +405,14 @@
 
 .sr-share-root .v2-mast .k {
   font-size: 12.5px;
-  letter-spacing: 0.32em;
+  letter-spacing: 0.16em;
   font-weight: 700;
   color: #211e19;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  word-break: keep-all;
 }
 
 .sr-share-root .v2-mast .k em {
@@ -579,10 +598,16 @@
   border: 1px solid rgba(232, 176, 75, 0.55);
   color: var(--amber);
   font-size: 12px;
-  letter-spacing: 0.3em;
+  letter-spacing: 0.14em;
   padding: 7px 15px 6px 18px;
   border-radius: 999px;
   font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  word-break: keep-all;
 }
 
 .sr-share-root .v3 .date-top {
@@ -794,6 +819,7 @@
 .sr-share-root .v4 .tag-red {
   border-radius: 999px;
   font-size: 11.5px;
+  letter-spacing: 0.12em;
 }
 
 .sr-share-root .v4 .tag-ghost {
@@ -802,8 +828,13 @@
   background: #fff;
   border: 1px solid #d9cdb4;
   color: #8a7e66;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.12em;
   padding: 4px 11px;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+  word-break: keep-all;
 }
 
 .sr-share-root .v4 h1 {
@@ -1041,16 +1072,31 @@
   height: 62px;
   border: 3px solid rgba(217, 79, 48, 0.8);
   border-radius: 50%;
-  display: grid;
-  place-items: center;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: rgba(217, 79, 48, 0.85);
   font-family: "Noto Serif SC", serif;
   font-weight: 900;
-  font-size: 15px;
-  letter-spacing: 2px;
   transform: rotate(-10deg);
   opacity: 0.9;
   flex: none;
+  overflow: hidden;
+}
+
+.sr-share-root .v4 .stamp .stamp-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0;
+  font-size: 13px;
+  letter-spacing: 0;
+  line-height: 1.05;
+}
+
+.sr-share-root .v4 .stamp .stamp-char {
+  display: block;
 }
 
 .sr-share-root .v4 .m4 {

@@ -103,6 +103,8 @@ interface Props {
   fullscreenHandleRef?: MutableRefObject<InkVideoPlayerFullscreenHandle | null>
   /** 为 false 时仅内嵌切换资源，不打开独立媒体页（媒体页内嵌播放器用） */
   mediaPageHost?: boolean
+  /** 阅读器浮层（如 AI 速读）打开时隐藏嗅探 FAB */
+  suppressResourceFab?: boolean
 }
 
 type MediaResourcePageState = {
@@ -141,6 +143,7 @@ export function InkVideoPlayer({
   onPlaybackError,
   fullscreenHandleRef,
   mediaPageHost = true,
+  suppressResourceFab = false,
 }: Props) {
   const [allowed, setAllowed] = useState(!deferLoad)
   const [selectedResource, setSelectedResource] = useState<MediaResourceDescriptor | null>(null)
@@ -253,6 +256,7 @@ export function InkVideoPlayer({
       onPlaybackError={onPlaybackError}
       fullscreenHandleRef={mediaPageHost ? innerFullscreenRef : fullscreenHandleRef}
       onFullscreenChange={mediaPageHost ? onInnerFullscreenChange : undefined}
+      suppressResourceFab={suppressResourceFab}
     />
   )
 
@@ -298,6 +302,7 @@ export function InkVideoPlayer({
             onRefreshSource={onRefreshSource}
             onPlaybackError={onPlaybackError}
             fullscreenHandleRef={innerFullscreenRef}
+            suppressResourceFab={suppressResourceFab}
           />
         </MediaResourceScreen>,
         document.body,
@@ -320,6 +325,7 @@ function InkVideoPlayerReady({
   onPlaybackError,
   fullscreenHandleRef,
   onFullscreenChange,
+  suppressResourceFab = false,
 }: Props & {
   onSelectResource?: (resource: MediaResourceDescriptor) => void
   onFullscreenChange?: () => void
@@ -1883,6 +1889,7 @@ function InkVideoPlayerReady({
         resources={resourceOptions}
         open={resourceMenuOpen}
         immersive={immersive}
+        suppressFab={suppressResourceFab}
         onToggle={() => {
           setResourceMenuOpen((open) => !open)
           revealControls()

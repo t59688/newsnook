@@ -79,6 +79,14 @@ function pad2(n: number): string {
   return String(n).padStart(2, '0')
 }
 
+/** 竖排印章：避免 writing-mode 在 html-to-image / WebView 上排版不一致 */
+function verticalSealHtml(text: string, charClass: string): string {
+  return text
+    .split('')
+    .map((ch) => `<span class="${charClass}">${escapeHtml(ch)}</span>`)
+    .join('')
+}
+
 function buildWarmPaper(
   title: string,
   meta: string,
@@ -94,7 +102,7 @@ function buildWarmPaper(
 
   return `<article class="card v1">
     <div class="v1-top"><span class="tag-red">AI 速读</span></div>
-    <div class="seal" aria-hidden="true"><span>有所闻</span></div>
+    <div class="seal" aria-hidden="true"><span class="seal-stack">${verticalSealHtml('有所闻', 'seal-char')}</span></div>
     <h1>${title}</h1>
     <p class="meta">${escapeHtml(meta)}</p>
     <hr class="v1-rule">
@@ -196,7 +204,7 @@ function buildJournal(title: string, meta: string, content: ParsedSpeedRead, dat
     <div class="strip">
       ${brandBlock(false)}
       <div class="m4"><b>来自有所闻</b> · ${dateCn} · AI 速读</div>
-      <div class="stamp" aria-hidden="true">有所闻</div>
+      <div class="stamp" aria-hidden="true"><span class="stamp-stack">${verticalSealHtml('有所闻', 'stamp-char')}</span></div>
     </div>
   </article>`
 }

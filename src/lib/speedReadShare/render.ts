@@ -1,6 +1,6 @@
 import { toBlob } from 'html-to-image'
 
-import { ensureShareFonts } from './fonts'
+import { ensureShareFonts, waitForShareFontsPaint } from './fonts'
 import { warmupSpeedReadShareAssets } from './assets'
 import cardCss from './card.css?inline'
 import { buildCardHtml } from './buildCardHtml'
@@ -65,6 +65,7 @@ export async function renderSpeedReadImageBlob(
     if (!card) throw new Error('无法构建分享卡片')
 
     await ensureShareFonts()
+    await waitForShareFontsPaint()
     await waitForPaint()
 
     const logos = host.querySelectorAll<HTMLImageElement>('img')

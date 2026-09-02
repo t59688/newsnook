@@ -22,6 +22,8 @@ interface Props {
   onUnlocked?: (src: string) => void
   /** 播放器全屏句柄：让阅读器返回键在全屏时先退出全屏 */
   fullscreenHandleRef?: MutableRefObject<InkVideoPlayerFullscreenHandle | null>
+  /** 阅读器浮层打开时隐藏嗅探 FAB */
+  suppressResourceFab?: boolean
 }
 
 interface MountedYoutubeEmbed extends YoutubeEmbedDescriptor {
@@ -45,7 +47,8 @@ function YoutubeEmbedPlayer({
   sourcePage,
   onUnlocked,
   fullscreenHandleRef,
-}: YoutubeEmbedDescriptor & Pick<Props, 'deferLoad' | 'sourcePage' | 'fullscreenHandleRef'> & { onUnlocked?: () => void }) {
+  suppressResourceFab = false,
+}: YoutubeEmbedDescriptor & Pick<Props, 'deferLoad' | 'sourcePage' | 'fullscreenHandleRef' | 'suppressResourceFab'> & { onUnlocked?: () => void }) {
   const [phase, setPhase] = useState<LoadPhase>('idle')
   const [attempt, setAttempt] = useState(0)
   const [thumbnailFailed, setThumbnailFailed] = useState(false)
@@ -131,6 +134,7 @@ function YoutubeEmbedPlayer({
         onRefreshSource={startLoading}
         onUnlocked={onUnlocked}
         fullscreenHandleRef={fullscreenHandleRef}
+        suppressResourceFab={suppressResourceFab}
       />
     )
   }
@@ -219,6 +223,7 @@ export function InlineYoutubeEmbeds({
   unlockedUrls,
   onUnlocked,
   fullscreenHandleRef,
+  suppressResourceFab = false,
 }: Props) {
   const [mounted, setMounted] = useState<MountedYoutubeEmbed[]>([])
 
@@ -257,6 +262,7 @@ export function InlineYoutubeEmbeds({
         deferLoad={Boolean(deferLoad && !unlockedUrls?.has(video.src))}
         onUnlocked={() => onUnlocked?.(video.src)}
         fullscreenHandleRef={fullscreenHandleRef}
+        suppressResourceFab={suppressResourceFab}
       />,
       host,
       video.src,

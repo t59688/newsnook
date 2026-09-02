@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core'
+
 import { injectSpeedReadShareFonts } from './fontMirror'
 
 /** 分享卡实际用到的字体规格（与 card.css 对齐） */
@@ -9,13 +11,14 @@ const SHARE_FONT_SPECS = [
   '700 31px "Noto Serif SC"',
   '700 36px "Noto Serif SC"',
   '900 21px "Noto Serif SC"',
+  '900 13px "Noto Serif SC"',
   '900 36px "Noto Serif SC"',
   '700 31px "LXGW WenKai Screen"',
   '700 17px "LXGW WenKai Screen"',
   '700 15px "LXGW WenKai Screen"',
 ] as const
 
-const FONT_READY_TIMEOUT_MS = 2200
+const FONT_READY_TIMEOUT_MS = Capacitor.isNativePlatform() ? 6000 : 2200
 
 let shareFontsReady = false
 
@@ -44,4 +47,18 @@ export async function ensureShareFonts(): Promise<void> {
   ])
 
   shareFontsReady = true
+}
+
+/** 截图前再等一轮字体，减少 Android WebView 与桌面导出差异 */
+export async function waitForShareFontsPaint(): Promise<void> {
+  injectSpeedReadShareFonts()
+  if (document.fonts?.ready) {
+    await Promise.race([
+      document.fonts.ready,
+      new Promise<void>((resolve) => setTimeout(resolve, FONT_READY_TIMEOUT_MS)),
+    ])
+  }
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
+  })
 }

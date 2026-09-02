@@ -97,12 +97,14 @@ export function MediaResourceOverlay({
   resources,
   open,
   immersive,
+  suppressFab = false,
   onToggle,
   onSelect,
 }: {
   resources: MediaResourceDescriptor[]
   open: boolean
   immersive: boolean
+  suppressFab?: boolean
   onToggle: () => void
   onSelect: (resource: MediaResourceDescriptor) => void
 }) {
@@ -121,7 +123,7 @@ export function MediaResourceOverlay({
     }
   }, [open, onToggle])
 
-  if (!resources.length || immersive || pageContext?.suppressOverlay) return null
+  if (!resources.length || immersive || suppressFab || pageContext?.suppressOverlay) return null
 
   const selectResource = (resource: MediaResourceDescriptor) => {
     if (pageContext?.open) {

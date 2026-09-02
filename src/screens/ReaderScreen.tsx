@@ -1566,6 +1566,7 @@ export function ReaderScreen({
                 poster={article.image}
                 openOriginal={() => void openOriginal()}
                 closeHandleRef={originPlayerCloseRef}
+                suppressResourceFab={speedReadOpen}
               />
             )}
 
@@ -1582,6 +1583,7 @@ export function ReaderScreen({
                   poster={article.image}
                   title={article.title}
                   sourcePage={resolvedOriginUrl || article.originUrl}
+                  suppressResourceFab={speedReadOpen}
                   onRefreshSource={() => setRetryToken((value) => value + 1)}
                   deferLoad={!autoLoadMedia}
                   onUnlocked={() => {
@@ -1668,6 +1670,7 @@ export function ReaderScreen({
                     deferLoad={!autoLoadMedia}
                     onUnlocked={onUnlockedMedia}
                     fullscreenHandleRef={videoFullscreenRef}
+                    suppressResourceFab={speedReadOpen}
                   />
                   <InlineArticleAudio
                     rootRef={proseRef}
@@ -1687,6 +1690,7 @@ export function ReaderScreen({
                     unlockedUrls={unlockedSet}
                     onUnlocked={onUnlockedMedia}
                     fullscreenHandleRef={videoFullscreenRef}
+                    suppressResourceFab={speedReadOpen}
                   />
                 </>
               )}
@@ -1850,7 +1854,7 @@ export function ReaderScreen({
       )}
 
       {/* 底部右下角悬浮跟贴胶囊（随时一触即达） */}
-      {canComment && !commentsOpen && !shareSheetOpen && !einkMode && (
+      {canComment && !commentsOpen && !shareSheetOpen && !einkMode && !speedReadOpen && (
         <div
           className={`fixed right-4 z-40 transition-all duration-300 pointer-events-auto safe-bottom-20 ${
             (einkMode ? chromeVisible : pillVisible)
