@@ -83,6 +83,7 @@ import { PresetListScreen } from './screens/settings/PresetListScreen'
 import { StorageScreen } from './screens/settings/StorageScreen'
 import { TypographyScreen } from './screens/settings/TypographyScreen'
 import { TranslationScreen } from './screens/settings/TranslationScreen'
+import { AiSettingsScreen } from './screens/settings/AiSettingsScreen'
 import { ProxyScreen } from './screens/settings/ProxyScreen'
 import { ConfirmDialog } from './components/ConfirmDialog'
 import {
@@ -175,6 +176,7 @@ type SettingsRoute =
   | { name: 'custom-scheme' }
   | { name: 'storage' }
   | { name: 'translation' }
+  | { name: 'ai'; returnTo?: 'translation' }
   | { name: 'proxy' }
   | { name: 'later' }
   | { name: 'history' }
@@ -965,6 +967,13 @@ export default function App() {
     [prefs.translation],
   )
 
+  const aiSummary = useMemo(() => {
+    const { providers, translation, speedRead } = prefs.translation.ai
+    const translationModel = translation.model.trim() || '未选模型'
+    const speedReadModel = speedRead.model.trim() || '未选模型'
+    return `${providers.length} 个提供商 · 翻译 ${translationModel} · 速读 ${speedReadModel}`
+  }, [prefs.translation.ai])
+
   const proxySummary = useMemo(() => {
     const mode = proxyModeLabel(prefs.proxy.mode)
     if (prefs.proxy.mode === 'off') return '未启用'
@@ -1048,6 +1057,19 @@ export default function App() {
           prefs={prefs.translation}
           onChange={(translation) => update((prev) => ({ ...prev, translation }))}
           onBack={() => setSettingsRoute(null)}
+          onOpenAiSettings={() => setSettingsRoute({ name: 'ai', returnTo: 'translation' })}
+        />
+      )
+    }
+
+    if (settingsRoute.name === 'ai') {
+      return (
+        <AiSettingsScreen
+          prefs={prefs.translation}
+          onChange={(translation) => update((prev) => ({ ...prev, translation }))}
+          onBack={() =>
+            setSettingsRoute(settingsRoute.returnTo === 'translation' ? { name: 'translation' } : null)
+          }
         />
       )
     }
@@ -1333,6 +1355,7 @@ export default function App() {
           typographySummary={typographySummary}
           appearanceSummary={appearanceSummary}
           translationSummary={translationSummary}
+          aiSummary={aiSummary}
           proxySummary={proxySummary}
           storageSummary={storageSummary}
           accountSummary={syncStatusCaption(cloudSync.status, {
@@ -1350,6 +1373,7 @@ export default function App() {
           onOpenTypographySettings={() => setSettingsRoute({ name: 'typography' })}
           onOpenAppearanceSettings={() => setSettingsRoute({ name: 'appearance' })}
           onOpenTranslationSettings={() => setSettingsRoute({ name: 'translation' })}
+          onOpenAiSettings={() => setSettingsRoute({ name: 'ai' })}
           onOpenProxySettings={() => setSettingsRoute({ name: 'proxy' })}
           onOpenStorageSettings={() => setSettingsRoute({ name: 'storage' })}
           onOpenAccountSync={() => setSettingsRoute({ name: 'account-sync' })}

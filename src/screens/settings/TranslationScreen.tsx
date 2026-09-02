@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   Check,
   ChevronDown,
+  ChevronRight,
   Cloud,
   CloudCog,
   Download,
@@ -17,7 +18,6 @@ import {
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { ConfirmDialog, OptionPickerDialog } from '../../components/ConfirmDialog'
 import { ToggleSwitch } from '../../components/ToggleSwitch'
-import { AiProviderSettings } from './AiProviderSettings'
 import {
   TRANSLATION_LANGUAGES,
   TRANSLATION_PROVIDERS,
@@ -48,6 +48,7 @@ interface Props {
   prefs: TranslationPrefs
   onChange: (prefs: TranslationPrefs) => void
   onBack: () => void
+  onOpenAiSettings?: () => void
 }
 
 type AsyncState = 'idle' | 'working' | 'success' | 'error'
@@ -106,7 +107,7 @@ function Field({
   )
 }
 
-export function TranslationScreen({ prefs, onChange, onBack }: Props) {
+export function TranslationScreen({ prefs, onChange, onBack, onOpenAiSettings }: Props) {
   const localTranslationAvailable = isLocalTranslationAvailable()
   const bergamotAvailable = isBergamotTranslationAvailable()
   const [modelState, setModelState] = useState<MlKitModelState | null>(null)
@@ -735,7 +736,26 @@ export function TranslationScreen({ prefs, onChange, onBack }: Props) {
         </div>
       ) : null}
 
-      <AiProviderSettings prefs={prefs} onChange={onChange} />
+      {prefs.provider === 'openai' && onOpenAiSettings ? (
+        <SettingsSection title="AI 配置">
+          <div className="border-y border-haze bg-ink">
+            <button
+              type="button"
+              onClick={onOpenAiSettings}
+              className="page-x flex w-full items-center gap-3 py-4 text-left transition-colors hover:bg-ink-raised/30"
+            >
+              <CloudCog size={17} strokeWidth={1.6} className="shrink-0 text-paper-muted" />
+              <span className="min-w-0 flex-1">
+                <span className="block text-[14px] text-paper">管理 AI 提供商与模型</span>
+                <span className="mt-0.5 block font-mono text-[10px] text-paper-faint">
+                  接口、密钥、翻译与速读的模型在「我的 → AI」中配置
+                </span>
+              </span>
+              <ChevronRight size={14} strokeWidth={1.5} className="shrink-0 text-paper-faint" />
+            </button>
+          </div>
+        </SettingsSection>
+      ) : null}
 
       <OptionPickerDialog
         open={modelPickerOpen && remoteModels.length > 0}

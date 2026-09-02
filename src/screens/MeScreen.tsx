@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   LayoutTemplate,
   Rss,
+  ServerCog,
   Search,
   Type,
 } from 'lucide-react'
@@ -31,6 +32,7 @@ interface Props {
   typographySummary: string
   appearanceSummary: string
   translationSummary: string
+  aiSummary: string
   proxySummary: string
   storageSummary: string
   accountSummary: string
@@ -45,6 +47,7 @@ interface Props {
   onOpenTypographySettings: () => void
   onOpenAppearanceSettings: () => void
   onOpenTranslationSettings: () => void
+  onOpenAiSettings: () => void
   onOpenProxySettings: () => void
   onOpenStorageSettings: () => void
   onOpenAccountSync: () => void
@@ -101,6 +104,7 @@ export function MeScreen({
   typographySummary,
   appearanceSummary,
   translationSummary,
+  aiSummary,
   proxySummary,
   storageSummary,
   accountSummary,
@@ -115,6 +119,7 @@ export function MeScreen({
   onOpenTypographySettings,
   onOpenAppearanceSettings,
   onOpenTranslationSettings,
+  onOpenAiSettings,
   onOpenProxySettings,
   onOpenStorageSettings,
   onOpenAccountSync,
@@ -235,6 +240,12 @@ export function MeScreen({
             caption={translationSummary}
             onClick={onOpenTranslationSettings}
             dataTour="me-translation"
+          />
+          <SettingsRow
+            icon={ServerCog}
+            title="AI"
+            caption={aiSummary}
+            onClick={onOpenAiSettings}
           />
           <SettingsRow
             icon={Globe}

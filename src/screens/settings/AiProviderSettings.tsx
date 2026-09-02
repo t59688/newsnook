@@ -1,6 +1,5 @@
 import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import {
-  Bot,
   ChevronDown,
   Eye,
   EyeOff,
@@ -57,7 +56,7 @@ function Field({
       <span className="mb-1.5 block font-mono text-[10px] tracking-[0.12em] text-paper-faint">
         {label}
       </span>
-      <span className="flex min-h-12 items-center rounded-xl border border-haze bg-ink px-3.5 focus-within:border-cinnabar/55">
+      <span className="flex min-h-11 items-center rounded-xl border border-haze bg-ink px-3.5 focus-within:border-cinnabar/55">
         <input
           type={type}
           value={value}
@@ -69,7 +68,7 @@ function Field({
           autoCapitalize="none"
           autoCorrect="off"
           onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
-          className="min-w-0 flex-1 bg-transparent py-3 text-[13px] text-paper outline-none placeholder:text-paper-faint/65"
+          className="min-w-0 flex-1 bg-transparent py-2.5 text-[13px] text-paper outline-none placeholder:text-paper-faint/65"
         />
         {suffix}
       </span>
@@ -80,6 +79,10 @@ function Field({
 export function AiProviderSettings({ prefs, onChange }: Props) {
   const [visibleKeys, setVisibleKeys] = useState<Set<string>>(() => new Set())
   const [pendingDeleteProviderId, setPendingDeleteProviderId] = useState<string | null>(null)
+  const [expandedProviderId, setExpandedProviderId] = useState<string | null>(
+    () => prefs.ai.providers[0]?.id ?? null,
+  )
+  const [expandedFeature, setExpandedFeature] = useState<AiFeatureId | null>('translation')
   const modelRequestRef = useRef(0)
   const [providerPicker, setProviderPicker] = useState<AiFeatureId | null>(null)
   const [modelPicker, setModelPicker] = useState<AiFeatureId | null>(null)
@@ -121,6 +124,7 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
         { id, name: `AI 提供商 ${prefs.ai.providers.length + 1}`, endpoint: '', apiKey: '' },
       ],
     })
+    setExpandedProviderId(id)
   }
 
   const deleteProvider = (providerId: string) => {
@@ -139,6 +143,7 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
           ? { ...prefs.ai.speedRead, providerId: fallbackId, model: '' }
           : prefs.ai.speedRead,
     })
+    setExpandedProviderId((current) => (current === providerId ? fallbackId : current))
   }
 
   const updateFeature = (
@@ -203,13 +208,13 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
     {
       id: 'translation' as const,
       title: 'AI 翻译',
-      caption: '正文与信息流翻译使用；与 AI 速读的模型互不影响',
+      caption: '正文与信息流翻译',
       icon: Languages,
     },
     {
       id: 'speedRead' as const,
       title: 'AI 速读',
-      caption: '文章重点提炼使用；可选择另一家提供商和独立模型',
+      caption: '文章重点提炼',
       icon: ScrollText,
     },
   ]
@@ -220,76 +225,97 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
   return (
     <>
       <SettingsSection title="AI 提供商">
-        <div className="page-x space-y-3 border-y border-haze bg-ink py-4">
-          <div className="flex items-start gap-3 rounded-2xl border border-haze bg-ink-raised/55 p-3.5">
-            <ServerCog size={17} strokeWidth={1.6} className="mt-0.5 shrink-0 text-cinnabar-soft" />
-            <p className="text-[11.5px] leading-relaxed text-paper-faint">
-              可添加多个 OpenAI 兼容提供商。名称、Base URL 与 Key 属于提供商；具体 Model 由下方每项 AI 功能单独选择。
-            </p>
-          </div>
-
+        <p className="page-x pb-3 font-mono text-[10px] leading-relaxed tracking-[0.08em] text-paper-faint">
+          可添加多个 OpenAI 兼容接口。名称、Base URL 与 Key 属于提供商；具体 Model 由下方每项功能单独选择。
+        </p>
+        <ul className="divide-y divide-haze border-y border-haze">
           {prefs.ai.providers.map((provider, index) => {
+            const expanded = expandedProviderId === provider.id
             const showKey = visibleKeys.has(provider.id)
+            const displayName = provider.name || `AI 提供商 ${index + 1}`
             return (
-              <div key={provider.id} className="space-y-3 rounded-2xl border border-haze bg-ink-raised p-4 shadow-[var(--shadow-lift)]">
-                <div className="flex items-center gap-3">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-haze bg-paper/5 text-paper-muted">
-                    <Bot size={17} strokeWidth={1.6} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <span className="block text-[14px] text-paper">{provider.name || `AI 提供商 ${index + 1}`}</span>
-                    <span className="mt-0.5 block truncate font-mono text-[9.5px] text-paper-faint">{provider.endpoint || '尚未填写 Base URL'}</span>
-                  </div>
+              <li key={provider.id} className="bg-ink">
+                <div className="page-x flex items-center gap-2 py-3">
+                  <button
+                    type="button"
+                    aria-expanded={expanded}
+                    onClick={() =>
+                      setExpandedProviderId((current) => (current === provider.id ? null : provider.id))
+                    }
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left"
+                  >
+                    <ServerCog size={16} strokeWidth={1.6} className="shrink-0 text-paper-muted" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-[14px] text-paper">{displayName}</span>
+                      <span className="mt-0.5 block truncate font-mono text-[9.5px] text-paper-faint">
+                        {provider.endpoint || '尚未填写 Base URL'}
+                      </span>
+                    </span>
+                    <ChevronDown
+                      size={15}
+                      strokeWidth={1.8}
+                      className={`shrink-0 text-paper-faint transition-transform ${expanded ? 'rotate-180' : ''}`}
+                    />
+                  </button>
                   <button
                     type="button"
                     disabled={prefs.ai.providers.length <= 1}
-                    aria-label={`删除 ${provider.name || `AI 提供商 ${index + 1}`}`}
+                    aria-label={`删除 ${displayName}`}
                     onClick={() => setPendingDeleteProviderId(provider.id)}
                     className="flex size-9 shrink-0 items-center justify-center rounded-full border border-haze text-paper-faint transition-colors hover:border-cinnabar/40 hover:text-cinnabar-soft disabled:opacity-25"
                   >
                     <Trash2 size={15} strokeWidth={1.7} />
                   </button>
                 </div>
-                <Field
-                  label="名称"
-                  value={provider.name}
-                  placeholder="例如 OpenAI、DeepSeek、自建网关"
-                  onChange={(name) => updateProvider(provider.id, { name })}
-                />
-                <Field
-                  label="BASE URL"
-                  value={provider.endpoint}
-                  placeholder="https://api.example.com/v1"
-                  onChange={(endpoint) => updateProvider(provider.id, { endpoint })}
-                />
-                <Field
-                  label="API KEY"
-                  value={provider.apiKey}
-                  type={showKey ? 'text' : 'password'}
-                  placeholder="仅密钥使用安全存储与加密同步"
-                  onChange={(apiKey) => updateProvider(provider.id, { apiKey })}
-                  suffix={
-                    <button
-                      type="button"
-                      aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}
-                      onClick={() => {
-                        setVisibleKeys((current) => {
-                          const next = new Set(current)
-                          if (next.has(provider.id)) next.delete(provider.id)
-                          else next.add(provider.id)
-                          return next
-                        })
-                      }}
-                      className="ml-2 p-2"
-                    >
-                      {showKey ? <EyeOff size={15} className="text-paper-faint" /> : <Eye size={15} className="text-paper-faint" />}
-                    </button>
-                  }
-                />
-              </div>
+                {expanded && (
+                  <div className="page-x space-y-3 border-t border-haze/70 bg-ink-raised/35 px-0 pb-4 pt-3">
+                    <Field
+                      label="名称"
+                      value={provider.name}
+                      placeholder="例如 OpenAI、DeepSeek、自建网关"
+                      onChange={(name) => updateProvider(provider.id, { name })}
+                    />
+                    <Field
+                      label="BASE URL"
+                      value={provider.endpoint}
+                      placeholder="https://api.example.com/v1"
+                      onChange={(endpoint) => updateProvider(provider.id, { endpoint })}
+                    />
+                    <Field
+                      label="API KEY"
+                      value={provider.apiKey}
+                      type={showKey ? 'text' : 'password'}
+                      placeholder="仅密钥使用安全存储与加密同步"
+                      onChange={(apiKey) => updateProvider(provider.id, { apiKey })}
+                      suffix={
+                        <button
+                          type="button"
+                          aria-label={showKey ? '隐藏 API Key' : '显示 API Key'}
+                          onClick={() => {
+                            setVisibleKeys((current) => {
+                              const next = new Set(current)
+                              if (next.has(provider.id)) next.delete(provider.id)
+                              else next.add(provider.id)
+                              return next
+                            })
+                          }}
+                          className="ml-2 p-2"
+                        >
+                          {showKey ? (
+                            <EyeOff size={15} className="text-paper-faint" />
+                          ) : (
+                            <Eye size={15} className="text-paper-faint" />
+                          )}
+                        </button>
+                      }
+                    />
+                  </div>
+                )}
+              </li>
             )
           })}
-
+        </ul>
+        <div className="page-x pt-3">
           <button
             type="button"
             onClick={addProvider}
@@ -301,103 +327,135 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
         </div>
       </SettingsSection>
 
-      <SettingsSection title="AI 功能模型">
-        <div className="page-x space-y-3 border-y border-haze bg-ink py-4">
+      <SettingsSection title="功能模型">
+        <ul className="divide-y divide-haze border-y border-haze">
           {features.map((feature) => {
             const Icon = feature.icon
             const selection = prefs.ai[feature.id]
             const provider = aiProviderById(prefs.ai, selection.providerId)
+            const expanded = expandedFeature === feature.id
             const fetching = modelListState === 'working' && modelPicker === feature.id
             return (
-              <div key={feature.id} className="space-y-3 rounded-2xl border border-haze bg-ink-raised p-4 shadow-[var(--shadow-lift)]">
-                <div className="flex items-start gap-3">
-                  <span className="flex size-9 shrink-0 items-center justify-center rounded-full border border-cinnabar/35 bg-cinnabar/10 text-cinnabar-soft">
-                    <Icon size={17} strokeWidth={1.6} />
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <span className="block text-[14px] text-paper">{feature.title}</span>
-                    <span className="mt-0.5 block text-[10.5px] leading-relaxed text-paper-faint">{feature.caption}</span>
-                  </div>
-                </div>
-
-                <div>
-                  <span className="mb-1.5 block font-mono text-[10px] tracking-[0.12em] text-paper-faint">AI 提供商</span>
-                  <button
-                    type="button"
-                    aria-haspopup="dialog"
-                    aria-expanded={providerPicker === feature.id}
-                    onClick={() => setProviderPicker(feature.id)}
-                    className="flex h-12 w-full items-center gap-2 rounded-xl border border-haze bg-ink px-3.5 text-left transition-colors hover:border-cinnabar/40"
-                  >
-                    <ServerCog size={15} strokeWidth={1.6} className="shrink-0 text-paper-faint" />
-                    <span className="min-w-0 flex-1 truncate text-[13px] text-paper">{provider.name}</span>
-                    <ChevronDown size={15} strokeWidth={1.8} className="shrink-0 text-paper-faint" />
-                  </button>
-                </div>
-
-                <Field
-                  label="MODEL"
-                  value={selection.model}
-                  placeholder="例如 gpt-4.1-mini"
-                  onChange={(model) => updateFeature(feature.id, { model })}
-                />
-
-                {feature.id === 'translation' && (
-                  <Field
-                    label="最大并发"
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={String(prefs.ai.translation.concurrency)}
-                    onChange={(raw) => {
-                      const value = Number(raw)
-                      if (!Number.isInteger(value) || value < 1 || value > 10) return
-                      updateFeature('translation', { concurrency: value })
-                    }}
-                  />
-                )}
-
+              <li key={feature.id} className="bg-ink">
                 <button
                   type="button"
-                  disabled={modelListState === 'working' || !provider.endpoint.trim() || !provider.apiKey.trim()}
-                  onClick={() => {
-                    setModelPicker(feature.id)
-                    void fetchModels(feature.id)
-                  }}
-                  className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-haze bg-ink px-4 text-[12px] text-paper-muted disabled:opacity-35"
+                  aria-expanded={expanded}
+                  onClick={() =>
+                    setExpandedFeature((current) => (current === feature.id ? null : feature.id))
+                  }
+                  className="page-x flex w-full items-center gap-3 py-3.5 text-left"
                 >
-                  {fetching ? <LoaderCircle size={14} className="animate-spin" /> : <ListRestart size={14} />}
-                  拉取模型列表
+                  <Icon size={16} strokeWidth={1.6} className="shrink-0 text-paper-muted" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[14px] text-paper">{feature.title}</span>
+                    <span className="mt-0.5 block truncate font-mono text-[9.5px] text-paper-faint">
+                      {provider.name}
+                      {selection.model ? ` · ${selection.model}` : ' · 未选模型'}
+                    </span>
+                  </span>
+                  <ChevronDown
+                    size={15}
+                    strokeWidth={1.8}
+                    className={`shrink-0 text-paper-faint transition-transform ${expanded ? 'rotate-180' : ''}`}
+                  />
                 </button>
+                {expanded && (
+                  <div className="page-x space-y-3 border-t border-haze/70 bg-ink-raised/35 px-0 pb-4 pt-3">
+                    <div>
+                      <span className="mb-1.5 block font-mono text-[10px] tracking-[0.12em] text-paper-faint">
+                        AI 提供商
+                      </span>
+                      <button
+                        type="button"
+                        aria-haspopup="dialog"
+                        aria-expanded={providerPicker === feature.id}
+                        onClick={() => setProviderPicker(feature.id)}
+                        className="flex h-11 w-full items-center gap-2 rounded-xl border border-haze bg-ink px-3.5 text-left transition-colors hover:border-cinnabar/40"
+                      >
+                        <ServerCog size={15} strokeWidth={1.6} className="shrink-0 text-paper-faint" />
+                        <span className="min-w-0 flex-1 truncate text-[13px] text-paper">{provider.name}</span>
+                        <ChevronDown size={15} strokeWidth={1.8} className="shrink-0 text-paper-faint" />
+                      </button>
+                    </div>
 
-                {modelListMessage && modelPicker === feature.id && (
-                  <p className={`text-[11px] leading-relaxed ${modelListState === 'error' ? 'text-cinnabar-soft' : 'text-paper-faint'}`}>
-                    {modelListMessage}
-                  </p>
-                )}
+                    <Field
+                      label="MODEL"
+                      value={selection.model}
+                      placeholder="例如 gpt-4.1-mini"
+                      onChange={(model) => updateFeature(feature.id, { model })}
+                    />
 
-                {feature.id === 'translation' && (
-                  <>
+                    {feature.id === 'translation' && (
+                      <Field
+                        label="最大并发"
+                        type="number"
+                        min={1}
+                        max={10}
+                        value={String(prefs.ai.translation.concurrency)}
+                        onChange={(raw) => {
+                          const value = Number(raw)
+                          if (!Number.isInteger(value) || value < 1 || value > 10) return
+                          updateFeature('translation', { concurrency: value })
+                        }}
+                      />
+                    )}
+
                     <button
                       type="button"
-                      disabled={testState === 'working' || !provider.endpoint.trim() || !provider.apiKey.trim() || !selection.model.trim()}
-                      onClick={() => void testAiTranslation()}
-                      className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-cinnabar/50 bg-cinnabar/12 px-4 text-[12px] text-paper disabled:opacity-35"
+                      disabled={modelListState === 'working' || !provider.endpoint.trim() || !provider.apiKey.trim()}
+                      onClick={() => {
+                        setModelPicker(feature.id)
+                        void fetchModels(feature.id)
+                      }}
+                      className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-haze bg-ink px-4 text-[12px] text-paper-muted disabled:opacity-35"
                     >
-                      {testState === 'working' ? <LoaderCircle size={14} className="animate-spin" /> : <Languages size={14} />}
-                      测试 AI 翻译
+                      {fetching ? <LoaderCircle size={14} className="animate-spin" /> : <ListRestart size={14} />}
+                      拉取模型列表
                     </button>
-                    {testMessage && (
-                      <p className={`text-[11px] leading-relaxed ${testState === 'error' ? 'text-cinnabar-soft' : 'text-paper-faint'}`}>
-                        {testMessage}
+
+                    {modelListMessage && modelPicker === feature.id && (
+                      <p
+                        className={`text-[11px] leading-relaxed ${modelListState === 'error' ? 'text-cinnabar-soft' : 'text-paper-faint'}`}
+                      >
+                        {modelListMessage}
                       </p>
                     )}
-                  </>
+
+                    {feature.id === 'translation' && (
+                      <>
+                        <button
+                          type="button"
+                          disabled={
+                            testState === 'working' ||
+                            !provider.endpoint.trim() ||
+                            !provider.apiKey.trim() ||
+                            !selection.model.trim()
+                          }
+                          onClick={() => void testAiTranslation()}
+                          className="flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-cinnabar/50 bg-cinnabar/12 px-4 text-[12px] text-paper disabled:opacity-35"
+                        >
+                          {testState === 'working' ? (
+                            <LoaderCircle size={14} className="animate-spin" />
+                          ) : (
+                            <Languages size={14} />
+                          )}
+                          测试 AI 翻译
+                        </button>
+                        {testMessage && (
+                          <p
+                            className={`text-[11px] leading-relaxed ${testState === 'error' ? 'text-cinnabar-soft' : 'text-paper-faint'}`}
+                          >
+                            {testMessage}
+                          </p>
+                        )}
+                      </>
+                    )}
+                  </div>
                 )}
-              </div>
+              </li>
             )
           })}
-        </div>
+        </ul>
       </SettingsSection>
 
       <OptionPickerDialog
@@ -436,7 +494,11 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
       <OptionPickerDialog
         open={Boolean(modelPicker && remoteModels.length)}
         title={modelPicker === 'speedRead' ? '选择 AI 速读模型' : '选择 AI 翻译模型'}
-        value={modelSelection?.model && remoteModels.includes(modelSelection.model) ? modelSelection.model : remoteModels[0] ?? ''}
+        value={
+          modelSelection?.model && remoteModels.includes(modelSelection.model)
+            ? modelSelection.model
+            : (remoteModels[0] ?? '')
+        }
         options={remoteModels.map((model) => ({ id: model, label: model }))}
         onCancel={() => {
           setModelPicker(null)
