@@ -8,8 +8,8 @@ import {
   ListRestart,
   LoaderCircle,
   Plus,
+  ScrollText,
   ServerCog,
-  Sparkles,
   Trash2,
 } from 'lucide-react'
 
@@ -210,7 +210,7 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
       id: 'speedRead' as const,
       title: 'AI 速读',
       caption: '文章重点提炼使用；可选择另一家提供商和独立模型',
-      icon: Sparkles,
+      icon: ScrollText,
     },
   ]
 

@@ -1,5 +1,5 @@
 import { useMemo } from 'react'
-import { LoaderCircle, RefreshCw, Sparkles, Square, X } from 'lucide-react'
+import { LoaderCircle, RefreshCw, ScrollText, Square, X } from 'lucide-react'
 
 import { markdownToSafeHtml } from '../lib/markdown'
 
@@ -38,7 +38,7 @@ export function AiSpeedReadPanel({
       <div className="overflow-hidden rounded-2xl border border-cinnabar/25 bg-ink-raised/70 shadow-xl">
         <div className="flex items-center gap-3 border-b border-haze px-4 py-3.5">
           <span className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-cinnabar/10 text-cinnabar-soft">
-            <Sparkles size={16} strokeWidth={1.7} />
+            <ScrollText size={16} strokeWidth={1.7} />
           </span>
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">

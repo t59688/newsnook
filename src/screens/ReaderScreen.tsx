@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
-import { ArrowLeft, BookmarkCheck, BookmarkPlus, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, Sparkles, X } from 'lucide-react'
+import { ArrowLeft, BookmarkCheck, BookmarkPlus, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, ScrollText, X } from 'lucide-react'
 
 import { AiSpeedReadPanel, type SpeedReadUiState } from '../components/AiSpeedReadPanel'
 import { ImageLightbox } from '../components/ImageLightbox'
@@ -1352,6 +1352,32 @@ export function ReaderScreen({
                         : '翻译'}
                 </span>
               </button>
+              {canSpeedRead && (
+                <button
+                  type="button"
+                  onClick={openSpeedRead}
+                  aria-expanded={speedReadOpen}
+                  aria-label={speedReadState === 'loading' ? '速读生成中' : speedReadOpen ? '查看速读' : '打开速读'}
+                  className="flex h-9 items-center gap-1 px-1 transition-colors duration-200"
+                >
+                  {speedReadState === 'loading' ? (
+                    <LoaderCircle size={14} strokeWidth={1.7} className="animate-spin text-cinnabar-soft" />
+                  ) : (
+                    <ScrollText
+                      size={14}
+                      strokeWidth={1.7}
+                      className={speedReadOpen ? 'text-cinnabar' : 'text-paper-muted'}
+                    />
+                  )}
+                  <span
+                    className={`font-mono text-[10px] tracking-[0.08em] ${
+                      speedReadOpen || speedReadState === 'loading' ? 'text-cinnabar-soft' : 'text-paper-muted'
+                    }`}
+                  >
+                    {speedReadState === 'loading' ? '速读中' : '速读'}
+                  </span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => onToggleLater(laterArticle)}
@@ -1438,27 +1464,6 @@ export function ReaderScreen({
               <p className="mt-3 h-[13px] font-mono text-[10px] leading-[13px] tracking-[0.12em] text-paper-faint">
                 {sourceHint}
               </p>
-              {canSpeedRead && (
-                <div className="mt-3 flex items-center">
-                  <button
-                    type="button"
-                    onClick={openSpeedRead}
-                    aria-expanded={speedReadOpen}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10.5px] tracking-[0.04em] transition-colors ${
-                      speedReadOpen
-                        ? 'border-cinnabar/50 bg-cinnabar/15 text-cinnabar-soft'
-                        : 'border-haze bg-ink-raised/70 text-paper-muted hover:border-cinnabar/35 hover:text-paper'
-                    }`}
-                  >
-                    {speedReadState === 'loading' ? (
-                      <LoaderCircle size={12} strokeWidth={1.8} className="animate-spin text-cinnabar-soft" />
-                    ) : (
-                      <Sparkles size={12} strokeWidth={1.8} className="text-cinnabar-soft" />
-                    )}
-                    {speedReadState === 'loading' ? '速读中' : speedReadState === 'ready' ? '查看速读' : 'AI 速读'}
-                  </button>
-                </div>
-              )}
               {isBlockedBody && loadState === 'ready' && (
                 <div
                   role="status"
