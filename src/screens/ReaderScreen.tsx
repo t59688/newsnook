@@ -67,7 +67,7 @@ import {
 } from '../features/translation/config'
 import type { TranslatedArticleContent, TranslationPrefs } from '../features/translation/types'
 import { loadSpeedReadCache, saveSpeedReadCache, speedReadCacheKey } from '../features/speedRead/cache'
-import { summarizeArticle } from '../features/speedRead/service'
+import { parseSpeedReadStored, summarizeArticle, hasSpeedReadableText } from '../features/speedRead/service'
 import { fetchCommentCount, supportsComments } from '../features/comments/service'
 import { CommentsDrawer } from '../features/comments/components/CommentsDrawer'
 import { articleFromRelatedLink } from '../features/catalogEngine/toArticles'
@@ -156,11 +156,11 @@ export function ReaderScreen({
   const [speedReadOpen, setSpeedReadOpen] = useState(false)
   const [speedReadState, setSpeedReadState] = useState<SpeedReadUiState>('idle')
   const [speedReadMarkdown, setSpeedReadMarkdown] = useState('')
+  const [speedReadThinking, setSpeedReadThinking] = useState('')
+  const [speedReadStatus, setSpeedReadStatus] = useState('')
   const [speedReadError, setSpeedReadError] = useState('')
   const [exportingMarkdown, setExportingMarkdown] = useState(false)
   const speedReadAbortRef = useRef<AbortController | null>(null)
-  const speedReadFrameRef = useRef(0)
-  const pendingSpeedReadRef = useRef('')
 
   const canComment = useMemo(
     () => supportsComments({ ...article, originUrl: resolvedOriginUrl || article.originUrl }),
@@ -211,10 +211,6 @@ export function ReaderScreen({
   useEffect(
     () => () => {
       speedReadAbortRef.current?.abort()
-      if (speedReadFrameRef.current) {
-        window.cancelAnimationFrame(speedReadFrameRef.current)
-        speedReadFrameRef.current = 0
-      }
     },
     [],
   )
@@ -745,34 +741,35 @@ export function ReaderScreen({
   useEffect(() => {
     speedReadAbortRef.current?.abort()
     speedReadAbortRef.current = null
-    if (speedReadFrameRef.current) {
-      window.cancelAnimationFrame(speedReadFrameRef.current)
-      speedReadFrameRef.current = 0
-    }
-    pendingSpeedReadRef.current = ''
     setSpeedReadOpen(false)
     setSpeedReadError('')
+    setSpeedReadStatus('')
 
     if (loadState !== 'ready' || !html.trim()) {
       setSpeedReadMarkdown('')
+      setSpeedReadThinking('')
       setSpeedReadState('idle')
       return
     }
 
     const cached = loadSpeedReadCache(speedReadKey)
-    setSpeedReadMarkdown(cached || '')
-    setSpeedReadState(cached ? 'ready' : 'idle')
+    if (cached) {
+      const parsed = parseSpeedReadStored(cached)
+      setSpeedReadMarkdown(parsed.body)
+      setSpeedReadThinking(parsed.thinking)
+      setSpeedReadState('ready')
+      return
+    }
+
+    setSpeedReadMarkdown('')
+    setSpeedReadThinking('')
+    setSpeedReadState('idle')
   }, [html, loadState, speedReadKey])
 
   const runSpeedRead = useCallback(async () => {
     if (loadState !== 'ready' || !html.trim()) return
 
     speedReadAbortRef.current?.abort()
-    if (speedReadFrameRef.current) {
-      window.cancelAnimationFrame(speedReadFrameRef.current)
-      speedReadFrameRef.current = 0
-    }
-    pendingSpeedReadRef.current = ''
 
     const controller = new AbortController()
     speedReadAbortRef.current = controller
@@ -780,8 +777,10 @@ export function ReaderScreen({
     setSpeedReadState('loading')
     setSpeedReadError('')
     setSpeedReadMarkdown('')
+    setSpeedReadThinking('')
+    setSpeedReadStatus('')
 
-    let latestPartial = ''
+    let latestPartial = { thinking: '', body: '' }
     try {
       const result = await summarizeArticle({
         title: canonicalTitle,
@@ -790,38 +789,31 @@ export function ReaderScreen({
         signal: controller.signal,
         onPartial: (partial) => {
           if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
-          latestPartial = partial
-          pendingSpeedReadRef.current = partial
-          if (speedReadFrameRef.current) return
-          speedReadFrameRef.current = window.requestAnimationFrame(() => {
-            speedReadFrameRef.current = 0
-            if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
-            setSpeedReadMarkdown(pendingSpeedReadRef.current)
-          })
+          latestPartial = { thinking: partial.thinking, body: partial.body }
+          setSpeedReadThinking(partial.thinking)
+          setSpeedReadMarkdown(partial.body)
+          setSpeedReadStatus(partial.status || '')
         },
       })
       if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
-      if (speedReadFrameRef.current) {
-        window.cancelAnimationFrame(speedReadFrameRef.current)
-        speedReadFrameRef.current = 0
-      }
-      pendingSpeedReadRef.current = ''
-      setSpeedReadMarkdown(result)
+      const parsed = parseSpeedReadStored(result)
+      setSpeedReadThinking(parsed.thinking)
+      setSpeedReadMarkdown(parsed.body)
+      setSpeedReadStatus('')
       setSpeedReadState('ready')
       saveSpeedReadCache(speedReadKey, result)
     } catch (error) {
-      if (speedReadFrameRef.current) {
-        window.cancelAnimationFrame(speedReadFrameRef.current)
-        speedReadFrameRef.current = 0
-      }
-      pendingSpeedReadRef.current = ''
       if (speedReadAbortRef.current !== controller) return
       if (controller.signal.aborted) {
-        setSpeedReadMarkdown(latestPartial)
+        setSpeedReadThinking(latestPartial.thinking)
+        setSpeedReadMarkdown(latestPartial.body)
+        setSpeedReadStatus('')
         setSpeedReadState('cancelled')
         return
       }
       setSpeedReadMarkdown('')
+      setSpeedReadThinking('')
+      setSpeedReadStatus('')
       setSpeedReadError(error instanceof Error ? error.message : 'AI 速读生成失败')
       setSpeedReadState('error')
     } finally {
@@ -847,7 +839,7 @@ export function ReaderScreen({
     articleId: article.id,
     viewportRef: rootRef,
     contentRef: contentMeasureRef,
-    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}:${Math.ceil(speedReadMarkdown.length / 256)}`,
+    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}:${Math.ceil((speedReadMarkdown.length + speedReadThinking.length) / 256)}`,
     ready: loadState === 'ready',
   })
 
@@ -1056,7 +1048,7 @@ export function ReaderScreen({
     loadState === 'ready' &&
     Boolean(html.trim()) &&
     bodySource !== 'blocked' &&
-    bodySource !== 'video'
+    (bodySource !== 'video' || hasSpeedReadableText(html))
 
   /** 出版社地址：只用于「浏览器核对原文」与分享 token 里的正文来源 */
   const originUrl = resolvedOriginUrl || article.originUrl
@@ -1907,6 +1899,8 @@ export function ReaderScreen({
         open={speedReadOpen}
         state={speedReadState}
         markdown={speedReadMarkdown}
+        thinking={speedReadThinking}
+        status={speedReadStatus}
         error={speedReadError}
         model={speedReadConfig.model}
         articleTitle={canonicalTitle}

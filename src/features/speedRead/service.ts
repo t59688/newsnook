@@ -1,6 +1,10 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 
+import { stripTags } from '../../lib/resolveBody/shared'
 import { SPEED_READ_SECTION_TITLES } from './sections'
+import { cleanMarkdown } from './markdown'
+import { serializeSpeedRead } from './serialize'
+import { streamChatCompletion, type StreamChatPartial } from './streamChat'
 import { assertOpenAiConfig, extractOpenAiChatContent } from '../translation/openai'
 import type { CloudTranslationConfig } from '../translation/types'
 
@@ -8,12 +12,16 @@ const DIRECT_SOURCE_CHARS = 8_000
 const CHUNK_SOURCE_CHARS = 6_000
 const MAX_CONDENSED_CHARS = 18_000
 
+export interface SpeedReadPartial extends StreamChatPartial {
+  status?: string
+}
+
 interface SpeedReadOptions {
   title: string
   contentHtml: string
   config: CloudTranslationConfig
   signal?: AbortSignal
-  onPartial?: (markdown: string) => void
+  onPartial?: (partial: SpeedReadPartial) => void
 }
 
 interface ChatMessage {
@@ -21,9 +29,40 @@ interface ChatMessage {
   content: string
 }
 
-interface JsonResponse {
-  status: number
-  data: unknown
+function coerceJson(data: unknown): unknown {
+  if (typeof data !== 'string') return data
+  const value = data.trim()
+  if (!value || (value[0] !== '{' && value[0] !== '[')) return data
+  try {
+    return JSON.parse(value) as unknown
+  } catch {
+    return data
+  }
+}
+
+function errorFromResponse(label: string, status: number, data: unknown): Error {
+  const payload = coerceJson(data) as { error?: { message?: string }; message?: string } | null
+  const detail = payload?.error?.message || payload?.message
+  return new Error(detail ? `${label}：${detail}` : `${label}：请求失败（HTTP ${status}）`)
+}
+
+function requestBody(model: string, messages: ChatMessage[], stream: boolean): object {
+  return {
+    model,
+    temperature: 0.2,
+    stream,
+    messages,
+  }
+}
+
+export { cleanMarkdown } from './markdown'
+export { parseSpeedReadStored, serializeSpeedRead, speedReadBodyForExport } from './serialize'
+
+/** 视频稿若附带足够长的文字正文，仍可做 AI 速读 */
+export const SPEED_READ_MIN_TEXT_CHARS = 200
+
+export function hasSpeedReadableText(html: string): boolean {
+  return stripTags(html).length >= SPEED_READ_MIN_TEXT_CHARS
 }
 
 function normalizeArticleText(contentHtml: string): string {
@@ -134,32 +173,6 @@ function condenseNotesPrompt(title: string, notes: string): string {
   ].join('\n\n')
 }
 
-function requestBody(model: string, messages: ChatMessage[], stream: boolean): object {
-  return {
-    model,
-    temperature: 0.2,
-    stream,
-    messages,
-  }
-}
-
-function coerceJson(data: unknown): unknown {
-  if (typeof data !== 'string') return data
-  const value = data.trim()
-  if (!value || (value[0] !== '{' && value[0] !== '[')) return data
-  try {
-    return JSON.parse(value) as unknown
-  } catch {
-    return data
-  }
-}
-
-function errorFromResponse(label: string, response: JsonResponse): Error {
-  const payload = coerceJson(response.data) as { error?: { message?: string }; message?: string } | null
-  const detail = payload?.error?.message || payload?.message
-  return new Error(detail ? `${label}：${detail}` : `${label}：请求失败（HTTP ${response.status}）`)
-}
-
 async function completeJson(
   url: string,
   apiKey: string,
@@ -168,7 +181,7 @@ async function completeJson(
 ): Promise<string> {
   if (signal?.aborted) throw new DOMException('AI 速读已取消', 'AbortError')
 
-  let response: JsonResponse
+  let response: { status: number; data: unknown }
   if (Capacitor.isNativePlatform()) {
     const nativeResponse = await CapacitorHttp.post({
       url,
@@ -178,7 +191,7 @@ async function completeJson(
       },
       data: body,
       connectTimeout: 15000,
-      readTimeout: 60000,
+      readTimeout: 120000,
     })
     response = { status: nativeResponse.status, data: coerceJson(nativeResponse.data) }
   } else {
@@ -198,124 +211,12 @@ async function completeJson(
   }
 
   if (signal?.aborted) throw new DOMException('AI 速读已取消', 'AbortError')
-  if (response.status < 200 || response.status >= 300) throw errorFromResponse('AI 速读', response)
+  if (response.status < 200 || response.status >= 300) {
+    throw errorFromResponse('AI 速读', response.status, response.data)
+  }
   const content = extractOpenAiChatContent(response.data)
   if (!content?.trim()) throw new Error('AI 速读：返回内容为空')
   return cleanMarkdown(content)
-}
-
-function extractDeltaContent(payload: unknown): string {
-  const data = payload as {
-    choices?: Array<{
-      delta?: { content?: unknown }
-      message?: { content?: unknown }
-      text?: unknown
-    }>
-  } | null
-  const choice = data?.choices?.[0]
-  if (!choice) return ''
-
-  const content = choice.delta?.content ?? choice.message?.content ?? choice.text
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content
-    .map((part) => {
-      if (typeof part === 'string') return part
-      if (part && typeof part === 'object' && 'text' in part) {
-        const text = (part as { text?: unknown }).text
-        return typeof text === 'string' ? text : ''
-      }
-      return ''
-    })
-    .join('')
-}
-
-export function cleanMarkdown(markdown: string): string {
-  let value = markdown.trim()
-  value = value.replace(/^```(?:markdown|md)?\s*\n?/i, '')
-  value = value.replace(/\n?```\s*$/i, '')
-  return value.trim()
-}
-
-async function streamWithFetch(
-  url: string,
-  apiKey: string,
-  body: object,
-  signal: AbortSignal | undefined,
-  onPartial: ((markdown: string) => void) | undefined,
-): Promise<string> {
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json; charset=UTF-8',
-      Accept: 'text/event-stream, application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(body),
-    signal,
-  })
-  if (!response.ok) {
-    const data = (await response.json().catch(() => null)) as unknown
-    throw errorFromResponse('AI 速读', { status: response.status, data })
-  }
-  if (!response.body || typeof response.body.getReader !== 'function') {
-    throw new Error('AI 速读：当前环境不支持流式响应')
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder('utf-8')
-  let buffer = ''
-  let raw = ''
-  let markdown = ''
-  let sawSse = false
-
-  const consumeLine = (line: string) => {
-    const trimmed = line.trim()
-    if (!trimmed.startsWith('data:')) return
-    sawSse = true
-    const data = trimmed.slice(5).trim()
-    if (!data || data === '[DONE]') return
-    let payload: unknown
-    try {
-      payload = JSON.parse(data) as unknown
-    } catch {
-      return
-    }
-    const delta = extractDeltaContent(payload)
-    if (!delta) return
-    markdown += delta
-    onPartial?.(cleanMarkdown(markdown))
-  }
-
-  while (true) {
-    const chunk = await reader.read()
-    if (chunk.done) break
-    const text = decoder.decode(chunk.value, { stream: true })
-    raw += text
-    buffer += text
-    let newline = buffer.indexOf('\n')
-    while (newline >= 0) {
-      consumeLine(buffer.slice(0, newline))
-      buffer = buffer.slice(newline + 1)
-      newline = buffer.indexOf('\n')
-    }
-  }
-  buffer += decoder.decode()
-  if (buffer) consumeLine(buffer)
-
-  if (!sawSse) {
-    try {
-      const content = extractOpenAiChatContent(JSON.parse(raw) as unknown)
-      if (content?.trim()) markdown = content
-    } catch {
-      // Keep the more useful empty-response error below.
-    }
-  }
-
-  const result = cleanMarkdown(markdown)
-  if (!result) throw new Error('AI 速读：返回内容为空')
-  onPartial?.(result)
-  return result
 }
 
 async function finalCompletion(
@@ -324,35 +225,15 @@ async function finalCompletion(
   model: string,
   messages: ChatMessage[],
   signal?: AbortSignal,
-  onPartial?: (markdown: string) => void,
-): Promise<string> {
-  let emittedPartial = false
-  const handlePartial = (markdown: string) => {
-    emittedPartial = true
-    onPartial?.(markdown)
-  }
-
-  try {
-    return await streamWithFetch(
-      url,
-      apiKey,
-      requestBody(model, messages, true),
-      signal,
-      handlePartial,
-    )
-  } catch (error) {
-    if (signal?.aborted) throw error
-    const streamUnavailable =
-      error instanceof TypeError ||
-      (error instanceof Error && error.message === 'AI 速读：当前环境不支持流式响应')
-    // Native providers sometimes need CapacitorHttp to bypass browser CORS. Only retry
-    // before any partial tokens were rendered; otherwise a second paid request could
-    // diverge from the partial answer already shown to the user.
-    if (!Capacitor.isNativePlatform() || emittedPartial || !streamUnavailable) throw error
-    const content = await completeJson(url, apiKey, requestBody(model, messages, false), signal)
-    onPartial?.(content)
-    return content
-  }
+  onPartial?: (partial: SpeedReadPartial) => void,
+): Promise<StreamChatPartial> {
+  return streamChatCompletion(
+    url,
+    apiKey,
+    requestBody(model, messages, true),
+    signal,
+    (partial) => onPartial?.(partial),
+  )
 }
 
 export async function summarizeArticle({
@@ -376,6 +257,12 @@ export async function summarizeArticle({
 
     for (let index = 0; index < chunks.length; index += 1) {
       if (signal?.aborted) throw new DOMException('AI 速读已取消', 'AbortError')
+      onPartial?.({
+        thinking: '',
+        body: '',
+        status: `正在阅读全文 ${index + 1}/${chunks.length}…`,
+      })
+
       const note = await completeJson(
         url,
         apiKey,
@@ -393,6 +280,11 @@ export async function summarizeArticle({
 
       const joinedNotes = notes.join('\n\n')
       if (joinedNotes.length >= MAX_CONDENSED_CHARS && index < chunks.length - 1) {
+        onPartial?.({
+          thinking: '',
+          body: '',
+          status: `正在合并分段笔记 ${index + 1}/${chunks.length}…`,
+        })
         const condensed = await completeJson(
           url,
           apiKey,
@@ -411,9 +303,10 @@ export async function summarizeArticle({
     }
 
     summarySource = `以下是按原文顺序提取的分段事实笔记，请据此完成最终速读，不要把“分段笔记”本身当作新的事实来源。\n\n${notes.join('\n\n')}`
+    onPartial?.({ thinking: '', body: '', status: '正在生成速读…' })
   }
 
-  return finalCompletion(
+  const result = await finalCompletion(
     url,
     apiKey,
     model,
@@ -424,4 +317,6 @@ export async function summarizeArticle({
     signal,
     onPartial,
   )
+
+  return serializeSpeedRead(result)
 }

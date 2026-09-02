@@ -1,6 +1,7 @@
 import { parseSpeedReadMarkdown } from './parse'
 import { getShareLogoSrc } from './assets'
 import { displayArticleTitle } from '../displayArticleTitle'
+import { speedReadBodyForExport } from '../../features/speedRead/serialize'
 import { SPEED_READ_SECTION_TITLES } from '../../features/speedRead/sections'
 import type { ParsedSpeedRead, SpeedReadImageInput, SpeedReadShareStyle } from './types'
 
@@ -201,7 +202,7 @@ function buildJournal(title: string, meta: string, content: ParsedSpeedRead, dat
 }
 
 export function buildCardHtml(input: SpeedReadImageInput, style: SpeedReadShareStyle): string {
-  const content = parseSpeedReadMarkdown(input.markdown)
+  const content = parseSpeedReadMarkdown(speedReadBodyForExport(input.markdown))
   const title = formatTitleHtml(
     displayArticleTitle(input.articleTitle, {
       sourceName: input.sourceName,

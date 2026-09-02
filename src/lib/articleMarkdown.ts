@@ -2,6 +2,7 @@ import { Capacitor } from '@capacitor/core'
 import { Directory, Encoding, Filesystem } from '@capacitor/filesystem'
 import { Share } from '@capacitor/share'
 
+import { speedReadBodyForExport } from '../features/speedRead/serialize'
 import { log } from './logger'
 import type { Article } from './types'
 
@@ -183,7 +184,9 @@ function yamlString(value: string): string {
 function embeddedSpeedRead(markdown: string | undefined): string {
   const value = markdown?.trim()
   if (!value) return ''
-  return value.replace(/^##\s+/gm, '### ')
+  const body = speedReadBodyForExport(value).trim()
+  if (!body) return ''
+  return body.replace(/^##\s+/gm, '### ')
 }
 
 export function buildArticleMarkdown({

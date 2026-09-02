@@ -425,6 +425,34 @@ html[data-eink='1'] .preset-switcher-sheet {
     display: none;
   }
 
+  .speed-read-thinking-track {
+    mask-image: linear-gradient(90deg, transparent, black 12px, black calc(100% - 20px), transparent);
+    contain: layout style;
+  }
+
+  .speed-read-thinking-inner {
+    will-change: transform;
+  }
+
+  .speed-read-thinking-marquee {
+    animation: speed-read-thinking-marquee var(--speed-read-marquee-duration, 24s) linear infinite;
+  }
+
+  @keyframes speed-read-thinking-marquee {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-50%, 0, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .speed-read-thinking-marquee {
+      animation: none;
+    }
+  }
+
   /* 独立横向栏明确交给浏览器原生横滚，避免与列表纵滑/分类切换竞争。 */
   .horizontal-scroll-rail {
     touch-action: pan-x pinch-zoom;

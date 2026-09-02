@@ -1,3 +1,4 @@
+import { speedReadBodyForExport } from '../features/speedRead/serialize'
 import { markdownFileName } from './articleMarkdown'
 
 export interface SpeedReadMarkdownInput {
@@ -22,7 +23,7 @@ export function buildSpeedReadMarkdown({
   exportedAt = Date.now(),
 }: SpeedReadMarkdownInput): string {
   const title = articleTitle.trim() || '一篇文章'
-  const body = markdown.trim()
+  const body = speedReadBodyForExport(markdown)
   const lines = [
     '---',
     `title: ${yamlString(`${title} · AI 速读`)}`,
