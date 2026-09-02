@@ -5,6 +5,7 @@ import { warmupSpeedReadShareAssets } from './assets'
 import cardCss from './card.css?inline'
 import { buildCardHtml } from './buildCardHtml'
 import { loadSpeedReadShareStyle } from './prefs'
+import { SPEED_READ_SHARE_STYLES } from './styles'
 import type { SpeedReadImageInput, SpeedReadShareStyle } from './types'
 
 /** 与模板原型一致：720 CSS 像素宽；1.5x 导出，清晰度与性能折中 */
@@ -82,11 +83,23 @@ export async function renderSpeedReadImageBlob(
   }
 }
 
-export function speedReadImageFileName(articleTitle: string): string {
-  const base = articleTitle
+function sanitizeImageFileStem(value: string): string {
+  return value
     .replace(/[\\/:*?"<>|\u0000-\u001f]/g, '-')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 48)
-  return `有所闻-速读-${base || 'newsnook'}.png`
+}
+
+export function speedReadImageFileName(
+  articleTitle: string,
+  style?: SpeedReadShareStyle,
+  options?: { unique?: boolean },
+): string {
+  const base = sanitizeImageFileStem(articleTitle).slice(0, 40) || 'newsnook'
+  const styleLabel = style
+    ? sanitizeImageFileStem(SPEED_READ_SHARE_STYLES.find((item) => item.id === style)?.label ?? style)
+    : ''
+  const uniqueSuffix = options?.unique ? `-${Date.now()}` : ''
+  if (styleLabel) return `有所闻-速读-${styleLabel}-${base}${uniqueSuffix}.png`
+  return `有所闻-速读-${base}${uniqueSuffix}.png`
 }

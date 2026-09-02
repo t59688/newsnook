@@ -14,6 +14,8 @@ import {
   X,
 } from 'lucide-react'
 
+import { Capacitor } from '@capacitor/core'
+
 import { exportMarkdownFile } from '../lib/articleMarkdown'
 import { displayArticleTitle } from '../lib/displayArticleTitle'
 import { saveImageBlob, shareImageBlob } from '../lib/imageActions'
@@ -353,18 +355,31 @@ export function AiSpeedReadPanel({
         markdown: trimmed,
       }
       const blob = await renderSpeedReadImageBlob(imageInput, shareStyle)
-      const fileName = speedReadImageFileName(articleTitle)
+      const styleLabel = SPEED_READ_SHARE_STYLES.find((item) => item.id === shareStyle)?.label ?? shareStyle
 
       if (action === 'save-image') {
-        await saveImageBlob(blob, fileName)
-        onNotify('图片已保存')
+        const fileName = speedReadImageFileName(articleTitle, shareStyle, { unique: true })
+        const result = await saveImageBlob(blob, fileName)
+        if (result === 'saved') {
+          onNotify(
+            Capacitor.isNativePlatform()
+              ? `「${styleLabel}」已保存到相册「有所闻」`
+              : `「${styleLabel}」图片已下载`,
+          )
+        }
         return
       }
 
+      const fileName = speedReadImageFileName(articleTitle, shareStyle)
       const result = await shareImageBlob(blob, fileName, `${articleTitle} · AI 速读`)
       if (result === 'shared') onNotify('已调起分享')
       else if (result === 'cancelled') return
     } catch (actionError) {
+      if (action === 'save-image') {
+        const detail = actionError instanceof Error ? actionError.message.trim() : ''
+        onNotify(detail ? `图片保存失败：${detail}` : '图片保存失败，请重试')
+        return
+      }
       const message = actionError instanceof Error ? actionError.message : '操作失败，请重试'
       onNotify(message)
     } finally {

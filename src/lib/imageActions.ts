@@ -207,7 +207,10 @@ export async function shareImage(url: string, title = '分享图片'): Promise<v
 }
 
 /** 保存本地生成的图片（Web：下载；Android：写入相册） */
-export async function saveImageBlob(blob: Blob, fileName = `newsnook-${Date.now()}.png`): Promise<void> {
+export async function saveImageBlob(
+  blob: Blob,
+  fileName = `newsnook-${Date.now()}.png`,
+): Promise<ImageActionResult> {
   const prepared = await prepareBlobImage(blob, fileName)
 
   if (!Capacitor.isNativePlatform()) {
@@ -218,7 +221,7 @@ export async function saveImageBlob(blob: Blob, fileName = `newsnook-${Date.now(
     document.body.appendChild(anchor)
     anchor.click()
     anchor.remove()
-    return
+    return 'saved'
   }
 
   const albumIdentifier =
@@ -229,6 +232,7 @@ export async function saveImageBlob(blob: Blob, fileName = `newsnook-${Date.now(
     albumIdentifier,
     fileName: prepared.fileName.replace(/\.[^.]+$/, ''),
   })
+  return 'saved'
 }
 
 /** 分享本地生成的图片 */
