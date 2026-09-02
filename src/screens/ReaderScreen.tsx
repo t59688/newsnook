@@ -1911,6 +1911,7 @@ export function ReaderScreen({
         model={speedReadConfig.model}
         articleTitle={canonicalTitle}
         sourceName={article.sourceName}
+        sourceLabel={article.sourceLabel}
         originUrl={originUrl}
         onClose={() => setSpeedReadOpen(false)}
         onRetry={() => void runSpeedRead()}

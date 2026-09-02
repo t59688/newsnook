@@ -13,6 +13,7 @@ import {
 } from 'lucide-react'
 
 import { exportMarkdownFile } from '../lib/articleMarkdown'
+import { displayArticleTitle } from '../lib/displayArticleTitle'
 import { saveImageBlob, shareImageBlob } from '../lib/imageActions'
 import { markdownToSafeHtml } from '../lib/markdown'
 import { copyShareText } from '../lib/shareArticle'
@@ -39,6 +40,7 @@ interface Props {
   model?: string
   articleTitle: string
   sourceName: string
+  sourceLabel?: string
   originUrl?: string
   onClose: () => void
   onRetry: () => void
@@ -57,6 +59,7 @@ export function AiSpeedReadPanel({
   model,
   articleTitle,
   sourceName,
+  sourceLabel,
   originUrl,
   onClose,
   onRetry,
@@ -67,6 +70,10 @@ export function AiSpeedReadPanel({
   const [busyAction, setBusyAction] = useState<ActionId | null>(null)
   const [shareStyle, setShareStyle] = useState<SpeedReadShareStyle>(() => loadSpeedReadShareStyle())
   const safeHtml = useMemo(() => markdownToSafeHtml(markdown), [markdown])
+  const displayTitle = useMemo(
+    () => displayArticleTitle(articleTitle, { sourceName, sourceLabel }),
+    [articleTitle, sourceName, sourceLabel],
+  )
   const hasContent = Boolean(markdown.trim())
   const canExport = hasContent && (state === 'ready' || state === 'cancelled')
 
@@ -129,6 +136,7 @@ export function AiSpeedReadPanel({
       const imageInput = {
         articleTitle,
         sourceName,
+        sourceLabel,
         model,
         markdown: trimmed,
       }
@@ -179,7 +187,7 @@ export function AiSpeedReadPanel({
               )}
             </div>
             <p className="mt-0.5 truncate font-mono text-[9.5px] tracking-[0.06em] text-paper-faint">
-              {articleTitle}
+              {displayTitle}
               {model ? ` · ${model}` : ''}
             </p>
           </div>

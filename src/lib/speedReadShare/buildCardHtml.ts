@@ -1,5 +1,6 @@
 import { parseSpeedReadMarkdown } from './parse'
 import { getShareLogoSrc } from './assets'
+import { displayArticleTitle } from '../displayArticleTitle'
 import { SPEED_READ_SECTION_TITLES } from '../../features/speedRead/sections'
 import type { ParsedSpeedRead, SpeedReadImageInput, SpeedReadShareStyle } from './types'
 
@@ -36,20 +37,6 @@ function formatInline(text: string, mode: 'v1' | 'b' | 'mark'): string {
   }
   parts.push(escapeHtml(text.slice(last)))
   return parts.join('')
-}
-
-export function displayTitle(title: string, sourceName?: string): string {
-  let value = title.trim()
-  const source = sourceName?.trim()
-  if (source) {
-    for (const suffix of [` - ${source}`, `-${source}`, ` | ${source}`, `｜${source}`]) {
-      if (value.endsWith(suffix)) {
-        value = value.slice(0, -suffix.length).trim()
-        break
-      }
-    }
-  }
-  return value || '一篇文章'
 }
 
 function formatTitleHtml(title: string, style: SpeedReadShareStyle): string {
@@ -215,7 +202,13 @@ function buildJournal(title: string, meta: string, content: ParsedSpeedRead, dat
 
 export function buildCardHtml(input: SpeedReadImageInput, style: SpeedReadShareStyle): string {
   const content = parseSpeedReadMarkdown(input.markdown)
-  const title = formatTitleHtml(displayTitle(input.articleTitle, input.sourceName), style)
+  const title = formatTitleHtml(
+    displayArticleTitle(input.articleTitle, {
+      sourceName: input.sourceName,
+      sourceLabel: input.sourceLabel,
+    }),
+    style,
+  )
   const meta = buildMeta(input.model, style === 'warm-paper')
   const dateCn = formatDateCn()
 
