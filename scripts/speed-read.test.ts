@@ -8,9 +8,11 @@ const {
   speedReadBodyForExport,
 } = await import('../src/features/speedRead/serialize')
 const {
+  createStreamUpdateScheduler,
   extractStreamChatDelta,
   splitInlineThinking,
 } = await import('../src/features/speedRead/streamChat')
+const { awaitWithAbort } = await import('../src/features/speedRead/abortable')
 const { hasSpeedReadableText, SPEED_READ_MIN_TEXT_CHARS } = await import('../src/features/speedRead/service')
 
 assert.deepEqual(chunkArticleText('a\n\nb\n\nc', 4), ['a\n\nb', 'c'])
@@ -49,5 +51,29 @@ assert.equal(delta.reasoning, '思考')
 
 assert.equal(hasSpeedReadableText('<video></video><p>' + '文'.repeat(SPEED_READ_MIN_TEXT_CHARS) + '</p>'), true)
 assert.equal(hasSpeedReadableText('<video></video><p>仅视频导语</p>'), false)
+
+let scheduledRuns = 0
+const scheduler = createStreamUpdateScheduler(() => {
+  scheduledRuns += 1
+}, 60_000)
+scheduler.schedule()
+for (let index = 0; index < 100; index += 1) scheduler.schedule()
+assert.equal(scheduledRuns, 1)
+scheduler.flush()
+assert.equal(scheduledRuns, 2)
+scheduler.schedule()
+scheduler.cancel()
+scheduler.flush()
+assert.equal(scheduledRuns, 2)
+
+const abortController = new AbortController()
+let resolveNative: ((value: string) => void) | null = null
+const nativePending = new Promise<string>((resolve) => {
+  resolveNative = resolve
+})
+const aborted = awaitWithAbort(nativePending, abortController.signal)
+abortController.abort()
+await assert.rejects(aborted, (error: unknown) => error instanceof DOMException && error.name === 'AbortError')
+resolveNative?.('late response')
 
 console.log('speed read tests passed')

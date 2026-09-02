@@ -67,7 +67,7 @@ import {
 } from '../features/translation/config'
 import type { TranslatedArticleContent, TranslationPrefs } from '../features/translation/types'
 import { loadSpeedReadCache, saveSpeedReadCache, speedReadCacheKey } from '../features/speedRead/cache'
-import { parseSpeedReadStored, summarizeArticle, hasSpeedReadableText } from '../features/speedRead/service'
+import { parseSpeedReadStored, summarizeArticle, hasSpeedReadableText, type SpeedReadPartial } from '../features/speedRead/service'
 import { fetchCommentCount, supportsComments } from '../features/comments/service'
 import { CommentsDrawer } from '../features/comments/components/CommentsDrawer'
 import { articleFromRelatedLink } from '../features/catalogEngine/toArticles'
@@ -161,6 +161,8 @@ export function ReaderScreen({
   const [speedReadError, setSpeedReadError] = useState('')
   const [exportingMarkdown, setExportingMarkdown] = useState(false)
   const speedReadAbortRef = useRef<AbortController | null>(null)
+  const speedReadOpenRef = useRef(false)
+  const speedReadLatestRef = useRef<SpeedReadPartial>({ thinking: '', body: '', status: '' })
 
   const canComment = useMemo(
     () => supportsComments({ ...article, originUrl: resolvedOriginUrl || article.originUrl }),
@@ -732,7 +734,10 @@ export function ReaderScreen({
     [article, resolvedTitle],
   )
 
-  const speedReadConfig = resolveAiFeatureConfig(translationPrefs, 'speedRead')
+  const speedReadConfig = useMemo(
+    () => resolveAiFeatureConfig({ ai: translationPrefs.ai }, 'speedRead'),
+    [translationPrefs.ai],
+  )
   const speedReadKey = useMemo(
     () => speedReadCacheKey(article.id, canonicalTitle, html, speedReadConfig),
     [article.id, canonicalTitle, html, speedReadConfig],
@@ -741,6 +746,8 @@ export function ReaderScreen({
   useEffect(() => {
     speedReadAbortRef.current?.abort()
     speedReadAbortRef.current = null
+    speedReadOpenRef.current = false
+    speedReadLatestRef.current = { thinking: '', body: '', status: '' }
     setSpeedReadOpen(false)
     setSpeedReadError('')
     setSpeedReadStatus('')
@@ -755,12 +762,14 @@ export function ReaderScreen({
     const cached = loadSpeedReadCache(speedReadKey)
     if (cached) {
       const parsed = parseSpeedReadStored(cached)
+      speedReadLatestRef.current = { thinking: parsed.thinking, body: parsed.body, status: '' }
       setSpeedReadMarkdown(parsed.body)
       setSpeedReadThinking(parsed.thinking)
       setSpeedReadState('ready')
       return
     }
 
+    speedReadLatestRef.current = { thinking: '', body: '', status: '' }
     setSpeedReadMarkdown('')
     setSpeedReadThinking('')
     setSpeedReadState('idle')
@@ -773,6 +782,8 @@ export function ReaderScreen({
 
     const controller = new AbortController()
     speedReadAbortRef.current = controller
+    speedReadOpenRef.current = true
+    speedReadLatestRef.current = { thinking: '', body: '', status: '' }
     setSpeedReadOpen(true)
     setSpeedReadState('loading')
     setSpeedReadError('')
@@ -790,6 +801,8 @@ export function ReaderScreen({
         onPartial: (partial) => {
           if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
           latestPartial = { thinking: partial.thinking, body: partial.body }
+          speedReadLatestRef.current = partial
+          if (!speedReadOpenRef.current) return
           setSpeedReadThinking(partial.thinking)
           setSpeedReadMarkdown(partial.body)
           setSpeedReadStatus(partial.status || '')
@@ -797,23 +810,32 @@ export function ReaderScreen({
       })
       if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
       const parsed = parseSpeedReadStored(result)
-      setSpeedReadThinking(parsed.thinking)
-      setSpeedReadMarkdown(parsed.body)
-      setSpeedReadStatus('')
+      speedReadLatestRef.current = { thinking: parsed.thinking, body: parsed.body, status: '' }
+      if (speedReadOpenRef.current) {
+        setSpeedReadThinking(parsed.thinking)
+        setSpeedReadMarkdown(parsed.body)
+        setSpeedReadStatus('')
+      }
       setSpeedReadState('ready')
       saveSpeedReadCache(speedReadKey, result)
     } catch (error) {
       if (speedReadAbortRef.current !== controller) return
       if (controller.signal.aborted) {
-        setSpeedReadThinking(latestPartial.thinking)
-        setSpeedReadMarkdown(latestPartial.body)
-        setSpeedReadStatus('')
+        speedReadLatestRef.current = { ...latestPartial, status: '' }
+        if (speedReadOpenRef.current) {
+          setSpeedReadThinking(latestPartial.thinking)
+          setSpeedReadMarkdown(latestPartial.body)
+          setSpeedReadStatus('')
+        }
         setSpeedReadState('cancelled')
         return
       }
-      setSpeedReadMarkdown('')
-      setSpeedReadThinking('')
-      setSpeedReadStatus('')
+      speedReadLatestRef.current = { thinking: '', body: '', status: '' }
+      if (speedReadOpenRef.current) {
+        setSpeedReadMarkdown('')
+        setSpeedReadThinking('')
+        setSpeedReadStatus('')
+      }
       setSpeedReadError(error instanceof Error ? error.message : 'AI 速读生成失败')
       setSpeedReadState('error')
     } finally {
@@ -822,11 +844,21 @@ export function ReaderScreen({
   }, [canonicalTitle, html, loadState, speedReadConfig, speedReadKey])
 
   const openSpeedRead = useCallback(() => {
+    speedReadOpenRef.current = true
     setSpeedReadOpen(true)
-    if (speedReadState === 'ready' && speedReadMarkdown.trim()) return
+    const latest = speedReadLatestRef.current
+    setSpeedReadThinking(latest.thinking)
+    setSpeedReadMarkdown(latest.body)
+    setSpeedReadStatus(latest.status || '')
+    if (speedReadState === 'ready' && latest.body.trim()) return
     if (speedReadState === 'loading') return
     void runSpeedRead()
-  }, [runSpeedRead, speedReadMarkdown, speedReadState])
+  }, [runSpeedRead, speedReadState])
+
+  const closeSpeedRead = useCallback(() => {
+    speedReadOpenRef.current = false
+    setSpeedReadOpen(false)
+  }, [])
 
   const cancelSpeedRead = useCallback(() => {
     if (!speedReadAbortRef.current) return
@@ -1911,7 +1943,7 @@ export function ReaderScreen({
         sourceName={article.sourceName}
         sourceLabel={article.sourceLabel}
         originUrl={originUrl}
-        onClose={() => setSpeedReadOpen(false)}
+        onClose={closeSpeedRead}
         onRetry={() => void runSpeedRead()}
         onCancel={cancelSpeedRead}
       />

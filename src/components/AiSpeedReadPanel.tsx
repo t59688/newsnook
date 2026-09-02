@@ -58,6 +58,9 @@ const ACTION_BUTTON_CLASS =
 
 /** 距底部在此范围内视为「贴底」，流式正文才跟随滚动 */
 const STREAM_SCROLL_STICK_THRESHOLD_PX = 64
+const THINKING_TIMER_FINE_INTERVAL_MS = 100
+const THINKING_TIMER_COARSE_INTERVAL_MS = 1000
+const THINKING_RAIL_MEASURE_INTERVAL_MS = 100
 
 function isNearScrollBottom(el: HTMLElement): boolean {
   return el.scrollHeight - el.scrollTop - el.clientHeight <= STREAM_SCROLL_STICK_THRESHOLD_PX
@@ -86,80 +89,122 @@ const ThinkingElapsedLabel = memo(function ThinkingElapsedLabel({ active }: { ac
     }
 
     if (!startedAtRef.current) startedAtRef.current = Date.now()
-    let frame = 0
+    let timer: ReturnType<typeof setTimeout> | null = null
     const tick = () => {
-      if (labelRef.current && startedAtRef.current) {
-        labelRef.current.textContent = formatThinkingElapsed((Date.now() - startedAtRef.current) / 1000)
-      }
-      frame = requestAnimationFrame(tick)
+      if (!labelRef.current || !startedAtRef.current) return
+      const elapsed = (Date.now() - startedAtRef.current) / 1000
+      labelRef.current.textContent = formatThinkingElapsed(elapsed)
+      timer = setTimeout(
+        tick,
+        elapsed < 10 ? THINKING_TIMER_FINE_INTERVAL_MS : THINKING_TIMER_COARSE_INTERVAL_MS,
+      )
     }
-    frame = requestAnimationFrame(tick)
-    return () => cancelAnimationFrame(frame)
+    tick()
+    return () => {
+      if (timer) clearTimeout(timer)
+    }
   }, [active])
 
   return <span ref={labelRef} className="tabular-nums">0.0</span>
 })
 
 function ThinkingPreviewRail({
-  thinking,
+  text,
   active,
   expanded,
 }: {
-  thinking: string
+  text: string
   active: boolean
   expanded: boolean
 }) {
   const trackRef = useRef<HTMLDivElement>(null)
   const innerRef = useRef<HTMLDivElement>(null)
-  const primaryRef = useRef<HTMLSpanElement>(null)
-  const duplicateRef = useRef<HTMLSpanElement>(null)
   const prevExpandedRef = useRef(false)
+  const prevActiveRef = useRef(active)
+  const measureTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastMeasuredAtRef = useRef(0)
+  const measureInputRef = useRef({ text, active, justCollapsed: false })
+
+  useEffect(
+    () => () => {
+      if (measureTimerRef.current) clearTimeout(measureTimerRef.current)
+    },
+    [],
+  )
 
   useLayoutEffect(() => {
-    const text = thinking.replace(/\s+/g, ' ').trim()
-    if (primaryRef.current) primaryRef.current.textContent = text
-    if (duplicateRef.current) duplicateRef.current.textContent = text
-
     const justCollapsed = prevExpandedRef.current && !expanded
+    const activeChanged = prevActiveRef.current !== active
     prevExpandedRef.current = expanded
+    prevActiveRef.current = active
+    measureInputRef.current = { text, active, justCollapsed }
 
     const track = trackRef.current
     const inner = innerRef.current
-    if (!track || !inner || expanded) return
+    if (!track || !inner) return
 
-    const stopMarquee = () => {
-      inner.classList.remove('speed-read-thinking-marquee')
-      inner.style.removeProperty('--speed-read-marquee-duration')
+    const cancelScheduledMeasure = () => {
+      if (!measureTimerRef.current) return
+      clearTimeout(measureTimerRef.current)
+      measureTimerRef.current = null
     }
 
-    if (!text) {
-      stopMarquee()
-      inner.style.removeProperty('transform')
+    if (expanded) {
+      cancelScheduledMeasure()
       return
     }
 
-    const halfWidth = inner.scrollWidth / 2
-    const overflows = halfWidth > track.clientWidth + 4
-
-    if (active && overflows) {
-      inner.style.removeProperty('transform')
-      const duration = Math.min(48, Math.max(14, text.length * 0.08))
-      inner.style.setProperty('--speed-read-marquee-duration', `${duration}s`)
-      if (justCollapsed || !inner.classList.contains('speed-read-thinking-marquee')) {
+    const measure = () => {
+      measureTimerRef.current = null
+      lastMeasuredAtRef.current = Date.now()
+      const input = measureInputRef.current
+      const stopMarquee = () => {
         inner.classList.remove('speed-read-thinking-marquee')
-        void inner.offsetWidth
-        inner.classList.add('speed-read-thinking-marquee')
+        inner.style.removeProperty('--speed-read-marquee-duration')
       }
-      return
+
+      if (!input.text) {
+        stopMarquee()
+        inner.style.removeProperty('transform')
+        return
+      }
+
+      const halfWidth = inner.scrollWidth / 2
+      const overflows = halfWidth > track.clientWidth + 4
+      if (input.active && overflows) {
+        inner.style.removeProperty('transform')
+        const duration = Math.min(48, Math.max(14, input.text.length * 0.08))
+        inner.style.setProperty('--speed-read-marquee-duration', `${duration}s`)
+        if (input.justCollapsed || !inner.classList.contains('speed-read-thinking-marquee')) {
+          inner.classList.remove('speed-read-thinking-marquee')
+          void inner.offsetWidth
+          inner.classList.add('speed-read-thinking-marquee')
+        }
+        return
+      }
+
+      stopMarquee()
+      if (overflows) {
+        inner.style.transform = `translate3d(${track.clientWidth - halfWidth}px, 0, 0)`
+      } else {
+        inner.style.removeProperty('transform')
+      }
     }
 
-    stopMarquee()
-    if (overflows) {
-      inner.style.transform = `translate3d(${track.clientWidth - halfWidth}px, 0, 0)`
-    } else {
-      inner.style.removeProperty('transform')
+    const now = Date.now()
+    const elapsed = now - lastMeasuredAtRef.current
+    if (!text || justCollapsed || activeChanged || elapsed >= THINKING_RAIL_MEASURE_INTERVAL_MS) {
+      cancelScheduledMeasure()
+      measure()
+      return
     }
-  }, [thinking, active, expanded])
+    if (!measureTimerRef.current) {
+      measureTimerRef.current = setTimeout(
+        measure,
+        Math.max(THINKING_RAIL_MEASURE_INTERVAL_MS - elapsed, 0),
+      )
+    }
+  }, [text, active, expanded])
 
   return (
     <div
@@ -168,14 +213,14 @@ function ThinkingPreviewRail({
       aria-hidden={expanded}
     >
       <div ref={innerRef} className="speed-read-thinking-inner inline-flex whitespace-nowrap text-[11px] leading-[18px] text-paper-faint/85">
-        <span ref={primaryRef} />
-        <span ref={duplicateRef} className="pl-8" aria-hidden />
+        <span>{text}</span>
+        <span className="pl-8" aria-hidden>{text}</span>
       </div>
     </div>
   )
 }
 
-function SpeedReadThinkingBlock({
+const SpeedReadThinkingBlock = memo(function SpeedReadThinkingBlock({
   thinking,
   loading,
   bodyStarted,
@@ -219,7 +264,7 @@ function SpeedReadThinkingBlock({
             </span>
             {thinkingPhase && <LoaderCircle size={11} className="shrink-0 animate-spin text-cinnabar-soft" />}
           </div>
-          <ThinkingPreviewRail thinking={thinking} active={thinkingPhase} expanded={expanded} />
+          <ThinkingPreviewRail text={previewText} active={thinkingPhase} expanded={expanded} />
         </div>
         <ChevronRight
           size={14}
@@ -234,7 +279,7 @@ function SpeedReadThinkingBlock({
       )}
     </div>
   )
-}
+})
 
 export function AiSpeedReadPanel({
   open,
@@ -259,13 +304,14 @@ export function AiSpeedReadPanel({
   const [busyAction, setBusyAction] = useState<ActionId | null>(null)
   const [panelToast, setPanelToast] = useState<string | null>(null)
   const [shareStyle, setShareStyle] = useState<SpeedReadShareStyle>(() => loadSpeedReadShareStyle())
-  const safeHtml = useMemo(() => markdownToSafeHtml(markdown), [markdown])
+  const hasMarkdown = Boolean(markdown.trim())
+  const safeHtml = useMemo(() => (open && hasMarkdown ? markdownToSafeHtml(markdown) : ''), [open, hasMarkdown, markdown])
   const displayTitle = useMemo(
     () => displayArticleTitle(articleTitle, { sourceName, sourceLabel }),
     [articleTitle, sourceName, sourceLabel],
   )
-  const hasContent = Boolean(markdown.trim() || thinking.trim())
-  const canExport = Boolean(markdown.trim()) && (state === 'ready' || state === 'cancelled')
+  const hasContent = Boolean(hasMarkdown || thinking.trim())
+  const canExport = hasMarkdown && (state === 'ready' || state === 'cancelled')
 
   const notify = useCallback((message: string) => {
     setPanelToast(message)
@@ -294,9 +340,9 @@ export function AiSpeedReadPanel({
   }, [open])
 
   useEffect(() => {
-    if (!open || !markdown.trim()) return
+    if (!open || !hasMarkdown) return
     void warmupSpeedReadShareAssets()
-  }, [open, markdown])
+  }, [open, hasMarkdown])
 
   useEffect(() => {
     if (!open) {

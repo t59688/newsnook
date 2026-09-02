@@ -2,6 +2,7 @@ import { Capacitor, CapacitorHttp } from '@capacitor/core'
 
 import { stripTags } from '../../lib/resolveBody/shared'
 import { SPEED_READ_SECTION_TITLES } from './sections'
+import { awaitWithAbort } from './abortable'
 import { cleanMarkdown } from './markdown'
 import { serializeSpeedRead } from './serialize'
 import { streamChatCompletion, type StreamChatPartial } from './streamChat'
@@ -183,16 +184,19 @@ async function completeJson(
 
   let response: { status: number; data: unknown }
   if (Capacitor.isNativePlatform()) {
-    const nativeResponse = await CapacitorHttp.post({
-      url,
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      data: body,
-      connectTimeout: 15000,
-      readTimeout: 120000,
-    })
+    const nativeResponse = await awaitWithAbort(
+      CapacitorHttp.post({
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        data: body,
+        connectTimeout: 15000,
+        readTimeout: 120000,
+      }),
+      signal,
+    )
     response = { status: nativeResponse.status, data: coerceJson(nativeResponse.data) }
   } else {
     const webResponse = await fetch(url, {

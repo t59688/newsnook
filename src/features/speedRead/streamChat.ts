@@ -1,6 +1,7 @@
 import { Capacitor, CapacitorHttp } from '@capacitor/core'
 
 import { extractOpenAiChatContent } from '../translation/openai'
+import { awaitWithAbort } from './abortable'
 import { cleanMarkdown } from './markdown'
 
 export interface ChatMessage {
@@ -16,6 +17,58 @@ export interface StreamChatDelta {
 export interface StreamChatPartial {
   thinking: string
   body: string
+}
+
+const STREAM_PARTIAL_INTERVAL_MS = 80
+
+export interface StreamUpdateScheduler {
+  schedule: () => void
+  flush: () => void
+  cancel: () => void
+}
+
+/** Coalesce bursty token callbacks without dropping any accumulated text. */
+export function createStreamUpdateScheduler(
+  run: () => void,
+  intervalMs = STREAM_PARTIAL_INTERVAL_MS,
+): StreamUpdateScheduler {
+  const interval = Math.max(0, intervalMs)
+  let lastRunAt = 0
+  let timer: ReturnType<typeof setTimeout> | null = null
+  let pending = false
+
+  const runPending = () => {
+    if (!pending) return
+    pending = false
+    if (timer) {
+      clearTimeout(timer)
+      timer = null
+    }
+    lastRunAt = Date.now()
+    run()
+  }
+
+  return {
+    schedule: () => {
+      pending = true
+      const now = Date.now()
+      const elapsed = lastRunAt ? now - lastRunAt : interval
+      if (elapsed >= interval) {
+        runPending()
+        return
+      }
+      if (timer) return
+      timer = setTimeout(runPending, Math.max(interval - elapsed, 0))
+    },
+    flush: runPending,
+    cancel: () => {
+      pending = false
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+    },
+  }
 }
 
 function coerceJson(data: unknown): unknown {
@@ -98,16 +151,19 @@ async function completeJson(
 
   let response: { status: number; data: unknown }
   if (Capacitor.isNativePlatform()) {
-    const nativeResponse = await CapacitorHttp.post({
-      url,
-      headers: {
-        'Content-Type': 'application/json; charset=UTF-8',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      data: body,
-      connectTimeout: 15000,
-      readTimeout: 120000,
-    })
+    const nativeResponse = await awaitWithAbort(
+      CapacitorHttp.post({
+        url,
+        headers: {
+          'Content-Type': 'application/json; charset=UTF-8',
+          Authorization: `Bearer ${apiKey}`,
+        },
+        data: body,
+        connectTimeout: 15000,
+        readTimeout: 120000,
+      }),
+      signal,
+    )
     response = { status: nativeResponse.status, data: coerceJson(nativeResponse.data) }
   } else {
     const webResponse = await fetch(url, {
@@ -156,6 +212,8 @@ export async function streamChatCompletion(
     onPartial?.(partial)
   }
 
+  let updateScheduler: StreamUpdateScheduler | null = null
+
   try {
     const response = await fetch(url, {
       method: 'POST',
@@ -185,11 +243,9 @@ export async function streamChatCompletion(
     let bodyText = ''
     let sawSse = false
 
-    const flush = () => {
-      const merged = mergePartial(thinking, bodyText)
-      emit(merged)
-      return merged
-    }
+    updateScheduler = createStreamUpdateScheduler(() => {
+      emit(mergePartial(thinking, bodyText))
+    })
 
     const consumeLine = (line: string) => {
       const trimmed = line.trim()
@@ -204,16 +260,17 @@ export async function streamChatCompletion(
         return
       }
       const delta = extractStreamChatDelta(payload)
+      if (!delta.reasoning && !delta.content) return
       if (delta.reasoning) thinking += delta.reasoning
       if (delta.content) bodyText += delta.content
-      flush()
+      updateScheduler?.schedule()
     }
 
     while (true) {
       const chunk = await reader.read()
       if (chunk.done) break
       const text = decoder.decode(chunk.value, { stream: true })
-      raw += text
+      if (!sawSse) raw += text
       buffer += text.replace(/\r\n/g, '\n')
       let newline = buffer.indexOf('\n')
       while (newline >= 0) {
@@ -221,6 +278,7 @@ export async function streamChatCompletion(
         buffer = buffer.slice(newline + 1)
         newline = buffer.indexOf('\n')
       }
+      if (sawSse) raw = ''
     }
     buffer += decoder.decode()
     if (buffer.trim()) consumeLine(buffer)
@@ -239,11 +297,13 @@ export async function streamChatCompletion(
       }
     }
 
+    updateScheduler.cancel()
     const merged = mergePartial(thinking, cleanMarkdown(bodyText))
     if (!merged.thinking && !merged.body.trim()) throw new Error('AI 速读：返回内容为空')
     emit(merged)
     return merged
   } catch (error) {
+    updateScheduler?.cancel()
     if (signal?.aborted) throw error
     const streamUnavailable =
       error instanceof TypeError ||
