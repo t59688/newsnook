@@ -1,11 +1,13 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
-import { ArrowLeft, BookmarkCheck, BookmarkPlus, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, X } from 'lucide-react'
+import { ArrowLeft, BookmarkCheck, BookmarkPlus, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, Sparkles, X } from 'lucide-react'
 
+import { AiSpeedReadPanel, type SpeedReadUiState } from '../components/AiSpeedReadPanel'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { EinkReaderMenu } from '../components/EinkReaderMenu'
 import { ReaderMoreMenu } from '../components/ReaderMoreMenu'
+import { ReaderScrollIndicator } from '../components/ReaderScrollIndicator'
 import { ShareArticleSheet } from '../components/ShareArticleSheet'
 import { InkAudioPlayer } from '../components/InkAudioPlayer'
 import { InkImage } from '../components/InkImage'
@@ -41,6 +43,7 @@ import {
   resolveScrollTop,
 } from '../lib/readingPosition'
 import { buildClipboardText, copyShareText, shareArticle } from '../lib/shareArticle'
+import { buildArticleMarkdown, exportMarkdownFile, markdownFileName } from '../lib/articleMarkdown'
 import {
   SHARE_FALLBACK_TITLE,
   buildShareUrl,
@@ -62,6 +65,8 @@ import {
   translationProviderLabel,
 } from '../features/translation/config'
 import type { TranslatedArticleContent, TranslationPrefs } from '../features/translation/types'
+import { loadSpeedReadCache, saveSpeedReadCache, speedReadCacheKey } from '../features/speedRead/cache'
+import { summarizeArticle } from '../features/speedRead/service'
 import { fetchCommentCount, supportsComments } from '../features/comments/service'
 import { CommentsDrawer } from '../features/comments/components/CommentsDrawer'
 import { articleFromRelatedLink } from '../features/catalogEngine/toArticles'
@@ -147,6 +152,15 @@ export function ReaderScreen({
   const translationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingPartialRef = useRef<TranslatedArticleContent | null>(null)
   const partialFrameRef = useRef(0)
+  const [speedReadOpen, setSpeedReadOpen] = useState(false)
+  const [speedReadState, setSpeedReadState] = useState<SpeedReadUiState>('idle')
+  const [speedReadMarkdown, setSpeedReadMarkdown] = useState('')
+  const [speedReadError, setSpeedReadError] = useState('')
+  const [exportingMarkdown, setExportingMarkdown] = useState(false)
+  const speedReadAbortRef = useRef<AbortController | null>(null)
+  const speedReadFrameRef = useRef(0)
+  const pendingSpeedReadRef = useRef('')
+
   const canComment = useMemo(
     () => supportsComments({ ...article, originUrl: resolvedOriginUrl || article.originUrl }),
     [article, resolvedOriginUrl],
@@ -189,6 +203,17 @@ export function ReaderScreen({
   useEffect(
     () => () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+    },
+    [],
+  )
+
+  useEffect(
+    () => () => {
+      speedReadAbortRef.current?.abort()
+      if (speedReadFrameRef.current) {
+        window.cancelAnimationFrame(speedReadFrameRef.current)
+        speedReadFrameRef.current = 0
+      }
     },
     [],
   )
@@ -380,6 +405,10 @@ export function ReaderScreen({
     let isTracking = false
 
     const onTouchStart = (e: TouchEvent) => {
+      const target = e.target
+      if (target instanceof Element && target.closest('[data-reader-scroll-indicator]')) {
+        return
+      }
       if (e.touches.length !== 1) return
       const touch = e.touches[0]
       if (window.innerWidth - touch.clientX <= 38) {
@@ -694,10 +723,11 @@ export function ReaderScreen({
       ? SHARE_FALLBACK_TITLE
       : article.title
 
+  const canonicalTitle = resolvedTitle || pendingTitle
   const displayedTitle =
     showTranslation && translated && !comparing
       ? translated.title
-      : resolvedTitle || pendingTitle
+      : canonicalTitle
 
   /** 分享深链进来的文章标题只是占位；收藏与再分享都用正文抽取补回的真标题 */
   const laterArticle = useMemo(
@@ -705,12 +735,118 @@ export function ReaderScreen({
     [article, resolvedTitle],
   )
 
+  const speedReadConfig = translationPrefs.cloud.openai
+  const speedReadKey = useMemo(
+    () => speedReadCacheKey(article.id, canonicalTitle, html, speedReadConfig),
+    [article.id, canonicalTitle, html, speedReadConfig],
+  )
+
+  useEffect(() => {
+    speedReadAbortRef.current?.abort()
+    speedReadAbortRef.current = null
+    if (speedReadFrameRef.current) {
+      window.cancelAnimationFrame(speedReadFrameRef.current)
+      speedReadFrameRef.current = 0
+    }
+    pendingSpeedReadRef.current = ''
+    setSpeedReadOpen(false)
+    setSpeedReadError('')
+
+    if (loadState !== 'ready' || !html.trim()) {
+      setSpeedReadMarkdown('')
+      setSpeedReadState('idle')
+      return
+    }
+
+    const cached = loadSpeedReadCache(speedReadKey)
+    setSpeedReadMarkdown(cached || '')
+    setSpeedReadState(cached ? 'ready' : 'idle')
+  }, [html, loadState, speedReadKey])
+
+  const runSpeedRead = useCallback(async () => {
+    if (loadState !== 'ready' || !html.trim()) return
+
+    speedReadAbortRef.current?.abort()
+    if (speedReadFrameRef.current) {
+      window.cancelAnimationFrame(speedReadFrameRef.current)
+      speedReadFrameRef.current = 0
+    }
+    pendingSpeedReadRef.current = ''
+
+    const controller = new AbortController()
+    speedReadAbortRef.current = controller
+    setSpeedReadOpen(true)
+    setSpeedReadState('loading')
+    setSpeedReadError('')
+    setSpeedReadMarkdown('')
+
+    let latestPartial = ''
+    try {
+      const result = await summarizeArticle({
+        title: canonicalTitle,
+        contentHtml: html,
+        config: speedReadConfig,
+        signal: controller.signal,
+        onPartial: (partial) => {
+          if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
+          latestPartial = partial
+          pendingSpeedReadRef.current = partial
+          if (speedReadFrameRef.current) return
+          speedReadFrameRef.current = window.requestAnimationFrame(() => {
+            speedReadFrameRef.current = 0
+            if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
+            setSpeedReadMarkdown(pendingSpeedReadRef.current)
+          })
+        },
+      })
+      if (controller.signal.aborted || speedReadAbortRef.current !== controller) return
+      if (speedReadFrameRef.current) {
+        window.cancelAnimationFrame(speedReadFrameRef.current)
+        speedReadFrameRef.current = 0
+      }
+      pendingSpeedReadRef.current = ''
+      setSpeedReadMarkdown(result)
+      setSpeedReadState('ready')
+      saveSpeedReadCache(speedReadKey, result)
+    } catch (error) {
+      if (speedReadFrameRef.current) {
+        window.cancelAnimationFrame(speedReadFrameRef.current)
+        speedReadFrameRef.current = 0
+      }
+      pendingSpeedReadRef.current = ''
+      if (speedReadAbortRef.current !== controller) return
+      if (controller.signal.aborted) {
+        setSpeedReadMarkdown(latestPartial)
+        setSpeedReadState('cancelled')
+        return
+      }
+      setSpeedReadMarkdown('')
+      setSpeedReadError(error instanceof Error ? error.message : 'AI 速读生成失败')
+      setSpeedReadState('error')
+    } finally {
+      if (speedReadAbortRef.current === controller) speedReadAbortRef.current = null
+    }
+  }, [canonicalTitle, html, loadState, speedReadConfig, speedReadKey])
+
+  const openSpeedRead = useCallback(() => {
+    setSpeedReadOpen(true)
+    if (speedReadState === 'ready' && speedReadMarkdown.trim()) return
+    if (speedReadState === 'loading') return
+    void runSpeedRead()
+  }, [runSpeedRead, speedReadMarkdown, speedReadState])
+
+  const cancelSpeedRead = useCallback(() => {
+    if (!speedReadAbortRef.current) return
+    speedReadAbortRef.current.abort()
+    setSpeedReadState('cancelled')
+  }, [])
+
   const paged = usePagedReader({
     enabled: einkMode,
     articleId: article.id,
     viewportRef: rootRef,
     contentRef: contentMeasureRef,
-    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}`,
+    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}:${speedReadOpen}:${speedReadState}:${Math.ceil(speedReadMarkdown.length / 256)}`,
     ready: loadState === 'ready',
   })
 
@@ -915,6 +1051,12 @@ export function ReaderScreen({
 
   const isBlockedBody = bodySource === 'blocked'
 
+  const canSpeedRead =
+    loadState === 'ready' &&
+    Boolean(html.trim()) &&
+    bodySource !== 'blocked' &&
+    bodySource !== 'video'
+
   /** 出版社地址：只用于「浏览器核对原文」与分享 token 里的正文来源 */
   const originUrl = resolvedOriginUrl || article.originUrl
 
@@ -997,6 +1139,45 @@ export function ReaderScreen({
         : '复制失败，请手动选中链接',
     )
   }, [shareClipboardText, shareUrl, showToast])
+
+  const handleExportMarkdown = useCallback(async () => {
+    setMoreMenuOpen(false)
+    if (loadState !== 'ready' || !html.trim()) {
+      showToast('正文加载完成后才能导出')
+      return
+    }
+
+    setExportingMarkdown(true)
+    try {
+      const markdown = buildArticleMarkdown({
+        article,
+        title: canonicalTitle,
+        html,
+        originUrl,
+        speedReadMarkdown: speedReadState === 'ready' ? speedReadMarkdown : undefined,
+      })
+      const result = await exportMarkdownFile(
+        markdown,
+        markdownFileName(canonicalTitle),
+        canonicalTitle,
+      )
+      if (result === 'downloaded') showToast('Markdown 已下载')
+      else if (result === 'shared') showToast('Markdown 已导出')
+    } catch {
+      showToast('Markdown 导出失败，请重试')
+    } finally {
+      setExportingMarkdown(false)
+    }
+  }, [
+    article,
+    canonicalTitle,
+    html,
+    loadState,
+    originUrl,
+    showToast,
+    speedReadMarkdown,
+    speedReadState,
+  ])
 
   const cancelTranslation = useCallback(() => {
     translationAbortRef.current?.abort()
@@ -1216,18 +1397,19 @@ export function ReaderScreen({
           </div>
         </header>
 
-        <div
-          ref={rootRef}
-          {...{ [SCROLL_SURFACE_ATTR]: '' }}
-          onScroll={einkMode ? undefined : handleScroll}
-          className={`scroll-hidden min-h-0 flex-1 overflow-x-hidden ${
-            einkMode
-              ? paged.pageSliceHeight > paged.pageHeight
-                ? 'overflow-y-auto'
-                : 'overflow-hidden'
-              : 'overflow-y-auto'
-          }`}
-        >
+        <div className="relative min-h-0 flex-1">
+          <div
+            ref={rootRef}
+            {...{ [SCROLL_SURFACE_ATTR]: '' }}
+            onScroll={einkMode ? undefined : handleScroll}
+            className={`scroll-hidden h-full overflow-x-hidden ${
+              einkMode
+                ? paged.pageSliceHeight > paged.pageHeight
+                  ? 'overflow-y-auto'
+                  : 'overflow-hidden'
+                : 'overflow-y-auto'
+            }`}
+          >
           <div
             className="mx-auto w-full max-w-3xl lg:max-w-4xl"
             style={
@@ -1255,6 +1437,27 @@ export function ReaderScreen({
               <p className="mt-3 h-[13px] font-mono text-[10px] leading-[13px] tracking-[0.12em] text-paper-faint">
                 {sourceHint}
               </p>
+              {canSpeedRead && (
+                <div className="mt-3 flex items-center">
+                  <button
+                    type="button"
+                    onClick={openSpeedRead}
+                    aria-expanded={speedReadOpen}
+                    className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 font-mono text-[10.5px] tracking-[0.04em] transition-colors ${
+                      speedReadOpen
+                        ? 'border-cinnabar/50 bg-cinnabar/15 text-cinnabar-soft'
+                        : 'border-haze bg-ink-raised/70 text-paper-muted hover:border-cinnabar/35 hover:text-paper'
+                    }`}
+                  >
+                    {speedReadState === 'loading' ? (
+                      <LoaderCircle size={12} strokeWidth={1.8} className="animate-spin text-cinnabar-soft" />
+                    ) : (
+                      <Sparkles size={12} strokeWidth={1.8} className="text-cinnabar-soft" />
+                    )}
+                    {speedReadState === 'loading' ? '速读中' : speedReadState === 'ready' ? '查看速读' : 'AI 速读'}
+                  </button>
+                </div>
+              )}
               {isBlockedBody && loadState === 'ready' && (
                 <div
                   role="status"
@@ -1341,6 +1544,17 @@ export function ReaderScreen({
                 </div>
               )}
             </div>
+
+            <AiSpeedReadPanel
+              open={speedReadOpen}
+              state={speedReadState}
+              markdown={speedReadMarkdown}
+              error={speedReadError}
+              model={speedReadConfig.model}
+              onClose={() => setSpeedReadOpen(false)}
+              onRetry={() => void runSpeedRead()}
+              onCancel={cancelSpeedRead}
+            />
 
             {coverUrl && article.contentType !== 'video' && (
               <div className="mt-5 page-x lg:px-8">
@@ -1536,7 +1750,10 @@ export function ReaderScreen({
             </div>
             </div>
           </div>
+          </div>
+          {!einkMode && <ReaderScrollIndicator targetRef={rootRef} />}
         </div>
+
 
       {einkMode && loadState === 'ready' && !einkMenuOpen && (
         <div
@@ -1576,9 +1793,12 @@ export function ReaderScreen({
       <ReaderMoreMenu
         open={moreMenuOpen}
         hasOriginUrl={Boolean(originUrl)}
+        canExportMarkdown={loadState === 'ready' && Boolean(html.trim())}
+        exportingMarkdown={exportingMarkdown}
         onClose={() => setMoreMenuOpen(false)}
         onShare={openShareSheet}
         onCopyLink={() => void handleCopyLink()}
+        onExportMarkdown={() => void handleExportMarkdown()}
         onOpenOriginal={() => {
           setMoreMenuOpen(false)
           void openOriginal()

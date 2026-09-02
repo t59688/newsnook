@@ -1,12 +1,15 @@
-import { Copy, Globe, RefreshCw, Share2, X, type LucideIcon } from 'lucide-react'
+import { Copy, FileDown, Globe, RefreshCw, Share2, X, type LucideIcon } from 'lucide-react'
 
 interface Props {
   open: boolean
   /** 有原文地址时才允许浏览器核对与复制链接 */
   hasOriginUrl: boolean
+  canExportMarkdown: boolean
+  exportingMarkdown: boolean
   onClose: () => void
   onShare: () => void
   onCopyLink: () => void
+  onExportMarkdown: () => void
   onOpenOriginal: () => void
   onReextract: () => void
 }
@@ -38,14 +41,17 @@ function ActionRow({ icon: Icon, title, caption, disabled, onClick }: ActionRowP
 
 /**
  * 阅读器溢出菜单：顶栏只留翻译 / 收藏 / 跟贴这些高频动作，
- * 分享、核对原文、重新抽取收到这里，避免小屏顶栏挤到点不准。
+ * 分享、导出、核对原文、重新抽取收到这里，避免小屏顶栏挤到点不准。
  */
 export function ReaderMoreMenu({
   open,
   hasOriginUrl,
+  canExportMarkdown,
+  exportingMarkdown,
   onClose,
   onShare,
   onCopyLink,
+  onExportMarkdown,
   onOpenOriginal,
   onReextract,
 }: Props) {
@@ -62,7 +68,7 @@ export function ReaderMoreMenu({
       <div
         role="dialog"
         aria-label="更多操作"
-        className="shrink-0 border-t border-haze bg-ink pt-3"
+        className="max-h-[85vh] shrink-0 overflow-y-auto border-t border-haze bg-ink pt-3"
         style={{ paddingBottom: 'calc(var(--sab) + 12px)' }}
       >
         <div className="page-x mx-auto w-full max-w-3xl space-y-3">
@@ -84,6 +90,19 @@ export function ReaderMoreMenu({
               title="分享文章"
               caption="先看分享卡片，再交给系统分享面板"
               onClick={onShare}
+            />
+            <ActionRow
+              icon={FileDown}
+              title="导出 Markdown"
+              caption={
+                exportingMarkdown
+                  ? '正在整理原文正文…'
+                  : canExportMarkdown
+                    ? '保留正文结构与原文链接，便于存档或交给 AI 分析'
+                    : '正文加载完成后可导出'
+              }
+              disabled={!canExportMarkdown || exportingMarkdown}
+              onClick={onExportMarkdown}
             />
             <ActionRow
               icon={Copy}
