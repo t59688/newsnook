@@ -11,8 +11,12 @@ const {
   createStreamUpdateScheduler,
   extractStreamChatDelta,
   splitInlineThinking,
+  streamChatCompletion,
 } = await import('../src/features/speedRead/streamChat')
 const { awaitWithAbort } = await import('../src/features/speedRead/abortable')
+const { createSpeedReadPartialStore, EMPTY_SPEED_READ_PARTIAL } = await import(
+  '../src/features/speedRead/partialStore'
+)
 const { hasSpeedReadableText, SPEED_READ_MIN_TEXT_CHARS } = await import('../src/features/speedRead/service')
 
 assert.deepEqual(chunkArticleText('a\n\nb\n\nc', 4), ['a\n\nb', 'c'])
@@ -75,5 +79,54 @@ const aborted = awaitWithAbort(nativePending, abortController.signal)
 abortController.abort()
 await assert.rejects(aborted, (error: unknown) => error instanceof DOMException && error.name === 'AbortError')
 resolveNative?.('late response')
+
+const partialStore = createSpeedReadPartialStore()
+const firstHiddenPartial = { thinking: '后台思考', body: '', status: '正在生成速读…' }
+partialStore.set(firstHiddenPartial)
+assert.deepEqual(partialStore.getSnapshot(), firstHiddenPartial, '无订阅者时仍保留最新进度')
+
+let partialNotifications = 0
+const unsubscribePartial = partialStore.subscribe(() => {
+  partialNotifications += 1
+})
+partialStore.set(firstHiddenPartial)
+assert.equal(partialNotifications, 0, '相同快照不重复广播')
+partialStore.set({ thinking: '后台思考', body: '## 有所闻', status: '' })
+assert.equal(partialNotifications, 1)
+unsubscribePartial()
+partialStore.set({ thinking: '已完成', body: '## 有所闻\n\n结论', status: '' })
+assert.equal(partialNotifications, 1, '关闭面板退订后不触发渲染通知')
+assert.equal(partialStore.getSnapshot().body, '## 有所闻\n\n结论', '重新打开时可同步恢复最新进度')
+partialStore.reset()
+assert.deepEqual(partialStore.getSnapshot(), EMPTY_SPEED_READ_PARTIAL)
+
+const encoder = new TextEncoder()
+const responseStream = new ReadableStream<Uint8Array>({
+  start(controller) {
+    controller.enqueue(
+      encoder.encode('data: {"choices":[{"delta":{"content":"## 有所闻\\n\\n结论"}}]}\n\ndata: [DONE]\n\n'),
+    )
+    controller.close()
+  },
+})
+const originalFetch = globalThis.fetch
+globalThis.fetch = async () =>
+  new Response(responseStream, {
+    status: 200,
+    headers: { 'Content-Type': 'text/event-stream; charset=utf-8' },
+  })
+try {
+  const streamed = await streamChatCompletion(
+    'https://api.example.com/v1/chat/completions',
+    'test-key',
+    { model: 'test-model', stream: true },
+    undefined,
+    undefined,
+  )
+  assert.equal(streamed.body, '## 有所闻\n\n结论')
+  assert.equal(responseStream.locked, false, '流完成后必须释放 reader lock')
+} finally {
+  globalThis.fetch = originalFetch
+}
 
 console.log('speed read tests passed')

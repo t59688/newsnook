@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ChevronRight,
@@ -31,6 +31,7 @@ import {
   type SpeedReadShareStyle,
 } from '../lib/speedReadImage'
 import { warmupSpeedReadShareAssets } from '../lib/speedReadShare/assets'
+import type { SpeedReadPartialStore } from '../features/speedRead/partialStore'
 
 export type SpeedReadUiState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled'
 
@@ -39,9 +40,7 @@ type ActionId = 'copy' | 'export-md' | 'save-image' | 'share-image'
 interface Props {
   open: boolean
   state: SpeedReadUiState
-  markdown: string
-  thinking: string
-  status: string
+  partialStore: SpeedReadPartialStore
   error: string
   model?: string
   articleTitle: string
@@ -52,6 +51,8 @@ interface Props {
   onRetry: () => void
   onCancel: () => void
 }
+
+const NO_PARTIAL_SUBSCRIPTION = () => () => undefined
 
 const ACTION_BUTTON_CLASS =
   'flex min-h-11 flex-1 items-center justify-center gap-1.5 rounded-full border border-haze bg-ink-raised/70 px-3 font-mono text-[10.5px] text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-paper disabled:opacity-35'
@@ -284,9 +285,7 @@ const SpeedReadThinkingBlock = memo(function SpeedReadThinkingBlock({
 export function AiSpeedReadPanel({
   open,
   state,
-  markdown,
-  thinking,
-  status,
+  partialStore,
   error,
   model,
   articleTitle,
@@ -304,6 +303,12 @@ export function AiSpeedReadPanel({
   const [busyAction, setBusyAction] = useState<ActionId | null>(null)
   const [panelToast, setPanelToast] = useState<string | null>(null)
   const [shareStyle, setShareStyle] = useState<SpeedReadShareStyle>(() => loadSpeedReadShareStyle())
+  const partial = useSyncExternalStore(
+    open ? partialStore.subscribe : NO_PARTIAL_SUBSCRIPTION,
+    partialStore.getSnapshot,
+    partialStore.getSnapshot,
+  )
+  const { body: markdown, thinking, status = '' } = partial
   const hasMarkdown = Boolean(markdown.trim())
   const safeHtml = useMemo(() => (open && hasMarkdown ? markdownToSafeHtml(markdown) : ''), [open, hasMarkdown, markdown])
   const displayTitle = useMemo(

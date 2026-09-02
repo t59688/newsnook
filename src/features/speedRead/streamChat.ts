@@ -236,72 +236,76 @@ export async function streamChatCompletion(
     }
 
     const reader = response.body.getReader()
-    const decoder = new TextDecoder('utf-8')
-    let buffer = ''
-    let raw = ''
-    let thinking = ''
-    let bodyText = ''
-    let sawSse = false
+    try {
+      const decoder = new TextDecoder('utf-8')
+      let buffer = ''
+      let raw = ''
+      let thinking = ''
+      let bodyText = ''
+      let sawSse = false
 
-    updateScheduler = createStreamUpdateScheduler(() => {
-      emit(mergePartial(thinking, bodyText))
-    })
+      updateScheduler = createStreamUpdateScheduler(() => {
+        emit(mergePartial(thinking, bodyText))
+      })
 
-    const consumeLine = (line: string) => {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) return
-      sawSse = true
-      const data = trimmed.slice(5).trim()
-      if (!data || data === '[DONE]') return
-      let payload: unknown
-      try {
-        payload = JSON.parse(data) as unknown
-      } catch {
-        return
+      const consumeLine = (line: string) => {
+        const trimmed = line.trim()
+        if (!trimmed.startsWith('data:')) return
+        sawSse = true
+        const data = trimmed.slice(5).trim()
+        if (!data || data === '[DONE]') return
+        let payload: unknown
+        try {
+          payload = JSON.parse(data) as unknown
+        } catch {
+          return
+        }
+        const delta = extractStreamChatDelta(payload)
+        if (!delta.reasoning && !delta.content) return
+        if (delta.reasoning) thinking += delta.reasoning
+        if (delta.content) bodyText += delta.content
+        updateScheduler?.schedule()
       }
-      const delta = extractStreamChatDelta(payload)
-      if (!delta.reasoning && !delta.content) return
-      if (delta.reasoning) thinking += delta.reasoning
-      if (delta.content) bodyText += delta.content
-      updateScheduler?.schedule()
-    }
 
-    while (true) {
-      const chunk = await reader.read()
-      if (chunk.done) break
-      const text = decoder.decode(chunk.value, { stream: true })
-      if (!sawSse) raw += text
-      buffer += text.replace(/\r\n/g, '\n')
-      let newline = buffer.indexOf('\n')
-      while (newline >= 0) {
-        consumeLine(buffer.slice(0, newline))
-        buffer = buffer.slice(newline + 1)
-        newline = buffer.indexOf('\n')
+      while (true) {
+        const chunk = await reader.read()
+        if (chunk.done) break
+        const text = decoder.decode(chunk.value, { stream: true })
+        if (!sawSse) raw += text
+        buffer += text.replace(/\r\n/g, '\n')
+        let newline = buffer.indexOf('\n')
+        while (newline >= 0) {
+          consumeLine(buffer.slice(0, newline))
+          buffer = buffer.slice(newline + 1)
+          newline = buffer.indexOf('\n')
+        }
+        if (sawSse) raw = ''
       }
-      if (sawSse) raw = ''
-    }
-    buffer += decoder.decode()
-    if (buffer.trim()) consumeLine(buffer)
+      buffer += decoder.decode()
+      if (buffer.trim()) consumeLine(buffer)
 
-    if (!sawSse) {
-      try {
-        const payload = JSON.parse(raw) as unknown
-        const message = (payload as { choices?: Array<{ message?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown } }> })
-          ?.choices?.[0]?.message
-        const content = textFromUnknown(message?.content) || extractOpenAiChatContent(payload) || ''
-        const reasoning = textFromUnknown(message?.reasoning_content ?? message?.reasoning)
-        thinking = reasoning
-        bodyText = content
-      } catch {
-        /* fall through */
+      if (!sawSse) {
+        try {
+          const payload = JSON.parse(raw) as unknown
+          const message = (payload as { choices?: Array<{ message?: { content?: unknown; reasoning_content?: unknown; reasoning?: unknown } }> })
+            ?.choices?.[0]?.message
+          const content = textFromUnknown(message?.content) || extractOpenAiChatContent(payload) || ''
+          const reasoning = textFromUnknown(message?.reasoning_content ?? message?.reasoning)
+          thinking = reasoning
+          bodyText = content
+        } catch {
+          /* fall through */
+        }
       }
-    }
 
-    updateScheduler.cancel()
-    const merged = mergePartial(thinking, cleanMarkdown(bodyText))
-    if (!merged.thinking && !merged.body.trim()) throw new Error('AI 速读：返回内容为空')
-    emit(merged)
-    return merged
+      updateScheduler.cancel()
+      const merged = mergePartial(thinking, cleanMarkdown(bodyText))
+      if (!merged.thinking && !merged.body.trim()) throw new Error('AI 速读：返回内容为空')
+      emit(merged)
+      return merged
+    } finally {
+      reader.releaseLock()
+    }
   } catch (error) {
     updateScheduler?.cancel()
     if (signal?.aborted) throw error
