@@ -17,7 +17,15 @@ import { saveImageBlob, shareImageBlob } from '../lib/imageActions'
 import { markdownToSafeHtml } from '../lib/markdown'
 import { copyShareText } from '../lib/shareArticle'
 import { buildSpeedReadMarkdown, speedReadMarkdownFileName } from '../lib/speedReadExport'
-import { renderSpeedReadImageBlob, speedReadImageFileName } from '../lib/speedReadImage'
+import {
+  loadSpeedReadShareStyle,
+  renderSpeedReadImageBlob,
+  saveSpeedReadShareStyle,
+  SPEED_READ_SHARE_STYLES,
+  speedReadImageFileName,
+  type SpeedReadShareStyle,
+} from '../lib/speedReadImage'
+import { warmupSpeedReadShareAssets } from '../lib/speedReadShare/assets'
 
 export type SpeedReadUiState = 'idle' | 'loading' | 'ready' | 'error' | 'cancelled'
 
@@ -57,6 +65,7 @@ export function AiSpeedReadPanel({
 }: Props) {
   const contentRef = useRef<HTMLDivElement>(null)
   const [busyAction, setBusyAction] = useState<ActionId | null>(null)
+  const [shareStyle, setShareStyle] = useState<SpeedReadShareStyle>(() => loadSpeedReadShareStyle())
   const safeHtml = useMemo(() => markdownToSafeHtml(markdown), [markdown])
   const hasContent = Boolean(markdown.trim())
   const canExport = hasContent && (state === 'ready' || state === 'cancelled')
@@ -69,6 +78,11 @@ export function AiSpeedReadPanel({
       document.body.style.overflow = previous
     }
   }, [open])
+
+  useEffect(() => {
+    if (!open || !markdown.trim()) return
+    void warmupSpeedReadShareAssets()
+  }, [open, markdown])
 
   useEffect(() => {
     if (!open || state !== 'loading' || !contentRef.current) return
@@ -118,7 +132,7 @@ export function AiSpeedReadPanel({
         model,
         markdown: trimmed,
       }
-      const blob = await renderSpeedReadImageBlob(imageInput)
+      const blob = await renderSpeedReadImageBlob(imageInput, shareStyle)
       const fileName = speedReadImageFileName(articleTitle)
 
       if (action === 'save-image') {
@@ -236,6 +250,29 @@ export function AiSpeedReadPanel({
           className="shrink-0 border-t border-haze bg-ink/95 px-4 py-3 backdrop-blur-md"
           style={{ paddingBottom: 'max(var(--sab), 12px)' }}
         >
+          <div className="mb-2.5">
+            <p className="mb-1.5 font-mono text-[9px] tracking-[0.1em] text-paper-faint">分享图风格</p>
+            <div className="scroll-hidden flex gap-1.5 overflow-x-auto pb-0.5">
+              {SPEED_READ_SHARE_STYLES.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  disabled={!canExport}
+                  onClick={() => {
+                    setShareStyle(item.id)
+                    saveSpeedReadShareStyle(item.id)
+                  }}
+                  className={`shrink-0 rounded-full border px-3 py-1.5 font-mono text-[10px] transition-colors disabled:opacity-35 ${
+                    shareStyle === item.id
+                      ? 'border-cinnabar/50 bg-cinnabar/15 text-paper'
+                      : 'border-haze bg-ink-raised/50 text-paper-muted hover:border-cinnabar/25 hover:text-paper'
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
               type="button"

@@ -68,14 +68,15 @@
         pointer-events: none;
       }
     </style>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.cn" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.cn" crossorigin />
     <!--
       远端字体表会阻塞渲染，并连带推迟入口模块执行；
       弱网或离线时这段等待只会拉长空屏。先按 print 拉取，到手再切回 all。
+      字体走 Google 中国节点（fonts.googleapis.cn / gstatic.cn），2026-03 实测可用。
     -->
     <link
-      href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
+      href="https://fonts.googleapis.cn/css2?family=Noto+Serif+SC:wght@400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap"
       rel="stylesheet"
       media="print"
       onload="this.media='all'"

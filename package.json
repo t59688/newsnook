@@ -139,6 +139,7 @@
     "driver.js": "^1.8.0",
     "fast-xml-parser": "^5.10.1",
     "hls.js": "^1.6.16",
+    "html-to-image": "^1.11.13",
     "linkedom": "^0.18.13",
     "lucide-react": "^1.28.0",
     "marked": "^18.0.9",

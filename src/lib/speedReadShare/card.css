@@ -1,0 +1,1066 @@
+.sr-share-root {
+  --red: #c2402a;
+  --amber: #e8b04b;
+  --ink: #2f2b26;
+  --noise: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  --uwave: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 220 14' preserveAspectRatio='none'%3E%3Cpath d='M4 10 C50 4 90 4 130 8 S 190 11 216 5' fill='none' stroke='%23c2402a' stroke-width='5' stroke-linecap='round' opacity='.85'/%3E%3C/svg%3E");
+  width: 720px;
+  font-family: "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+}
+
+.sr-share-root * {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.sr-share-root em {
+  font-style: normal;
+}
+
+.sr-share-root mark {
+  background: none;
+  color: inherit;
+}
+
+.sr-share-root .card {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  position: relative;
+}
+
+/* ---------- 共用品牌区 ---------- */
+.sr-share-root .brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sr-share-root .brand .logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  flex: none;
+  overflow: hidden;
+  box-shadow: 0 4px 12px rgba(31, 95, 224, 0.35);
+}
+
+.sr-share-root .brand .logo img {
+  display: block;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+}
+
+.sr-share-root .brand .bt b {
+  display: block;
+  font-size: 15px;
+  line-height: 1.25;
+  color: #2f2b26;
+}
+
+.sr-share-root .brand .bt i {
+  display: block;
+  font-style: normal;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  margin-top: 3px;
+  color: #8d8677;
+}
+
+.sr-share-root .from-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  padding: 7px 15px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+  font-weight: 600;
+}
+
+.sr-share-root .from-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.sr-share-root .foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin: 40px calc(var(--pad) * -1) 0;
+  padding: 20px var(--pad);
+}
+
+.sr-share-root .from-col {
+  text-align: right;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  align-items: flex-end;
+}
+
+.sr-share-root .from-col .date {
+  font-size: 11.5px;
+  letter-spacing: 0.1em;
+  color: #8d8677;
+}
+
+.sr-share-root .tag-red {
+  background: var(--red);
+  color: #fff6ec;
+  font-size: 12px;
+  letter-spacing: 0.24em;
+  padding: 6px 12px 5px 14px;
+  border-radius: 3px;
+  font-weight: 600;
+}
+
+/* ================= 01 暖纸手记 ================= */
+.sr-share-root .v1 {
+  --pad: 54px;
+  background: #fdf8ee;
+  border-radius: 18px;
+  padding: 48px var(--pad) 0;
+  box-shadow:
+    inset 0 2px 3px rgba(255, 255, 255, 0.8),
+    0 24px 55px rgba(70, 50, 25, 0.18);
+  overflow: hidden;
+}
+
+.sr-share-root .v1::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--noise);
+  opacity: 0.14;
+  mix-blend-mode: multiply;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.sr-share-root .v1 > * {
+  position: relative;
+  z-index: 1;
+}
+
+.sr-share-root .v1-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sr-share-root .v1 .seal {
+  position: absolute;
+  top: 34px;
+  right: 40px;
+  width: 80px;
+  height: 80px;
+  border: 3px solid rgba(194, 64, 42, 0.85);
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: inset 0 0 0 2px rgba(194, 64, 42, 0.25);
+  transform: rotate(-8deg);
+  opacity: 0.92;
+}
+
+.sr-share-root .v1 .seal span {
+  writing-mode: vertical-rl;
+  text-orientation: upright;
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 21px;
+  color: rgba(194, 64, 42, 0.9);
+  letter-spacing: 5px;
+  line-height: 1;
+}
+
+.sr-share-root .v1 h1 {
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 36px;
+  line-height: 1.4;
+  margin: 22px 0 14px;
+  color: #33261f;
+  padding-right: 96px;
+}
+
+.sr-share-root .v1 .hw {
+  position: relative;
+  white-space: nowrap;
+}
+
+.sr-share-root .v1 .hw::after {
+  content: "";
+  position: absolute;
+  left: -3%;
+  bottom: -1px;
+  width: 106%;
+  height: 12px;
+  background: var(--uwave) no-repeat center / 100% 100%;
+}
+
+.sr-share-root .v1 .meta {
+  font-size: 12.5px;
+  color: #9a8f7b;
+  letter-spacing: 0.06em;
+}
+
+.sr-share-root .v1-rule {
+  border: none;
+  border-top: 2px dashed #e4d8bf;
+  margin: 26px 0 28px;
+}
+
+.sr-share-root .v1-note {
+  position: relative;
+  background: linear-gradient(180deg, #fdf6dd, #f9efcd);
+  border-radius: 6px;
+  border-left: 4px solid var(--red);
+  padding: 24px 26px 22px;
+  box-shadow: 0 12px 26px rgba(120, 90, 30, 0.16);
+  transform: rotate(-0.5deg);
+}
+
+.sr-share-root .v1-note .tape {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%) rotate(-2deg);
+  width: 120px;
+  height: 26px;
+  background: rgba(214, 196, 150, 0.62);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  clip-path: polygon(2% 0, 98% 5%, 100% 90%, 95% 100%, 4% 96%, 0 8%);
+}
+
+.sr-share-root .v1-note h3 {
+  font-size: 12.5px;
+  color: var(--red);
+  letter-spacing: 0.4em;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 11px;
+}
+
+.sr-share-root .v1-note h3::before {
+  content: "";
+  width: 16px;
+  height: 2px;
+  background: var(--red);
+}
+
+.sr-share-root .v1-note p {
+  font-family: "Noto Serif SC", serif;
+  font-size: 17px;
+  line-height: 1.95;
+  color: #4a3a2c;
+  font-weight: 600;
+}
+
+.sr-share-root .v1-sec {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 36px 0 6px;
+}
+
+.sr-share-root .v1-sec .sq {
+  width: 10px;
+  height: 10px;
+  background: var(--red);
+  transform: rotate(45deg);
+  border-radius: 2px;
+  flex: none;
+}
+
+.sr-share-root .v1-sec h3 {
+  font-family: "Noto Serif SC", serif;
+  font-size: 20px;
+  font-weight: 900;
+  color: #3a2c22;
+  letter-spacing: 0.1em;
+}
+
+.sr-share-root .v1-sec .cnt {
+  font-size: 11.5px;
+  color: #a3947c;
+  letter-spacing: 0.25em;
+}
+
+.sr-share-root .v1-sec .ln {
+  flex: 1;
+  border-top: 1px dashed #ddcfb2;
+}
+
+.sr-share-root .v1-sec.amber .sq {
+  background: #c98a2b;
+}
+
+.sr-share-root .v1 ul {
+  list-style: none;
+}
+
+.sr-share-root .v1 ul li {
+  position: relative;
+  padding: 11px 0 11px 26px;
+  font-size: 15px;
+  line-height: 1.85;
+  color: #45403a;
+  border-bottom: 1px dashed #eee2c9;
+}
+
+.sr-share-root .v1 ul li:last-child {
+  border-bottom: none;
+}
+
+.sr-share-root .v1 ul.key li::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 21px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--red);
+}
+
+.sr-share-root .v1 ul.wrn li::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 20px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #e2ac55;
+  transform: rotate(45deg);
+}
+
+.sr-share-root .v1 mark {
+  background: linear-gradient(180deg, transparent 58%, rgba(240, 196, 120, 0.8) 58%);
+  font-weight: 700;
+  padding: 0 1px;
+}
+
+.sr-share-root .v1 mark.r {
+  background: linear-gradient(180deg, transparent 58%, rgba(226, 138, 116, 0.55) 58%);
+}
+
+.sr-share-root .v1 .foot {
+  background: #f4ead4;
+  border-top: 2px dashed #ddcaa0;
+  border-radius: 0 0 18px 18px;
+  margin-top: 44px;
+}
+
+.sr-share-root .v1 .from-chip {
+  color: var(--red);
+}
+
+/* ================= 02 白纸杂志 ================= */
+.sr-share-root .v2 {
+  --pad: 60px;
+  background: #fcfbf8;
+  border: 1px solid #e8e5de;
+  border-radius: 6px;
+  padding: 56px var(--pad) 0;
+  box-shadow: 0 26px 60px rgba(40, 38, 33, 0.13);
+}
+
+.sr-share-root .v2-mast {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 15px;
+  border-bottom: 2px solid #211e19;
+}
+
+.sr-share-root .v2-mast .k {
+  font-size: 12.5px;
+  letter-spacing: 0.32em;
+  font-weight: 700;
+  color: #211e19;
+}
+
+.sr-share-root .v2-mast .k em {
+  color: var(--red);
+}
+
+.sr-share-root .v2-mast .d {
+  font-size: 11.5px;
+  letter-spacing: 0.2em;
+  color: #9a958b;
+}
+
+.sr-share-root .v2 h1 {
+  font-family: "Noto Serif SC", serif;
+  font-size: 39px;
+  font-weight: 900;
+  line-height: 1.45;
+  margin: 32px 0 15px;
+  color: #1d1b17;
+}
+
+.sr-share-root .v2 h1 em {
+  color: var(--red);
+}
+
+.sr-share-root .v2 .meta {
+  font-size: 12px;
+  color: #98928a;
+  letter-spacing: 0.1em;
+  padding-bottom: 26px;
+  border-bottom: 1px solid #e6e2d8;
+}
+
+.sr-share-root .v2-quote {
+  margin: 36px 0 6px;
+  padding-left: 24px;
+  border-left: 4px solid var(--red);
+}
+
+.sr-share-root .v2-quote .lab {
+  font-size: 11px;
+  letter-spacing: 0.42em;
+  color: var(--red);
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.sr-share-root .v2-quote p {
+  font-family: "Noto Serif SC", serif;
+  font-size: 19.5px;
+  line-height: 2.05;
+  color: #2c2a25;
+  font-weight: 600;
+}
+
+.sr-share-root .v2-quote p b {
+  color: var(--red);
+}
+
+.sr-share-root .v2-h {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 46px 0 10px;
+}
+
+.sr-share-root .v2-h .no {
+  font-family: "Noto Serif SC", serif;
+  font-size: 13px;
+  color: #c6c1b6;
+}
+
+.sr-share-root .v2-h h3 {
+  font-size: 16.5px;
+  font-weight: 800;
+  letter-spacing: 0.26em;
+  color: #1d1b17;
+}
+
+.sr-share-root .v2-h .en {
+  font-size: 10px;
+  letter-spacing: 0.3em;
+  color: #b5b0a5;
+  text-transform: uppercase;
+}
+
+.sr-share-root .v2-h .ln {
+  flex: 1;
+  height: 1px;
+  background: #e3dfd4;
+}
+
+.sr-share-root .v2 ol {
+  list-style: none;
+  margin-top: 12px;
+}
+
+.sr-share-root .v2 ol li {
+  display: flex;
+  gap: 22px;
+  padding: 17px 0;
+  border-bottom: 1px solid #ece8de;
+}
+
+.sr-share-root .v2 ol li:last-child {
+  border-bottom: none;
+}
+
+.sr-share-root .v2 ol .n {
+  font-family: "Noto Serif SC", serif;
+  font-style: italic;
+  font-size: 22px;
+  color: #cfc9bc;
+  min-width: 36px;
+  line-height: 1.55;
+}
+
+.sr-share-root .v2 ol p {
+  flex: 1;
+  font-size: 15px;
+  line-height: 1.9;
+  color: #3b3833;
+}
+
+.sr-share-root .v2 ol p b {
+  color: #1d1b17;
+  border-bottom: 2px solid rgba(194, 64, 42, 0.4);
+}
+
+.sr-share-root .v2 ol.wrn .n {
+  color: #d8b98a;
+}
+
+.sr-share-root .v2 ol.wrn p b {
+  border-color: rgba(201, 138, 43, 0.55);
+}
+
+.sr-share-root .v2 .foot {
+  background: #f7f5ef;
+  border-top: 1px solid #e6e2d8;
+  border-radius: 0 0 6px 6px;
+  margin-top: 46px;
+}
+
+.sr-share-root .v2 .from-chip {
+  color: #211e19;
+}
+
+/* ================= 03 暮色夜读 ================= */
+.sr-share-root .v3 {
+  --pad: 54px;
+  background: radial-gradient(130% 100% at 15% 0%, #232c3a 0%, #151a23 48%, #0d1015 100%);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 20px;
+  padding: 52px var(--pad) 0;
+  color: #e7e2d6;
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
+  overflow: hidden;
+}
+
+.sr-share-root .v3::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image: var(--noise);
+  opacity: 0.05;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.sr-share-root .v3 > * {
+  position: relative;
+  z-index: 1;
+}
+
+.sr-share-root .v3-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.sr-share-root .v3 .pill {
+  border: 1px solid rgba(232, 176, 75, 0.55);
+  color: var(--amber);
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  padding: 7px 15px 6px 18px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.sr-share-root .v3 .date-top {
+  color: #7d838e;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+}
+
+.sr-share-root .v3 h1 {
+  font-family: "Noto Serif SC", serif;
+  font-size: 35px;
+  font-weight: 900;
+  line-height: 1.45;
+  margin: 26px 0 14px;
+  color: #f4eedd;
+}
+
+.sr-share-root .v3 h1 em {
+  color: var(--amber);
+}
+
+.sr-share-root .v3 .meta {
+  font-size: 12px;
+  color: #6f7683;
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sr-share-root .v3 .meta .ln {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(232, 176, 75, 0.4), transparent);
+}
+
+.sr-share-root .v3-quote {
+  position: relative;
+  margin: 34px 0 6px;
+  padding: 28px 28px 24px;
+  background: rgba(232, 176, 75, 0.06);
+  border: 1px solid rgba(232, 176, 75, 0.2);
+  border-radius: 14px;
+}
+
+.sr-share-root .v3-quote .lab {
+  position: absolute;
+  top: -12px;
+  left: 22px;
+  background: #1a1f29;
+  border: 1px solid rgba(232, 176, 75, 0.45);
+  color: var(--amber);
+  font-size: 11px;
+  letter-spacing: 0.32em;
+  padding: 4px 13px 3px 16px;
+  border-radius: 999px;
+  font-weight: 600;
+}
+
+.sr-share-root .v3-quote p {
+  font-family: "Noto Serif SC", serif;
+  font-size: 17.5px;
+  line-height: 2.05;
+  color: #ded8c8;
+  font-weight: 600;
+}
+
+.sr-share-root .v3-quote p b {
+  color: var(--amber);
+}
+
+.sr-share-root .v3-h {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 38px 0 8px;
+}
+
+.sr-share-root .v3-h .bar {
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--amber);
+}
+
+.sr-share-root .v3-h h3 {
+  font-family: "Noto Serif SC", serif;
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  color: #efe9d9;
+}
+
+.sr-share-root .v3-h .cnt {
+  font-size: 11px;
+  color: #6f7683;
+  letter-spacing: 0.28em;
+}
+
+.sr-share-root .v3 ul {
+  list-style: none;
+}
+
+.sr-share-root .v3 ul.key li {
+  position: relative;
+  padding: 14px 0 14px 36px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: #b7bcc4;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sr-share-root .v3 ul.key li .n {
+  position: absolute;
+  left: 0;
+  top: 17px;
+  font-family: "Noto Serif SC", serif;
+  font-size: 12.5px;
+  color: var(--amber);
+}
+
+.sr-share-root .v3 ul.wrn li {
+  position: relative;
+  padding: 13px 0 13px 26px;
+  font-size: 15px;
+  line-height: 1.9;
+  color: #b7bcc4;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.sr-share-root .v3 ul.wrn li::before {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 24px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: rgba(232, 176, 75, 0.75);
+}
+
+.sr-share-root .v3 ul li:last-child {
+  border-bottom: none;
+}
+
+.sr-share-root .v3 b {
+  color: var(--amber);
+  font-weight: 600;
+  border-bottom: 1px solid rgba(232, 176, 75, 0.35);
+}
+
+.sr-share-root .v3 .foot {
+  background: rgba(255, 255, 255, 0.02);
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 0 0 20px 20px;
+  margin-top: 44px;
+}
+
+.sr-share-root .v3 .brand .bt b {
+  color: #f2ecdc;
+}
+
+.sr-share-root .v3 .brand .bt i {
+  color: #8b91a0;
+}
+
+.sr-share-root .v3 .from-chip {
+  color: var(--amber);
+}
+
+.sr-share-root .v3 .from-col .date {
+  color: #6f7683;
+}
+
+/* ================= 04 手账拼贴 ================= */
+.sr-share-root .v4 {
+  background: #ece4d2;
+  border-radius: 16px;
+  padding: 34px 30px 30px;
+  box-shadow: 0 26px 60px rgba(80, 60, 30, 0.22);
+  background-image:
+    linear-gradient(rgba(120, 100, 60, 0.09) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 100, 60, 0.09) 1px, transparent 1px);
+  background-size: 26px 26px;
+}
+
+.sr-share-root .v4-head {
+  position: relative;
+  background: #fffdf6;
+  border-radius: 8px;
+  padding: 28px 30px 24px;
+  box-shadow: 0 8px 20px rgba(90, 70, 40, 0.16);
+  transform: rotate(-0.7deg);
+}
+
+.sr-share-root .v4-head .pclip {
+  position: absolute;
+  top: -16px;
+  left: 28px;
+  transform: rotate(-4deg);
+}
+
+.sr-share-root .v4-tags {
+  display: flex;
+  gap: 9px;
+  flex-wrap: wrap;
+}
+
+.sr-share-root .v4 .tag-red {
+  border-radius: 999px;
+  font-size: 11.5px;
+}
+
+.sr-share-root .v4 .tag-ghost {
+  border-radius: 999px;
+  font-size: 11.5px;
+  background: #fff;
+  border: 1px solid #d9cdb4;
+  color: #8a7e66;
+  letter-spacing: 0.18em;
+  padding: 4px 11px;
+}
+
+.sr-share-root .v4 h1 {
+  font-family: "LXGW WenKai Screen", "Kaiti SC", "KaiTi", "STKaiti", serif;
+  font-size: 31px;
+  font-weight: 700;
+  line-height: 1.45;
+  margin: 16px 0 10px;
+  color: #3a2c1c;
+}
+
+.sr-share-root .v4 h1 em {
+  color: #d94f30;
+}
+
+.sr-share-root .v4 .meta {
+  font-size: 12px;
+  color: #9a8d74;
+  letter-spacing: 0.05em;
+}
+
+.sr-share-root .v4-note {
+  position: relative;
+  margin: 28px 2px 4px;
+  background: linear-gradient(180deg, #fff3a4, #ffee8c);
+  border-radius: 4px;
+  padding: 22px 24px 20px;
+  box-shadow: 0 12px 22px rgba(120, 90, 20, 0.25);
+  transform: rotate(0.9deg);
+}
+
+.sr-share-root .v4-note .tape {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%) rotate(1.5deg);
+  width: 110px;
+  height: 24px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.55) 0 6px,
+    rgba(214, 196, 150, 0.55) 6px 12px
+  );
+  clip-path: polygon(2% 0, 98% 5%, 100% 90%, 95% 100%, 4% 96%, 0 8%);
+}
+
+.sr-share-root .v4-note .lab {
+  display: inline-block;
+  font-family: "LXGW WenKai Screen", "Kaiti SC", "KaiTi", "STKaiti", serif;
+  font-weight: 700;
+  font-size: 15px;
+  color: #b8422a;
+  border-bottom: 2px solid rgba(217, 79, 48, 0.7);
+  padding-bottom: 2px;
+  margin-bottom: 10px;
+}
+
+.sr-share-root .v4-note p {
+  font-family: "LXGW WenKai Screen", "Kaiti SC", "KaiTi", "STKaiti", serif;
+  font-size: 17px;
+  line-height: 1.95;
+  color: #4c3d12;
+  font-weight: 700;
+}
+
+.sr-share-root .v4-note mark {
+  background: rgba(255, 255, 255, 0.55);
+  font-weight: 700;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.sr-share-root .v4-points {
+  position: relative;
+  margin-top: 26px;
+  background: #fffef9;
+  border-radius: 6px;
+  box-shadow: 0 10px 22px rgba(90, 70, 40, 0.14);
+  transform: rotate(-0.4deg);
+  padding: 24px 30px 20px 46px;
+  background-image:
+    linear-gradient(90deg, transparent 32px, rgba(226, 110, 90, 0.5) 32px, rgba(226, 110, 90, 0.5) 34px, transparent 34px),
+    repeating-linear-gradient(180deg, transparent 0 32px, #efe5d0 32px 33px);
+}
+
+.sr-share-root .v4-points .lab {
+  font-family: "LXGW WenKai Screen", "Kaiti SC", "KaiTi", "STKaiti", serif;
+  font-weight: 700;
+  font-size: 19px;
+  color: #3a2c1c;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.sr-share-root .v4-points .lab::after {
+  content: attr(data-count);
+  font-size: 11px;
+  color: #b3a888;
+  letter-spacing: 0.2em;
+  font-family: "Noto Sans SC";
+}
+
+.sr-share-root .v4-points .lab .dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: #e2543a;
+}
+
+.sr-share-root .v4-points ol {
+  list-style: none;
+}
+
+.sr-share-root .v4-points ol li {
+  display: flex;
+  gap: 13px;
+  padding: 6px 0;
+  font-size: 14.5px;
+  line-height: 1.9;
+  color: #4a4034;
+}
+
+.sr-share-root .v4-points .n {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #e2543a;
+  color: #fff;
+  font-family: "Noto Serif SC", serif;
+  font-size: 12px;
+  display: grid;
+  place-items: center;
+}
+
+.sr-share-root .v4-points mark {
+  background: linear-gradient(180deg, transparent 55%, #ffd66e 55%);
+  font-weight: 700;
+}
+
+.sr-share-root .v4-warn {
+  position: relative;
+  margin-top: 26px;
+  background: #e0eaf4;
+  border-radius: 6px;
+  padding: 22px 26px 18px;
+  box-shadow: 0 10px 22px rgba(70, 90, 120, 0.15);
+  transform: rotate(0.5deg);
+}
+
+.sr-share-root .v4-warn .tape {
+  position: absolute;
+  top: -13px;
+  right: 34px;
+  transform: rotate(3deg);
+  width: 96px;
+  height: 24px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(240, 150, 150, 0.55) 0 7px,
+    rgba(240, 150, 150, 0.32) 7px 14px
+  );
+  clip-path: polygon(2% 0, 98% 5%, 100% 90%, 95% 100%, 4% 96%, 0 8%);
+}
+
+.sr-share-root .v4-warn .lab {
+  font-family: "LXGW WenKai Screen", "Kaiti SC", "KaiTi", "STKaiti", serif;
+  font-weight: 700;
+  font-size: 17px;
+  color: #31567a;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 8px;
+}
+
+.sr-share-root .v4-warn .lab .tri {
+  width: 0;
+  height: 0;
+  border-left: 7px solid transparent;
+  border-right: 7px solid transparent;
+  border-bottom: 11px solid #d98b2b;
+}
+
+.sr-share-root .v4-warn ul {
+  list-style: none;
+}
+
+.sr-share-root .v4-warn ul li {
+  position: relative;
+  padding: 6px 0 6px 20px;
+  font-size: 14.5px;
+  line-height: 1.9;
+  color: #3d4a58;
+}
+
+.sr-share-root .v4-warn ul li::before {
+  content: "";
+  position: absolute;
+  left: 2px;
+  top: 16px;
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  background: #d98b2b;
+  transform: rotate(45deg);
+}
+
+.sr-share-root .v4-warn mark {
+  background: rgba(255, 255, 255, 0.65);
+  font-weight: 700;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.sr-share-root .v4 .strip {
+  margin-top: 30px;
+  background: #fbf7ec;
+  border-radius: 8px;
+  box-shadow: 0 6px 16px rgba(90, 70, 40, 0.14);
+  transform: rotate(-0.3deg);
+  padding: 16px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.sr-share-root .v4 .stamp {
+  width: 62px;
+  height: 62px;
+  border: 3px solid rgba(217, 79, 48, 0.8);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: rgba(217, 79, 48, 0.85);
+  font-family: "Noto Serif SC", serif;
+  font-weight: 900;
+  font-size: 15px;
+  letter-spacing: 2px;
+  transform: rotate(-10deg);
+  opacity: 0.9;
+  flex: none;
+}
+
+.sr-share-root .v4 .m4 {
+  font-size: 12px;
+  color: #8d8064;
+  letter-spacing: 0.08em;
+  text-align: right;
+  line-height: 1.8;
+}
+
+.sr-share-root .v4 .m4 b {
+  color: #b8422a;
+}
