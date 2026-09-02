@@ -92,6 +92,31 @@ function blobToBase64(blob: Blob): Promise<string> {
   })
 }
 
+async function prepareBlobImage(blob: Blob, fileName: string): Promise<PreparedImage> {
+  const mime = blob.type || 'image/png'
+  const base64 = await blobToBase64(blob)
+  const dataUri = `data:${mime};base64,${base64}`
+
+  if (!Capacitor.isNativePlatform()) {
+    return { fileUri: dataUri, dataUri, fileName, mime }
+  }
+
+  await Filesystem.writeFile({
+    path: fileName,
+    data: base64,
+    directory: Directory.Cache,
+  })
+  const { uri } = await Filesystem.getUri({
+    path: fileName,
+    directory: Directory.Cache,
+  })
+  return { fileUri: uri, dataUri, fileName, mime }
+}
+
+function isCancellation(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'AbortError' || /cancel/i.test(error.message))
+}
+
 async function prepareImage(url: string): Promise<PreparedImage> {
   const { base64, mime } = await fetchImageBytes(url)
   const ext = extensionFromUrl(url, mime)
@@ -179,4 +204,70 @@ export async function shareImage(url: string, title = '分享图片'): Promise<v
     dialogTitle: title,
     files: [prepared.fileUri],
   })
+}
+
+/** 保存本地生成的图片（Web：下载；Android：写入相册） */
+export async function saveImageBlob(blob: Blob, fileName = `newsnook-${Date.now()}.png`): Promise<void> {
+  const prepared = await prepareBlobImage(blob, fileName)
+
+  if (!Capacitor.isNativePlatform()) {
+    const anchor = document.createElement('a')
+    anchor.href = prepared.dataUri
+    anchor.download = prepared.fileName
+    anchor.rel = 'noopener'
+    document.body.appendChild(anchor)
+    anchor.click()
+    anchor.remove()
+    return
+  }
+
+  const albumIdentifier =
+    Capacitor.getPlatform() === 'android' ? await ensureAndroidAlbumId() : undefined
+
+  await Media.savePhoto({
+    path: prepared.dataUri,
+    albumIdentifier,
+    fileName: prepared.fileName.replace(/\.[^.]+$/, ''),
+  })
+}
+
+/** 分享本地生成的图片 */
+export async function shareImageBlob(
+  blob: Blob,
+  fileName = `newsnook-${Date.now()}.png`,
+  title = '分享图片',
+): Promise<ImageActionResult> {
+  const prepared = await prepareBlobImage(blob, fileName)
+
+  if (!Capacitor.isNativePlatform()) {
+    const binary = atob(prepared.dataUri.split(',')[1] || '')
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i)
+    const file = new File([bytes], prepared.fileName, { type: prepared.mime })
+    if (typeof navigator.share === 'function' && typeof navigator.canShare === 'function') {
+      const payload = { files: [file], title }
+      if (navigator.canShare(payload)) {
+        try {
+          await navigator.share(payload)
+          return 'shared'
+        } catch (error) {
+          if (isCancellation(error)) return 'cancelled'
+          throw error
+        }
+      }
+    }
+    throw new Error('当前浏览器不支持分享文件')
+  }
+
+  try {
+    await Share.share({
+      title,
+      dialogTitle: title,
+      files: [prepared.fileUri],
+    })
+    return 'shared'
+  } catch (error) {
+    if (isCancellation(error)) return 'cancelled'
+    throw error
+  }
 }

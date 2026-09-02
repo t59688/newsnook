@@ -847,7 +847,7 @@ export function ReaderScreen({
     articleId: article.id,
     viewportRef: rootRef,
     contentRef: contentMeasureRef,
-    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}:${speedReadOpen}:${speedReadState}:${Math.ceil(speedReadMarkdown.length / 256)}`,
+    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}:${Math.ceil(speedReadMarkdown.length / 256)}`,
     ready: loadState === 'ready',
   })
 
@@ -1551,17 +1551,6 @@ export function ReaderScreen({
               )}
             </div>
 
-            <AiSpeedReadPanel
-              open={speedReadOpen}
-              state={speedReadState}
-              markdown={speedReadMarkdown}
-              error={speedReadError}
-              model={speedReadConfig.model}
-              onClose={() => setSpeedReadOpen(false)}
-              onRetry={() => void runSpeedRead()}
-              onCancel={cancelSpeedRead}
-            />
-
             {coverUrl && article.contentType !== 'video' && (
               <div className="mt-5 page-x lg:px-8">
                 <InkImage
@@ -1912,6 +1901,21 @@ export function ReaderScreen({
         open={commentsOpen}
         onClose={() => setCommentsOpen(false)}
         article={commentsArticle}
+      />
+
+      <AiSpeedReadPanel
+        open={speedReadOpen}
+        state={speedReadState}
+        markdown={speedReadMarkdown}
+        error={speedReadError}
+        model={speedReadConfig.model}
+        articleTitle={canonicalTitle}
+        sourceName={article.sourceName}
+        originUrl={originUrl}
+        onClose={() => setSpeedReadOpen(false)}
+        onRetry={() => void runSpeedRead()}
+        onCancel={cancelSpeedRead}
+        onNotify={showToast}
       />
     </div>
   )
