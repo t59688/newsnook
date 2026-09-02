@@ -39,11 +39,11 @@ const markdown = buildArticleMarkdown({
   },
   title: '真实标题',
   html: '<p>Hello</p><img src="/cover.jpg" alt="封面">',
-  speedReadMarkdown: '## 一句话结论\n结论',
+  speedReadMarkdown: '## 有所闻\n结论',
   exportedAt: Date.UTC(2026, 8, 2),
 })
 assert.match(markdown, /title: "真实标题"/)
-assert.match(markdown, /## AI 速读\n### 一句话结论/)
+assert.match(markdown, /## AI 速读\n### 有所闻/)
 assert.match(markdown, /## 正文\n\nHello\n\n!\[封面\]\(https:\/\/example\.com\/cover\.jpg\)/)
 assert.match(markdown, /https:\/\/example\.com\/post/)
 console.log('article markdown tests passed')

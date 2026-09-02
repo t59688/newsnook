@@ -1,6 +1,9 @@
 import { parseSpeedReadMarkdown } from './parse'
 import { getShareLogoSrc } from './assets'
+import { SPEED_READ_SECTION_TITLES } from '../../features/speedRead/sections'
 import type { ParsedSpeedRead, SpeedReadImageInput, SpeedReadShareStyle } from './types'
+
+const S = SPEED_READ_SECTION_TITLES
 
 const PCLIP_SVG =
   '<svg class="pclip" width="30" height="62" viewBox="0 0 30 62" fill="none" aria-hidden="true"><path d="M9 16 V46 a6.5 6.5 0 0 0 13 0 V12 a9.5 9.5 0 0 0 -19 0 V44" stroke="#98a1ac" stroke-width="3.4" stroke-linecap="round" fill="none"/></svg>'
@@ -109,12 +112,12 @@ function buildWarmPaper(
     <hr class="v1-rule">
     <section class="v1-note">
       <span class="tape" aria-hidden="true"></span>
-      <h3>一句话结论</h3>
+      <h3>${S.conclusion}</h3>
       <p>${formatInline(content.conclusion || '—', 'v1')}</p>
     </section>
-    <div class="v1-sec"><span class="sq"></span><h3>关键要点</h3><span class="cnt">${content.keyPoints.length} 条</span><span class="ln"></span></div>
+    <div class="v1-sec"><span class="sq"></span><h3>${S.keyPoints}</h3><span class="cnt">${content.keyPoints.length} 条</span><span class="ln"></span></div>
     <ul class="key">${keyItems || '<li>—</li>'}</ul>
-    <div class="v1-sec amber"><span class="sq"></span><h3>值得注意</h3><span class="cnt">${content.warnings.length} 条</span><span class="ln"></span></div>
+    <div class="v1-sec amber"><span class="sq"></span><h3>${S.warnings}</h3><span class="cnt">${content.warnings.length} 条</span><span class="ln"></span></div>
     <ul class="wrn">${warnItems || '<li>—</li>'}</ul>
     ${footerBlock(false, dateCn)}
   </article>`
@@ -138,12 +141,12 @@ function buildEditorial(
     <h1>${title}</h1>
     <p class="meta">${escapeHtml(meta)}</p>
     <div class="v2-quote">
-      <p class="lab">一句话结论 / CONCLUSION</p>
+      <p class="lab">${S.conclusion} / SUOWEN</p>
       <p>${formatInline(content.conclusion || '—', 'b')}</p>
     </div>
-    <div class="v2-h"><span class="no">02</span><h3>关键要点</h3><span class="en">Key Points</span><span class="ln"></span></div>
+    <div class="v2-h"><span class="no">02</span><h3>${S.keyPoints}</h3><span class="en">Key Thread</span><span class="ln"></span></div>
     <ol>${keyItems || '<li><span class="n">01</span><p>—</p></li>'}</ol>
-    <div class="v2-h"><span class="no">03</span><h3>值得注意</h3><span class="en">Notes</span><span class="ln"></span></div>
+    <div class="v2-h"><span class="no">03</span><h3>${S.warnings}</h3><span class="en">Notes</span><span class="ln"></span></div>
     <ol class="wrn">${warnItems || '<li><span class="n">01</span><p>—</p></li>'}</ol>
     ${footerBlock(false, dateCn)}
   </article>`
@@ -162,12 +165,12 @@ function buildDusk(title: string, meta: string, content: ParsedSpeedRead, dateCn
     <h1>${title}</h1>
     <p class="meta">${escapeHtml(meta)}<span class="ln"></span></p>
     <div class="v3-quote">
-      <span class="lab">一句话结论</span>
+      <span class="lab">${S.conclusion}</span>
       <p>${formatInline(content.conclusion || '—', 'b')}</p>
     </div>
-    <div class="v3-h"><span class="bar"></span><h3>关键要点</h3><span class="cnt">${content.keyPoints.length} 条</span></div>
+    <div class="v3-h"><span class="bar"></span><h3>${S.keyPoints}</h3><span class="cnt">${content.keyPoints.length} 条</span></div>
     <ul class="key">${keyItems || '<li>—</li>'}</ul>
-    <div class="v3-h"><span class="bar"></span><h3>值得注意</h3><span class="cnt">${content.warnings.length} 条</span></div>
+    <div class="v3-h"><span class="bar"></span><h3>${S.warnings}</h3><span class="cnt">${content.warnings.length} 条</span></div>
     <ul class="wrn">${warnItems || '<li>—</li>'}</ul>
     ${footerBlock(true, dateCn)}
   </article>`
@@ -190,16 +193,16 @@ function buildJournal(title: string, meta: string, content: ParsedSpeedRead, dat
     </section>
     <section class="v4-note">
       <span class="tape" aria-hidden="true"></span>
-      <span class="lab">一句话结论 ✎</span>
+      <span class="lab">${S.conclusion} ✎</span>
       <p>${formatInline(content.conclusion || '—', 'mark')}</p>
     </section>
     <section class="v4-points">
-      <div class="lab" data-count="${content.keyPoints.length} 条"><span class="dot"></span>关键要点</div>
+      <div class="lab" data-count="${content.keyPoints.length} 条"><span class="dot"></span>${S.keyPoints}</div>
       <ol>${keyItems || '<li><span class="n">1</span><p>—</p></li>'}</ol>
     </section>
     <section class="v4-warn">
       <span class="tape" aria-hidden="true"></span>
-      <div class="lab"><span class="tri"></span>值得注意</div>
+      <div class="lab"><span class="tri"></span>${S.warnings}</div>
       <ul>${warnItems || '<li>—</li>'}</ul>
     </section>
     <div class="strip">
