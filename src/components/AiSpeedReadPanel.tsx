@@ -1,4 +1,4 @@
-import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ChevronRight,
@@ -51,7 +51,6 @@ interface Props {
   onClose: () => void
   onRetry: () => void
   onCancel: () => void
-  onNotify: (message: string) => void
 }
 
 const ACTION_BUTTON_CLASS =
@@ -252,12 +251,13 @@ export function AiSpeedReadPanel({
   onClose,
   onRetry,
   onCancel,
-  onNotify,
 }: Props) {
   const contentRef = useRef<HTMLDivElement>(null)
   const stickToBottomRef = useRef(false)
   const prevStreamStateRef = useRef<SpeedReadUiState>('idle')
+  const panelToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [busyAction, setBusyAction] = useState<ActionId | null>(null)
+  const [panelToast, setPanelToast] = useState<string | null>(null)
   const [shareStyle, setShareStyle] = useState<SpeedReadShareStyle>(() => loadSpeedReadShareStyle())
   const safeHtml = useMemo(() => markdownToSafeHtml(markdown), [markdown])
   const displayTitle = useMemo(
@@ -266,6 +266,23 @@ export function AiSpeedReadPanel({
   )
   const hasContent = Boolean(markdown.trim() || thinking.trim())
   const canExport = Boolean(markdown.trim()) && (state === 'ready' || state === 'cancelled')
+
+  const notify = useCallback((message: string) => {
+    setPanelToast(message)
+    if (panelToastTimerRef.current) clearTimeout(panelToastTimerRef.current)
+    panelToastTimerRef.current = setTimeout(() => setPanelToast(null), 2600)
+  }, [])
+
+  useEffect(
+    () => () => {
+      if (panelToastTimerRef.current) clearTimeout(panelToastTimerRef.current)
+    },
+    [],
+  )
+
+  useEffect(() => {
+    if (!open) setPanelToast(null)
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -325,7 +342,7 @@ export function AiSpeedReadPanel({
           model,
           markdown: trimmed,
         })
-        onNotify((await copyShareText(text)) ? '速读内容已复制' : '复制失败，请重试')
+        notify((await copyShareText(text)) ? '速读内容已复制' : '复制失败，请重试')
         return
       }
 
@@ -342,8 +359,8 @@ export function AiSpeedReadPanel({
           speedReadMarkdownFileName(articleTitle),
           `${articleTitle} · AI 速读`,
         )
-        if (result === 'downloaded') onNotify('Markdown 已下载')
-        else if (result === 'shared') onNotify('Markdown 已导出')
+        if (result === 'downloaded') notify('Markdown 已下载')
+        else if (result === 'shared') notify('Markdown 已导出')
         return
       }
 
@@ -361,7 +378,7 @@ export function AiSpeedReadPanel({
         const fileName = speedReadImageFileName(articleTitle, shareStyle, { unique: true })
         const result = await saveImageBlob(blob, fileName)
         if (result === 'saved') {
-          onNotify(
+          notify(
             Capacitor.isNativePlatform()
               ? `「${styleLabel}」已保存到相册「有所闻」`
               : `「${styleLabel}」图片已下载`,
@@ -372,23 +389,24 @@ export function AiSpeedReadPanel({
 
       const fileName = speedReadImageFileName(articleTitle, shareStyle)
       const result = await shareImageBlob(blob, fileName, `${articleTitle} · AI 速读`)
-      if (result === 'shared') onNotify('已调起分享')
+      if (result === 'shared') notify('已调起分享')
       else if (result === 'cancelled') return
     } catch (actionError) {
       if (action === 'save-image') {
         const detail = actionError instanceof Error ? actionError.message.trim() : ''
-        onNotify(detail ? `图片保存失败：${detail}` : '图片保存失败，请重试')
+        notify(detail ? `图片保存失败：${detail}` : '图片保存失败，请重试')
         return
       }
       const message = actionError instanceof Error ? actionError.message : '操作失败，请重试'
-      onNotify(message)
+      notify(message)
     } finally {
       setBusyAction(null)
     }
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-[90] flex flex-col bg-black/55 backdrop-blur-sm" data-no-page-tap>
+    <>
+      <div className="fixed inset-0 z-[90] flex flex-col bg-black/55 backdrop-blur-sm" data-no-page-tap>
       <div
         role="dialog"
         aria-label="AI 速读"
@@ -564,7 +582,20 @@ export function AiSpeedReadPanel({
           </div>
         </div>
       </div>
-    </div>,
+      </div>
+      {panelToast && (
+        <div
+          className="pointer-events-none fixed inset-x-0 z-[100] flex justify-center px-4"
+          style={{ bottom: 'calc(max(var(--sab), 12px) + 96px)' }}
+          role="status"
+          aria-live="polite"
+        >
+          <span className="max-w-[min(100%,24rem)] rounded-full border border-haze bg-ink/95 px-3.5 py-2 text-center font-mono text-[11.5px] leading-snug text-paper shadow-xl backdrop-blur-md">
+            {panelToast}
+          </span>
+        </div>
+      )}
+    </>,
     document.body,
   )
 }

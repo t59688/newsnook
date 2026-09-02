@@ -1910,7 +1910,6 @@ export function ReaderScreen({
         onClose={() => setSpeedReadOpen(false)}
         onRetry={() => void runSpeedRead()}
         onCancel={cancelSpeedRead}
-        onNotify={showToast}
       />
     </div>
   )
