@@ -1110,3 +1110,61 @@
 .sr-share-root .v4 .m4 b {
   color: #b8422a;
 }
+
+/* ---------- 三评带（有所闻之后） ---------- */
+.sr-share-root .triad {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 22px 0 4px;
+}
+
+.sr-share-root .triad-row {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+.sr-share-root .triad-lab {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  padding-top: 4px;
+}
+
+.sr-share-root .triad-row p {
+  font-size: 15px;
+  line-height: 1.75;
+}
+
+.sr-share-root .v1 .triad-lab { color: var(--red); }
+.sr-share-root .v1 .triad-row p {
+  font-family: "Noto Serif SC", serif;
+  color: #4a3a2c;
+}
+
+.sr-share-root .v2 .triad {
+  margin-top: 28px;
+  padding-top: 8px;
+}
+.sr-share-root .v2 .triad-lab { color: var(--red); }
+.sr-share-root .v2 .triad-row p {
+  font-family: "Noto Serif SC", serif;
+  color: #2c2a25;
+}
+
+.sr-share-root .v3 .triad-lab { color: var(--amber); }
+.sr-share-root .v3 .triad-row p {
+  font-family: "Noto Serif SC", serif;
+  color: #ded8c8;
+}
+
+.sr-share-root .v4 .triad-lab {
+  font-family: "LXGW WenKai Screen", "Kaiti SC", "KaiTi", "STKaiti", serif;
+  color: #b8422a;
+}
+.sr-share-root .v4 .triad-row p {
+  font-family: "LXGW WenKai Screen", "Kaiti SC", "KaiTi", "STKaiti", serif;
+  color: #4c3d12;
+}

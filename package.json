@@ -82,6 +82,7 @@
     "test:local-search": "npx tsx scripts/local-search.test.ts",
     "test:recommend": "npx tsx scripts/recommend.test.ts",
     "test:speed-read": "npx tsx scripts/speed-read.test.ts",
+    "test:speed-read-share": "npx tsx scripts/speed-read-share.test.ts",
     "test:share-article": "rolldown scripts/share-article.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/share-article.test.mjs && node node_modules/.cache/newsnook/share-article.test.mjs",
     "test:share-link": "rolldown scripts/share-link.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/share-link.test.mjs && node node_modules/.cache/newsnook/share-link.test.mjs",
     "test:share-og": "npx tsx scripts/share-og.test.ts",

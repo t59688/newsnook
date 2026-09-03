@@ -58,6 +58,25 @@ function formatDateCn(date = new Date()): string {
   return date.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
 }
 
+function commentText(value: string): string {
+  return value.trim() || '—'
+}
+
+function commentsBand(content: ParsedSpeedRead, mode: 'v1' | 'b' | 'mark'): string {
+  const rows: Array<[string, string]> = [
+    [S.satire, content.satire],
+    [S.structure, content.structure],
+    [S.situation, content.situation],
+  ]
+  const items = rows
+    .map(
+      ([label, text]) =>
+        `<div class="triad-row"><span class="triad-lab">${escapeHtml(label)}</span><p>${formatInline(commentText(text), mode)}</p></div>`,
+    )
+    .join('')
+  return `<section class="triad" aria-label="三评">${items}</section>`
+}
+
 function buildMeta(model: string | undefined, withDate: boolean): string {
   const parts: string[] = []
   if (model?.trim()) parts.push(`模型 ${model.trim()}`)
@@ -111,6 +130,7 @@ function buildWarmPaper(
       <h3>${S.conclusion}</h3>
       <p>${formatInline(content.conclusion || '—', 'v1')}</p>
     </section>
+    ${commentsBand(content, 'v1')}
     <div class="v1-sec"><span class="sq"></span><h3>${S.keyPoints}</h3><span class="cnt">${content.keyPoints.length} 条</span><span class="ln"></span></div>
     <ul class="key">${keyItems || '<li>—</li>'}</ul>
     <div class="v1-sec amber"><span class="sq"></span><h3>${S.warnings}</h3><span class="cnt">${content.warnings.length} 条</span><span class="ln"></span></div>
@@ -140,6 +160,7 @@ function buildEditorial(
       <p class="lab">${S.conclusion} / SUOWEN</p>
       <p>${formatInline(content.conclusion || '—', 'b')}</p>
     </div>
+    ${commentsBand(content, 'b')}
     <div class="v2-h"><span class="no">02</span><h3>${S.keyPoints}</h3><span class="en">Key Thread</span><span class="ln"></span></div>
     <ol>${keyItems || '<li><span class="n">01</span><p>—</p></li>'}</ol>
     <div class="v2-h"><span class="no">03</span><h3>${S.warnings}</h3><span class="en">Notes</span><span class="ln"></span></div>
@@ -164,6 +185,7 @@ function buildDusk(title: string, meta: string, content: ParsedSpeedRead, dateCn
       <span class="lab">${S.conclusion}</span>
       <p>${formatInline(content.conclusion || '—', 'b')}</p>
     </div>
+    ${commentsBand(content, 'b')}
     <div class="v3-h"><span class="bar"></span><h3>${S.keyPoints}</h3><span class="cnt">${content.keyPoints.length} 条</span></div>
     <ul class="key">${keyItems || '<li>—</li>'}</ul>
     <div class="v3-h"><span class="bar"></span><h3>${S.warnings}</h3><span class="cnt">${content.warnings.length} 条</span></div>
@@ -192,6 +214,7 @@ function buildJournal(title: string, meta: string, content: ParsedSpeedRead, dat
       <span class="lab">${S.conclusion} ✎</span>
       <p>${formatInline(content.conclusion || '—', 'mark')}</p>
     </section>
+    ${commentsBand(content, 'mark')}
     <section class="v4-points">
       <div class="lab" data-count="${content.keyPoints.length} 条"><span class="dot"></span>${S.keyPoints}</div>
       <ol>${keyItems || '<li><span class="n">1</span><p>—</p></li>'}</ol>
