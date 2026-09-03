@@ -18,6 +18,66 @@ const { createSpeedReadPartialStore, EMPTY_SPEED_READ_PARTIAL } = await import(
   '../src/features/speedRead/partialStore'
 )
 const { hasSpeedReadableText, SPEED_READ_MIN_TEXT_CHARS } = await import('../src/features/speedRead/service')
+const { SPEED_READ_SECTION_TITLES, SPEED_READ_COMMENT_KEYS } = await import(
+  '../src/features/speedRead/sections'
+)
+const { parseSpeedReadMarkdown } = await import('../src/lib/speedReadShare/parse')
+
+assert.deepEqual(SPEED_READ_COMMENT_KEYS, ['satire', 'structure', 'situation'])
+assert.equal(SPEED_READ_SECTION_TITLES.satire, '讽世')
+assert.equal(SPEED_READ_SECTION_TITLES.structure, '析世')
+assert.equal(SPEED_READ_SECTION_TITLES.situation, '观世')
+
+const full = parseSpeedReadMarkdown(`## 有所闻
+核心判断一句。
+## 讽世
+把「改革」说成给旧家具换桌布。
+## 析世
+钱从补贴口进，风险从居民口袋出。
+## 观世
+饭桌上没人再问明年房租，只问还能否续签。
+## 重点脉络
+- 要点一
+- 要点二
+## 值得注意
+- 数字未核实
+`)
+assert.equal(full.conclusion, '核心判断一句。')
+assert.equal(full.satire, '把「改革」说成给旧家具换桌布。')
+assert.equal(full.structure, '钱从补贴口进，风险从居民口袋出。')
+assert.equal(full.situation, '饭桌上没人再问明年房租，只问还能否续签。')
+assert.deepEqual(full.keyPoints, ['要点一', '要点二'])
+assert.deepEqual(full.warnings, ['数字未核实'])
+
+const legacy = parseSpeedReadMarkdown(`## 有所闻
+旧结论
+## 重点脉络
+- 旧要点
+## 值得注意
+暂无额外需要注意的信息
+`)
+assert.equal(legacy.satire, '')
+assert.equal(legacy.structure, '')
+assert.equal(legacy.situation, '')
+assert.equal(legacy.conclusion, '旧结论')
+assert.deepEqual(legacy.keyPoints, ['旧要点'])
+
+const placeholder = parseSpeedReadMarkdown(`## 有所闻
+结论
+## 讽世
+暂无额外可评
+## 析世
+暂无额外可评
+## 观世
+暂无额外可评
+## 重点脉络
+- a
+## 值得注意
+- b
+`)
+assert.equal(placeholder.satire, '暂无额外可评')
+assert.equal(placeholder.structure, '暂无额外可评')
+assert.equal(placeholder.situation, '暂无额外可评')
 
 assert.deepEqual(chunkArticleText('a\n\nb\n\nc', 4), ['a\n\nb', 'c'])
 const long = 'abcdefghij'

@@ -10,6 +10,9 @@ export interface SpeedReadImageInput {
 
 export interface ParsedSpeedRead {
   conclusion: string
+  satire: string
+  structure: string
+  situation: string
   keyPoints: string[]
   warnings: string[]
 }
