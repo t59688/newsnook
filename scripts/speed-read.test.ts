@@ -79,6 +79,33 @@ assert.equal(placeholder.satire, '暂无额外可评')
 assert.equal(placeholder.structure, '暂无额外可评')
 assert.equal(placeholder.situation, '暂无额外可评')
 
+const { buildSpeedReadSystemPrompt, buildSpeedReadChunkSystemPrompt } = await import(
+  '../src/features/speedRead/service'
+)
+const { SPEED_READ_PROMPT_VERSION } = await import('../src/features/speedRead/cache')
+
+assert.equal(SPEED_READ_PROMPT_VERSION, 'speed-read-v3')
+
+const system = buildSpeedReadSystemPrompt()
+assert.match(system, /## 有所闻/)
+assert.match(system, /## 讽世/)
+assert.match(system, /## 析世/)
+assert.match(system, /## 观世/)
+assert.match(system, /## 重点脉络/)
+assert.match(system, /## 值得注意/)
+assert.match(system, /Oscar Wilde/)
+assert.match(system, /钱钟书/)
+assert.match(system, /汪曾祺/)
+assert.match(system, /20-40/)
+assert.match(system, /暂无额外可评/)
+assert.match(system, /同一轮|六个二级标题/)
+
+const chunk = buildSpeedReadChunkSystemPrompt()
+assert.match(chunk, /不要下全文结论/)
+assert.doesNotMatch(chunk, /讽世/)
+assert.doesNotMatch(chunk, /析世/)
+assert.doesNotMatch(chunk, /观世/)
+
 assert.deepEqual(chunkArticleText('a\n\nb\n\nc', 4), ['a\n\nb', 'c'])
 const long = 'abcdefghij'
 assert.deepEqual(chunkArticleText(long, 4), ['abcd', 'efgh', 'ij'])

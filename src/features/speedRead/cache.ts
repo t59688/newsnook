@@ -2,7 +2,7 @@ import type { CloudTranslationConfig } from '../translation/types'
 
 const STORAGE_KEY = 'newsnook:speed-read:v1'
 const MAX_ENTRIES = 32
-const PROMPT_VERSION = 'speed-read-v2'
+export const SPEED_READ_PROMPT_VERSION = 'speed-read-v3'
 
 interface CacheEntry {
   key: string
@@ -27,7 +27,7 @@ export function speedReadCacheKey(
   config: Pick<CloudTranslationConfig, 'endpoint' | 'model'>,
 ): string {
   return `${articleId}:${hashString(
-    `${PROMPT_VERSION}\u0000${config.endpoint}\u0000${config.model || ''}\u0000${title}\u0000${html}`,
+    `${SPEED_READ_PROMPT_VERSION}\u0000${config.endpoint}\u0000${config.model || ''}\u0000${title}\u0000${html}`,
   )}`
 }
 
