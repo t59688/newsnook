@@ -46,3 +46,5 @@ logs/
 cloud/.env
 cloud/.env.*
 !cloud/.env.example
+
+.coding-tools/

@@ -84,7 +84,7 @@ const { buildSpeedReadSystemPrompt, buildSpeedReadChunkSystemPrompt } = await im
 )
 const { SPEED_READ_PROMPT_VERSION } = await import('../src/features/speedRead/cache')
 
-assert.equal(SPEED_READ_PROMPT_VERSION, 'speed-read-v3')
+assert.equal(SPEED_READ_PROMPT_VERSION, 'speed-read-v4')
 
 const system = buildSpeedReadSystemPrompt()
 assert.match(system, /## 有所闻/)
@@ -98,7 +98,12 @@ assert.match(system, /钱钟书/)
 assert.match(system, /汪曾祺/)
 assert.match(system, /20-40/)
 assert.match(system, /暂无额外可评/)
-assert.match(system, /同一轮|六个二级标题/)
+assert.match(system, /六个二级标题/)
+assert.match(system, /刀刃上撒糖|剑刃上撒上止痛药/)
+assert.match(system, /生成链/)
+assert.match(system, /新汉语老师/)
+assert.match(system, /拆机器/)
+assert.match(system, /把人放回现场/)
 
 const chunk = buildSpeedReadChunkSystemPrompt()
 assert.match(chunk, /不要下全文结论/)

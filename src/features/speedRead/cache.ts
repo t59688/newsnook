@@ -2,7 +2,7 @@ import type { CloudTranslationConfig } from '../translation/types'
 
 const STORAGE_KEY = 'newsnook:speed-read:v1'
 const MAX_ENTRIES = 32
-export const SPEED_READ_PROMPT_VERSION = 'speed-read-v3'
+export const SPEED_READ_PROMPT_VERSION = 'speed-read-v4'
 
 interface CacheEntry {
   key: string
