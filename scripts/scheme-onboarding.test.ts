@@ -7,7 +7,9 @@ import assert from 'node:assert/strict'
 import { parseHTML } from 'linkedom'
 
 import {
+  cancelScheduledPreview,
   previewThemeScheme,
+  schedulePreviewThemeScheme,
   schemeOnboardingOptions,
   shouldShowSchemeOnboarding,
 } from '../src/lib/schemeOnboarding'
@@ -77,6 +79,69 @@ assert.equal(document.documentElement.dataset.scheme, 'celadon')
 assert.equal(document.documentElement.classList.contains('theme-switching'), false)
 
 console.log('scheme-onboarding preview: ok')
+
+// 模拟浏览器帧循环：rAF 回调排队，flushFrame 走完一帧；两帧后才允许整页改写
+const frameQueue = new Map<number, () => void>()
+let frameSeq = 0
+;(globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame = (cb: () => void) => {
+  frameQueue.set(++frameSeq, cb)
+  return frameSeq
+}
+;(globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame = (id: number) => {
+  frameQueue.delete(id)
+}
+const flushFrame = () => {
+  const callbacks = [...frameQueue.values()]
+  frameQueue.clear()
+  for (const cb of callbacks) cb()
+}
+
+previewThemeScheme('ink')
+schedulePreviewThemeScheme('pearl')
+assert.equal(document.documentElement.dataset.scheme, 'ink', '点击当帧不改整页方案，先让选中态上屏')
+flushFrame()
+assert.equal(document.documentElement.dataset.scheme, 'ink', '本帧绘制前触发的 rAF 仍不写入')
+flushFrame()
+assert.equal(document.documentElement.dataset.scheme, 'pearl', '下一帧才落到 html[data-scheme]')
+assert.equal(document.documentElement.classList.contains('theme-switching'), false)
+
+schedulePreviewThemeScheme('celadon')
+schedulePreviewThemeScheme('pearl')
+schedulePreviewThemeScheme('ink')
+flushFrame()
+flushFrame()
+assert.equal(document.documentElement.dataset.scheme, 'ink', '连点多张卡只保留最后一张')
+assert.equal(frameQueue.size, 0, '被顶掉的预览不再占用帧回调')
+
+schedulePreviewThemeScheme('celadon')
+cancelScheduledPreview()
+flushFrame()
+flushFrame()
+assert.equal(document.documentElement.dataset.scheme, 'ink', '关闭/确认前取消后，迟到的预览不再写入')
+
+schedulePreviewThemeScheme('celadon')
+flushFrame()
+cancelScheduledPreview()
+flushFrame()
+assert.equal(document.documentElement.dataset.scheme, 'ink', '第二拍排队后取消同样有效')
+
+schedulePreviewThemeScheme('pearl')
+previewThemeScheme('celadon')
+flushFrame()
+flushFrame()
+assert.equal(
+  document.documentElement.dataset.scheme,
+  'pearl',
+  '未取消时延后预览照常落地（组件恢复基线前必须先取消）',
+)
+cancelScheduledPreview()
+
+delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame
+delete (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame
+schedulePreviewThemeScheme('celadon')
+assert.equal(document.documentElement.dataset.scheme, 'celadon', '没有 rAF 的环境退回同步写入')
+
+console.log('scheme-onboarding deferred preview: ok')
 
 const memory = new Map<string, string>()
 ;(globalThis as { localStorage?: unknown }).localStorage = {
