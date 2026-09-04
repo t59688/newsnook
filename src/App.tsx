@@ -1520,7 +1520,15 @@ export default function App() {
           onBrandTap={onBrandTap}
         />
 
-        <main className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ink">
+        {/*
+          风格引导期间把内容区搁起（content-visibility: hidden）：下层今日列表不参与样式重算与绘制，
+          引导里点选预览才能像「我的 → 外观」那样即时；列表 DOM 与滚动位置照旧保留，关闭后原样回来。
+        */}
+        <main
+          className={`relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ink${
+            showSchemeOnboarding ? ' content-parked' : ''
+          }`}
+        >
           {renderTab()}
 
           {!focusSource && (

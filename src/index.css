@@ -584,6 +584,15 @@ html[data-eink='1'] .preset-switcher-sheet {
     contain: layout style;
   }
 
+  /*
+   * 整块内容区搁起：模态引导（风格选择）盖住 <main> 时挂上，
+   * 下层长列表不再参与样式重算与绘制，切换 data-scheme 只剩弹层和壳要重画。
+   * 与 display:none 不同，DOM、布局与滚动位置都保留，摘掉后原样回来。
+   */
+  .content-parked {
+    content-visibility: hidden;
+  }
+
   /* 加载占位：一层缓慢扫过的微光，走 GPU 合成层 */
   .ink-shimmer {
     position: relative;

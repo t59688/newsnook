@@ -2,19 +2,16 @@ import { useCallback, useEffect, useId, useRef, useState, type MutableRefObject 
 import { Check, X } from 'lucide-react'
 
 import { lockBodyScroll } from '../lib/bodyScrollLock'
-import {
-  cancelScheduledPreview,
-  previewThemeScheme,
-  schedulePreviewThemeScheme,
-  schemeOnboardingOptions,
-} from '../lib/schemeOnboarding'
+import { previewThemeScheme, schemeOnboardingOptions } from '../lib/schemeOnboarding'
 import type { CustomSchemePrefs } from '../lib/customScheme'
 import type { ThemeScheme, ThemeSchemeSwatch } from '../lib/theme'
 
 /**
  * 风格选择：只出现一次，形态靠近同步介绍。
  * 点选只改 data-scheme 做预览；确认才写入偏好，「稍后再说」把画面拨回打开前。
- * 预览延后一帧写入（见 schedulePreviewThemeScheme），点击帧只画卡片的选中态。
+ *
+ * 打开期间 App 把 <main>（今日列表）搁起，遮罩用不透明的 bg-ink：预览时整屏只有
+ * 这层底色、弹层和文字要重画，切换即时；关闭后列表原样回来（content-visibility 保留状态）。
  */
 interface Props {
   open: boolean
@@ -72,7 +69,6 @@ export function SchemeOnboardingPrompt({
   }
 
   const restoreBaseline = useCallback(() => {
-    cancelScheduledPreview()
     previewThemeScheme(baselineRef.current, customScheme)
   }, [customScheme])
 
@@ -82,15 +78,12 @@ export function SchemeOnboardingPrompt({
   }, [onDismiss, restoreBaseline])
 
   const confirm = useCallback(() => {
-    // 确认后由偏好落盘统一套用方案；来不及落地的预览直接作废，免得两边抢写 data-scheme
-    cancelScheduledPreview()
     onConfirm(selected)
   }, [onConfirm, selected])
 
   useEffect(() => {
     if (!open) return
     setSelected(initialScheme)
-    return () => cancelScheduledPreview()
   }, [open, initialScheme])
 
   useEffect(() => {
@@ -127,7 +120,7 @@ export function SchemeOnboardingPrompt({
 
   return (
     <div
-      className="fixed inset-0 z-[65] flex items-end justify-center bg-black/50 px-4 md:items-center"
+      className="fixed inset-0 z-[65] flex items-end justify-center bg-ink px-4 md:items-center"
       style={{ paddingBottom: 'calc(var(--sab) + 84px)' }}
       role="presentation"
       onClick={dismiss}
@@ -171,7 +164,7 @@ export function SchemeOnboardingPrompt({
                   aria-pressed={checked}
                   onClick={() => {
                     setSelected(item.id)
-                    schedulePreviewThemeScheme(item.id)
+                    previewThemeScheme(item.id)
                   }}
                   className={`flex w-full flex-col gap-1.5 rounded-xl border p-2 text-left ${
                     checked ? 'border-cinnabar/60 bg-ink' : 'border-haze bg-ink/40'
