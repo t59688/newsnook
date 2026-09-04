@@ -2,13 +2,19 @@ import { useCallback, useEffect, useId, useRef, useState, type MutableRefObject 
 import { Check, X } from 'lucide-react'
 
 import { lockBodyScroll } from '../lib/bodyScrollLock'
-import { previewThemeScheme, schemeOnboardingOptions } from '../lib/schemeOnboarding'
+import {
+  cancelScheduledPreview,
+  previewThemeScheme,
+  schedulePreviewThemeScheme,
+  schemeOnboardingOptions,
+} from '../lib/schemeOnboarding'
 import type { CustomSchemePrefs } from '../lib/customScheme'
 import type { ThemeScheme, ThemeSchemeSwatch } from '../lib/theme'
 
 /**
  * 风格选择：只出现一次，形态靠近同步介绍。
  * 点选只改 data-scheme 做预览；确认才写入偏好，「稍后再说」把画面拨回打开前。
+ * 预览延后一帧写入（见 schedulePreviewThemeScheme），点击帧只画卡片的选中态。
  */
 interface Props {
   open: boolean
@@ -66,6 +72,7 @@ export function SchemeOnboardingPrompt({
   }
 
   const restoreBaseline = useCallback(() => {
+    cancelScheduledPreview()
     previewThemeScheme(baselineRef.current, customScheme)
   }, [customScheme])
 
@@ -75,12 +82,15 @@ export function SchemeOnboardingPrompt({
   }, [onDismiss, restoreBaseline])
 
   const confirm = useCallback(() => {
+    // 确认后由偏好落盘统一套用方案；来不及落地的预览直接作废，免得两边抢写 data-scheme
+    cancelScheduledPreview()
     onConfirm(selected)
   }, [onConfirm, selected])
 
   useEffect(() => {
     if (!open) return
     setSelected(initialScheme)
+    return () => cancelScheduledPreview()
   }, [open, initialScheme])
 
   useEffect(() => {
@@ -161,7 +171,7 @@ export function SchemeOnboardingPrompt({
                   aria-pressed={checked}
                   onClick={() => {
                     setSelected(item.id)
-                    previewThemeScheme(item.id)
+                    schedulePreviewThemeScheme(item.id)
                   }}
                   className={`flex w-full flex-col gap-1.5 rounded-xl border p-2 text-left ${
                     checked ? 'border-cinnabar/60 bg-ink' : 'border-haze bg-ink/40'
