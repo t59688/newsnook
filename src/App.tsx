@@ -7,6 +7,7 @@ import { DlnaCastBanner } from './components/DlnaCastBanner'
 import { OpenInAppBanner } from './components/OpenInAppBanner'
 import { DesktopSidebar } from './components/DesktopSidebar'
 import { TabBar, type TabKey } from './components/TabBar'
+import { SchemeOnboardingPrompt } from './components/SchemeOnboardingPrompt'
 import { SyncOnboardingPrompt } from './features/account/SyncOnboardingPrompt'
 import { useAccount } from './features/account/useAccount'
 import { syncRouteFromAppUrl } from './features/sync/nativeNotification'
@@ -49,11 +50,13 @@ import {
 } from './lib/shareLink'
 import {
   hasSeenProductTour,
+  hasSeenSchemeOnboarding,
   hasSeenSyncOnboarding,
   listCacheStats,
   loadEnabledSources,
   loadIdSet,
   loadLaterArticles,
+  markSchemeOnboardingSeen,
   markSyncOnboardingSeen,
   saveEnabledSources,
   saveIdSet,
@@ -61,6 +64,7 @@ import {
 } from './lib/storage'
 import { chineseDate } from './lib/time'
 import type { Article } from './lib/types'
+import { shouldShowSchemeOnboarding } from './lib/schemeOnboarding'
 import { THEME_MODES, THEME_SCHEMES, schemeSeedColors } from './lib/theme'
 import { ChannelsScreen } from './screens/ChannelsScreen'
 import { FeedScreen } from './screens/FeedScreen'
@@ -289,6 +293,20 @@ export default function App() {
     markSyncOnboardingSeen()
     setSyncOnboardingSeen(true)
   }, [])
+  const [schemeOnboardingSeen, setSchemeOnboardingSeen] = useState(() => hasSeenSchemeOnboarding())
+  const schemeOnboardingCloserRef = useRef<(() => boolean) | null>(null)
+  const confirmSchemeOnboarding = useCallback(
+    (scheme: typeof prefs.scheme) => {
+      update((prev) => selectThemeScheme(prev, scheme))
+      markSchemeOnboardingSeen()
+      setSchemeOnboardingSeen(true)
+    },
+    [update],
+  )
+  const dismissSchemeOnboarding = useCallback(() => {
+    markSchemeOnboardingSeen()
+    setSchemeOnboardingSeen(true)
+  }, [])
   const openAccountSync = useCallback(() => {
     setTab('me')
     setSettingsRoute({ name: 'account-sync' })
@@ -340,7 +358,8 @@ export default function App() {
       !settingsRoute &&
       !focusSourceId &&
       !eggOpen &&
-      !deepLinkError,
+      !deepLinkError &&
+      schemeOnboardingSeen,
     setTab,
     onFinish: tourFinish,
   })
@@ -517,6 +536,9 @@ export default function App() {
     let removeListener: (() => Promise<void>) | undefined
 
     void CapacitorApp.addListener('backButton', () => {
+      if (schemeOnboardingCloserRef.current?.()) {
+        return
+      }
       if (stopProductTourIfActive()) {
         return
       }
@@ -820,12 +842,22 @@ export default function App() {
       sharedEntry?.payload &&
       reading.originUrl === sharedEntry.payload.originUrl,
   )
+  const showSchemeOnboarding = shouldShowSchemeOnboarding({
+    seen: schemeOnboardingSeen,
+    tab,
+    reading: Boolean(reading),
+    settingsOpen: Boolean(settingsRoute),
+    sourceFocused: Boolean(focusSourceId),
+    eggOpen,
+    deepLinkError,
+  })
   /**
    * 同步介绍只在功能引导之后、首页无遮挡时露一次面，且只对未登录用户。
    * 它是可选加分项，不参与 driver.js 的引导流程，两个按钮都会记下「看过」。
    */
   const showSyncOnboarding =
     !syncOnboardingSeen &&
+    schemeOnboardingSeen &&
     account.status === 'anonymous' &&
     hasSeenProductTour() &&
     tab === 'today' &&
@@ -1561,6 +1593,15 @@ export default function App() {
       {showOpenInAppBanner && openInAppUrl && (
         <OpenInAppBanner href={openInAppUrl} onDismiss={() => setOpenInAppDismissed(true)} />
       )}
+
+      <SchemeOnboardingPrompt
+        open={showSchemeOnboarding}
+        initialScheme={prefs.scheme}
+        customScheme={prefs.customScheme}
+        onConfirm={confirmSchemeOnboarding}
+        onDismiss={dismissSchemeOnboarding}
+        closeRef={schemeOnboardingCloserRef}
+      />
 
       <SyncOnboardingPrompt
         open={showSyncOnboarding}

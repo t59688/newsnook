@@ -22,6 +22,7 @@ export const SYNC_JOURNAL_KEY = 'sync-journal:v1'
 /** 与 sync-state 分开存，避免同步域重置时向云端登记成新设备 */
 export const DEVICE_ID_KEY = 'device-id'
 export const SYNC_ONBOARDING_KEY = 'sync-onboarding-seen'
+export const SCHEME_ONBOARDING_KEY = 'scheme-onboarding-seen'
 /** 首次同步基线选择前的本机快照，只落 localStorage（见 lib/backup.ts） */
 export const SYNC_SAFETY_SNAPSHOT_KEY = 'sync-safety-snapshot:v1'
 
@@ -43,6 +44,7 @@ const BOOTSTRAP_MIRROR_KEYS = [
   SYNC_JOURNAL_KEY,
   DEVICE_ID_KEY,
   SYNC_ONBOARDING_KEY,
+  SCHEME_ONBOARDING_KEY,
 ] as const
 
 /** 阅读位置：条目多但每条很小，只落 localStorage，避免每次滚动都写原生 Preferences */
@@ -324,6 +326,15 @@ export function hasSeenSyncOnboarding(): boolean {
 
 export function markSyncOnboardingSeen(): void {
   write(SYNC_ONBOARDING_KEY, true)
+}
+
+/** 风格选择引导只出现一次；确认与「稍后再说」都算已看过。升级到本版的用户没有此标记，因此都会看到。 */
+export function hasSeenSchemeOnboarding(): boolean {
+  return read<boolean>(SCHEME_ONBOARDING_KEY, false)
+}
+
+export function markSchemeOnboardingSeen(): void {
+  write(SCHEME_ONBOARDING_KEY, true)
 }
 
 export function loadReadingPositions(): unknown {

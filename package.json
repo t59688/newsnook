@@ -90,6 +90,7 @@
     "test:cloudflare-routing": "npx tsx scripts/cloudflare-routing.test.ts",
     "test:config-backup": "rolldown scripts/config-backup.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/config-backup.test.mjs && node node_modules/.cache/newsnook/config-backup.test.mjs",
     "test:product-tour": "npx tsx scripts/product-tour.test.ts",
+    "test:scheme-onboarding": "npx tsx scripts/scheme-onboarding.test.ts",
     "test:webview-css-compat": "npx tsx scripts/webview-css-compat.test.ts",
     "test:sync-projection": "npm run build:contracts && npx tsx scripts/sync-projection.test.ts",
     "test:sync-engine": "npm run build:contracts && npx tsx scripts/sync-engine.test.ts",
