@@ -731,6 +731,12 @@ export function ReaderScreen({
     [article, resolvedTitle],
   )
 
+  // 同一份偏好复用一个实例：AI 翻译部分失败后「重试」只补失败段，不重发已成功段
+  const translationService = useMemo(
+    () => createTranslationService(translationPrefs),
+    [translationPrefs],
+  )
+
   const speedReadConfig = useMemo(
     () => resolveAiFeatureConfig({ ai: translationPrefs.ai }, 'speedRead'),
     [translationPrefs.ai],
@@ -1221,7 +1227,7 @@ export function ReaderScreen({
         if (!pending || controller.signal.aborted) return
         setTranslated(pending)
       }
-      const result = await createTranslationService(translationPrefs).translateArticle(
+      const result = await translationService.translateArticle(
         article.title,
         html,
         translationPrefs,
@@ -1516,6 +1522,9 @@ export function ReaderScreen({
                       <button
                         type="button"
                         onClick={() => {
+                          // 保留的只是半篇译文：回原文后清掉，下次点「翻译」重新走一遍
+                          //（已成功段由 Provider 缓存秒回），不能被当成完整译文直接展示。
+                          setTranslated(null)
                           setShowTranslation(false)
                           setTranslationError('')
                           setTranslationState('idle')
