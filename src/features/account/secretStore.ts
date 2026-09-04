@@ -62,8 +62,11 @@ function legacyOpenAiMirrorValue(prefs: Preferences): string {
 function collectSecretsWithLegacyMirror(prefs: Preferences): Record<string, string> {
   const values = collectSecrets(prefs)
   const legacyValue = legacyOpenAiMirrorValue(prefs)
+  // AI 翻译 Key 是旧 OpenAI secret 的镜像源；有值时覆盖写入，便于降级旧客户端。
+  // AI 为空时不要删掉 collectSecrets 已读到的 cloud.openai.apiKey——历史明文迁移与
+  // 尚未 normalize 的瞬时态仍靠旧字段进 Keystore。两边都空时该键本就不在 values 里，
+  // persistRuntimeSecrets 仍会清掉对应 SecureStore 条目。
   if (legacyValue) values[LEGACY_OPENAI_SECRET_KEY] = legacyValue
-  else delete values[LEGACY_OPENAI_SECRET_KEY]
   return values
 }
 
