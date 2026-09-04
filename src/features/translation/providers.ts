@@ -738,8 +738,26 @@ export class DeepLXProvider extends CloudProvider {
   }
 }
 
+/** 单个 OpenAiProvider 实例最多记住多少段成功译文（约两篇长文） */
+const OPENAI_COMPLETED_CACHE_LIMIT = 256
+
 export class OpenAiProvider extends CloudProvider {
   readonly id = 'openai' as const
+  /**
+   * 本实例已成功的段落译文。长文里个别段落失败后用户点「重试」，
+   * 只需补失败段，不必把整篇再发一遍。Reader 复用同一实例；
+   * 设置页「测试 AI 翻译」每次新建实例，不受影响。
+   */
+  private readonly completed = new Map<string, string>()
+
+  private remember(key: string, value: string): void {
+    this.completed.delete(key)
+    this.completed.set(key, value)
+    if (this.completed.size > OPENAI_COMPLETED_CACHE_LIMIT) {
+      const oldest = this.completed.keys().next().value
+      if (oldest !== undefined) this.completed.delete(oldest)
+    }
+  }
 
   async translate(request: TranslationRequest): Promise<string[]> {
     const base = assertOpenAiConfig(this.config)
@@ -751,8 +769,10 @@ export class OpenAiProvider extends CloudProvider {
       throw new Error('AI 翻译：textKinds 与 texts 长度不一致')
     }
 
-    // 同一次调用内「文本 + 场景」相同的段落只发一次请求，重复段共享在途结果
+    // 同一次调用内「语向 + 场景 + 文本」相同的段落只发一次请求，重复段共享在途结果
     const inflightByKey = new Map<string, Promise<string>>()
+    const cacheKey = (text: string, kind: TranslationTextKind) =>
+      `${request.sourceLanguage}\u0000${request.targetLanguage}\u0000${kind}\u0000${text}`
     const translateSingle = async (text: string, kind: TranslationTextKind): Promise<string> => {
       const system = openAiTranslationSystemPrompt(
         request.sourceLanguage,
@@ -824,10 +844,15 @@ export class OpenAiProvider extends CloudProvider {
       concurrency,
       (text, index) => {
         const kind = request.textKinds?.[index] ?? 'paragraph'
-        const key = `${kind}\u0000${text}`
+        const key = cacheKey(text, kind)
+        const done = this.completed.get(key)
+        if (done !== undefined) return Promise.resolve(done)
         let pending = inflightByKey.get(key)
         if (!pending) {
-          pending = translateSingle(text, kind)
+          pending = translateSingle(text, kind).then((translated) => {
+            this.remember(key, translated)
+            return translated
+          })
           inflightByKey.set(key, pending)
         }
         return pending

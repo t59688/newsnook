@@ -387,6 +387,49 @@ assert.equal(bestEffortCalls.get('Fail'), 1)
 assert.equal(bestEffortCalls.get('One'), 1)
 assert.equal(bestEffortCalls.get('Three'), 1)
 
+// 同一 Provider 实例重试时只补失败段：已成功段直接复用，不再重发整篇。
+globalThis.fetch = async (_input, init) => {
+  const body = JSON.parse(String(init?.body)) as {
+    messages: { role: string; content: string }[]
+  }
+  const user = body.messages.find((message) => message.role === 'user')?.content ?? ''
+  const plain = user.match(/^原文：\n([\s\S]+)$/)
+  const text = plain?.[1] ?? user
+  bestEffortCalls.set(text, (bestEffortCalls.get(text) ?? 0) + 1)
+  await new Promise((resolve) => setTimeout(resolve, 5))
+  return Response.json({ choices: [{ message: { content: `AI:${text}` } }] })
+}
+const resumedIndexes: number[] = []
+const resumed = await providerFive.translate({
+  texts: ['One', 'Fail', 'Three'],
+  sourceLanguage: 'en',
+  targetLanguage: 'zh-Hans',
+  onBatch: (_batch, startIndex) => resumedIndexes.push(startIndex),
+})
+assert.deepEqual(resumed, ['AI:One', 'AI:Fail', 'AI:Three'])
+assert.deepEqual(
+  resumedIndexes.sort((a, b) => a - b),
+  [0, 1, 2],
+  'resumed run must still report every segment through onBatch',
+)
+assert.equal(bestEffortCalls.get('Fail'), 2, 'only the failed segment is re-requested')
+assert.equal(bestEffortCalls.get('One'), 1, 'completed segments are reused on retry')
+assert.equal(bestEffortCalls.get('Three'), 1, 'completed segments are reused on retry')
+
+// 语向不同不能复用：同一文本换目标语言必须重新请求
+await providerFive.translate({ texts: ['One'], sourceLanguage: 'en', targetLanguage: 'ja' })
+assert.equal(bestEffortCalls.get('One'), 2, 'different target language must not hit the cache')
+
+// 新实例不共享缓存：设置页「测试 AI 翻译」每次都真实发请求
+const freshProvider = new OpenAiProvider({
+  apiKey: 'sk-test',
+  endpoint: 'https://api.openai.com/v1',
+  model: 'gpt-4o-mini',
+  concurrency: 5,
+})
+await freshProvider.translate({ texts: ['Three'], sourceLanguage: 'en', targetLanguage: 'zh-Hans' })
+assert.equal(bestEffortCalls.get('Three'), 2, 'a new provider instance starts with an empty cache')
+
 // 同一次调用内重复文本只请求一次，结果按原顺序展开，onBatch 仍逐条回调
 let dedupCalls = 0
 globalThis.fetch = async (_input, init) => {
