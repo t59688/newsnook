@@ -138,10 +138,24 @@ function recordsFromProjection(state: LocalRuntimeState): SyncRecord[] {
 
 {
   const state = baseState()
-  state.prefs.translation.cloud.openai = {
-    ...state.prefs.translation.cloud.openai,
-    apiKey: 'sk-openai-secret',
-    model: 'gpt-4o-mini',
+  // AI 迁移后：模型真相在 ai.translation；cloud.openai.model 由镜像回填。
+  // 密钥仍可从旧 cloud.openai.apiKey 迁入 Provider / secret。
+  state.prefs.translation = {
+    ...state.prefs.translation,
+    cloud: {
+      ...state.prefs.translation.cloud,
+      openai: {
+        ...state.prefs.translation.cloud.openai,
+        apiKey: 'sk-openai-secret',
+      },
+    },
+    ai: {
+      ...state.prefs.translation.ai,
+      translation: {
+        ...state.prefs.translation.ai.translation,
+        model: 'gpt-4o-mini',
+      },
+    },
   }
   state.prefs.proxy = { ...state.prefs.proxy, proxyUrl: 'socks5://127.0.0.1:1080' }
 
