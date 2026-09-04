@@ -176,6 +176,37 @@ assert.match(
   /流:Second paragraph\./,
 )
 
+// 长文部分失败时，异常抛出前必须强制 flush 最新成功段，不能被 120ms 节流吞掉。
+const retainedPartials: { title: string; html: string }[] = []
+const partialFailureProvider: TranslationProvider = {
+  id: 'openai',
+  async translate(request) {
+    request.onBatch?.(['译:Partial Title'], 0)
+    request.onBatch?.(['译:First paragraph.'], 1)
+    request.onBatch?.(['译:Third paragraph.'], 3)
+    throw new Error('one paragraph failed')
+  },
+}
+const partialFailureService = new TranslationService(partialFailureProvider)
+await assert.rejects(
+  () =>
+    partialFailureService.translateArticle(
+      'Partial Title',
+      '<p>First paragraph.</p><p>Second paragraph.</p><p>Third paragraph.</p>',
+      { sourceLanguage: 'en', targetLanguage: 'zh-Hans', displayMode: 'replace' },
+      {
+        onPartial: (partial) => retainedPartials.push(partial),
+      },
+    ),
+  /one paragraph failed/,
+)
+const retainedLatest = retainedPartials[retainedPartials.length - 1]
+assert.ok(retainedLatest)
+assert.equal(retainedLatest.title, '译:Partial Title')
+assert.match(retainedLatest.html, /译:First paragraph\./)
+assert.match(retainedLatest.html, />Second paragraph\.</)
+assert.match(retainedLatest.html, /译:Third paragraph\./)
+
 // Test Google batching limits (10 items per batch)
 const batchSizes: number[] = []
 globalThis.fetch = async (_input, init) => {

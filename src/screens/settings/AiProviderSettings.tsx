@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from 'react'
 import {
   ChevronDown,
   Eye,
@@ -40,6 +40,7 @@ function Field({
   min,
   max,
   onChange,
+  onBlur,
   suffix,
 }: {
   label: string
@@ -49,6 +50,7 @@ function Field({
   min?: number
   max?: number
   onChange: (value: string) => void
+  onBlur?: () => void
   suffix?: ReactNode
 }) {
   return (
@@ -68,6 +70,7 @@ function Field({
           autoCapitalize="none"
           autoCorrect="off"
           onChange={(event: ChangeEvent<HTMLInputElement>) => onChange(event.target.value)}
+          onBlur={onBlur}
           className="min-w-0 flex-1 bg-transparent py-2.5 text-[13px] text-paper outline-none placeholder:text-paper-faint/65"
         />
         {suffix}
@@ -91,6 +94,13 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
   const [modelListMessage, setModelListMessage] = useState('')
   const [testState, setTestState] = useState<AsyncState>('idle')
   const [testMessage, setTestMessage] = useState('')
+  const [translationConcurrencyDraft, setTranslationConcurrencyDraft] = useState(() =>
+    String(prefs.ai.translation.concurrency),
+  )
+
+  useEffect(() => {
+    setTranslationConcurrencyDraft(String(prefs.ai.translation.concurrency))
+  }, [prefs.ai.translation.concurrency])
 
   const providerOptions = useMemo(
     () => prefs.ai.providers.map((provider) => ({ id: provider.id, label: provider.name })),
@@ -391,11 +401,24 @@ export function AiProviderSettings({ prefs, onChange }: Props) {
                         type="number"
                         min={1}
                         max={10}
-                        value={String(prefs.ai.translation.concurrency)}
+                        value={translationConcurrencyDraft}
                         onChange={(raw) => {
+                          setTranslationConcurrencyDraft(raw)
+                          if (!raw.trim()) return
                           const value = Number(raw)
                           if (!Number.isInteger(value) || value < 1 || value > 10) return
                           updateFeature('translation', { concurrency: value })
+                        }}
+                        onBlur={() => {
+                          const value = Number(translationConcurrencyDraft)
+                          if (
+                            !translationConcurrencyDraft.trim() ||
+                            !Number.isInteger(value) ||
+                            value < 1 ||
+                            value > 10
+                          ) {
+                            setTranslationConcurrencyDraft(String(prefs.ai.translation.concurrency))
+                          }
                         }}
                       />
                     )}

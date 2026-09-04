@@ -71,6 +71,7 @@ function Field({
   min,
   max,
   onChange,
+  onBlur,
   suffix,
 }: {
   label: string
@@ -80,6 +81,7 @@ function Field({
   min?: number
   max?: number
   onChange: (value: string) => void
+  onBlur?: () => void
   suffix?: ReactNode
 }) {
   return (
@@ -99,11 +101,55 @@ function Field({
           autoCapitalize="none"
           autoCorrect="off"
           onChange={(event) => onChange(event.target.value)}
+          onBlur={onBlur}
           className="min-w-0 flex-1 bg-transparent py-3 text-[13px] text-paper outline-none placeholder:text-paper-faint/65"
         />
         {suffix}
       </span>
     </label>
+  )
+}
+
+function ConcurrencyField({
+  value,
+  max,
+  onCommit,
+}: {
+  value: number
+  max: number
+  onCommit: (value: number) => void
+}) {
+  const [draft, setDraft] = useState(() => String(value))
+
+  useEffect(() => {
+    setDraft(String(value))
+  }, [value])
+
+  const commitIfValid = (raw: string) => {
+    const trimmed = raw.trim()
+    if (!trimmed) return false
+    const parsed = Number(trimmed)
+    if (!Number.isInteger(parsed) || parsed < 1 || parsed > max) return false
+    onCommit(parsed)
+    return true
+  }
+
+  return (
+    <Field
+      label="最大并发"
+      type="number"
+      min={1}
+      max={max}
+      value={draft}
+      placeholder="2"
+      onChange={(raw) => {
+        setDraft(raw)
+        void commitIfValid(raw)
+      }}
+      onBlur={() => {
+        if (!commitIfValid(draft)) setDraft(String(value))
+      }}
+    />
   )
 }
 
@@ -634,25 +680,10 @@ export function TranslationScreen({ prefs, onChange, onBack, onOpenAiSettings }:
               }
             />
             {prefs.provider === 'deeplx' && (
-              <Field
-                label="最大并发"
-                type="number"
-                min={1}
+              <ConcurrencyField
+                value={activeCloud.concurrency ?? 2}
                 max={5}
-                value={String(activeCloud.concurrency ?? 2)}
-                placeholder="2"
-                onChange={(raw) => {
-                  const trimmed = raw.trim()
-                  if (!trimmed) {
-                    updateCloud({ concurrency: 2 })
-                    return
-                  }
-                  const n = Number(trimmed)
-                  if (!Number.isFinite(n)) return
-                  const truncated = Math.trunc(n)
-                  if (truncated < 1 || truncated > 5) return
-                  updateCloud({ concurrency: truncated })
-                }}
+                onCommit={(concurrency) => updateCloud({ concurrency })}
               />
             )}
             {prefs.provider === 'azure' && (
@@ -671,25 +702,10 @@ export function TranslationScreen({ prefs, onChange, onBack, onOpenAiSettings }:
                   placeholder="例如 gpt-4o-mini"
                   onChange={(model) => updateCloud({ model })}
                 />
-                <Field
-                  label="最大并发"
-                  type="number"
-                  min={1}
+                <ConcurrencyField
+                  value={activeCloud.concurrency ?? 2}
                   max={10}
-                  value={String(activeCloud.concurrency ?? 2)}
-                  placeholder="2"
-                  onChange={(raw) => {
-                    const trimmed = raw.trim()
-                    if (!trimmed) {
-                      updateCloud({ concurrency: 2 })
-                      return
-                    }
-                    const n = Number(trimmed)
-                    if (!Number.isFinite(n)) return
-                    const truncated = Math.trunc(n)
-                    if (truncated < 1 || truncated > 10) return
-                    updateCloud({ concurrency: truncated })
-                  }}
+                  onCommit={(concurrency) => updateCloud({ concurrency })}
                 />
                 <button
                   type="button"

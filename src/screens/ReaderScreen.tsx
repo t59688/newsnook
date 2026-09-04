@@ -99,7 +99,6 @@ interface Props {
 }
 
 type LoadState = 'loading' | 'ready' | 'error'
-const TRANSLATION_TIMEOUT_MS = 60_000
 
 export function ReaderScreen({
   article,
@@ -151,7 +150,6 @@ export function ReaderScreen({
   const [translationState, setTranslationState] = useState<'idle' | 'loading' | 'error'>('idle')
   const [translationError, setTranslationError] = useState('')
   const translationAbortRef = useRef<AbortController | null>(null)
-  const translationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const pendingPartialRef = useRef<TranslatedArticleContent | null>(null)
   const partialFrameRef = useRef(0)
   const [speedReadOpen, setSpeedReadOpen] = useState(false)
@@ -528,8 +526,6 @@ export function ReaderScreen({
   useEffect(() => {
     translationAbortRef.current?.abort()
     translationAbortRef.current = null
-    if (translationTimeoutRef.current) clearTimeout(translationTimeoutRef.current)
-    translationTimeoutRef.current = null
     setTranslated(null)
     setShowTranslation(false)
     setTranslationState('idle')
@@ -545,7 +541,6 @@ export function ReaderScreen({
   useEffect(
     () => () => {
       translationAbortRef.current?.abort()
-      if (translationTimeoutRef.current) clearTimeout(translationTimeoutRef.current)
     },
     [],
   )
@@ -1177,8 +1172,6 @@ export function ReaderScreen({
   const cancelTranslation = useCallback(() => {
     translationAbortRef.current?.abort()
     translationAbortRef.current = null
-    if (translationTimeoutRef.current) clearTimeout(translationTimeoutRef.current)
-    translationTimeoutRef.current = null
     if (partialFrameRef.current) {
       window.cancelAnimationFrame(partialFrameRef.current)
       partialFrameRef.current = 0
@@ -1220,14 +1213,7 @@ export function ReaderScreen({
     setTranslationError('')
     setShowTranslation(true)
     setTranslated({ title: article.title, html })
-
-    translationTimeoutRef.current = setTimeout(() => {
-      if (translationAbortRef.current !== controller) return
-      controller.abort()
-      setTranslated(null)
-      setTranslationError('翻译等待超过 60 秒，请检查网络或翻译服务后重试。')
-      setTranslationState('error')
-    }, TRANSLATION_TIMEOUT_MS)
+    let latestPartial: TranslatedArticleContent | null = null
     try {
       const flushPartial = () => {
         partialFrameRef.current = 0
@@ -1243,6 +1229,7 @@ export function ReaderScreen({
           signal: controller.signal,
           onPartial: (partial) => {
             if (controller.signal.aborted) return
+            latestPartial = partial
             // 每帧最多落地一次整篇 HTML，避免 batch 回调把主线程打满
             pendingPartialRef.current = partial
             if (partialFrameRef.current) return
@@ -1261,8 +1248,14 @@ export function ReaderScreen({
       setTranslationState('idle')
     } catch (error) {
       if (controller.signal.aborted) return
-      // 未完成的部分译文不保留：否则错误清除后会被当成完整译文直接展示
-      setTranslated(null)
+      // 长文中个别段落最终失败时，保留本轮已经成功的译文；失败段仍保持原文。
+      if (latestPartial) {
+        setTranslated(latestPartial)
+        setShowTranslation(true)
+      } else {
+        setTranslated(null)
+        setShowTranslation(false)
+      }
       const raw = error instanceof Error ? error.message : '翻译失败'
       setTranslationError(
         raw.includes('MODEL_NOT_DOWNLOADED')
@@ -1273,8 +1266,6 @@ export function ReaderScreen({
     } finally {
       if (translationAbortRef.current === controller) {
         translationAbortRef.current = null
-        if (translationTimeoutRef.current) clearTimeout(translationTimeoutRef.current)
-        translationTimeoutRef.current = null
       }
       if (partialFrameRef.current) {
         window.cancelAnimationFrame(partialFrameRef.current)
@@ -1492,6 +1483,8 @@ export function ReaderScreen({
                 <p className="mt-2 font-mono text-[9.5px] tracking-[0.1em] text-cinnabar-soft">
                   {translationState === 'loading'
                     ? `${translationProviderLabel(translationPrefs.provider)} 正在翻译正文…`
+                    : translationState === 'error'
+                      ? `${translationProviderLabel(translationPrefs.provider)} · 已保留本轮成功译文`
                     : `${translationProviderLabel(translationPrefs.provider)} · ${translationDisplayModeLabel(translationPrefs.displayMode)} · 已译为${translationLanguageLabel(translationPrefs.targetLanguage)}`}
                 </p>
               )}
@@ -1518,7 +1511,7 @@ export function ReaderScreen({
                         className="inline-flex items-center gap-1 rounded-lg border border-cinnabar/50 bg-cinnabar/15 px-2.5 py-1 font-mono text-[11px] font-medium text-cinnabar-soft hover:bg-cinnabar/25 active:scale-95 transition-all"
                       >
                         <RefreshCw size={11} strokeWidth={2} />
-                        重新翻译
+                        重试翻译
                       </button>
                       <button
                         type="button"

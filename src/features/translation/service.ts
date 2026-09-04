@@ -117,38 +117,48 @@ export class TranslationService {
     let lastPartialAt = 0
 
     options?.onProgress?.({ completed: 0, total: texts.length })
-    const translations = await this.provider.translate({
-      texts,
-      sourceLanguage: prefs.sourceLanguage,
-      targetLanguage: prefs.targetLanguage,
-      signal: options?.signal,
-      onBatch: (batchTranslations, startIndex) => {
-        batchTranslations.forEach((translatedText, i) => {
-          const textIndex = startIndex + i
-          const normalized = finalizeTranslatedText(translatedText, prefs.targetLanguage)
-          if (textIndex === 0) {
-            currentTitle = normalized
-          } else {
-            const nodeIndex = textIndex - 1
-            const node = nodes[nodeIndex]
-            const part = parts[nodeIndex]
-            if (node && part) {
-              node.data = `${part.prefix}${normalized}${part.suffix}`
-              node.parentElement?.setAttribute('data-translated', 'true')
+    let translations: string[]
+    try {
+      translations = await this.provider.translate({
+        texts,
+        sourceLanguage: prefs.sourceLanguage,
+        targetLanguage: prefs.targetLanguage,
+        signal: options?.signal,
+        onBatch: (batchTranslations, startIndex) => {
+          batchTranslations.forEach((translatedText, i) => {
+            const textIndex = startIndex + i
+            const normalized = finalizeTranslatedText(translatedText, prefs.targetLanguage)
+            if (textIndex === 0) {
+              currentTitle = normalized
+            } else {
+              const nodeIndex = textIndex - 1
+              const node = nodes[nodeIndex]
+              const part = parts[nodeIndex]
+              if (node && part) {
+                node.data = `${part.prefix}${normalized}${part.suffix}`
+                node.parentElement?.setAttribute('data-translated', 'true')
+              }
             }
+          })
+          completedCount += batchTranslations.length
+          options?.onProgress?.({ completed: completedCount, total: texts.length })
+          // 序列化整篇 HTML 很贵：约 120ms 节流一次，最后一批必发
+          const now = Date.now()
+          const isLast = completedCount >= texts.length
+          if (options?.onPartial && (isLast || now - lastPartialAt >= 120)) {
+            lastPartialAt = now
+            options.onPartial({ title: currentTitle, html: document.body.innerHTML })
           }
-        })
-        completedCount += batchTranslations.length
-        options?.onProgress?.({ completed: completedCount, total: texts.length })
-        // 序列化整篇 HTML 很贵：约 120ms 节流一次，最后一批必发
-        const now = Date.now()
-        const isLast = completedCount >= texts.length
-        if (options?.onPartial && (isLast || now - lastPartialAt >= 120)) {
-          lastPartialAt = now
-          options.onPartial({ title: currentTitle, html: document.body.innerHTML })
-        }
-      },
-    })
+        },
+      })
+    } catch (error) {
+      // Provider 会尽量完成其它段落后再汇总失败；异常离开前把最后状态强制交给 Reader，
+      // 避免 120ms 的序列化节流吞掉刚刚成功的末尾段落。
+      if (completedCount > 0 && options?.onPartial) {
+        options.onPartial({ title: currentTitle, html: document.body.innerHTML })
+      }
+      throw error
+    }
     if (translations.length !== texts.length) throw new Error('翻译服务返回的段落数量不匹配')
 
     nodes.forEach((node, index) => {
@@ -189,43 +199,51 @@ export class TranslationService {
     let lastPartialAt = 0
 
     options?.onProgress?.({ completed: 0, total: texts.length })
-    const translations = await this.provider.translate({
-      texts,
-      sourceLanguage: prefs.sourceLanguage,
-      targetLanguage: prefs.targetLanguage,
-      signal: options?.signal,
-      onBatch: (batchTranslations, startIndex) => {
-        batchTranslations.forEach((translatedText, i) => {
-          const textIndex = startIndex + i
-          const normalized = finalizeTranslatedText(translatedText, prefs.targetLanguage)
-          if (textIndex === 0) {
-            currentTitle = normalized
-          } else {
-            const blockIndex = textIndex - 1
-            const block = blocks[blockIndex]
-            if (block) {
-              let translationSpan = block.querySelector<HTMLElement>(':scope > .reader-translation')
-              if (!translationSpan) {
-                translationSpan = document.createElement('span')
-                translationSpan.className = 'reader-translation'
-                translationSpan.lang = prefs.targetLanguage
-                block.append(translationSpan)
+    let translations: string[]
+    try {
+      translations = await this.provider.translate({
+        texts,
+        sourceLanguage: prefs.sourceLanguage,
+        targetLanguage: prefs.targetLanguage,
+        signal: options?.signal,
+        onBatch: (batchTranslations, startIndex) => {
+          batchTranslations.forEach((translatedText, i) => {
+            const textIndex = startIndex + i
+            const normalized = finalizeTranslatedText(translatedText, prefs.targetLanguage)
+            if (textIndex === 0) {
+              currentTitle = normalized
+            } else {
+              const blockIndex = textIndex - 1
+              const block = blocks[blockIndex]
+              if (block) {
+                let translationSpan = block.querySelector<HTMLElement>(':scope > .reader-translation')
+                if (!translationSpan) {
+                  translationSpan = document.createElement('span')
+                  translationSpan.className = 'reader-translation'
+                  translationSpan.lang = prefs.targetLanguage
+                  block.append(translationSpan)
+                }
+                translationSpan.textContent = normalized
+                block.setAttribute('data-translated', 'true')
               }
-              translationSpan.textContent = normalized
-              block.setAttribute('data-translated', 'true')
             }
+          })
+          completedCount += batchTranslations.length
+          options?.onProgress?.({ completed: completedCount, total: texts.length })
+          const now = Date.now()
+          const isLast = completedCount >= texts.length
+          if (options?.onPartial && (isLast || now - lastPartialAt >= 120)) {
+            lastPartialAt = now
+            options.onPartial({ title: currentTitle, html: document.body.innerHTML })
           }
-        })
-        completedCount += batchTranslations.length
-        options?.onProgress?.({ completed: completedCount, total: texts.length })
-        const now = Date.now()
-        const isLast = completedCount >= texts.length
-        if (options?.onPartial && (isLast || now - lastPartialAt >= 120)) {
-          lastPartialAt = now
-          options.onPartial({ title: currentTitle, html: document.body.innerHTML })
-        }
-      },
-    })
+        },
+      })
+    } catch (error) {
+      if (completedCount > 0 && options?.onPartial) {
+        options.onPartial({ title: currentTitle, html: document.body.innerHTML })
+      }
+      throw error
+    }
     if (translations.length !== texts.length) throw new Error('翻译服务返回的段落数量不匹配')
 
     blocks.forEach((block, index) => {

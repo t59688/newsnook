@@ -154,6 +154,48 @@ interface JsonResponse {
   data: unknown
 }
 
+interface PostJsonOptions {
+  readTimeoutMs?: number
+}
+
+const DEFAULT_CONNECT_TIMEOUT_MS = 15_000
+const DEFAULT_READ_TIMEOUT_MS = 45_000
+const OPENAI_READ_TIMEOUT_MS = 120_000
+const OPENAI_MAX_ATTEMPTS = 2
+const OPENAI_RETRY_DELAY_MS = 600
+
+function abortError(message = '翻译已取消'): DOMException {
+  return new DOMException(message, 'AbortError')
+}
+
+function timeoutError(timeoutMs: number): DOMException {
+  return new DOMException(`请求超过 ${Math.round(timeoutMs / 1000)} 秒未返回`, 'TimeoutError')
+}
+
+function isAbortError(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+async function raceAbort<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise
+  if (signal.aborted) throw abortError()
+
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    promise.then(
+      (value) => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      (error) => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      },
+    )
+  })
+}
+
 /** CapacitorHttp 在部分 Content-Type 下把 JSON 当字符串返回；Web fetch 则已 parse。 */
 export function coerceHttpJsonData(data: unknown): unknown {
   if (typeof data !== 'string') return data
@@ -171,28 +213,62 @@ async function postJson(
   body: unknown,
   headers: Record<string, string>,
   signal?: AbortSignal,
+  options?: PostJsonOptions,
 ): Promise<JsonResponse> {
-  if (signal?.aborted) throw new DOMException('翻译已取消', 'AbortError')
+  if (signal?.aborted) throw abortError()
+  const readTimeoutMs = options?.readTimeoutMs
 
   if (Capacitor.isNativePlatform()) {
-    const response = await CapacitorHttp.post({
-      url,
-      headers: { 'Content-Type': 'application/json; charset=UTF-8', ...headers },
-      data: body,
-      connectTimeout: 15000,
-      readTimeout: 45000,
-    })
+    const response = await raceAbort(
+      CapacitorHttp.post({
+        url,
+        headers: { 'Content-Type': 'application/json; charset=UTF-8', ...headers },
+        data: body,
+        connectTimeout: DEFAULT_CONNECT_TIMEOUT_MS,
+        readTimeout: readTimeoutMs ?? DEFAULT_READ_TIMEOUT_MS,
+      }),
+      signal,
+    )
     return { status: response.status, data: coerceHttpJsonData(response.data) }
   }
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json; charset=UTF-8', ...headers },
-    body: JSON.stringify(body),
-    signal,
-  })
-  const data = (await response.json().catch(() => null)) as unknown
-  return { status: response.status, data: coerceHttpJsonData(data) }
+  if (readTimeoutMs == null) {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8', ...headers },
+      body: JSON.stringify(body),
+      signal,
+    })
+    const data = (await response.json().catch(() => null)) as unknown
+    return { status: response.status, data: coerceHttpJsonData(data) }
+  }
+
+  const controller = new AbortController()
+  let timedOut = false
+  const onAbort = () => controller.abort()
+  signal?.addEventListener('abort', onAbort, { once: true })
+  const timer = setTimeout(() => {
+    timedOut = true
+    controller.abort()
+  }, readTimeoutMs)
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json; charset=UTF-8', ...headers },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    const data = (await response.json().catch(() => null)) as unknown
+    return { status: response.status, data: coerceHttpJsonData(data) }
+  } catch (error) {
+    if (signal?.aborted) throw abortError()
+    if (timedOut) throw timeoutError(readTimeoutMs)
+    throw error
+  } finally {
+    clearTimeout(timer)
+    signal?.removeEventListener('abort', onAbort)
+  }
 }
 
 function errorMessage(provider: string, response: JsonResponse): Error {
@@ -268,6 +344,58 @@ async function mapConcurrent<T, R>(
     }
     throw error
   }
+}
+
+interface ConcurrentFailure {
+  index: number
+  error: unknown
+}
+
+/**
+ * AI 长文翻译专用：单段失败不打断其它 worker，尽量完成剩余段落后再汇总报错。
+ * 已成功项仍通过 onItemDone 逐段提交，因此 Reader 可以保留已完成译文。
+ */
+async function mapConcurrentBestEffort<T, R>(
+  items: T[],
+  concurrency: number,
+  fn: (item: T, index: number) => Promise<R>,
+  signal?: AbortSignal,
+  onItemDone?: (result: R, index: number) => void,
+): Promise<R[]> {
+  const results = new Array<R>(items.length)
+  const failures: ConcurrentFailure[] = []
+  let nextIndex = 0
+  const limit = Math.max(1, concurrency)
+
+  const workers = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (nextIndex < items.length) {
+      if (signal?.aborted) return
+      const currentIndex = nextIndex++
+      try {
+        const result = await fn(items[currentIndex], currentIndex)
+        results[currentIndex] = result
+        onItemDone?.(result, currentIndex)
+      } catch (error) {
+        if (isAbortError(error) || signal?.aborted) return
+        failures.push({ index: currentIndex, error })
+      }
+    }
+  })
+
+  await Promise.all(workers)
+  if (signal?.aborted) throw abortError()
+
+  if (failures.length > 0) {
+    failures.sort((a, b) => a.index - b.index)
+    const first = failures[0].error
+    const detail = first instanceof Error ? first.message : 'AI 翻译请求失败'
+    const completed = items.length - failures.length
+    throw new Error(
+      `${detail}（已完成 ${completed}/${items.length} 段，${failures.length} 段失败；已完成内容已保留。）`,
+    )
+  }
+
+  return results
 }
 
 async function inBatches(
@@ -636,30 +764,62 @@ export class OpenAiProvider extends CloudProvider {
       const messages: { role: 'system' | 'user'; content: string }[] = []
       if (system) messages.push({ role: 'system', content: system })
       messages.push({ role: 'user', content: userPrompt })
-      const response = await postJson(
-        url,
-        {
-          model,
-          // Mid-low: fluent news prose without inventing proper-noun transliterations.
-          temperature: 0.6,
-          stream: false,
-          stop: OPENAI_TRANSLATION_STOP,
-          messages,
-        },
-        { Authorization: `Bearer ${this.config.apiKey.trim()}` },
-        request.signal,
-      )
-      if (response.status < 200 || response.status >= 300) {
-        throw errorMessage('AI 翻译', response)
+
+      let lastError: unknown
+      for (let attempt = 1; attempt <= OPENAI_MAX_ATTEMPTS; attempt += 1) {
+        let response: JsonResponse
+        try {
+          response = await postJson(
+            url,
+            {
+              model,
+              // Mid-low: fluent news prose without inventing proper-noun transliterations.
+              temperature: 0.6,
+              stream: false,
+              stop: OPENAI_TRANSLATION_STOP,
+              messages,
+            },
+            { Authorization: `Bearer ${this.config.apiKey.trim()}` },
+            request.signal,
+            { readTimeoutMs: OPENAI_READ_TIMEOUT_MS },
+          )
+        } catch (error) {
+          if (isAbortError(error) || request.signal?.aborted) throw abortError()
+          lastError = error
+          if (attempt >= OPENAI_MAX_ATTEMPTS) throw error
+          await sleep(OPENAI_RETRY_DELAY_MS * attempt, request.signal)
+          continue
+        }
+
+        if (response.status < 200 || response.status >= 300) {
+          const error = errorMessage('AI 翻译', response)
+          const retryable = response.status === 429 || response.status >= 500
+          if (retryable && attempt < OPENAI_MAX_ATTEMPTS) {
+            lastError = error
+            await sleep(OPENAI_RETRY_DELAY_MS * attempt, request.signal)
+            continue
+          }
+          throw error
+        }
+
+        const content = extractOpenAiChatContent(response.data)
+        if (typeof content !== 'string' || !content.trim()) {
+          const error = new Error('AI 翻译：返回内容为空')
+          lastError = error
+          if (attempt < OPENAI_MAX_ATTEMPTS) {
+            await sleep(OPENAI_RETRY_DELAY_MS * attempt, request.signal)
+            continue
+          }
+          throw error
+        }
+        return cleanOpenAiTranslation(content)
       }
-      const content = extractOpenAiChatContent(response.data)
-      if (typeof content !== 'string' || !content.trim()) {
-        throw new Error('AI 翻译：返回内容为空')
-      }
-      return cleanOpenAiTranslation(content)
+
+      if (lastError instanceof Error) throw lastError
+      throw new Error('AI 翻译请求失败')
     }
 
-    return mapConcurrent(
+    return mapConcurrentBestEffort(
       request.texts,
       concurrency,
       (text, index) => {
