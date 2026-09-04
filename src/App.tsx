@@ -1521,8 +1521,9 @@ export default function App() {
         />
 
         {/*
-          风格引导期间把内容区搁起（content-visibility: hidden）：下层今日列表不参与样式重算与绘制，
-          引导里点选预览才能像「我的 → 外观」那样即时；列表 DOM 与滚动位置照旧保留，关闭后原样回来。
+          风格引导期间把内容区搁起：Chrome 69–84 用 display:none 兼容回退，Chrome 85+
+          渐进增强为 content-visibility:hidden。两条路径都保留 React DOM/状态，并让下层长列表
+          退出主题预览的渲染热路径；现代内核额外保留布局盒与滚动状态。
         */}
         <main
           className={`relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ink${

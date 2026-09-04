@@ -80,14 +80,25 @@ assert.equal(document.documentElement.classList.contains('theme-switching'), fal
 
 console.log('scheme-onboarding preview: ok')
 
-// 同步预览能即时的前提：引导期间 <main> 被搁起、遮罩不透明，整页改 data-scheme 只重画弹层和壳
+// 同步预览能即时的前提：引导期间 <main> 被搁起、遮罩不透明，整页改 data-scheme 只重画弹层和壳。
+// Chrome 69–84 不支持 content-visibility，必须有 display:none 基线；现代内核再渐进增强。
 const css = readFileSync(resolve('src/index.css'), 'utf8')
 const parkedStart = css.indexOf('.content-parked {')
 assert.ok(parkedStart >= 0, 'index.css 缺少 .content-parked')
 assert.match(
   css.slice(parkedStart, css.indexOf('\n}', parkedStart)),
+  /display:\s*none/,
+  'Chrome 69–84 必须用 display:none 让下层列表退出样式重算与绘制',
+)
+const parkedSupportsStart = css.indexOf('@supports (content-visibility: hidden)', parkedStart)
+assert.ok(parkedSupportsStart > parkedStart, '现代 WebView 缺少 content-visibility 渐进增强')
+const modernParkedStart = css.indexOf('.content-parked {', parkedSupportsStart)
+const modernParkedRule = css.slice(modernParkedStart, css.indexOf('\n    }', modernParkedStart))
+assert.match(modernParkedRule, /display:\s*flex/, '现代 WebView 应恢复 <main> 的 flex 布局盒')
+assert.match(
+  modernParkedRule,
   /content-visibility:\s*hidden/,
-  '.content-parked 应用 content-visibility: hidden 让下层列表退出样式重算与绘制',
+  'Chrome 85+ 应用 content-visibility:hidden 保留布局状态并跳过内容渲染',
 )
 
 const appSource = readFileSync(resolve('src/App.tsx'), 'utf8')
@@ -103,6 +114,11 @@ assert.ok(
   '引导遮罩应为不透明 bg-ink：既盖住搁起的列表，也让整屏底色跟着预览变',
 )
 assert.ok(!promptSource.includes('bg-black/50'), '引导遮罩不再是半透明压暗层')
+assert.ok(
+  promptSource.includes('data-scheme-preview="article"'),
+  '引导必须带模拟文章页，不能只剩空白底色',
+)
+assert.ok(promptSource.includes('reader-prose'), '模拟页应走阅读器正文排版')
 assert.ok(
   !promptSource.includes('schedulePreviewThemeScheme'),
   '点选预览走同步 previewThemeScheme，不再延后到下一帧',

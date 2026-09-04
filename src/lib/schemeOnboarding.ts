@@ -13,9 +13,8 @@ export function schemeOnboardingOptions(): ThemeSchemeMeta[] {
  * 引导里点选预览：同步改 html[data-scheme]，不写偏好、不加全站 transition。
  * 点选若走 React update，会重绘整页列表并落盘，INP 会到数秒。
  *
- * 能同步写的前提是引导期间 App 已把 <main> 搁起（.content-parked → content-visibility: hidden）：
- * 下层数千条列表不参与样式重算与绘制，一次切换只剩弹层和壳要重画，和「我的 → 外观」一样轻。
- * 曾试过把整页改写推到下一帧（嵌套 rAF），但整页重排本身没变少，预览照样要等，已撤掉。
+ * 打开期间 App 把 <main>（今日列表）搁起。遮罩用不透明 bg-ink，上面铺一页固定 DOM 的
+ * 模拟正文（不是真实列表）：预览时只重画这一页和底部弹层，切换保持即时。
  */
 export function previewThemeScheme(scheme: ThemeScheme, custom?: CustomSchemePrefs): void {
   applyThemeScheme(scheme, { animate: false, custom })

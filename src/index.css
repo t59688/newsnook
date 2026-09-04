@@ -282,7 +282,7 @@
   --color-haze: var(--tone-haze);
 }
 
-/* 现代优雅 · 夜：系统黑底，抬升灰卡，冷蓝一点 */
+/* 现代优雅 · 夜：纯黑底，系统抬升灰，系统蓝。和墨问暖墨不是一路。 */
 [data-scheme='pearl'][data-theme='dark'],
 [data-scheme='pearl'] [data-theme='dark'] {
   color-scheme: dark;
@@ -326,34 +326,34 @@
   --color-haze: var(--tone-haze);
 }
 
-/* 现代优雅 · 昼：雾灰分组底，纯白卡，冷蓝一点 */
+/* 现代优雅 · 昼：冷白纸面（苹果图书 White），正文与页面同一张纸；和墨问宣纸朱砂分开 */
 [data-scheme='pearl'][data-theme='light'],
 [data-scheme='pearl'] [data-theme='light'] {
   color-scheme: light;
 
-  --tone-paper-rgb: 28 28 30;
-  --tone-ink-rgb: 242 242 247;
+  --tone-paper-rgb: 17 17 17;
+  --tone-ink-rgb: 250 250 250;
   --tone-ink-raised-rgb: 255 255 255;
-  --tone-ink-deep-rgb: 242 242 247;
-  --tone-paper-muted-rgb: 99 99 102;
+  --tone-ink-deep-rgb: 250 250 250;
+  --tone-paper-muted-rgb: 110 110 115;
   --tone-paper-faint-rgb: 142 142 147;
-  --tone-cinnabar-rgb: 0 113 227;
-  --tone-cinnabar-soft-rgb: 41 151 255;
+  --tone-cinnabar-rgb: 0 122 255;
+  --tone-cinnabar-soft-rgb: 64 156 255;
 
-  --tone-ink: #f2f2f7;
+  --tone-ink: #fafafa;
   --tone-ink-raised: #ffffff;
-  --tone-ink-deep: #f2f2f7;
-  --tone-paper: #1c1c1e;
-  --tone-paper-muted: #636366;
+  --tone-ink-deep: #fafafa;
+  --tone-paper: #111111;
+  --tone-paper-muted: #6e6e73;
   --tone-paper-faint: #8e8e93;
-  --tone-cinnabar: #0071e3;
-  --tone-cinnabar-soft: #2997ff;
-  --tone-haze: rgb(var(--tone-paper-rgb) / 0.1);
+  --tone-cinnabar: #007aff;
+  --tone-cinnabar-soft: #409cff;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
 
-  --tone-body-text: #1c1c1e;
-  --tone-quote-text: #6c6c70;
+  --tone-body-text: #111111;
+  --tone-quote-text: #6e6e73;
   --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
-  --shadow-lift: 0 10px 28px -14px rgb(0 0 0 / 0.14);
+  --shadow-lift: 0 10px 32px -18px rgb(0 0 0 / 0.12);
   --dim-hidden: contrast(0.78) saturate(0.5);
   --grain-opacity: 0;
 
@@ -585,12 +585,25 @@ html[data-eink='1'] .preset-switcher-sheet {
   }
 
   /*
-   * 整块内容区搁起：模态引导（风格选择）盖住 <main> 时挂上，
-   * 下层长列表不再参与样式重算与绘制，切换 data-scheme 只剩弹层和壳要重画。
-   * 与 display:none 不同，DOM、布局与滚动位置都保留，摘掉后原样回来。
+   * 整块内容区搁起：模态引导（风格选择）盖住 <main> 时挂上。
+   *
+   * Chrome 69–84 不认识 content-visibility，所以必须先给一个真正能把长列表移出
+   * style/layout/paint 热路径的基线实现。display:none 不会卸载 React DOM/状态，且此时
+   * 上层是完全不透明的全屏预览，旧 WebView 看不到也不需要下层布局。
+   *
+   * Chrome 85+ 再用 feature query 渐进增强为 content-visibility:hidden：保留 <main>
+   * 的布局盒与滚动状态，同时跳过其内容渲染。不要反过来只写 content-visibility，
+   * 否则 Chrome 69 会静默忽略属性，主题预览重新退化为整页列表重算。
    */
   .content-parked {
-    content-visibility: hidden;
+    display: none;
+  }
+
+  @supports (content-visibility: hidden) {
+    .content-parked {
+      display: flex;
+      content-visibility: hidden;
+    }
   }
 
   /* 加载占位：一层缓慢扫过的微光，走 GPU 合成层 */

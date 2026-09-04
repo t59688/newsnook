@@ -68,9 +68,9 @@ export const THEME_SCHEMES: ThemeSchemeMeta[] = [
   {
     id: 'pearl',
     label: '现代优雅',
-    caption: '雾灰 · 卡片白',
+    caption: '冷白 · 系统蓝',
     swatch: {
-      light: { ink: '#F2F2F7', raised: '#FFFFFF', paper: '#1C1C1E', accent: '#0071E3' },
+      light: { ink: '#FAFAFA', raised: '#FFFFFF', paper: '#111111', accent: '#007AFF' },
       dark: { ink: '#000000', raised: '#1C1C1E', paper: '#F5F5F7', accent: '#0A84FF' },
     },
   },
@@ -100,7 +100,7 @@ export function isThemeScheme(value: unknown): value is ThemeScheme {
 export const THEME_SURFACE: Record<Exclude<ThemeScheme, 'custom'>, Record<ResolvedTheme, string>> = {
   ink: { dark: '#0E0F12', light: '#F6F2E9' },
   celadon: { dark: '#121817', light: '#E6EBE8' },
-  pearl: { dark: '#000000', light: '#F2F2F7' },
+  pearl: { dark: '#000000', light: '#FAFAFA' },
 }
 
 /** 运行时自定义配色：由 applyThemeScheme 注入，供 theme-color 等取色 */
