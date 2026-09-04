@@ -3,13 +3,13 @@
  * 运行：npm run test:scheme-onboarding
  */
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 import { parseHTML } from 'linkedom'
 
 import {
-  cancelScheduledPreview,
   previewThemeScheme,
-  schedulePreviewThemeScheme,
   schemeOnboardingOptions,
   shouldShowSchemeOnboarding,
 } from '../src/lib/schemeOnboarding'
@@ -80,68 +80,35 @@ assert.equal(document.documentElement.classList.contains('theme-switching'), fal
 
 console.log('scheme-onboarding preview: ok')
 
-// 模拟浏览器帧循环：rAF 回调排队，flushFrame 走完一帧；两帧后才允许整页改写
-const frameQueue = new Map<number, () => void>()
-let frameSeq = 0
-;(globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame = (cb: () => void) => {
-  frameQueue.set(++frameSeq, cb)
-  return frameSeq
-}
-;(globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame = (id: number) => {
-  frameQueue.delete(id)
-}
-const flushFrame = () => {
-  const callbacks = [...frameQueue.values()]
-  frameQueue.clear()
-  for (const cb of callbacks) cb()
-}
-
-previewThemeScheme('ink')
-schedulePreviewThemeScheme('pearl')
-assert.equal(document.documentElement.dataset.scheme, 'ink', '点击当帧不改整页方案，先让选中态上屏')
-flushFrame()
-assert.equal(document.documentElement.dataset.scheme, 'ink', '本帧绘制前触发的 rAF 仍不写入')
-flushFrame()
-assert.equal(document.documentElement.dataset.scheme, 'pearl', '下一帧才落到 html[data-scheme]')
-assert.equal(document.documentElement.classList.contains('theme-switching'), false)
-
-schedulePreviewThemeScheme('celadon')
-schedulePreviewThemeScheme('pearl')
-schedulePreviewThemeScheme('ink')
-flushFrame()
-flushFrame()
-assert.equal(document.documentElement.dataset.scheme, 'ink', '连点多张卡只保留最后一张')
-assert.equal(frameQueue.size, 0, '被顶掉的预览不再占用帧回调')
-
-schedulePreviewThemeScheme('celadon')
-cancelScheduledPreview()
-flushFrame()
-flushFrame()
-assert.equal(document.documentElement.dataset.scheme, 'ink', '关闭/确认前取消后，迟到的预览不再写入')
-
-schedulePreviewThemeScheme('celadon')
-flushFrame()
-cancelScheduledPreview()
-flushFrame()
-assert.equal(document.documentElement.dataset.scheme, 'ink', '第二拍排队后取消同样有效')
-
-schedulePreviewThemeScheme('pearl')
-previewThemeScheme('celadon')
-flushFrame()
-flushFrame()
-assert.equal(
-  document.documentElement.dataset.scheme,
-  'pearl',
-  '未取消时延后预览照常落地（组件恢复基线前必须先取消）',
+// 同步预览能即时的前提：引导期间 <main> 被搁起、遮罩不透明，整页改 data-scheme 只重画弹层和壳
+const css = readFileSync(resolve('src/index.css'), 'utf8')
+const parkedStart = css.indexOf('.content-parked {')
+assert.ok(parkedStart >= 0, 'index.css 缺少 .content-parked')
+assert.match(
+  css.slice(parkedStart, css.indexOf('\n}', parkedStart)),
+  /content-visibility:\s*hidden/,
+  '.content-parked 应用 content-visibility: hidden 让下层列表退出样式重算与绘制',
 )
-cancelScheduledPreview()
 
-delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame
-delete (globalThis as { cancelAnimationFrame?: unknown }).cancelAnimationFrame
-schedulePreviewThemeScheme('celadon')
-assert.equal(document.documentElement.dataset.scheme, 'celadon', '没有 rAF 的环境退回同步写入')
+const appSource = readFileSync(resolve('src/App.tsx'), 'utf8')
+assert.match(
+  appSource,
+  /showSchemeOnboarding \? ' content-parked' : ''/,
+  '风格引导打开时 App 必须给 <main> 挂 content-parked',
+)
 
-console.log('scheme-onboarding deferred preview: ok')
+const promptSource = readFileSync(resolve('src/components/SchemeOnboardingPrompt.tsx'), 'utf8')
+assert.ok(
+  /fixed inset-0 z-\[65\][^"]*\bbg-ink\b/.test(promptSource),
+  '引导遮罩应为不透明 bg-ink：既盖住搁起的列表，也让整屏底色跟着预览变',
+)
+assert.ok(!promptSource.includes('bg-black/50'), '引导遮罩不再是半透明压暗层')
+assert.ok(
+  !promptSource.includes('schedulePreviewThemeScheme'),
+  '点选预览走同步 previewThemeScheme，不再延后到下一帧',
+)
+
+console.log('scheme-onboarding isolation: ok')
 
 const memory = new Map<string, string>()
 ;(globalThis as { localStorage?: unknown }).localStorage = {
