@@ -25,7 +25,7 @@ export const THEME_MODES: { id: ThemeMode; label: string; caption: string }[] = 
 /** 改动这里时，index.html 里防闪脚本的兜底值也要一起改 */
 export const DEFAULT_THEME_MODE: ThemeMode = 'system'
 
-export type ThemeScheme = 'ink' | 'celadon' | 'custom'
+export type ThemeScheme = 'ink' | 'celadon' | 'pearl' | 'custom'
 
 /** 外观设置页预览卡取色：必须与 index.css 中对应方案的 --tone-* 保持一致 */
 export interface ThemeSchemeSwatch {
@@ -66,6 +66,15 @@ export const THEME_SCHEMES: ThemeSchemeMeta[] = [
     },
   },
   {
+    id: 'pearl',
+    label: '现代优雅',
+    caption: '雾灰 · 卡片白',
+    swatch: {
+      light: { ink: '#F2F2F7', raised: '#FFFFFF', paper: '#1C1C1E', accent: '#0071E3' },
+      dark: { ink: '#000000', raised: '#1C1C1E', paper: '#F5F5F7', accent: '#0A84FF' },
+    },
+  },
+  {
     id: 'custom',
     label: '自定义',
     caption: '自选底色与强调色',
@@ -80,7 +89,7 @@ export const THEME_SCHEMES: ThemeSchemeMeta[] = [
 export const DEFAULT_THEME_SCHEME: ThemeScheme = 'ink'
 
 export function isThemeScheme(value: unknown): value is ThemeScheme {
-  return value === 'ink' || value === 'celadon' || value === 'custom'
+  return value === 'ink' || value === 'celadon' || value === 'pearl' || value === 'custom'
 }
 
 /**
@@ -91,6 +100,7 @@ export function isThemeScheme(value: unknown): value is ThemeScheme {
 export const THEME_SURFACE: Record<Exclude<ThemeScheme, 'custom'>, Record<ResolvedTheme, string>> = {
   ink: { dark: '#0E0F12', light: '#F6F2E9' },
   celadon: { dark: '#121817', light: '#E6EBE8' },
+  pearl: { dark: '#000000', light: '#F2F2F7' },
 }
 
 /** 运行时自定义配色：由 applyThemeScheme 注入，供 theme-color 等取色 */

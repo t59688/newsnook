@@ -226,7 +226,7 @@
           // 方案白名单与 src/lib/theme.ts 的 ThemeScheme 保持一致，非法值兜底墨问
           var scheme = saved && saved.scheme
           document.documentElement.dataset.scheme =
-            scheme === 'celadon' || scheme === 'custom' ? scheme : 'ink'
+            scheme === 'celadon' || scheme === 'pearl' || scheme === 'custom' ? scheme : 'ink'
           if (saved && saved.einkMode === true) {
             document.documentElement.dataset.eink = '1'
           } else {

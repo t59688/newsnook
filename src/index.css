@@ -282,6 +282,94 @@
   --color-haze: var(--tone-haze);
 }
 
+/* 现代优雅 · 夜：系统黑底，抬升灰卡，冷蓝一点 */
+[data-scheme='pearl'][data-theme='dark'],
+[data-scheme='pearl'] [data-theme='dark'] {
+  color-scheme: dark;
+
+  --tone-paper-rgb: 245 245 247;
+  --tone-ink-rgb: 0 0 0;
+  --tone-ink-raised-rgb: 28 28 30;
+  --tone-ink-deep-rgb: 0 0 0;
+  --tone-paper-muted-rgb: 152 152 157;
+  --tone-paper-faint-rgb: 99 99 102;
+  --tone-cinnabar-rgb: 10 132 255;
+  --tone-cinnabar-soft-rgb: 64 156 255;
+
+  --tone-ink: #000000;
+  --tone-ink-raised: #1c1c1e;
+  --tone-ink-deep: #000000;
+  --tone-paper: #f5f5f7;
+  --tone-paper-muted: #98989d;
+  --tone-paper-faint: #636366;
+  --tone-cinnabar: #0a84ff;
+  --tone-cinnabar-soft: #409cff;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 8px 28px -18px rgb(0 0 0 / 0.55);
+  --dim-hidden: brightness(0.72);
+  --grain-opacity: 0;
+
+  --font-display: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 现代优雅 · 昼：雾灰分组底，纯白卡，冷蓝一点 */
+[data-scheme='pearl'][data-theme='light'],
+[data-scheme='pearl'] [data-theme='light'] {
+  color-scheme: light;
+
+  --tone-paper-rgb: 28 28 30;
+  --tone-ink-rgb: 242 242 247;
+  --tone-ink-raised-rgb: 255 255 255;
+  --tone-ink-deep-rgb: 242 242 247;
+  --tone-paper-muted-rgb: 99 99 102;
+  --tone-paper-faint-rgb: 142 142 147;
+  --tone-cinnabar-rgb: 0 113 227;
+  --tone-cinnabar-soft-rgb: 41 151 255;
+
+  --tone-ink: #f2f2f7;
+  --tone-ink-raised: #ffffff;
+  --tone-ink-deep: #f2f2f7;
+  --tone-paper: #1c1c1e;
+  --tone-paper-muted: #636366;
+  --tone-paper-faint: #8e8e93;
+  --tone-cinnabar: #0071e3;
+  --tone-cinnabar-soft: #2997ff;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.1);
+
+  --tone-body-text: #1c1c1e;
+  --tone-quote-text: #6c6c70;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 10px 28px -14px rgb(0 0 0 / 0.14);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --grain-opacity: 0;
+
+  --font-display: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
 /* 安全区变量：优先取 Android 原生注入的高度，回退取 CSS env() */
 /* Chrome < 79 不支持 max()，先给 fallback，再用 @supports 覆盖 */
 :root {

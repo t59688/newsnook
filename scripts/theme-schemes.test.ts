@@ -43,6 +43,7 @@ assert.equal(DEFAULT_PREFERENCES.scheme, 'ink', '默认方案应为墨问')
 assert.equal(normalizePreferences({}).scheme, 'ink')
 assert.equal(normalizePreferences(null).scheme, 'ink')
 assert.equal(normalizePreferences({ scheme: 'celadon' }).scheme, 'celadon')
+assert.equal(normalizePreferences({ scheme: 'pearl' }).scheme, 'pearl')
 assert.equal(normalizePreferences({ scheme: 'custom' }).scheme, 'custom')
 assert.equal(normalizePreferences({ scheme: 'neon' }).scheme, 'ink', '未知方案应清洗回墨问')
 assert.equal(normalizePreferences({ scheme: 'pine' }).scheme, 'ink', '已下线方案应清洗回墨问')
@@ -87,10 +88,10 @@ console.log('theme-scheme prefs: ok')
 
 // —— 注册表：id 唯一、swatch 完备、表面色齐全（custom 无静态表面色，走运行时取色） ——
 
-assert.equal(THEME_SCHEMES.length, 3)
+assert.equal(THEME_SCHEMES.length, 4)
 assert.deepEqual(
   THEME_SCHEMES.map((item) => item.id),
-  ['ink', 'celadon', 'custom'],
+  ['ink', 'celadon', 'pearl', 'custom'],
 )
 assert.equal(new Set(THEME_SCHEMES.map((item) => item.id)).size, THEME_SCHEMES.length)
 assert.ok(THEME_SCHEMES.every((item) => isThemeScheme(item.id)))
@@ -187,6 +188,12 @@ for (const item of STATIC_SCHEMES) {
 // 自定义方案没有静态块；token 全部来自运行时内联（见下方推导断言）
 assert.ok(!css.includes("[data-scheme='custom']"), 'custom 方案不应有静态 CSS 块')
 
+const html = readFileSync(resolve('index.html'), 'utf8')
+for (const id of STATIC_SCHEMES.map((item) => item.id).filter((id) => id !== 'ink')) {
+  assert.ok(html.includes(`scheme === '${id}'`), `index.html 防闪白名单缺少 ${id}`)
+}
+assert.ok(html.includes("scheme === 'custom'"), 'index.html 防闪白名单缺少 custom')
+
 console.log('theme-scheme css: ok')
 
 // —— 颜色工具与推导：hex 往返、混合、对比度兜底 ——
@@ -267,6 +274,13 @@ assert.equal(document.documentElement.dataset.scheme, 'celadon')
 assert.equal(
   document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.getAttribute('content'),
   THEME_SURFACE.celadon.light,
+)
+
+applyThemeScheme('pearl')
+assert.equal(document.documentElement.dataset.scheme, 'pearl')
+assert.equal(
+  document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.getAttribute('content'),
+  THEME_SURFACE.pearl.light,
 )
 
 applyThemeScheme('custom', {

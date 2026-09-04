@@ -1,6 +1,6 @@
 /*
  * driver.js 弹层主题化：颜色全部取自 --tone-* 语义 token，
- * 自动跟随 data-theme（明暗）与 data-scheme（墨问 / 天青 / 自定义）。
+ * 自动跟随 data-theme（明暗）与 data-scheme（墨问 / 天青 / 现代优雅 / 自定义）。
  * 结构类名来自 driver.js 官方样式（dist/driver.css），仅做覆盖不改结构。
  */
 
