@@ -1,8 +1,9 @@
 /**
  * 阅读分类：覆盖注册表内全部可用信源。
  * - 「综合」读取用户在频道页启用的源
- * - 默认可见为门户经典栏（见 preferences.DEFAULT_HIDDEN_CATEGORY_IDS / presets.PORTAL_VISIBLE_CATEGORY_IDS）
- * - AI 六栏（OpenAI / Claude / 实验室 / 业界 / 深读 / 社区）与游戏、科技深度等默认隐藏，由场景预设打开
+ * - 默认可见为门户经典栏（见 preferences.DEFAULT_HIDDEN_CATEGORY_IDS / PORTAL_VISIBLE_CATEGORY_IDS）
+ * - 主题栏按正文能否无翻译直读拆成中文栏与「·外刊」栏；同栏不中英混源
+ * - AI 分层、游戏、科技深度等默认隐藏，由场景预设打开
  * - RSS / 专栏用主题分类承接，保证每个 sourceId 至少落入一个分类
  */
 
@@ -59,6 +60,23 @@ function solo(
   }
 }
 
+/** 外刊配对栏：短名后加「·外刊」 */
+function worldRail(
+  id: CategoryId,
+  themeLabel: string,
+  short: string,
+  caption: string,
+  sourceIds: string[],
+): NewsCategory {
+  return {
+    id,
+    label: `${themeLabel}·外刊`,
+    short: `${short}·外刊`,
+    caption,
+    sourceIds,
+  }
+}
+
 export const CATEGORIES: NewsCategory[] = [
   {
     id: 'mix',
@@ -73,25 +91,26 @@ export const CATEGORIES: NewsCategory[] = [
     caption: '网易头条',
     sourceIds: ['netease'],
   },
+  solo('exclusive', '独家', 'netease-exclusive', '网易独家'),
   {
     id: 'ent',
     label: '娱乐',
     short: '娱乐',
-    caption: '网易娱乐 · Google 娱乐',
-    sourceIds: ['netease-ent', 'gnews-ent'],
+    caption: '网易娱乐',
+    sourceIds: ['netease-ent'],
   },
   {
     id: 'sports',
     label: '体育',
     short: '体育',
-    caption: '网易体育 · Google 体育',
-    sourceIds: ['netease-sports', 'gnews-sports'],
+    caption: '网易体育',
+    sourceIds: ['netease-sports'],
   },
   {
     id: 'tech',
     label: '科技',
     short: '科技',
-    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件 · Google 科技',
+    caption: '网易科技 · IT之家 · 少数派 · 极客公园 · Solidot · 阮一峰 · 小众软件',
     sourceIds: [
       'netease-tech',
       'ithome',
@@ -100,14 +119,46 @@ export const CATEGORIES: NewsCategory[] = [
       'solidot',
       'ruanyifeng',
       'appinn',
-      'gnews-tech',
     ],
+  },
+  {
+    id: 'finance',
+    label: '商业',
+    short: '商业',
+    caption: '网易商业 · 股票 · 财联社 · 东财 · 见闻 · 晚点 · 36氪',
+    sourceIds: [
+      'netease-biz',
+      'netease-stock',
+      'cls-telegraph',
+      'eastmoney-kx',
+      'eastmoney-news',
+      'wscn-live',
+      'latepost',
+      'jazzyear',
+      'kr36',
+      'huxiu',
+      'tmtpost',
+    ],
+  },
+  {
+    id: 'intl',
+    label: '国际',
+    short: '国际',
+    caption: 'BBC 中文 · DW · 端传媒',
+    sourceIds: ['bbc-zh', 'bbc-zh-world', 'dw-top', 'theinitium'],
+  },
+  {
+    id: 'health',
+    label: '健康',
+    short: '健康',
+    caption: '网易健康',
+    sourceIds: ['netease-health'],
   },
   {
     id: 'science',
     label: '科普',
     short: '科普',
-    caption: '果壳科学人 · 泛科学 · 环球科学 · 知识分子 · 返朴 · 物理所 · 地球知识局 · 集智 · Google 科学',
+    caption: '果壳科学人 · 泛科学 · 环球科学 · 知识分子 · 返朴 · 物理所 · 地球知识局 · 集智',
     sourceIds: [
       'guokr',
       'pansci',
@@ -117,9 +168,48 @@ export const CATEGORIES: NewsCategory[] = [
       'netease-wuli',
       'netease-diqiu',
       'swarma',
-      'gnews-science',
     ],
   },
+  {
+    id: 'fun',
+    label: '轻松一刻',
+    short: '轻松',
+    caption: '网易轻松一刻 · 煎蛋新鲜事 · 机核',
+    sourceIds: ['netease-fun', 'jandan', 'gcores'],
+  },
+  worldRail('ent-world', '娱乐', '娱乐', 'Google 娱乐', ['gnews-ent']),
+  worldRail('sports-world', '体育', '体育', 'Google 体育', ['gnews-sports']),
+  worldRail('tech-world', '科技', '科技', 'Google 科技', ['gnews-tech']),
+  worldRail(
+    'finance-world',
+    '商业',
+    '商业',
+    'BBC Business · Google 商业 · TechCrunch',
+    ['techcrunch', 'bbc-business', 'gnews-business'],
+  ),
+  worldRail(
+    'intl-world',
+    '国际',
+    '国际',
+    'SCMP · 外交事务 · 纽约书评 · 彭博观点 · 辛迪加 · Sinocism · 公共广电 · Google 全球',
+    [
+      'foreign-affairs',
+      'nyrb',
+      'bloomberg-opinion',
+      'project-syndicate',
+      'sinocism',
+      'bbc-world',
+      'scmp-china',
+      'scmp-news',
+      'npr',
+      'guardian-world',
+      'france24',
+      'aljazeera',
+      'gnews-world',
+    ],
+  ),
+  worldRail('health-world', '健康', '健康', 'Google 健康', ['gnews-health']),
+  worldRail('science-world', '科普', '科普', 'Google 科学', ['gnews-science']),
   // AI 按信息层次拆栏：OpenAI / Claude / 实验室（官方一手）→ 业界（媒体）→ 深读（二次加工）→ 社区
   {
     id: 'ai-openai',
@@ -152,120 +242,52 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'ai-media',
     label: '业界',
     short: '业界',
-    caption: '媒体快报：量子位 · 机器之心 · 新智元 · 雷锋网 · Synced · MIT/Verge/IEEE 等 AI 栏目',
-    sourceIds: [
-      'qbitai',
-      'jiqizhixin',
-      'aiera',
-      'leiphone',
-      'synced',
-      'mittr-ai',
-      'verge-ai',
-      'ieee-ai',
-      'venturebeat-ai',
-      'marktechpost',
-    ],
+    caption: '中文媒体快报：量子位 · 机器之心 · 新智元 · 雷锋网',
+    sourceIds: ['qbitai', 'jiqizhixin', 'aiera', 'leiphone'],
   },
+  worldRail(
+    'ai-media-world',
+    '业界',
+    '业界',
+    'MIT/Verge/IEEE 等 AI 栏目 · Synced · VentureBeat · MarkTechPost',
+    ['mittr-ai', 'verge-ai', 'ieee-ai', 'venturebeat-ai', 'synced', 'marktechpost'],
+  ),
   {
     id: 'ai-depth',
     label: '深读',
     short: '深读',
-    caption: '解读评测与专栏：智东西 · 宝玉 · Mollick · Latent · 夕小瑶 · 42章经 · 周报作者博',
-    sourceIds: [
-      'zhidx',
-      'baoyu',
+    caption: '中文解读评测：智东西 · 宝玉 · 夕小瑶 · 42章经',
+    sourceIds: ['zhidx', 'baoyu', 'xixiaoyao', '42zhangjing'],
+  },
+  worldRail(
+    'ai-depth-world',
+    '深读',
+    '深读',
+    'Mollick · Latent · 周报作者博',
+    [
       'oneusefulthing',
-      'understandingai',
       'latent-space',
+      'understandingai',
       'thezvi',
       'lastweek-ai',
       'import-ai',
-      'ahead-of-ai',
-      'lil-log',
       'simonw',
       'interconnects',
-      'xixiaoyao',
-      '42zhangjing',
+      'lil-log',
+      'ahead-of-ai',
     ],
-  },
+  ),
   {
     id: 'ai-community',
     label: '社区',
     short: '社区',
-    caption: '优设 AIGC · V2EX · HN · PaperWeekly · 人人都是产品经理',
-    sourceIds: [
-      'uisdc-aigc',
-      'v2ex',
-      'hn',
-      'paperweekly',
-      'woshipm-ai',
-    ],
+    caption: '优设 AIGC · V2EX · PaperWeekly · 人人都是产品经理',
+    sourceIds: ['uisdc-aigc', 'v2ex', 'paperweekly', 'woshipm-ai'],
   },
-  {
-    id: 'finance',
-    label: '商业',
-    short: '商业',
-    caption: '网易商业 · 股票 · 财联社 · 东财 · 见闻 · 晚点 · 36氪 · BBC商业 · Google 商业',
-    sourceIds: [
-      'netease-biz',
-      'netease-stock',
-      'cls-telegraph',
-      'eastmoney-kx',
-      'eastmoney-news',
-      'wscn-live',
-      'latepost',
-      'jazzyear',
-      'kr36',
-      'huxiu',
-      'tmtpost',
-      'techcrunch',
-      'bbc-business',
-      'gnews-business',
-    ],
-  },
-  {
-    id: 'intl',
-    label: '国际',
-    short: '国际',
-    caption: 'BBC · DW · SCMP · 外交事务 · 纽约书评 · 彭博观点 · 辛迪加 · 端传媒 · Sinocism · Google 全球',
-    sourceIds: [
-      'foreign-affairs',
-      'nyrb',
-      'bloomberg-opinion',
-      'project-syndicate',
-      'sinocism',
-      'theinitium',
-      'bbc-zh',
-      'bbc-zh-world',
-      'bbc-world',
-      'dw-top',
-      'scmp-china',
-      'scmp-news',
-      'npr',
-      'guardian-world',
-      'france24',
-      'aljazeera',
-      'gnews-world',
-    ],
-  },
-  {
-    id: 'health',
-    label: '健康',
-    short: '健康',
-    caption: '网易健康 · Google 健康',
-    sourceIds: ['netease-health', 'gnews-health'],
-  },
+  worldRail('ai-community-world', '社区', '社区', 'Hacker News', ['hn']),
   solo('game', '游戏', 'netease-game'),
-  {
-    id: 'fun',
-    label: '轻松一刻',
-    short: '轻松',
-    caption: '网易轻松一刻 · 煎蛋新鲜事 · 机核',
-    sourceIds: ['netease-fun', 'jandan', 'gcores'],
-  },
 
   // —— 默认隐藏：分类管理可开启 ——
-  solo('exclusive', '独家', 'netease-exclusive', '网易独家'),
   {
     id: 'politics',
     label: '政务',
@@ -297,8 +319,15 @@ export const CATEGORIES: NewsCategory[] = [
     id: 'tech-depth',
     label: '科技深度',
     short: '深度',
-    caption: 'Ars · MIT TR · Quanta · Stratechery · Vitalik · Paul Graham · 半导体 · 建筑物理 · 浅黑科技 · WIRED',
-    sourceIds: [
+    caption: '浅黑科技 · 爱范儿 · InfoQ 中文',
+    sourceIds: ['qianhei', 'ifanr', 'infoq-cn'],
+  },
+  worldRail(
+    'tech-depth-world',
+    '科技深度',
+    '深度',
+    'Ars · MIT TR · Quanta · Stratechery · Vitalik · Paul Graham · 半导体 · 建筑物理 · WIRED · The Verge',
+    [
       'arstechnica',
       'mittr',
       'quanta',
@@ -306,14 +335,11 @@ export const CATEGORIES: NewsCategory[] = [
       'vitalik',
       'fabricated-knowledge',
       'construction-physics',
-      'qianhei',
       'paulgraham',
       'verge',
-      'ifanr',
-      'infoq-cn',
       'wired',
     ],
-  },
+  ),
 ]
 
 export function findCategory(id: CategoryId): NewsCategory {
@@ -322,11 +348,11 @@ export function findCategory(id: CategoryId): NewsCategory {
 
 /**
  * 门户经典默认可见栏（与 preferences.DEFAULT_HIDDEN_CATEGORY_IDS 互斥）。
- * 顺序：要闻 → 消遣 → 硬资讯 → 国际/健康/科普 → 轻松收尾。
+ * 整组中文栏在前、整组外刊栏在后；不含综合。
  */
 export const PORTAL_VISIBLE_CATEGORY_IDS: readonly CategoryId[] = [
-  'mix',
   'hot',
+  'exclusive',
   'ent',
   'sports',
   'tech',
@@ -335,7 +361,65 @@ export const PORTAL_VISIBLE_CATEGORY_IDS: readonly CategoryId[] = [
   'health',
   'science',
   'fun',
+  'ent-world',
+  'sports-world',
+  'tech-world',
+  'finance-world',
+  'intl-world',
+  'health-world',
+  'science-world',
 ]
+
+/** 全景门户出厂信源；新装 / 重置布局与 builtin-default 共用，避免可见外刊栏铺开注册表全集 */
+export const PORTAL_CATEGORY_SOURCES: Record<CategoryId, string[]> = {
+  hot: ['netease'],
+  exclusive: ['netease-exclusive'],
+  ent: ['netease-ent'],
+  sports: ['netease-sports', 'netease-football', 'netease-cn-football'],
+  tech: [
+    'netease-tech',
+    'ithome',
+    'sspai',
+    'geekpark',
+    'solidot',
+    'ifanr',
+    'netease-auto',
+    'ruanyifeng',
+    'appinn',
+  ],
+  finance: [
+    'cls-telegraph',
+    'latepost',
+    'kr36',
+    'eastmoney-kx',
+    'wscn-live',
+    'huxiu',
+    'jazzyear',
+    'tmtpost',
+    'eastmoney-news',
+    'netease-stock',
+    'netease-biz',
+  ],
+  intl: ['bbc-zh', 'dw-top', 'theinitium', 'bbc-zh-world'],
+  health: ['netease-health'],
+  science: [
+    'guokr',
+    'pansci',
+    'huanqiukexue',
+    'netease-diqiu',
+    'zhishifenzi',
+    'netease-fanpu',
+    'netease-wuli',
+  ],
+  fun: ['netease-fun', 'jandan', 'gcores'],
+  'ent-world': ['gnews-ent'],
+  'sports-world': ['gnews-sports'],
+  'tech-world': ['gnews-tech', 'verge', 'arstechnica'],
+  'finance-world': ['bbc-business', 'gnews-business', 'techcrunch'],
+  'intl-world': ['gnews-world', 'scmp-china', 'npr', 'guardian-world'],
+  'health-world': ['gnews-health'],
+  'science-world': ['gnews-science', 'quanta'],
+}
 
 export function sourceIdsForCategory(
   categoryId: CategoryId,

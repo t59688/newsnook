@@ -5,6 +5,7 @@
 
 import {
   CATEGORIES,
+  PORTAL_CATEGORY_SOURCES,
   PORTAL_VISIBLE_CATEGORY_IDS,
   type CategoryId,
   type NewsCategory,
@@ -152,10 +153,6 @@ export function applySnapshotToPrefs(prefs: Preferences, snapshot: LayoutSnapsho
 /**
  * 门户经典可见栏顺序见 categories.PORTAL_VISIBLE_CATEGORY_IDS。
  */
-function defaultEnabledIds(): string[] {
-  return SOURCES.filter((source) => source.enabled).map((source) => source.id)
-}
-
 function hiddenExcept(visibleIds: CategoryId[]): CategoryId[] {
   const visible = new Set(visibleIds)
   return CATEGORIES.map((category) => category.id).filter((id) => !visible.has(id))
@@ -184,11 +181,10 @@ function builtinPreset(
 
 /**
  * 内置场景包原则：
- * - 可见栏 5～10 个，顺序即阅读优先级
- * - 主题栏信源：1 主 + 1～2 辅（含至多 1 个 gnews）
- * - **同一预设内，任意分类的 sourceId 互斥**（主题栏互斥；综合 enabled 也不得与主题栏重复）
- * - 综合启用：仅收录未落入其他可见分类的源；若无独占源则隐藏综合
- * - AI / 游戏 / 深度等留给专题预设，不挤默认门户
+ * - 可见栏顺序即阅读优先级；中文栏整组在前，外刊栏整组在后
+ * - **同一预设内，任意分类的 sourceId 互斥**
+ * - 内置预设全部隐藏综合，enabledSourceIds 为空；空白自定义预设仍从综合起
+ * - 足球/手机/数码/汽车等 solo 轨默认隐藏，由预设 categorySources 并入主题栏
  */
 
 /** 主题分类（非综合）已占用的信源 */
@@ -240,98 +236,14 @@ export function mixThemeOverlap(
 
 export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
   (() => {
-    const categorySources = {
-      hot: pickKnown('netease'),
-      ent: pickKnown('netease-ent', 'gnews-ent'),
-      sports: pickKnown('netease-sports', 'gnews-sports'),
-      tech: pickKnown('netease-tech', 'ithome', 'sspai', 'geekpark'),
-      finance: pickKnown(
-        'cls-telegraph',
-        'latepost',
-        'kr36',
-        'eastmoney-kx',
-        'wscn-live',
-        'bbc-business',
-      ),
-      intl: pickKnown('bbc-zh', 'dw-top', 'scmp-china', 'theinitium', 'gnews-world'),
-      health: pickKnown('netease-health', 'gnews-health'),
-      science: pickKnown('guokr', 'pansci', 'huanqiukexue', 'netease-diqiu', 'gnews-science'),
-      fun: pickKnown('netease-fun', 'jandan'),
-    }
+    const categorySources = Object.fromEntries(
+      Object.entries(PORTAL_CATEGORY_SOURCES).map(([id, sourceIds]) => [id, pickKnown(...sourceIds)]),
+    )
+    const visible: CategoryId[] = [...PORTAL_VISIBLE_CATEGORY_IDS]
     return builtinPreset(
       BUILTIN_DEFAULT_ID,
       '全景门户',
-      '要闻娱乐 · 科技商业 · 国际科普 · 轻松收尾',
-      {
-        categoryOrder: [...PORTAL_VISIBLE_CATEGORY_IDS],
-        hiddenCategoryIds: hiddenExcept([...PORTAL_VISIBLE_CATEGORY_IDS]),
-        categorySources,
-        customCategories: [],
-        enabledSourceIds: exclusiveEnabledSourceIds(categorySources, defaultEnabledIds()),
-      },
-    )
-  })(),
-  (() => {
-    /**
-     * AI 六栏：OpenAI / Claude / 实验室 / 业界 / 深读 / 社区；默认启用压量，避免刷屏。
-     * 其余源（PyTorch、雷锋网、周报、PaperWeekly 等）留在分类里可一键开启。
-     */
-    const categorySources = {
-      'ai-openai': pickKnown('openai-news', 'openai-cookbook'),
-      'ai-claude': pickKnown(
-        'anthropic',
-        'claude-blog',
-        'claude-customers',
-        'claude-academy-use-cases',
-        'claude-academy-tutorials',
-      ),
-      ai: pickKnown('google-ai', 'deepmind', 'huggingface', 'arena'),
-      'ai-media': pickKnown('qbitai', 'jiqizhixin', 'aiera', 'mittr-ai'),
-      'ai-depth': pickKnown(
-        'zhidx',
-        'baoyu',
-        'xixiaoyao',
-        '42zhangjing',
-        'oneusefulthing',
-        'latent-space',
-      ),
-      'ai-community': pickKnown('uisdc-aigc', 'v2ex', 'hn'),
-      'tech-depth': pickKnown(
-        'arstechnica',
-        'mittr',
-        'quanta',
-        'vitalik',
-        'fabricated-knowledge',
-        'construction-physics',
-        'qianhei',
-        'paulgraham',
-      ),
-      tech: pickKnown('sspai', 'geekpark', 'solidot', 'ruanyifeng', 'appinn', 'ithome'),
-      science: pickKnown(
-        'guokr',
-        'pansci',
-        'huanqiukexue',
-        'zhishifenzi',
-        'netease-fanpu',
-        'netease-wuli',
-        'swarma',
-      ),
-    }
-    const visible: CategoryId[] = [
-      'ai-openai',
-      'ai-claude',
-      'ai',
-      'ai-media',
-      'ai-depth',
-      'ai-community',
-      'tech-depth',
-      'tech',
-      'science',
-    ]
-    return builtinPreset(
-      BUILTIN_TECH_ID,
-      '极客与 AI',
-      'OpenAI · Claude · 实验室 · 业界 · 深读 · 社区 · 科技深度 · 硬核科普',
+      '中文要闻在前 · 外刊分栏靠后 · 无综合',
       {
         categoryOrder: visible,
         hiddenCategoryIds: hiddenExcept(visible),
@@ -343,41 +255,142 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
   })(),
   (() => {
     const categorySources = {
-      'tech-depth': pickKnown(
+      'ai-media': pickKnown('qbitai', 'jiqizhixin', 'aiera', 'leiphone'),
+      'ai-depth': pickKnown('zhidx', 'baoyu', 'xixiaoyao', '42zhangjing'),
+      'ai-community': pickKnown('uisdc-aigc', 'v2ex', 'paperweekly', 'woshipm-ai'),
+      tech: pickKnown(
+        'sspai',
+        'geekpark',
+        'ithome',
+        'solidot',
+        'ruanyifeng',
+        'appinn',
+        'netease-phone',
+        'netease-digital',
+      ),
+      science: pickKnown(
+        'guokr',
+        'pansci',
+        'huanqiukexue',
+        'zhishifenzi',
+        'netease-fanpu',
+        'netease-wuli',
+        'swarma',
+      ),
+      'tech-depth': pickKnown('qianhei', 'ifanr', 'infoq-cn'),
+      'ai-media-world': pickKnown(
+        'mittr-ai',
+        'verge-ai',
+        'ieee-ai',
+        'venturebeat-ai',
+        'synced',
+        'marktechpost',
+      ),
+      'ai-depth-world': pickKnown(
+        'oneusefulthing',
+        'latent-space',
+        'understandingai',
+        'thezvi',
+        'lastweek-ai',
+        'import-ai',
+        'simonw',
+        'interconnects',
+        'lil-log',
+        'ahead-of-ai',
+      ),
+      'ai-community-world': pickKnown('hn'),
+      'tech-depth-world': pickKnown(
+        'arstechnica',
+        'mittr',
         'quanta',
         'stratechery',
         'vitalik',
+        'paulgraham',
         'fabricated-knowledge',
         'construction-physics',
-        'paulgraham',
+        'wired',
+        'verge',
       ),
-      intl: pickKnown(
+      'ai-openai': pickKnown('openai-news', 'openai-cookbook'),
+      'ai-claude': pickKnown(
+        'anthropic',
+        'claude-blog',
+        'claude-customers',
+        'claude-academy-use-cases',
+        'claude-academy-tutorials',
+      ),
+      ai: pickKnown('google-ai', 'deepmind', 'huggingface', 'pytorch', 'arena'),
+    }
+    const visible: CategoryId[] = [
+      'ai-media',
+      'ai-depth',
+      'ai-community',
+      'tech',
+      'science',
+      'tech-depth',
+      'ai-media-world',
+      'ai-depth-world',
+      'ai-community-world',
+      'tech-depth-world',
+      'ai-openai',
+      'ai-claude',
+      'ai',
+    ]
+    return builtinPreset(
+      BUILTIN_TECH_ID,
+      '极客与 AI',
+      '中文业界深读在前 · 外刊与官方实验室靠后',
+      {
+        categoryOrder: visible,
+        hiddenCategoryIds: hiddenExcept(visible),
+        categorySources,
+        customCategories: [],
+        enabledSourceIds: [],
+      },
+    )
+  })(),
+  (() => {
+    const categorySources = {
+      theue: pickKnown('theue'),
+      intl: pickKnown('theinitium', 'bbc-zh', 'dw-top'),
+      tech: pickKnown('v2ex', 'ruanyifeng', 'qianhei'),
+      science: pickKnown('guokr', 'zhishifenzi', 'netease-fanpu', 'swarma'),
+      'intl-world': pickKnown(
         'foreign-affairs',
         'nyrb',
         'bloomberg-opinion',
         'project-syndicate',
         'sinocism',
-        'theinitium',
+        'scmp-china',
+      ),
+      'tech-depth-world': pickKnown(
+        'quanta',
+        'stratechery',
+        'vitalik',
+        'paulgraham',
+        'fabricated-knowledge',
+        'construction-physics',
+        'mittr',
       ),
       'astral-codex-ten': pickKnown('astral-codex-ten'),
       marginalian: pickKnown('marginalian'),
       aldaily: pickKnown('aldaily'),
-      theue: pickKnown('theue'),
-      tech: pickKnown('v2ex'),
     }
     const visible: CategoryId[] = [
-      'tech-depth',
+      'theue',
       'intl',
+      'tech',
+      'science',
+      'intl-world',
+      'tech-depth-world',
       'astral-codex-ten',
       'marginalian',
       'aldaily',
-      'theue',
-      'tech',
     ]
     return builtinPreset(
       BUILTIN_DEPTH_ID,
       '深度智识',
-      '思想随笔 · 科技前沿 · 全球宏观 · 独立专栏',
+      '中文深度叙事在前 · 思想外刊与专栏靠后',
       {
         categoryOrder: visible,
         hiddenCategoryIds: hiddenExcept(visible),
@@ -395,85 +408,86 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         'kr36',
         'huxiu',
         'tmtpost',
-        'techcrunch',
         'cls-telegraph',
         'eastmoney-kx',
         'wscn-live',
-        'bbc-business',
+        'netease-biz',
+        'netease-stock',
+        'eastmoney-news',
       ),
-      intl: pickKnown('bloomberg-opinion', 'project-syndicate', 'scmp-china', 'theinitium'),
-      tech: pickKnown('geekpark', 'sspai', 'ifanr'),
-      // AI 媒体快报归「业界」栏（ai 栏已改为实验室官方一手）
-      'ai-media': pickKnown('qbitai', 'aiera', 'venturebeat-ai'),
+      intl: pickKnown('theinitium', 'bbc-zh', 'dw-top'),
+      tech: pickKnown('geekpark', 'sspai', 'ifanr', 'netease-auto'),
+      'ai-media': pickKnown('qbitai', 'aiera', 'jiqizhixin'),
+      'finance-world': pickKnown('techcrunch', 'bbc-business', 'gnews-business', 'stratechery'),
+      'intl-world': pickKnown(
+        'bloomberg-opinion',
+        'project-syndicate',
+        'scmp-china',
+        'sinocism',
+      ),
+      'ai-media-world': pickKnown('venturebeat-ai', 'mittr-ai'),
     }
+    const visible: CategoryId[] = [
+      'finance',
+      'intl',
+      'tech',
+      'ai-media',
+      'finance-world',
+      'intl-world',
+      'ai-media-world',
+    ]
     return builtinPreset(
       BUILTIN_BIZ_ID,
       '商业创投',
-      '深度特写 · 创投产业 · 国际经贸 · 科技观察',
+      '中文创投产业在前 · 外刊靠后 · 无综合',
       {
-        categoryOrder: ['mix', 'finance', 'intl', 'tech', 'ai-media'],
-        hiddenCategoryIds: hiddenExcept(['mix', 'finance', 'intl', 'tech', 'ai-media']),
+        categoryOrder: visible,
+        hiddenCategoryIds: hiddenExcept(visible),
         categorySources,
         customCategories: [],
-        enabledSourceIds: exclusiveEnabledSourceIds(
-          categorySources,
-          pickKnown(
-            'eastmoney-news',
-            'netease-biz',
-            'netease-stock',
-            'gnews-business',
-            'jiqizhixin',
-            'mittr',
-            'bbc-zh',
-            'dw-top',
-            'gnews-world',
-          ),
-        ),
+        enabledSourceIds: [],
       },
     )
   })(),
   (() => {
     const categorySources = {
-      intl: pickKnown(
-        'foreign-affairs',
-        'nyrb',
-        'sinocism',
-        'theinitium',
-        'bbc-zh',
+      intl: pickKnown('theinitium', 'bbc-zh', 'dw-top', 'bbc-zh-world', 'bbc-zh-china'),
+      hot: pickKnown('netease'),
+      science: pickKnown('huanqiukexue', 'pansci', 'guokr', 'zhishifenzi'),
+      'intl-world': pickKnown(
         'bbc-world',
-        'dw-top',
-        'scmp-china',
         'npr',
         'guardian-world',
         'france24',
         'aljazeera',
+        'scmp-china',
+        'scmp-news',
+        'foreign-affairs',
+        'nyrb',
+        'sinocism',
+        'gnews-world',
       ),
-      hot: pickKnown('netease'),
-      'tech-depth': pickKnown('quanta', 'mittr', 'wired', 'arstechnica'),
-      science: pickKnown('huanqiukexue', 'pansci', 'gnews-science'),
+      'tech-depth-world': pickKnown('quanta', 'mittr', 'wired', 'arstechnica', 'verge'),
+      'science-world': pickKnown('gnews-science'),
     }
+    const visible: CategoryId[] = [
+      'intl',
+      'hot',
+      'science',
+      'intl-world',
+      'tech-depth-world',
+      'science-world',
+    ]
     return builtinPreset(
       BUILTIN_WORLD_ID,
       '全球视野',
-      '公共广电 · 地缘智库 · 亚洲视角 · 科学深度',
+      '中文国际科普在前 · 外刊广电智库靠后 · 无综合',
       {
-        categoryOrder: ['mix', 'intl', 'hot', 'tech-depth', 'science'],
-        hiddenCategoryIds: hiddenExcept(['mix', 'intl', 'hot', 'tech-depth', 'science']),
+        categoryOrder: visible,
+        hiddenCategoryIds: hiddenExcept(visible),
         categorySources,
         customCategories: [],
-        enabledSourceIds: exclusiveEnabledSourceIds(
-          categorySources,
-          pickKnown(
-            'bbc-zh-china',
-            'bbc-zh-world',
-            'scmp-news',
-            'gnews-world',
-            'guokr',
-            'zhishifenzi',
-            'verge',
-            'hn',
-          ),
-        ),
+        enabledSourceIds: [],
       },
     )
   })(),
@@ -486,17 +500,20 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
         'zhishifenzi',
         'netease-fanpu',
         'netease-diqiu',
+        'swarma',
       ),
-      tech: pickKnown('sspai', 'ruanyifeng', 'appinn', 'v2ex'),
+      tech: pickKnown('sspai', 'ruanyifeng', 'appinn', 'v2ex', 'qianhei'),
+      edu: pickKnown('netease-edu'),
       theue: pickKnown('theue'),
       zhihu: pickKnown('zhihu-daily'),
+      blog: pickKnown('netease-blog'),
       fun: pickKnown('gcores', 'jandan'),
     }
-    const visible: CategoryId[] = ['science', 'tech', 'theue', 'zhihu', 'fun']
+    const visible: CategoryId[] = ['science', 'tech', 'edu', 'theue', 'zhihu', 'blog', 'fun']
     return builtinPreset(
       BUILTIN_MINDFUL_ID,
       '慢读知性',
-      '科学人文 · 数字生活 · 深度叙事 · 知乎精选 · 文化漫步',
+      '科学人文 · 教育博客 · 全中文慢读',
       {
         categoryOrder: visible,
         hiddenCategoryIds: hiddenExcept(visible),
@@ -509,16 +526,18 @@ export const BUILTIN_PRESETS: readonly LayoutPreset[] = [
   (() => {
     const categorySources = {
       fun: pickKnown('netease-fun', 'jandan', 'gcores'),
-      ent: pickKnown('netease-ent', 'gnews-ent'),
+      ent: pickKnown('netease-ent'),
       game: pickKnown('netease-game'),
       history: pickKnown('netease-history'),
+      travel: pickKnown('netease-travel'),
       zhihu: pickKnown('zhihu-daily'),
+      'ent-world': pickKnown('gnews-ent'),
     }
-    const visible: CategoryId[] = ['fun', 'ent', 'game', 'history', 'zhihu']
+    const visible: CategoryId[] = ['fun', 'ent', 'game', 'history', 'travel', 'zhihu', 'ent-world']
     return builtinPreset(
       BUILTIN_FUN_ID,
       '摸鱼消遣',
-      '轻松段子 · 娱乐八卦 · 游戏文化 · 历史轶闻 · 知乎闲读',
+      '轻松娱乐 · 游戏历史旅游 · 娱乐外刊靠后',
       {
         categoryOrder: visible,
         hiddenCategoryIds: hiddenExcept(visible),

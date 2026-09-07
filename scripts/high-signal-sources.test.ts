@@ -142,19 +142,17 @@ assert.ok(cleaned.includes('Semiconductor manufacturing equipment'))
 console.log('✓ Substack boilerplate summary cleaner verified')
 
 // —— 6. AI 深读信源注册检查 ——
-const AI_DEPTH_SOURCE_IDS = [
-  'zhidx',
-  'baoyu',
+const AI_DEPTH_ZH_IDS = ['zhidx', 'baoyu']
+const AI_DEPTH_WORLD_IDS = [
   'oneusefulthing',
   'understandingai',
   'latent-space',
   'thezvi',
 ]
 
-// 解读 / 评测源统一归 ai-depth（深读）
 const aiDepthCategory = CATEGORIES.find((cat) => cat.id === 'ai-depth')
 assert.ok(aiDepthCategory?.sourceIds, 'ai-depth category must declare sourceIds')
-for (const id of AI_DEPTH_SOURCE_IDS) {
+for (const id of AI_DEPTH_ZH_IDS) {
   const src = findSource(id)
   assert.ok(src, `AI depth source ${id} must be registered in SOURCES`)
   assert.equal(src.group, 'ai', `AI depth source ${id} must be in the ai group`)
@@ -164,13 +162,27 @@ for (const id of AI_DEPTH_SOURCE_IDS) {
     `AI depth source ${id} must be covered by the ai-depth category`,
   )
 }
+const aiDepthWorldCategory = CATEGORIES.find((cat) => cat.id === 'ai-depth-world')
+assert.ok(aiDepthWorldCategory?.sourceIds, 'ai-depth-world category must declare sourceIds')
+for (const id of AI_DEPTH_WORLD_IDS) {
+  const src = findSource(id)
+  assert.ok(src, `AI depth source ${id} must be registered in SOURCES`)
+  assert.equal(src.group, 'ai', `AI depth source ${id} must be in the ai group`)
+  assert.ok(src.url.startsWith('https://'), `AI depth source ${id} must use https`)
+  assert.ok(
+    aiDepthWorldCategory!.sourceIds!.includes(id),
+    `AI depth source ${id} must be covered by the ai-depth-world category`,
+  )
+}
 
-// 社区栏存在且优设排首位
+// 社区栏存在且优设排首位；HN 进社区·外刊
 const aiCommunityCategory = CATEGORIES.find((cat) => cat.id === 'ai-community')
 assert.ok(aiCommunityCategory?.sourceIds, 'ai-community category must declare sourceIds')
 assert.equal(aiCommunityCategory!.sourceIds![0], 'uisdc-aigc')
 assert.ok(aiCommunityCategory!.sourceIds!.includes('v2ex'))
-assert.ok(aiCommunityCategory!.sourceIds!.includes('hn'))
+assert.ok(!aiCommunityCategory!.sourceIds!.includes('hn'))
+const aiCommunityWorldCategory = CATEGORIES.find((cat) => cat.id === 'ai-community-world')
+assert.ok(aiCommunityWorldCategory?.sourceIds?.includes('hn'))
 
 // 业界栏收媒体快报
 const aiMediaCategory = CATEGORIES.find((cat) => cat.id === 'ai-media')

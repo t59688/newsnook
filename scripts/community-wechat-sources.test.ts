@@ -88,10 +88,16 @@ for (const id of ['xixiaoyao', '42zhangjing']) {
   assert.ok(aiDepthCategory.sourceIds!.includes(id), `${id} must be covered by ai-depth`)
 }
 const aiCommunityCategory = CATEGORIES.find((cat) => cat.id === 'ai-community')!
-for (const id of ['uisdc-aigc', 'woshipm-ai', 'paperweekly', 'v2ex', 'hn']) {
+for (const id of ['uisdc-aigc', 'woshipm-ai', 'paperweekly', 'v2ex']) {
   assert.ok(aiCommunityCategory.sourceIds!.includes(id), `${id} must be covered by ai-community`)
 }
+assert.ok(
+  !aiCommunityCategory.sourceIds!.includes('hn'),
+  'hn belongs to ai-community-world',
+)
 assert.equal(aiCommunityCategory.sourceIds![0], 'uisdc-aigc', 'uisdc-aigc must lead the community category')
+const aiCommunityWorldCategory = CATEGORIES.find((cat) => cat.id === 'ai-community-world')!
+assert.ok(aiCommunityWorldCategory.sourceIds!.includes('hn'), 'hn must be covered by ai-community-world')
 const aiCategory = CATEGORIES.find((cat) => cat.id === 'ai')!
 for (const id of ['xixiaoyao', 'paperweekly', '42zhangjing', 'uisdc-aigc', 'woshipm-ai']) {
   assert.ok(!aiCategory.sourceIds!.includes(id), `${id} must not leak into the official ai category`)

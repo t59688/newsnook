@@ -7,6 +7,7 @@ import {
   CATEGORIES,
   findCategory,
   isReservedCategoryLabel,
+  PORTAL_CATEGORY_SOURCES,
   PORTAL_VISIBLE_CATEGORY_IDS,
   RECOMMEND_CATEGORY,
   RECOMMEND_CATEGORY_ID,
@@ -433,7 +434,7 @@ export function resetCategoryLayout(
     ...prefs,
     categoryOrder: [...PORTAL_VISIBLE_CATEGORY_IDS],
     hiddenCategoryIds: [...DEFAULT_HIDDEN_CATEGORY_IDS],
-    categorySources: {},
+    categorySources: { ...PORTAL_CATEGORY_SOURCES },
     customCategories: options?.removeCustom ? [] : (prefs.customCategories ?? []),
   }
 }

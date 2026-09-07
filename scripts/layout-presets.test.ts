@@ -131,31 +131,54 @@ assert.equal(findBuiltinPreset('builtin-foryou'), undefined)
 assert.ok(!BUILTIN_PRESETS.some((preset) => preset.snapshot.categoryOrder.includes('recommend')))
 
 const portal = normalizeSnapshot(findBuiltinPreset('builtin-default')!.snapshot)
-assert.deepEqual(portal.categoryOrder, [
-  'mix',
-  'hot',
-  'ent',
-  'sports',
-  'tech',
-  'finance',
-  'intl',
-  'health',
-  'science',
-  'fun',
-])
+assert.deepEqual(
+  portal.categoryOrder.filter((id) => !portal.hiddenCategoryIds.includes(id)),
+  [
+    'hot',
+    'exclusive',
+    'ent',
+    'sports',
+    'tech',
+    'finance',
+    'intl',
+    'health',
+    'science',
+    'fun',
+    'ent-world',
+    'sports-world',
+    'tech-world',
+    'finance-world',
+    'intl-world',
+    'health-world',
+    'science-world',
+  ],
+)
+assert.ok(portal.hiddenCategoryIds.includes('mix'))
+assert.deepEqual(portal.enabledSourceIds, [])
 assert.ok(!portal.hiddenCategoryIds.includes('ent'))
-assert.ok(!portal.hiddenCategoryIds.includes('sports'))
+assert.ok(!portal.hiddenCategoryIds.includes('exclusive'))
 assert.ok(portal.hiddenCategoryIds.includes('ai'))
-assert.ok(portal.hiddenCategoryIds.includes('ai-openai'))
-assert.ok(portal.hiddenCategoryIds.includes('ai-claude'))
-assert.ok(portal.hiddenCategoryIds.includes('ai-media'))
-assert.ok(portal.hiddenCategoryIds.includes('ai-depth'))
-assert.ok(portal.hiddenCategoryIds.includes('ai-community'))
 assert.ok(portal.hiddenCategoryIds.includes('game'))
-assert.deepEqual(portal.categorySources.intl, ['bbc-zh', 'dw-top', 'scmp-china', 'theinitium', 'gnews-world'])
 assert.deepEqual(portal.categorySources.hot, ['netease'])
-assert.deepEqual(portal.categorySources.ent, ['netease-ent', 'gnews-ent'])
-assert.ok(!portal.enabledSourceIds.includes('gnews-world'))
+assert.deepEqual(portal.categorySources.ent, ['netease-ent'])
+assert.deepEqual(portal.categorySources['ent-world'], ['gnews-ent'])
+assert.deepEqual(portal.categorySources.sports, [
+  'netease-sports',
+  'netease-football',
+  'netease-cn-football',
+])
+assert.deepEqual(portal.categorySources.intl, ['bbc-zh', 'dw-top', 'theinitium', 'bbc-zh-world'])
+assert.deepEqual(portal.categorySources['intl-world'], [
+  'gnews-world',
+  'scmp-china',
+  'npr',
+  'guardian-world',
+])
+assert.ok(portal.categorySources.tech?.includes('netease-auto'))
+assert.ok(portal.categorySources.tech?.includes('ruanyifeng'))
+assert.ok(portal.categorySources.finance?.includes('netease-stock'))
+assert.ok(portal.categorySources.science?.includes('netease-wuli'))
+assert.ok(!portal.categorySources.tech?.includes('gnews-tech'))
 
 for (const preset of BUILTIN_PRESETS) {
   const dupes = duplicateSourcesAcrossCategories(preset.snapshot.categorySources)
@@ -189,8 +212,8 @@ const visible = new Set(
 assert.ok(visible.has('tech') && visible.has('ai') && visible.has('ai-media'))
 assert.ok(visible.has('ai-openai') && visible.has('ai-claude'))
 assert.ok(visible.has('ai-depth') && visible.has('ai-community'))
+assert.ok(visible.has('ai-media-world') && visible.has('tech-depth-world'))
 assert.ok(!visible.has('fun'))
-// AI 六栏：OpenAI / Claude / 实验室 / 业界 / 深读 / 社区
 assert.deepEqual(techSnap.categorySources['ai-openai'], ['openai-news', 'openai-cookbook'])
 assert.deepEqual(techSnap.categorySources['ai-claude'], [
   'anthropic',
@@ -203,115 +226,148 @@ assert.deepEqual(techSnap.categorySources.ai, [
   'google-ai',
   'deepmind',
   'huggingface',
+  'pytorch',
   'arena',
 ])
-assert.deepEqual(techSnap.categorySources['ai-media'], [
-  'qbitai',
-  'jiqizhixin',
-  'aiera',
+assert.deepEqual(techSnap.categorySources['ai-media'], ['qbitai', 'jiqizhixin', 'aiera', 'leiphone'])
+assert.deepEqual(techSnap.categorySources['ai-media-world'], [
   'mittr-ai',
+  'verge-ai',
+  'ieee-ai',
+  'venturebeat-ai',
+  'synced',
+  'marktechpost',
 ])
 assert.deepEqual(techSnap.categorySources['ai-depth'], [
   'zhidx',
   'baoyu',
   'xixiaoyao',
   '42zhangjing',
-  'oneusefulthing',
-  'latent-space',
 ])
-assert.deepEqual(techSnap.categorySources['ai-community'], ['uisdc-aigc', 'v2ex', 'hn'])
-// 其余 AI 源留在分类里可发现但默认关闭
-assert.ok(!techSnap.categorySources.ai?.includes('pytorch'))
-assert.ok(!techSnap.categorySources['ai-depth']?.includes('paperweekly'))
-assert.ok(!techSnap.categorySources['ai-community']?.includes('paperweekly'))
-assert.ok(techSnap.categorySources['tech-depth']?.includes('paulgraham'))
-assert.ok(!techSnap.categorySources['tech-depth']?.includes('hn'))
-assert.ok(!techSnap.categorySources.tech?.includes('v2ex'))
+assert.ok(techSnap.categorySources['ai-depth-world']?.includes('oneusefulthing'))
+assert.deepEqual(techSnap.categorySources['ai-community'], [
+  'uisdc-aigc',
+  'v2ex',
+  'paperweekly',
+  'woshipm-ai',
+])
+assert.deepEqual(techSnap.categorySources['ai-community-world'], ['hn'])
+assert.ok(techSnap.categorySources.tech?.includes('netease-phone'))
 assert.ok(techSnap.categorySources.tech?.includes('ithome'))
-// 综合不再兜一长串源：无独占源则隐藏综合
+assert.ok(!techSnap.categorySources.tech?.includes('v2ex'))
+assert.ok(techSnap.categorySources['tech-depth']?.includes('qianhei'))
+assert.ok(!techSnap.categorySources['tech-depth']?.includes('paulgraham'))
+assert.ok(techSnap.categorySources['tech-depth-world']?.includes('paulgraham'))
 assert.deepEqual(techSnap.enabledSourceIds, [])
 assert.ok(techSnap.hiddenCategoryIds.includes('mix'))
 assert.deepEqual(
   techSnap.categoryOrder.filter((id) => !techSnap.hiddenCategoryIds.includes(id)),
   [
-    'ai-openai',
-    'ai-claude',
-    'ai',
     'ai-media',
     'ai-depth',
     'ai-community',
-    'tech-depth',
     'tech',
     'science',
+    'tech-depth',
+    'ai-media-world',
+    'ai-depth-world',
+    'ai-community-world',
+    'tech-depth-world',
+    'ai-openai',
+    'ai-claude',
+    'ai',
   ],
 )
 
 const depth = normalizeSnapshot(findBuiltinPreset('builtin-depth')!.snapshot)
-assert.ok(depth.categorySources['tech-depth']?.includes('quanta'))
-assert.ok(depth.categorySources['tech-depth']?.includes('stratechery'))
-assert.ok(depth.categorySources['tech-depth']?.includes('vitalik'))
-assert.ok(depth.categorySources.intl?.includes('foreign-affairs'))
-assert.ok(depth.categorySources.intl?.includes('sinocism'))
+assert.ok(depth.categorySources['tech-depth-world']?.includes('quanta'))
+assert.ok(depth.categorySources['tech-depth-world']?.includes('stratechery'))
+assert.ok(!depth.categorySources['tech-depth']?.includes('quanta'))
 assert.ok(depth.categorySources.intl?.includes('theinitium'))
+assert.ok(!depth.categorySources.intl?.includes('foreign-affairs'))
+assert.ok(depth.categorySources['intl-world']?.includes('foreign-affairs'))
+assert.ok(depth.categorySources['intl-world']?.includes('sinocism'))
 assert.ok(depth.categorySources['astral-codex-ten']?.includes('astral-codex-ten'))
-assert.ok(depth.categorySources.marginalian?.includes('marginalian'))
-assert.ok(depth.categorySources.aldaily?.includes('aldaily'))
 assert.ok(depth.categorySources.theue?.includes('theue'))
 assert.ok(depth.categorySources.tech?.includes('v2ex'))
 assert.deepEqual(depth.enabledSourceIds, [])
 assert.deepEqual(
   depth.categoryOrder.filter((id) => !depth.hiddenCategoryIds.includes(id)),
-  ['tech-depth', 'intl', 'astral-codex-ten', 'marginalian', 'aldaily', 'theue', 'tech'],
+  [
+    'theue',
+    'intl',
+    'tech',
+    'science',
+    'intl-world',
+    'tech-depth-world',
+    'astral-codex-ten',
+    'marginalian',
+    'aldaily',
+  ],
 )
 assert.ok(depth.hiddenCategoryIds.includes('mix'))
 
 const biz = normalizeSnapshot(findBuiltinPreset('builtin-biz')!.snapshot)
 assert.ok(biz.categorySources.finance?.includes('latepost'))
-assert.ok(biz.categorySources.finance?.includes('jazzyear'))
-assert.ok(biz.categorySources.finance?.includes('kr36'))
-assert.ok(biz.categorySources.intl?.includes('bloomberg-opinion'))
-assert.ok(biz.categorySources.intl?.includes('theinitium'))
-assert.ok(!biz.enabledSourceIds.includes('latepost'))
-assert.ok(biz.enabledSourceIds.includes('eastmoney-news'))
-assert.equal(biz.categoryOrder[1], 'finance')
+assert.ok(biz.categorySources.finance?.includes('netease-biz'))
+assert.ok(biz.categorySources.tech?.includes('netease-auto'))
+assert.ok(biz.categorySources.intl?.includes('dw-top'))
+assert.ok(!biz.categorySources.intl?.includes('bloomberg-opinion'))
+assert.ok(biz.categorySources['intl-world']?.includes('bloomberg-opinion'))
+assert.deepEqual(biz.enabledSourceIds, [])
+assert.ok(biz.hiddenCategoryIds.includes('mix'))
+assert.equal(
+  biz.categoryOrder.filter((id) => !biz.hiddenCategoryIds.includes(id))[0],
+  'finance',
+)
 
 const world = normalizeSnapshot(findBuiltinPreset('builtin-world')!.snapshot)
-assert.ok(world.categorySources.intl?.includes('foreign-affairs'))
 assert.ok(world.categorySources.intl?.includes('theinitium'))
 assert.ok(world.categorySources.intl?.includes('bbc-zh'))
-assert.ok(world.categorySources['tech-depth']?.includes('quanta'))
-assert.ok(world.categorySources.science?.includes('gnews-science'))
-assert.ok(!world.enabledSourceIds.includes('foreign-affairs'))
-assert.ok(world.enabledSourceIds.includes('bbc-zh-china'))
-assert.equal(world.categoryOrder[0], 'mix')
-assert.equal(world.categoryOrder[1], 'intl')
+assert.ok(world.categorySources.intl?.includes('bbc-zh-china'))
+assert.ok(!world.categorySources.intl?.includes('foreign-affairs'))
+assert.ok(world.categorySources['intl-world']?.includes('foreign-affairs'))
+assert.ok(world.categorySources['tech-depth-world']?.includes('quanta'))
+assert.ok(!world.categorySources.science?.includes('gnews-science'))
+assert.ok(world.categorySources['science-world']?.includes('gnews-science'))
+assert.deepEqual(world.enabledSourceIds, [])
+assert.ok(world.hiddenCategoryIds.includes('mix'))
+assert.equal(world.categoryOrder.filter((id) => !world.hiddenCategoryIds.includes(id))[0], 'intl')
 
 const mindful = normalizeSnapshot(findBuiltinPreset('builtin-mindful')!.snapshot)
 assert.ok(mindful.categorySources.science?.includes('guokr'))
 assert.ok(mindful.categorySources.tech?.includes('v2ex'))
+assert.ok(mindful.categorySources.edu?.includes('netease-edu'))
+assert.ok(mindful.categorySources.blog?.includes('netease-blog'))
 assert.ok(mindful.categorySources.theue?.includes('theue'))
 assert.ok(mindful.categorySources.zhihu?.includes('zhihu-daily'))
 assert.deepEqual(mindful.enabledSourceIds, [])
 assert.equal(mindful.categoryOrder[0], 'science')
-assert.equal(mindful.categoryOrder[2], 'theue')
-assert.equal(mindful.categoryOrder[3], 'zhihu')
 assert.ok(mindful.hiddenCategoryIds.includes('mix'))
+assert.deepEqual(
+  mindful.categoryOrder.filter((id) => !mindful.hiddenCategoryIds.includes(id)),
+  ['science', 'tech', 'edu', 'theue', 'zhihu', 'blog', 'fun'],
+)
 
 const fun = normalizeSnapshot(findBuiltinPreset('builtin-fun')!.snapshot)
 assert.ok(fun.categorySources.fun?.includes('netease-fun'))
 assert.ok(fun.categorySources.ent?.includes('netease-ent'))
-assert.ok(fun.categorySources.ent?.includes('gnews-ent'))
-assert.ok(fun.categorySources.game?.includes('netease-game'))
-assert.ok(fun.categorySources.history?.includes('netease-history'))
-assert.ok(fun.categorySources.zhihu?.includes('zhihu-daily'))
+assert.ok(!fun.categorySources.ent?.includes('gnews-ent'))
+assert.deepEqual(fun.categorySources['ent-world'], ['gnews-ent'])
+assert.ok(fun.categorySources.travel?.includes('netease-travel'))
 assert.deepEqual(fun.enabledSourceIds, [])
-assert.ok(!fun.categorySources.antique)
 assert.equal(fun.categoryOrder[0], 'fun')
 assert.deepEqual(
   fun.categoryOrder.filter((id) => !fun.hiddenCategoryIds.includes(id)),
-  ['fun', 'ent', 'game', 'history', 'zhihu'],
+  ['fun', 'ent', 'game', 'history', 'travel', 'zhihu', 'ent-world'],
 )
 assert.ok(fun.hiddenCategoryIds.includes('mix'))
+
+for (const preset of BUILTIN_PRESETS) {
+  const snap = normalizeSnapshot(preset.snapshot)
+  assert.ok(snap.hiddenCategoryIds.includes('mix'), `${preset.id} must hide mix`)
+  assert.deepEqual(snap.enabledSourceIds, [], `${preset.id} must not use mix enabled list`)
+}
 
 console.log('layout-presets builtins: ok')
 
@@ -373,14 +429,24 @@ const worldApply = activatePreset(migrated, 'builtin-world')!
 const worldPrefs = applySnapshotToPrefs(DEFAULT_PREFERENCES, worldApply.snapshot)
 assert.deepEqual(
   visibleCategories(worldPrefs).map((c) => c.id),
-  ['mix', 'intl', 'hot', 'tech-depth', 'science'],
+  ['intl', 'hot', 'science', 'intl-world', 'tech-depth-world', 'science-world'],
 )
 
 const depthApply = activatePreset(migrated, 'builtin-depth')!
 const depthPrefs = applySnapshotToPrefs(DEFAULT_PREFERENCES, depthApply.snapshot)
 assert.deepEqual(
   visibleCategories(depthPrefs).map((c) => c.id),
-  ['tech-depth', 'intl', 'astral-codex-ten', 'marginalian', 'aldaily', 'theue', 'tech'],
+  [
+    'theue',
+    'intl',
+    'tech',
+    'science',
+    'intl-world',
+    'tech-depth-world',
+    'astral-codex-ten',
+    'marginalian',
+    'aldaily',
+  ],
 )
 
 const blank = createBlankUserPreset(fresh, '空白台')

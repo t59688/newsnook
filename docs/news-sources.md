@@ -291,20 +291,17 @@ WebView 观察页面的网络、DOM、MSE 与 DRM 信号；接口或观察失败
 
 ### 5.4 AI 分类分层与预设启用集合
 
-- 分类拆六栏（`categories.ts`；2026-08-26 起官方一手按厂商拆分），信源互斥：
+- 分类拆六栏（`categories.ts`；2026-08-26 起官方一手按厂商拆分），2026-09-07 起业界 / 深读 / 社区再按正文语言拆「·外刊」：
   - `ai-openai`（**OpenAI**：News · Cookbook）
   - `ai-claude`（**Claude**：Anthropic 新闻 · Claude 博客 / 客户案例 / 学院用例与教程）
   - `ai`（**实验室**：Google AI · DeepMind · Hugging Face · PyTorch · Arena）
-  - `ai-media`（**业界**：中英文媒体与 AI 栏目快报）
-  - `ai-depth`（**深读**：解读 / 评测 / 周报 / 甄选公众号）
-  - `ai-community`（**社区**：优设 AIGC 首位 · V2EX · HN · PaperWeekly · 人人 PM）
-  六栏均在 `DEFAULT_HIDDEN_CATEGORY_IDS`（新装默认隐藏，由场景预设或分类管理打开）。
-- 「极客与 AI」预设（`presets.ts`）可见顺序：OpenAI → Claude → 实验室 → 业界 → 深读 → 社区 →
-  科技深度 → 科技 → 科普；综合（mix）隐藏。默认启用示例：OpenAI / Claude 两栏整栏启用；
-  实验室含 Google AI / DeepMind / HF / Arena；业界含量子位 / 机器之心 / 新智元 / MIT AI；
-  深读含智东西 / 宝玉 / 夕小瑶 / 42章经 / Mollick / Latent；社区含优设 / V2EX / HN。
-  其余 AI 源（PyTorch、雷锋网、周报等）留在分类中可一键开启。
-- 「商业创投」预设的 AI 媒体快报（量子位 / 新智元 / VB AI）挂 `ai-media`（业界）栏，
+  - `ai-media`（**业界**：中文媒体快报）/ `ai-media-world`（**业界·外刊**：MIT/Verge/IEEE 等）
+  - `ai-depth`（**深读**：中文解读评测）/ `ai-depth-world`（**深读·外刊**：Mollick / Latent / 周报作者博）
+  - `ai-community`（**社区**：优设 AIGC 首位 · V2EX · PaperWeekly · 人人 PM）/ `ai-community-world`（**社区·外刊**：HN）
+  上述栏均在 `DEFAULT_HIDDEN_CATEGORY_IDS`（新装默认隐藏，由场景预设或分类管理打开）。
+- 「极客与 AI」预设（`presets.ts`）可见顺序：业界 → 深读 → 社区 → 科技 → 科普 → 科技深度（中文）→
+  对应外刊栏 → OpenAI → Claude → 实验室；综合（mix）隐藏。
+- 「商业创投」预设的中文 AI 媒体快报挂 `ai-media`，外刊挂 `ai-media-world`，
   不再借用 `ai` 栏。
 - 兼容性：老用户已持久化的 `hiddenCategoryIds` 若不含新建栏 id，升级后「业界 / 社区」可能短暂可见，
   可在分类管理隐藏或重新应用预设归位，无数据丢失。`chaping` 移除后，

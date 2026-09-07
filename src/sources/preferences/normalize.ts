@@ -11,7 +11,7 @@ import {
 import { DEFAULT_CUSTOM_SCHEME, normalizeCustomScheme } from '../../lib/customScheme'
 import { normalizeTranslationPrefs } from '../../features/translation/config'
 import { normalizeProxyPrefs } from '../../features/proxy/config'
-import { CATEGORIES, type CategoryId, type NewsCategory } from '../categories'
+import { CATEGORIES, PORTAL_CATEGORY_SOURCES, type CategoryId, type NewsCategory } from '../categories'
 import {
   SOURCES,
   makeCustomSourceId,
@@ -114,11 +114,15 @@ export function normalizePreferences(raw: unknown): Preferences {
   ])
 
   const categorySources: Record<CategoryId, string[]> = {}
-  Object.entries(input.categorySources ?? {}).forEach(([categoryId, sourceIds]) => {
-    if (!allCategoryIds.has(categoryId) || isAggregateCategoryId(categoryId)) return
-    const valid = uniqueValid(sourceIds, knownSourceIds)
-    if (valid.length) categorySources[categoryId] = valid
-  })
+  if (input.categorySources == null) {
+    Object.assign(categorySources, PORTAL_CATEGORY_SOURCES)
+  } else {
+    Object.entries(input.categorySources).forEach(([categoryId, sourceIds]) => {
+      if (!allCategoryIds.has(categoryId) || isAggregateCategoryId(categoryId)) return
+      const valid = uniqueValid(sourceIds, knownSourceIds)
+      if (valid.length) categorySources[categoryId] = valid
+    })
+  }
 
   // 缺省键 → 门户经典默认隐藏；显式 [] 表示用户/旧数据「全部显示」，不强制迁移
   const hidden = Array.isArray(input.hiddenCategoryIds)

@@ -15,6 +15,8 @@ import type { TranslationPrefs } from '../../features/translation/types'
 import { DEFAULT_PROXY_PREFS } from '../../features/proxy/config'
 import type { ProxyPrefs } from '../../features/proxy/types'
 import {
+  CATEGORIES,
+  PORTAL_CATEGORY_SOURCES,
   PORTAL_VISIBLE_CATEGORY_IDS,
   RECOMMEND_CATEGORY_ID,
   type CategoryId,
@@ -105,48 +107,22 @@ export const DEFAULT_TYPOGRAPHY: TypographyPrefs = {
   firstLineIndent: true,
 }
 
+const PORTAL_VISIBLE = new Set<string>(PORTAL_VISIBLE_CATEGORY_IDS)
+
 /**
  * 门户经典默认栏之外的分类；新装 / 重置布局时隐藏。
- * 可见栏与 presets.PORTAL_VISIBLE_CATEGORY_IDS 对齐：
- * 综合 / 热点 / 娱乐 / 体育 / 科技 / 商业 / 国际 / 健康 / 科普 / 轻松。
+ * 由 CATEGORIES 减去 PORTAL_VISIBLE_CATEGORY_IDS 派生，避免漏掉新 id。
+ * 可见轨：热点 / 独家 / 中文主题栏 / 轻松 / 对应外刊栏；综合默认隐藏。
  * AI、游戏、深度与冷门细分留给场景预设或分类管理。
  */
-export const DEFAULT_HIDDEN_CATEGORY_IDS: CategoryId[] = [
-  'ai-openai',
-  'ai-claude',
-  'ai',
-  'ai-media',
-  'ai-depth',
-  'ai-community',
-  'game',
-  'exclusive',
-  'politics',
-  'edu',
-  'auto',
-  'travel',
-  'history',
-  'phone',
-  'digital',
-  'antique',
-  'run',
-  'blog',
-  'select',
-  'nba',
-  'football',
-  'cba',
-  'cn-football',
-  'zhihu',
-  'astral-codex-ten',
-  'marginalian',
-  'aldaily',
-  'theue',
-  'tech-depth',
-]
+export const DEFAULT_HIDDEN_CATEGORY_IDS: CategoryId[] = CATEGORIES.map(
+  (category) => category.id,
+).filter((id) => !PORTAL_VISIBLE.has(id))
 
 export const DEFAULT_PREFERENCES: Preferences = {
   categoryOrder: [...PORTAL_VISIBLE_CATEGORY_IDS],
   hiddenCategoryIds: [...DEFAULT_HIDDEN_CATEGORY_IDS],
-  categorySources: {},
+  categorySources: { ...PORTAL_CATEGORY_SOURCES },
   customCategories: [],
   customSources: [],
   typography: DEFAULT_TYPOGRAPHY,
