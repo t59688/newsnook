@@ -57,29 +57,27 @@ function parseComment(raw: unknown): CommentItem | undefined {
     isHot: votes >= 20,
   }
 }
+async function queryComments(article: { id: string; sourceId?: string; originUrl?: string }, offset: number | string, signal?: AbortSignal): Promise<CommentsQueryResult> {
+  const ref = contentRef(article)
+  if (!ref) return { comments: [], totalCount: 0, availableTabs: [], hasMore: false }
+  const nextUrl = typeof offset === 'string' && /^https:\/\/www\.zhihu\.com\/api\//.test(offset) ? offset : undefined
+  const payload = await fetchZhihuCommentsRaw(ref.type, ref.id, nextUrl, signal)
+  const list = Array.isArray(payload.data) ? payload.data : []
+  const comments = list.flatMap((raw) => { const parsed = parseComment(raw); return parsed ? [parsed] : [] })
+  const paging = record(payload.paging)
+  const next = text(paging?.next)
+  const isEnd = paging?.is_end === true || paging?.isEnd === true
+  return {
+    comments,
+    totalCount: number(payload.count ?? payload.comment_count ?? payload.commentCount) || comments.length,
+    availableTabs: [{ id: 'latest', label: '评论' }],
+    hasMore: Boolean(next && !isEnd),
+    nextOffset: next || undefined,
+  }
+}
 
 export const zhihuMainCommentProvider: CommentProvider = {
   canHandle(article) { return article.sourceId === 'zhihu-main' && Boolean(contentRef(article)) },
-  async getComments(article, _tab, offset = 0, signal): Promise<CommentsQueryResult> {
-    const ref = contentRef(article)
-    if (!ref) return { comments: [], totalCount: 0, availableTabs: [], hasMore: false }
-    const nextUrl = typeof offset === 'string' && /^https:\/\/www\.zhihu\.com\/api\//.test(offset) ? offset : undefined
-    const payload = await fetchZhihuCommentsRaw(ref.type, ref.id, nextUrl, signal)
-    const list = Array.isArray(payload.data) ? payload.data : []
-    const comments = list.flatMap((raw) => { const parsed = parseComment(raw); return parsed ? [parsed] : [] })
-    const paging = record(payload.paging)
-    const next = text(paging?.next)
-    const isEnd = paging?.is_end === true || paging?.isEnd === true
-    return {
-      comments,
-      totalCount: number(payload.count ?? payload.comment_count ?? payload.commentCount) || comments.length,
-      availableTabs: [{ id: 'all', label: '评论' }],
-      hasMore: Boolean(next && !isEnd),
-      nextOffset: next || undefined,
-    }
-  },
-  async getSummaryCount(article, signal) {
-    const result = await this.getComments(article, 'all', 0, signal)
-    return result.totalCount
-  },
+  async getComments(article, _tab, offset = 0, signal) { return queryComments(article, offset, signal) },
+  async getSummaryCount(article, signal) { return (await queryComments(article, 0, signal)).totalCount },
 }
