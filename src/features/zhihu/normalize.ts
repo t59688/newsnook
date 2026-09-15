@@ -4,29 +4,28 @@ import type { ZhihuContentType, ZhihuListResult, ZhihuPaging } from './types'
 
 type UnknownRecord = Record<string, unknown>
 
-function record(value: unknown): UnknownRecord | undefined {
-  return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : undefined
-}
+function record(value: unknown): UnknownRecord | undefined { return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : undefined }
 function array(value: unknown): unknown[] { return Array.isArray(value) ? value : value == null ? [] : [value] }
-function text(value: unknown): string {
-  if (typeof value === 'string') return value.trim()
-  if (typeof value === 'number') return String(value)
-  return ''
-}
-function integer(value: unknown): number | undefined {
-  const number = typeof value === 'number' ? value : Number(value)
-  return Number.isFinite(number) ? number : undefined
-}
+function text(value: unknown): string { if (typeof value === 'string') return value.trim(); if (typeof value === 'number') return String(value); return '' }
+function integer(value: unknown): number | undefined { const number = typeof value === 'number' ? value : Number(value); return Number.isFinite(number) ? number : undefined }
 function stripHtml(value: string): string {
-  return value.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '')
-    .replace(/<[^>]+>/g, ' ').replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'").replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/\s+/g, ' ').trim()
+  return value.replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '').replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/\s+/g, ' ').trim()
 }
-function firstImage(html: string): string | undefined { return html.match(/<img\b[^>]*\bsrc=["']([^"']+)["']/i)?.[1] }
-function safeImage(...values: unknown[]): string | undefined {
-  for (const value of values) { const candidate = text(value); if (/^https?:\/\//i.test(candidate)) return candidate }
-  return undefined
+/** Server content is already rendered HTML; remove executable surfaces before it enters Article cache. */
+function safeBody(value: unknown): string | undefined {
+  const html = text(value)
+  if (!html) return undefined
+  const cleaned = html
+    .replace(/<script\b[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[\s\S]*?<\/style>/gi, '')
+    .replace(/\son[a-z]+\s*=\s*(["']).*?\1/gi, '')
+    .replace(/\s(?:href|src)\s*=\s*(["'])\s*javascript:[\s\S]*?\1/gi, '')
+  return stripHtml(cleaned).length >= 40 ? cleaned : undefined
 }
+function firstImage(html: string): string | undefined { return html.match(/<img\b[^>]*\b(?:src|data-original|data-actualsrc)=["']([^"']+)["']/i)?.[1] }
+function safeImage(...values: unknown[]): string | undefined { for (const value of values) { const candidate = text(value); if (/^https?:\/\//i.test(candidate)) return candidate } return undefined }
 function contentTypeOf(target: UnknownRecord): ZhihuContentType | undefined {
   const raw = text(target.type || target.object_type || target.content_type).toLowerCase()
   if (raw === 'answer' || raw === 'article' || raw === 'question' || raw === 'pin') return raw
@@ -75,9 +74,10 @@ export function zhihuTargetToArticle(source: NewsSource, rawTarget: unknown, fet
   const parentId = type === 'answer' ? text(question?.id) || undefined : undefined
   const title = stripHtml(titleFor(type, target)); if (!title) return undefined
   const url = articleUrl(type, id, parentId); const published = publishedAtFor(target, fetchedAt)
+  const contentHtml = safeBody(target.content ?? target.detail)
   return {
     id: `${source.id}:${type}:${id}`,
-    title, summary: summaryFor(target), image: imageFor(target), publishedAt: published.value, hasRealDate: published.real,
+    title, summary: summaryFor(target), contentHtml, image: imageFor(target), publishedAt: published.value, hasRealDate: published.real,
     sourceId: source.id, sourceName: source.name, sourceLabel: source.label, sourceGroup: source.group, originUrl: url,
     contentType: 'article', externalRef: { provider: 'zhihu-main', type, id, parentId },
   }
