@@ -3,6 +3,7 @@ import { hackerNewsCommentProvider } from './providers/hackerNews'
 import { jandanCommentProvider } from './providers/jandan'
 import { neteaseCommentProvider } from './providers/netease'
 import { zhihuCommentProvider } from './providers/zhihu'
+import { zhihuMainCommentProvider } from './providers/zhihuMain'
 import type {
   CommentProvider,
   CommentsQueryResult,
@@ -13,6 +14,8 @@ const PROVIDERS: CommentProvider[] = [
   // 东财须先于网易：误写的 neteaseDocId / 数字 id 不能被网易拦截
   eastmoneyCommentProvider,
   neteaseCommentProvider,
+  // 主站必须先于旧知乎日报 Provider，二者协议完全不同。
+  zhihuMainCommentProvider,
   zhihuCommentProvider,
   jandanCommentProvider,
   hackerNewsCommentProvider,
