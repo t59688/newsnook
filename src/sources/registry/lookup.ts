@@ -6,6 +6,7 @@
 import { md5Hex } from '../../lib/hash'
 import { BROWSER_UA, CATALOG_PAGE_SIZE, type NewsSource } from './model'
 import { SOURCES } from './builtinSources'
+import { ZHIHU_MAIN_SOURCE } from './zhihuMain'
 
 /** 公众号公开合集（appmsgalbum）分享链接；biz 参数有 __biz / biz 两种写法 */
 export function isWechatAlbumUrl(url: string): boolean {
@@ -20,10 +21,6 @@ export function isWechatAlbumUrl(url: string): boolean {
   }
 }
 
-/**
- * 公众号合集链接归一成 JSON 列表入口：
- * 去掉分享参数与 #wechat_redirect，补 f=json / count，保证列表请求拿到结构化数据。
- */
 export function normalizeWechatAlbumUrl(url: string): string {
   if (!isWechatAlbumUrl(url)) return url
   const parsed = new URL(url.trim())
@@ -39,27 +36,21 @@ export function normalizeWechatAlbumUrl(url: string): string {
   return `https://mp.weixin.qq.com/mp/appmsgalbum?${search.toString()}`
 }
 
-export function proxyPathFor(id: string): string {
-  return `/api/feed/${id}`
-}
-
-export function userAgentFor(source: NewsSource): string {
-  return source.userAgent ?? BROWSER_UA
-}
+export function proxyPathFor(id: string): string { return `/api/feed/${id}` }
+export function userAgentFor(source: NewsSource): string { return source.userAgent ?? BROWSER_UA }
 
 export function makeCustomSourceId(url: string): string {
   const clean = url.trim().toLowerCase().replace(/\/+$/, '')
   return `custom_${md5Hex(clean).slice(0, 10)}`
 }
 
-export function isCustomSourceId(id: string): boolean {
-  return id.startsWith('custom_')
-}
+export function isCustomSourceId(id: string): boolean { return id.startsWith('custom_') }
 
 export function findSource(id: string, extraSources?: NewsSource[]): NewsSource | undefined {
   if (extraSources?.length) {
     const extra = extraSources.find((s) => s.id === id)
     if (extra) return extra
   }
+  if (id === ZHIHU_MAIN_SOURCE.id) return ZHIHU_MAIN_SOURCE
   return SOURCES.find((s) => s.id === id)
 }
