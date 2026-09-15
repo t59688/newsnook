@@ -1,5 +1,5 @@
 /**
- * 站点专用正文接口：虎嗅视频详情、网易 full.html、知乎日报、机器之心。
+ * 站点专用正文接口：虎嗅视频详情、网易 full.html、知乎、机器之心。
  * 均在通用网页抽取（Readability）之前尝试。
  */
 
@@ -10,6 +10,7 @@ import {
   mediaFormatFor,
   observeMediaInPayload,
 } from '../../features/mediaSniffer/core'
+import { resolveZhihuMainArticleBody } from '../../features/zhihu/body'
 import { fetchAbsoluteFormPost, fetchAbsoluteText } from '../http'
 import { sanitizeArticleHtml } from '../sanitize'
 import type { Article } from '../types'
@@ -35,7 +36,6 @@ function huxiuArticleId(article: Article): string | undefined {
   }
 }
 
-/** 详情接口仅负责补充结构化正文；媒体地址由通用候选评分器发现。 */
 function buildHuxiuVideoBody(
   article: Article,
   payload: unknown,
@@ -85,7 +85,6 @@ function buildHuxiuVideoBody(
   }
 }
 
-/** 测试导出：将虎嗅详情响应转换为可播放正文。 */
 export function buildHuxiuVideoBodyForTest(
   article: Article,
   payload: unknown,
@@ -119,11 +118,6 @@ function isNeteaseHost(hostname: string): boolean {
   )
 }
 
-/**
- * 网易正文候选 id。
- * 注意：虎嗅等站也是 `/article/{数字}.html`，绝不能从非网易域名抠 id，
- * 否则会先去抓 m.163.com / dy 站，Readability 抽到网易首页页脚（备案号）。
- */
 export function candidateNeteaseIds(article: Article): string[] {
   const ids: string[] = []
   if (article.neteaseDocId) ids.push(article.neteaseDocId)
@@ -143,7 +137,6 @@ export function candidateNeteaseIds(article: Article): string[] {
   return [...new Set(ids.filter((id) => /^[A-Z0-9]+$/i.test(id)))]
 }
 
-/** 网易正文常用 http CDN；图片站大多支持 https，优先升格避免 WebView 混合内容被拦 */
 function preferHttpsAsset(url: string): string {
   if (!url.startsWith('http://')) return url
   try {
@@ -162,10 +155,6 @@ function preferHttpsAsset(url: string): string {
   return url
 }
 
-/**
- * 网易 full.html 正文不直接内嵌 <img>，而是 <!--IMG#0--> / <!--VIDEO#0--> 占位，
- * 真实地址在旁路 img / video 数组。轻松一刻等栏目几乎全靠这套机制。
- */
 function expandNeteaseMediaPlaceholders(
   body: string,
   node: Record<string, unknown>,
@@ -224,7 +213,6 @@ function expandNeteaseMediaPlaceholders(
     html = html.split(ref).join(tag)
   }
 
-  // 未匹配到资源的占位直接清掉，避免正文残留注释噪声
   html = html.replace(/<!--(?:IMG|VIDEO)#\d+-->/g, '')
   return html
 }
@@ -255,7 +243,6 @@ export async function resolveNetEaseArticleBody(
       return {
         contentHtml: await absolutizeHtml(body, article.originUrl || api),
         bodySource: 'netease',
-        // 分享短链不带标题，靠这里把接口给的标题回填进阅读器
         title: typeof record.title === 'string' ? record.title : undefined,
       }
     } catch {
@@ -270,6 +257,18 @@ export async function resolveZhihuBody(
   article: Article,
   signal?: AbortSignal,
 ): Promise<ResolvedBody | null> {
+  if (article.sourceId === 'zhihu-main' || article.externalRef?.provider === 'zhihu-main') {
+    const resolved = await resolveZhihuMainArticleBody(article, signal)
+    return resolved
+      ? {
+          contentHtml: resolved.contentHtml,
+          image: resolved.image,
+          title: resolved.title,
+          bodySource: 'feed',
+        }
+      : null
+  }
+
   if (article.sourceId !== 'zhihu-daily') return null
   const id =
     article.neteaseDocId ||
@@ -282,7 +281,6 @@ export async function resolveZhihuBody(
   const body = String(data.body ?? '')
   if (!body || stripTags(body).length < 40) return null
 
-  // 知乎正文是片段 HTML，补一层容器便于排版
   const wrapped = `<div class="zhihu-entry">${body}</div>`
   return {
     contentHtml: await absolutizeHtml(wrapped, article.originUrl || 'https://daily.zhihu.com/'),
