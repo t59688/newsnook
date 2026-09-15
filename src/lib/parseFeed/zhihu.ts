@@ -1,10 +1,15 @@
 /**
- * 知乎日报 JSON 解析：整页共用 edition date，按编辑顺序递减保持稳定排序。
+ * 知乎 JSON 解析：旧日报与主站协议分离，避免评论/分页/正文互相串台。
  */
 
+import { normalizeZhihuListJson } from '../../features/zhihu/normalize'
 import type { NewsSource } from '../../sources/registry'
 import type { Article } from '../types'
 import { asRecord, buildArticle, stripTags, text, toArray, type Unknown } from './shared'
+
+export function parseZhihuMain(source: NewsSource, payload: string, fetchedAt: number): Article[] {
+  return normalizeZhihuListJson(source, payload, fetchedAt).articles
+}
 
 export function parseZhihuDaily(source: NewsSource, payload: string, fetchedAt: number): Article[] {
   const data = JSON.parse(payload) as Unknown
@@ -39,8 +44,6 @@ export function parseZhihuDaily(source: NewsSource, payload: string, fetchedAt: 
       },
       fetchedAt,
     )
-    // The API provides one edition date for the whole page. Preserve editorial
-    // order deterministically instead of leaving every story on the same timestamp.
     return article ? [{ ...article, publishedAt: article.publishedAt - storyIndex }] : []
   })
 }
