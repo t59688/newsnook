@@ -6,6 +6,7 @@
  */
 
 import { SOURCES as BUILTIN_SOURCES, WECHAT2RSS_BASE } from './registry/builtinSources'
+import { ZHIHU_MAIN_SOURCE } from './registry/zhihuMain'
 import type { NewsSource } from './registry/model'
 
 export {
@@ -22,23 +23,7 @@ export {
   type SourceKind,
 } from './registry/model'
 
-export { WECHAT2RSS_BASE }
-
-/**
- * 知乎主站与旧「知乎日报」是两个完全不同的协议。主站源必须登录，
- * 列表由 Android 本机签名直连，绝不经 NewsNook Cloud / 边缘代理。
- */
-export const ZHIHU_MAIN_SOURCE: NewsSource = {
-  id: 'zhihu-main',
-  name: '知乎',
-  label: '知乎',
-  group: 'special',
-  kind: 'zhihu-main',
-  url: 'https://www.zhihu.com/api/v3/feed/topstory/recommend?desktop=true&limit=20',
-  siteUrl: 'https://www.zhihu.com/',
-  enabled: false,
-}
-
+export { WECHAT2RSS_BASE, ZHIHU_MAIN_SOURCE }
 export const SOURCES: NewsSource[] = [...BUILTIN_SOURCES, ZHIHU_MAIN_SOURCE]
 
 export {
