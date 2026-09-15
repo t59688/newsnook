@@ -10,6 +10,7 @@ export type SourceKind =
   | 'google-news'
   | 'netease'
   | 'zhihu'
+  | 'zhihu-main'
   | 'arena'
   | 'anthropic'
   | 'jandan'
@@ -93,7 +94,7 @@ export const CATALOG_PAGE_SIZE = 20
 
 /**
  * 列表分页策略（按能力分流，而不是按具体频道 id）：
- * - upstream-offset：上游按页码/offset 拉更早内容（网易 / WP REST / 晚点 / 东财）
+ * - upstream-offset：上游按页码/offset 拉更早内容（网易 / WP REST / 晚点 / 东财 / 知乎主站）
  * - upstream-cursor：上游按游标拉历史（知乎日报）
  * - client-catalog：一次解析完整目录，客户端窗口展示 + 上拉切片（默认；纯 RSS 无翻页）
  */
@@ -107,4 +108,5 @@ export const OFFSET_MAX_PAGES: Partial<Record<SourceKind, number>> = {
   'eastmoney-news': 40,
   'eastmoney-kx': 40,
   uisdc: 20,
+  'zhihu-main': 50,
 }
