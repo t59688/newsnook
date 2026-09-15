@@ -30,35 +30,23 @@ const SBOX = [
   154,66,184,49,181,46,243,88,101,183,8,23,72,188,104,179,210,134,250,201,164,89,216,202,220,50,221,152,140,33,235,214,
 ]
 
-function u32(value: number): number {
-  return value >>> 0
-}
-
+function u32(value: number): number { return value >>> 0 }
 function rotl(value: number, shift: number): number {
   const source = u32(value)
   return u32((source << shift) | (source >>> (32 - shift)))
 }
-
 function word(block: number[], offset: number): number {
-  return u32(
-    ((block[offset] ?? 0) << 24) |
-      ((block[offset + 1] ?? 0) << 16) |
-      ((block[offset + 2] ?? 0) << 8) |
-      (block[offset + 3] ?? 0),
-  )
+  return u32(((block[offset] ?? 0) << 24) | ((block[offset + 1] ?? 0) << 16) | ((block[offset + 2] ?? 0) << 8) | (block[offset + 3] ?? 0))
 }
-
 function bytes(value: number): number[] {
   const source = u32(value)
   return [source >>> 24, (source >>> 16) & 0xff, (source >>> 8) & 0xff, source & 0xff]
 }
-
 function linearTransform(value: number): number {
   const substituted = bytes(value).map((part) => SBOX[part] ?? 0)
   const source = word(substituted, 0)
   return u32(source ^ rotl(source, 2) ^ rotl(source, 10) ^ rotl(source, 18) ^ rotl(source, 24))
 }
-
 function round(block: number[]): number[] {
   if (block.length !== 16) throw new Error('知乎签名块长度异常')
   const state = [word(block, 0), word(block, 4), word(block, 8), word(block, 12)]
@@ -68,7 +56,6 @@ function round(block: number[]): number[] {
   })
   return [35, 34, 33, 32].flatMap((index) => bytes(state[index] ?? 0))
 }
-
 function encryptBlocks(source: number[], key: number[]): number[] {
   const result: number[] = []
   let currentKey = key
@@ -80,23 +67,29 @@ function encryptBlocks(source: number[], key: number[]): number[] {
   }
   return result
 }
-
 function encodeChunk(value: number): string {
   return [0, 6, 12, 18].map((shift) => SALT[(value >>> shift) & 63] ?? '').join('')
 }
-
 function randomZseByte(): number {
-  const bytes = new Uint8Array(1)
-  crypto.getRandomValues(bytes)
-  return (bytes[0] ?? 0) % 127
+  const values = new Uint8Array(1)
+  crypto.getRandomValues(values)
+  return (values[0] ?? 0) % 127
+}
+
+function md5Utf8Hex(value: string): string {
+  const raw = new TextEncoder().encode(value)
+  let latin1 = ''
+  const chunk = 0x8000
+  for (let offset = 0; offset < raw.length; offset += chunk) {
+    latin1 += String.fromCharCode(...raw.subarray(offset, Math.min(raw.length, offset + chunk)))
+  }
+  return md5Hex(latin1)
 }
 
 export function encryptZhihuMd5(md5: string, randomByte = randomZseByte()): string {
   const normalized = md5.toLowerCase()
   if (!/^[0-9a-f]{32}$/.test(normalized)) throw new Error('知乎签名 MD5 输入无效')
-  if (!Number.isInteger(randomByte) || randomByte < 0 || randomByte > 126) {
-    throw new Error('知乎签名随机字节超出范围')
-  }
+  if (!Number.isInteger(randomByte) || randomByte < 0 || randomByte > 126) throw new Error('知乎签名随机字节超出范围')
 
   const payload = [randomByte, 0, ...[...normalized].map((character) => character.charCodeAt(0)), ...Array(15).fill(14)]
   const front = payload.slice(0, 16).map((value, index) => value ^ (FIX[index] ?? 0) ^ 42)
@@ -117,9 +110,11 @@ export function encryptZhihuMd5(md5: string, randomByte = randomZseByte()): stri
 }
 
 /** apiPath must be the exact encoded path + query that will be sent. */
-export function buildZhihuZse96(apiPath: string, dC0: string, randomByte?: number): string {
+export function buildZhihuZse96(apiPath: string, dC0: string, body?: string, randomByte?: number): string {
   if (!apiPath.startsWith('/api/')) throw new Error('知乎签名只接受 /api/ 绝对路径')
   if (!dC0) throw new Error('知乎签名缺少 d_c0')
-  const digest = md5Hex(`${ZHIHU_X_ZSE_93}+${apiPath}+${dC0}`)
+  const parts = [ZHIHU_X_ZSE_93, apiPath, dC0]
+  if (body != null) parts.push(body)
+  const digest = md5Utf8Hex(parts.join('+'))
   return `2.0_${encryptZhihuMd5(digest, randomByte)}`
 }
