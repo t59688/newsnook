@@ -2,6 +2,18 @@ import type { SourceGroup } from '../sources/registry'
 
 export type ArticleContentType = 'article' | 'video'
 
+/**
+ * Third-party platform identity kept separate from source-specific fields.
+ * The reader/cache/share paths may carry this opaque reference without knowing
+ * the provider protocol. Provider modules are responsible for interpreting it.
+ */
+export interface ExternalContentRef {
+  provider: string
+  type: string
+  id: string
+  parentId?: string
+}
+
 export interface Article {
   id: string
   title: string
@@ -24,6 +36,8 @@ export interface Article {
   audioUrl?: string
   /** 网易正文接口用的稳定 docid / postid */
   neteaseDocId?: string
+  /** 第三方站点对象引用；用于评论、编辑等能力，不参与通用阅读协议。 */
+  externalRef?: ExternalContentRef
 }
 
 export type FetchState = 'idle' | 'loading' | 'ready' | 'error'
