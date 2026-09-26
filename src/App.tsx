@@ -682,7 +682,7 @@ export default function App() {
     paginationState,
     refresh,
     loadMore,
-  } = useFeeds(fetchIds, notifyCacheChange, prefs.customSources)
+  } = useFeeds(fetchIds, notifyCacheChange, prefs.customSources, activePresetId)
 
   const prestore = usePrestore({
     prefs,
