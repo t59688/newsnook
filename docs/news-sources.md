@@ -104,7 +104,7 @@
 |---|---|---|
 | `qbitai` `leiphone` `synced` | feed | 标准 RSS |
 | `jiqizhixin` | jiqizhixin | 无 RSS；文章库 JSON API（列表摘要，正文取详情 JSON），需 Referer + Accept |
-| `aiera` | wordpress | WP 站但 `/feed` 常年 500；走 WP REST `wp-json/wp/v2/posts` |
+| `aiera` | wordpress | WP 站但 `/feed` 常年 500；列表走 WP REST `wp-json/wp/v2/posts`。2026-09 新版 `asi-post.html?id=...` 仅返回动态加载壳，正文按 id 回读单篇 WP REST 详情，避免 Readability 把导航/页脚误判为正文 |
 | `zhidx` | wordpress | 同新智元：`/feed` 500；WP REST 可用，30 条中 29 条 `content.rendered` 全文（2026-08-25 实测） |
 | `baoyu` | feed | `baoyu.io/feed.xml`（302 → `s.baoyu.io`，代理跟随正常）；RSS 仅摘要，正文 Readability 抽静态页（Astro，全文在 DOM，实测 1k–5k 字） |
 | `oneusefulthing` `understandingai` `latent-space` `thezvi` | feed | Substack，feed 自带全文；`understandingai` 约 2 成付费文截断、回落 Readability；`thezvi` feed 近 2 MB、单篇极长，默认关闭 |
