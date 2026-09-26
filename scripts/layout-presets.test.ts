@@ -175,6 +175,11 @@ assert.equal(CATEGORIES.find((category) => category.id === 'depth-books')?.label
 assert.equal(categoryForSource('swarma'), 'science-research')
 assert.equal(categoryForSource('netease-diqiu'), 'science-earth')
 assert.equal(categoryForSource('lil-log'), 'ai-engineering')
+assert.equal(
+  CATEGORIES.find((category) => category.id === 'ai-labs')?.label,
+  '厂商资讯',
+  'AI 前沿的厂商分类必须使用“资讯”，不能误写成“咨询”',
+)
 
 const nonWorkspaceSources = SOURCES.filter((source) => !source.workspaceOnly)
 assert.equal(nonWorkspaceSources.length, 153)
@@ -229,13 +234,13 @@ assert.deepEqual(visibleIds(BUILTIN_TECH_ID), [
   'tech-longform',
 ])
 assert.deepEqual(visibleIds(BUILTIN_AI_ID), [
+  'ai-media-cn',
+  'ai-thinking',
   'ai-labs',
   'ai-ecosystem',
   'ai-practice',
-  'ai-media-cn',
   'ai-media-en',
   'ai-engineering',
-  'ai-thinking',
   'ai-watch',
 ])
 assert.deepEqual(visibleIds(BUILTIN_SCIENCE_ID), [
