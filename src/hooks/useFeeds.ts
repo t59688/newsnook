@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import {
   articleDateCursor,
@@ -285,6 +285,7 @@ export function useFeeds(
   enabledIds: string[],
   onCacheChange?: () => void,
   extraSources?: NewsSource[],
+  refreshContextKey?: string,
 ): FeedsResult {
   const initialRef = useRef<InitialFeeds | null>(null)
   if (!initialRef.current) initialRef.current = readInitialFeeds(enabledIds, extraSources)
@@ -315,6 +316,32 @@ export function useFeeds(
   const loadMoreControllerRef = useRef<AbortController | null>(null)
   const loadMoreInFlightRef = useRef(false)
   const refreshInFlightRef = useRef(false)
+  const refreshContextRef = useRef(refreshContextKey)
+
+  const cancelActiveRefresh = useCallback(() => {
+    const controller = refreshControllerRef.current
+    refreshControllerRef.current = null
+    controller?.abort()
+    refreshInFlightRef.current = false
+    setRefreshing(false)
+    setRefreshProgress(null)
+    setStatuses((prev) => {
+      let changed = false
+      const next = { ...prev }
+      Object.entries(prev).forEach(([id, status]) => {
+        if (status?.state !== 'loading') return
+        delete next[id]
+        changed = true
+      })
+      return changed ? next : prev
+    })
+  }, [])
+
+  useLayoutEffect(() => {
+    if (refreshContextRef.current === refreshContextKey) return
+    refreshContextRef.current = refreshContextKey
+    cancelActiveRefresh()
+  }, [cancelActiveRefresh, refreshContextKey])
 
   // 分类切换时按需从本地缓存补齐，不在首屏同步扫全部源
   const enabledKey = enabledIds.join('|')

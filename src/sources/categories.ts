@@ -144,7 +144,7 @@ export const CATEGORIES: NewsCategory[] = [
   ]),
 
   // AI 前沿：官方模型厂商与开源/评测生态分开，避免“模型实验室”把框架和评测站也包进去。
-  category('ai-labs', '厂商咨询', '实验室', [
+  category('ai-labs', '厂商资讯', '实验室', [
     'openai-news',
     'anthropic',
     'claude-blog',
