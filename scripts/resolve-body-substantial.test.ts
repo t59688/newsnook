@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 
 import {
   CRAWLER_FALLBACK_UAS,
+  aieraPostIdForTest,
   buildVideoBodyForTest,
   isBlockedPublisherHtml,
   isPartialFeedTeaser,
   isScrapeNoticeBody,
   isSubstantialHtml,
+  parseAieraRestPostForTest,
   preferPublisherFetchUrl,
 } from '../src/lib/resolveBody'
 import type { Article } from '../src/lib/types'
@@ -171,5 +173,73 @@ assert.ok(
     '已有直链时由阅读器上方播放器承接，正文不再插占位 video',
   )
 }
+
+const aieraArticle: Article = {
+  id: 'aiera-115517',
+  title: '刚刚，GPT-6开真车考过了科目二！',
+  summary: '新智元文章摘要',
+  publishedAt: 1,
+  hasRealDate: true,
+  sourceId: 'aiera',
+  sourceName: '新智元',
+  sourceLabel: '新智元',
+  sourceGroup: 'ai',
+  originUrl: 'https://aiera.com.cn/asi-post.html?id=115517',
+}
+
+assert.equal(
+  aieraPostIdForTest(aieraArticle),
+  '115517',
+  '新版 ASI 动态文章页应从 id 查询参数恢复 WordPress post id',
+)
+assert.equal(
+  aieraPostIdForTest({
+    ...aieraArticle,
+    originUrl: 'https://aiera.com.cn/2026/09/legacy-post/',
+  }),
+  undefined,
+  '旧版静态文章页继续走通用 Readability，不应误走 ASI REST 详情',
+)
+assert.equal(
+  aieraPostIdForTest({ ...aieraArticle, sourceId: 'zhidx' }),
+  undefined,
+  'WordPress 详情兜底仅限新智元，不应影响其它 wordpress 源',
+)
+
+const aieraRestBody = parseAieraRestPostForTest(
+  {
+    id: 115517,
+    title: { rendered: '刚刚，GPT-6开真车考过了科目二！' },
+    content: {
+      rendered: `<p>${'这是新智元正文内容，用于验证动态壳不会被当成文章正文。'.repeat(12)}</p>`,
+    },
+  },
+  '115517',
+)
+assert.ok(aieraRestBody, '新智元 WP REST 单篇详情应产出正文')
+assert.match(aieraRestBody.contentHtml, /新智元正文内容/)
+assert.equal(aieraRestBody.title, '刚刚，GPT-6开真车考过了科目二！')
+assert.equal(
+  parseAieraRestPostForTest(
+    {
+      id: 115517,
+      content: { rendered: '<p>正在取这篇稿子…</p>' },
+    },
+    '115517',
+  ),
+  null,
+  '动态加载占位文案绝不能作为有效正文',
+)
+assert.equal(
+  parseAieraRestPostForTest(
+    {
+      id: 115518,
+      content: { rendered: `<p>${'另一篇完整正文。'.repeat(20)}</p>` },
+    },
+    '115517',
+  ),
+  null,
+  'REST 返回的 post id 必须与文章 URL 一致',
+)
 
 console.log('resolve-body substantial tests passed')

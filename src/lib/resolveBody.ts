@@ -2,7 +2,7 @@
  * 站内正文解析入口。实现按边界拆在 resolveBody/ 子模块：
  * - guards：反爬/付费墙识别、摘要 Feed 判定、软降级正文
  * - extractors：Readability 主路径与优设/公众号/OpenAI News 站点定制抽取
- * - siteBodies：虎嗅/网易/知乎/机器之心详情接口正文
+ * - siteBodies：虎嗅/网易/知乎/机器之心/新智元详情接口正文
  * - video：视频占位正文与媒体嗅探增量更新
  * 对外导入路径保持 `lib/resolveBody` 不变。
  */
@@ -36,6 +36,7 @@ import {
 } from './resolveBody/guards'
 import { extractWithReadability, isLikelyVideoPageUrl } from './resolveBody/extractors'
 import {
+  resolveAieraBody,
   resolveHuxiuVideoBody,
   resolveJiqizhixinBody,
   resolveNetEaseArticleBody,
@@ -74,7 +75,12 @@ export {
   extractWechatBodyHtml,
   isWechatArticleUrl,
 } from './resolveBody/extractors'
-export { buildHuxiuVideoBodyForTest, candidateNeteaseIds } from './resolveBody/siteBodies'
+export {
+  aieraPostIdForTest,
+  buildHuxiuVideoBodyForTest,
+  candidateNeteaseIds,
+  parseAieraRestPostForTest,
+} from './resolveBody/siteBodies'
 export { buildVideoBodyForTest } from './resolveBody/video'
 
 /** 正文抓取使用的 UA：优先自定义/额外源表，找不到则 undefined（走 http 默认 UA） */
@@ -382,6 +388,9 @@ export async function resolveArticleBody(
 
   const jiqizhixin = await resolveJiqizhixinBody(article, signal).catch(() => null)
   if (jiqizhixin) return jiqizhixin
+
+  const aiera = await resolveAieraBody(article, signal).catch(() => null)
+  if (aiera) return aiera
 
   if (!article.originUrl) {
     throw new Error('缺少原文地址，无法抽取正文')

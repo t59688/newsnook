@@ -1,5 +1,5 @@
 /**
- * 站点专用正文接口：虎嗅视频详情、网易 full.html、知乎日报、机器之心。
+ * 站点专用正文接口：虎嗅视频详情、网易 full.html、知乎日报、机器之心、新智元。
  * 均在通用网页抽取（Readability）之前尝试。
  */
 
@@ -106,6 +106,90 @@ export async function resolveHuxiuVideoBody(
     { signal },
   )
   return buildHuxiuVideoBody(article, JSON.parse(payload) as unknown)
+}
+
+function aieraPostId(article: Article): string | undefined {
+  if (article.sourceId !== 'aiera') return undefined
+
+  try {
+    const url = new URL(article.originUrl)
+    const host = url.hostname.toLowerCase()
+    if (host !== 'aiera.com.cn' && !host.endsWith('.aiera.com.cn')) return undefined
+    if (url.pathname !== '/asi-post.html') return undefined
+
+    const id = url.searchParams.get('id')?.trim() ?? ''
+    return /^\d+$/.test(id) ? id : undefined
+  } catch {
+    return undefined
+  }
+}
+
+function parseAieraRestPost(
+  payload: unknown,
+  expectedId?: string,
+): { contentHtml: string; title?: string } | null {
+  const root = objectRecord(payload)
+  if (!root) return null
+  if (expectedId && root.id != null && String(root.id) !== expectedId) return null
+
+  const content = objectRecord(root.content)
+  const contentHtml =
+    typeof content?.rendered === 'string' ? content.rendered.trim() : ''
+  const bodyText = stripTags(contentHtml).replace(/\s+/g, ' ').trim()
+  if (!contentHtml || bodyText.length < 40 || /^正在取这篇稿子/.test(bodyText)) {
+    return null
+  }
+
+  const titleNode = objectRecord(root.title)
+  const rawTitle =
+    typeof titleNode?.rendered === 'string' ? titleNode.rendered.trim() : ''
+
+  return {
+    contentHtml,
+    title: rawTitle ? stripTags(rawTitle) : undefined,
+  }
+}
+
+/** 测试导出：新版新智元 ASI 动态页的文章 id。 */
+export function aieraPostIdForTest(article: Article): string | undefined {
+  return aieraPostId(article)
+}
+
+/** 测试导出：WordPress 单篇详情转成正文片段。 */
+export function parseAieraRestPostForTest(
+  payload: unknown,
+  expectedId?: string,
+): { contentHtml: string; title?: string } | null {
+  return parseAieraRestPost(payload, expectedId)
+}
+
+/**
+ * 新智元 2026 新版 ASI 文章页是客户端壳：静态 HTML 只有
+ * “正在取这篇稿子…”，Readability 会把导航和页脚误当正文。
+ * 列表本就来自 WordPress REST，因此对 asi-post.html?id=<postId>
+ * 直接回读同一篇文章的 REST 详情，保留站内全文阅读。
+ */
+export async function resolveAieraBody(
+  article: Article,
+  signal?: AbortSignal,
+): Promise<ResolvedBody | null> {
+  const id = aieraPostId(article)
+  if (!id) return null
+
+  const api = `https://aiera.com.cn/wp-json/wp/v2/posts/${id}?_fields=id,title,content`
+  const payload = await fetchAbsoluteText(api, {
+    signal,
+    accept: 'application/json',
+    headers: { Accept: 'application/json, text/plain, */*' },
+  })
+  const parsed = parseAieraRestPost(JSON.parse(payload) as unknown, id)
+  if (!parsed) return null
+
+  return {
+    contentHtml: await absolutizeHtml(parsed.contentHtml, article.originUrl),
+    title: parsed.title,
+    bodySource: 'feed',
+  }
 }
 
 function isNeteaseHost(hostname: string): boolean {
