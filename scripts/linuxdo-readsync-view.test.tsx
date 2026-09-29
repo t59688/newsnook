@@ -36,8 +36,10 @@ const topic = { id: 100, slug: 'test', title: 'Read tracking', posts_count: 2, h
   })) } }
 let denied = false
 let deniedCsrf = false
+let firstPartyDenied = false
 let postRequests = 0
 let verificationRequests = 0
+let verificationOptions: any
 const native = {
   request: async (request: any) => {
     if (request.url.includes('/session/csrf')) return deniedCsrf
@@ -45,12 +47,12 @@ const native = {
       : { status: 200, data: '{"csrf":"test-token"}', transport: 'native' }
     if (request.url.endsWith('/topics/timings')) {
       postRequests++
-      return denied ? { status: 403, data: '<html>challenge</html>', headers: { 'cf-mitigated': 'challenge', 'cf-ray': 'test-ray' }, transport: 'browser' } : { status: 200, data: '', transport: 'browser' }
+      return denied ? { status: 403, data: '<html>challenge</html>', headers: { 'cf-mitigated': 'challenge', 'cf-ray': 'test-ray' }, transport: firstPartyDenied ? 'browser-firstparty' : 'browser' } : { status: 200, data: '', transport: 'browser' }
     }
     return { status: 200, data: JSON.stringify(topic) }
   },
   prepareBrowserSession: async () => ({ ready: false }),
-  authenticate: async () => { verificationRequests++; denied = false; return session },
+  authenticate: async (options: any) => { verificationRequests++; verificationOptions = options; denied = false; return session },
 }
 registerPlugin('LinuxDoSession', { web: () => native, android: () => native })
 const { createRoot } = await import('react-dom/client')
@@ -103,6 +105,22 @@ try {
   assert.equal(postRequests, 2, 'exactly one original attempt and one resumed attempt')
   console.log('PASS real TopicView: same-account in-app verification resumes the retained batch')
   await act(async () => { root.render(null); await flush() })
+  denied = true; firstPartyDenied = true; postRequests = 0
+  linuxDoApi.setSession(session as any)
+  await act(async () => { root.render(<LinuxDoTopicView {...props} />); await flush() })
+  await advance(0); await advance(5000)
+  const firstPartyStatus = host.querySelector('[data-linuxdo-read-sync]')
+  assert.match(firstPartyStatus?.textContent ?? '', /第一方页面中的提交请求/)
+  assert.match(firstPartyStatus?.textContent ?? '', /不会弹出验证页/)
+  assert.equal(unread(), 2)
+  const firstPartyVerify = firstPartyStatus?.querySelector<HTMLButtonElement>('[data-read-sync-verify]')
+  assert.ok(firstPartyVerify, 'a challenged POST needs a visible first-party POST navigation')
+  await act(async () => { firstPartyVerify.click(); await flush() })
+  assert.equal(verificationOptions?.readSyncChallenge, true)
+  assert.equal(unread(), 0)
+  console.log('PASS real TopicView: first-party challenge opens a visible POST verification and resumes retained timings')
+  await act(async () => { root.render(null); await flush() })
+  denied = false; firstPartyDenied = false
   deniedCsrf = true; postRequests = 0; linuxDoApi.setSession(session as any)
   await act(async () => { root.render(<LinuxDoTopicView {...props} />); await flush() })
   await advance(0); await advance(5000)
@@ -115,7 +133,7 @@ try {
   deniedCsrf = false
   let applied = false
   await act(async () => { root.render(<AccountView session={session as any} onSession={() => { applied = true }} onBookmarks={noop} onProfile={noop} onTrustLevel={noop} />); await flush() })
-  const auxiliaryVerify = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.includes('浏览器验证辅助'))
+  const auxiliaryVerify = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.includes('打开 Linux.do 登录页面'))
   assert.ok(auxiliaryVerify)
   await act(async () => { auxiliaryVerify.click(); await flush() })
   assert.equal(applied, true, 'account verification must update the API/workspace session, not merely report success')
@@ -124,4 +142,4 @@ try {
   await act(async () => { root.unmount(); await flush() })
   mock.timers.reset()
 }
-console.log('linuxdo-readsync-view: 5 passed')
+console.log('linuxdo-readsync-view: 6 passed')

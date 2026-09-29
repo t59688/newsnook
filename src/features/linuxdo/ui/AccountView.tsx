@@ -80,7 +80,7 @@ export function AccountView({
     try {
       const next = await verifyLinuxDoBrowserSession('https://linux.do/')
       applySession(next)
-      setAccountError(next.authenticated ? 'Cloudflare / 浏览器验证已完成。' : '浏览器会话尚未登录，请先登录 Linux.do。')
+      setAccountError(next.authenticated ? '浏览器会话已登录；阅读记录是否同步成功仍以提交结果为准。' : '浏览器会话尚未登录，请先登录 Linux.do。')
     } catch (error) {
       setAccountError(readableError(error))
     }
@@ -136,7 +136,7 @@ export function AccountView({
         )}
 
         <div className="mt-4 border-t border-haze/70 pt-3">
-          <button type="button" onClick={() => void verifyBrowser()} className="linuxdo-control text-[9.5px] text-paper-faint underline decoration-haze underline-offset-4">Cloudflare / 浏览器验证辅助</button>
+          <button type="button" onClick={() => void verifyBrowser()} className="linuxdo-control text-[9.5px] text-paper-faint underline decoration-haze underline-offset-4">打开 Linux.do 登录页面</button>
           <span className="mx-2 text-paper-faint">·</span>
           <button type="button" onClick={async () => { await clearLinuxDoBrowserSession(); setAccountError('') }} className="linuxdo-control text-[9.5px] text-paper-faint underline decoration-haze underline-offset-4">清除验证数据</button>
         </div>

@@ -1116,7 +1116,10 @@ export function LinuxDoTopicView({
     if (!tracker || readSyncBusy) return
     setReadSyncBusy(true)
     try {
-      const next = await verifyLinuxDoBrowserSession('https://linux.do/')
+      const error = readSyncFailure?.error
+      const readSyncChallenge = error instanceof LinuxDoApiError && error.kind === 'browser-verification'
+        && error.diagnostics?.transport === 'browser-firstparty'
+      const next = await verifyLinuxDoBrowserSession('https://linux.do/', { readSyncChallenge })
       if (!next.authenticated || !next.currentUser) throw new Error('请先完成 Linux.do 登录')
       if (next.currentUser.id !== session.currentUser?.id) {
         tracker.stop(false)

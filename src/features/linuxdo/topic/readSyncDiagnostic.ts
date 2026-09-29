@@ -1,7 +1,7 @@
 import { LinuxDoApiError } from '../types'
 import type { LinuxDoTimingBatch } from './readTracker'
 
-export const READ_SYNC_BUILD = 'readsync-20260923-r3-firstparty'
+export const READ_SYNC_BUILD = 'readsync-20260929-r4-visible-challenge'
 export interface ReadSyncFailure {
   error: unknown
   batch: LinuxDoTimingBatch
