@@ -94,6 +94,7 @@ export function PresetSwitcher({
 
   const builtins = useMemo(() => items.filter((item) => item.builtin), [items])
   const mine = useMemo(() => items.filter((item) => !item.builtin), [items])
+  const showSiteSection = siteItems.length > 0 || Boolean(onSites && siteCount > 0)
 
   const openSwitcher = () => {
     setPresetTab(mine.some((item) => item.active) ? 'custom' : 'builtin')
@@ -238,8 +239,8 @@ export function PresetSwitcher({
               )}
             </div>
 
-            {/* 下半区：独立社区入口。始终与布局预设分层，避免把站点工作区伪装成 preset。 */}
-            <section className="shrink-0 border-t border-haze/65 bg-ink/35 px-3.5 pt-2.5 sm:px-5">
+            {/* 下半区：独立社区入口。Web 无可用站点时整段隐藏，避免展示不可用入口。 */}
+            {showSiteSection && <section className="shrink-0 border-t border-haze/65 bg-ink/35 px-3.5 pt-2.5 sm:px-5">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cinnabar/12 text-cinnabar">
@@ -283,7 +284,7 @@ export function PresetSwitcher({
                   暂无可用社区
                 </div>
               )}
-            </section>
+            </section>}
           </div>
         </div>
       </div>,
