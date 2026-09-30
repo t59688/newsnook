@@ -1036,12 +1036,14 @@ export default function App() {
   )
 
   const siteSwitcherItems = useMemo(
-    () => SITES.map((site) => ({
-      id: site.id,
-      name: site.name,
-      description: site.description,
-      active: site.id === activeSiteId,
-    })),
+    () => Capacitor.isNativePlatform()
+      ? SITES.map((site) => ({
+          id: site.id,
+          name: site.name,
+          description: site.description,
+          active: site.id === activeSiteId,
+        }))
+      : [],
     [activeSiteId],
   )
 

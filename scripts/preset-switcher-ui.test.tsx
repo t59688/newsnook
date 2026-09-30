@@ -30,7 +30,7 @@ const sites = [
   { id: 'linuxdo', name: 'Linux.do', description: '技术交流与开源分享', active: false },
 ]
 
-async function render(items = builtins) {
+async function render(items = builtins, siteItems = sites) {
   await act(async () => {
     root.render(
       <PresetSwitcher
@@ -38,7 +38,7 @@ async function render(items = builtins) {
         items={items}
         onSelect={(id) => { selected = id }}
         onManage={() => { manageCalls += 1 }}
-        siteItems={sites}
+        siteItems={siteItems}
         onSelectSite={(id) => { siteSelected = id }}
         variant="pill"
       />,
@@ -103,6 +103,12 @@ try {
   await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
   await click(buttonWithText('知乎'))
   assert.equal(siteSelected, 'zhihu', 'community entry must switch site workspace, not preset')
+
+  await render(builtins, [])
+  await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
+  assert.ok(!document.body.textContent?.includes('社区入口'), 'empty web site list must hide the community section')
+  assert.ok(!document.body.textContent?.includes('知乎'), 'web switcher must not expose the Zhihu workspace entry')
+  assert.ok(!document.body.textContent?.includes('Linux.do'), 'web switcher must not expose the Linux.do workspace entry')
 
   const customItems = [
     ...builtins.map((item) => ({ ...item, active: false })),
