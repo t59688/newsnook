@@ -246,8 +246,9 @@ const InkImageFrame = memo(function InkImageFrame({
           onError={retryAfterError}
           className="absolute inset-0 h-full w-full object-cover"
           style={{
-            animation: state === 'loaded' ? 'ink-image-in 520ms var(--ease-ink) both' : undefined,
-            opacity: state === 'loaded' ? undefined : 0,
+            // Release the image transform after entry; retained layers can be clipped on WebView re-entry.
+            animation: state === 'loaded' ? 'ink-image-in 520ms var(--ease-ink) backwards' : undefined,
+            opacity: state === 'loaded' ? 1 : 0,
           }}
         />
       )}

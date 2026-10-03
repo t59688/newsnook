@@ -1,9 +1,10 @@
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
-import { Bell, Loader2, Search, X } from 'lucide-react'
+import { Loader2, RotateCw, Search, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
+import { RefreshSurface } from './RefreshSurface'
 
 import type { LinuxDoBookmarkService } from '../bookmark/service'
 import {
@@ -235,11 +236,13 @@ export function NotificationsView({
   const [detailItem, setDetailItem] = useState<LinuxDoNotification | null>(null)
   const mountedRef = useRef(true)
   const loadGenerationRef = useRef(0)
+  const notificationLoadingRef = useRef(false)
   const mutationGenerationRef = useRef(0)
   const unreadCountRef = useRef(unreadCount)
   const pendingIdsRef = useRef(new Set<number>())
   const markingAllRef = useRef(false)
   const loadingMoreRef = useRef(false)
+  const privateGenerationRef = useRef(0)
   const privateLoadingRef = useRef(false)
   const privateLoadingMoreRef = useRef(false)
 
@@ -278,36 +281,40 @@ export function NotificationsView({
     const username = session.currentUser?.username
     if (!session.authenticated || !username) return
     if (page === 0) {
-      if (privateLoadingRef.current) return
+      if (privateLoadingRef.current || privateLoadingMoreRef.current) return
       privateLoadingRef.current = true
       setPrivateLoading(true)
     } else {
-      if (privateLoadingMoreRef.current) return
+      if (privateLoadingMoreRef.current || privateLoadingRef.current) return
       privateLoadingMoreRef.current = true
       setPrivateLoadingMore(true)
     }
+    const generation = ++privateGenerationRef.current
     setPrivateError('')
     try {
       const result = await notificationsApi.privateMessages(username, page)
-      if (!mountedRef.current) return
+      if (!mountedRef.current || generation !== privateGenerationRef.current) return
       setPrivateItems((previous) => page === 0
         ? result.items
         : previous.concat(result.items.filter((item) => !previous.some((existing) => existing.id === item.id))))
       setPrivateNextPage(result.nextPage)
     } catch (nextError) {
-      if (mountedRef.current) setPrivateError(readableError(nextError))
+      if (mountedRef.current && generation === privateGenerationRef.current) setPrivateError(readableError(nextError))
     } finally {
-      if (page === 0) privateLoadingRef.current = false
-      else privateLoadingMoreRef.current = false
-      if (mountedRef.current) {
-        setPrivateLoading(false)
-        setPrivateLoadingMore(false)
+      if (generation === privateGenerationRef.current) {
+        if (page === 0) privateLoadingRef.current = false
+        else privateLoadingMoreRef.current = false
+        if (mountedRef.current) {
+          setPrivateLoading(false)
+          setPrivateLoadingMore(false)
+        }
       }
     }
   }, [session.authenticated, session.currentUser?.username])
 
   const loadNotifications = useCallback(async (showSpinner: boolean) => {
-    if (!session.authenticated) return
+    if (!session.authenticated || notificationLoadingRef.current || loadingMoreRef.current) return
+    notificationLoadingRef.current = true
     const generation = ++loadGenerationRef.current
     const mutationGeneration = mutationGenerationRef.current
     if (showSpinner) setLoading(true)
@@ -325,7 +332,10 @@ export function NotificationsView({
     } catch (nextError) {
       if (mountedRef.current && generation === loadGenerationRef.current) setError(readableError(nextError))
     } finally {
-      if (mountedRef.current && generation === loadGenerationRef.current) setLoading(false)
+      if (generation === loadGenerationRef.current) {
+        notificationLoadingRef.current = false
+        if (mountedRef.current) setLoading(false)
+      }
     }
   }, [applyUnreadCount, session.authenticated])
 
@@ -355,13 +365,17 @@ export function NotificationsView({
     return () => {
       mountedRef.current = false
       loadGenerationRef.current += 1
+      privateGenerationRef.current += 1
+      notificationLoadingRef.current = false
+      privateLoadingRef.current = false
+      privateLoadingMoreRef.current = false
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [applyUnreadCount, loadNotifications, session.authenticated])
 
   const loadMoreNotifications = useCallback(async () => {
     const offset = nextOffset
-    if (offset === undefined || loadingMoreRef.current) return
+    if (offset === undefined || loadingMoreRef.current || notificationLoadingRef.current) return
     loadingMoreRef.current = true
     setLoadingMore(true)
     try {
@@ -469,11 +483,13 @@ export function NotificationsView({
   const filteredItems = isPrivate ? [] : items.filter((item) => linuxDoNotificationMatchesFilter(item, filter))
 
   return (
-    <div className="min-h-0 flex-1 overflow-y-auto page-x pb-4 pt-3">
+    <RefreshSurface onRefresh={() => isPrivate ? loadPrivateMessages(0) : loadNotifications(true)} className="page-x pb-4 pt-3">
       <section className="mb-4 rounded-[24px] border border-haze/70 bg-ink-raised p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div><h2 className="text-[20px] font-bold tracking-[-0.03em] text-paper">通知</h2><p className="mt-1 text-[10.5px] text-paper-muted">不错过任何重要互动</p></div>
-          <Bell size={24} className="text-cinnabar" />
+          <button type="button" aria-label={isPrivate ? '刷新私信' : '刷新通知'} disabled={isPrivate ? privateLoading || privateLoadingMore : loading || loadingMore} onClick={() => void (isPrivate ? loadPrivateMessages(0) : loadNotifications(true))} className="linuxdo-control grid h-10 w-10 place-items-center rounded-full bg-cinnabar/10 text-cinnabar disabled:opacity-40">
+            <RotateCw size={18} className={(isPrivate ? privateLoading : loading) ? 'animate-spin' : ''} />
+          </button>
         </div>
         <div className="mt-4 grid grid-cols-5 rounded-2xl bg-ink-deep p-1">
           {([['all', '全部'], ['mentions', '提及'], ['replies', '回复'], ['private', '私信'], ['system', '系统']] as const).map(([key, label]) => (
@@ -502,7 +518,7 @@ export function NotificationsView({
         )}
       </div>
 
-      {!isPrivate && error ? <button type="button" onClick={() => setError('')} className="mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[10.5px] text-cinnabar-soft">{error} · 点击关闭</button> : null}
+      {!isPrivate && error ? <button type="button" onClick={() => void loadNotifications(true)} className="mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[10.5px] text-cinnabar-soft">{error} · 点击重试</button> : null}
       {isPrivate && privateError ? (
         <button type="button" onClick={() => void loadPrivateMessages(0)} className="mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[10.5px] text-cinnabar-soft">
           私信加载失败：{privateError} · 点击重试
@@ -585,7 +601,7 @@ export function NotificationsView({
           </section>
         </div>
       ) : null}
-    </div>
+    </RefreshSurface>
   )
 }
 
