@@ -1,5 +1,5 @@
 import { ArrowLeft, Bell, CheckCircle2, ChevronDown, Compass, Flame, History, ListFilter, Loader2, MessageCircle, Plus, RefreshCcw, Search, Trophy, UserRound, X } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 
 import { HomeRefreshButton } from '../../../components/HomeRefreshButton'
 import { PresetSwitcher, type PresetSwitcherProps } from '../../../components/PresetSwitcher'
@@ -115,11 +115,11 @@ function FeedView({
   cacheRef: MutableRefObject<LinuxDoFeedCache>
   homeRefreshRef: MutableRefObject<(() => void) | null>
 }) {
-  const [items, setItems] = useState<LinuxDoTopicSummary[]>([])
-  const [loading, setLoading] = useState(true)
+  const [items, setItems] = useState<LinuxDoTopicSummary[]>(() => cacheRef.current[mode].items)
+  const [loading, setLoading] = useState(() => !cacheRef.current[mode].loaded)
   const [refreshing, setRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [hasMore, setHasMore] = useState(true)
+  const [hasMore, setHasMore] = useState(() => cacheRef.current[mode].hasMore)
   const [error, setError] = useState<unknown>(null)
   const [pullDistance, setPullDistance] = useState(0)
   const [verifying, setVerifying] = useState(false)
@@ -130,7 +130,6 @@ function FeedView({
   const busyRef = useRef(false)
   const requestIdRef = useRef(0)
   const currentModeRef = useRef<LinuxDoFeedMode>(mode)
-  const previousModeRef = useRef<LinuxDoFeedMode>(mode)
   const scrollerRef = useRef<HTMLDivElement | null>(null)
   const touchStartX = useRef<number | null>(null)
   const touchStartY = useRef<number | null>(null)
@@ -139,13 +138,16 @@ function FeedView({
 
   const selectMode = useCallback((nextMode: LinuxDoFeedMode) => {
     if (nextMode === currentModeRef.current) return
+    if (scrollerRef.current) {
+      cacheRef.current[currentModeRef.current].scrollTop = scrollerRef.current.scrollTop
+    }
     // Invalidate the previous tab synchronously, before React commits the route
     // change. A native request may finish between the tap and the next effect.
     requestIdRef.current += 1
     busyRef.current = false
     currentModeRef.current = nextMode
     onMode(nextMode)
-  }, [onMode])
+  }, [cacheRef, onMode])
 
   const load = useCallback(async (reset: boolean) => {
     const requestMode = mode
@@ -229,15 +231,6 @@ function FeedView({
     busyRef.current = false
     currentModeRef.current = mode
 
-    const previousMode = previousModeRef.current
-    if (previousMode !== mode && scrollerRef.current) {
-      cacheRef.current[previousMode] = {
-        ...cacheRef.current[previousMode],
-        scrollTop: scrollerRef.current.scrollTop,
-      }
-    }
-    previousModeRef.current = mode
-
     if (authenticatedFeedModes.has(mode) && !session.authenticated) {
       pageRef.current = 0
       hasMoreRef.current = false
@@ -261,14 +254,26 @@ function FeedView({
 
     if (cached.loaded) {
       setLoading(false)
-      window.requestAnimationFrame(() => {
-        if (scrollerRef.current) scrollerRef.current.scrollTop = cached.scrollTop
-      })
+      if (scrollerRef.current) scrollerRef.current.scrollTop = cached.scrollTop
     } else {
       setLoading(true)
       void load(true)
     }
   }, [mode, session.authenticated, load, cacheRef])
+
+  useEffect(() => () => {
+    requestIdRef.current += 1
+    busyRef.current = false
+  }, [])
+
+  useLayoutEffect(() => {
+    const node = scrollerRef.current
+    const cache = cacheRef.current
+    if (node) node.scrollTop = cache[mode].scrollTop
+    return () => {
+      if (node) cache[mode].scrollTop = node.scrollTop
+    }
+  }, [cacheRef, mode])
 
   const needsVerification = error instanceof LinuxDoApiError && error.kind === 'browser-verification'
   const needsLogin = error instanceof LinuxDoApiError && error.kind === 'auth-required'
@@ -369,6 +374,7 @@ function FeedView({
                 key={tab.id}
                 type="button"
                 onClick={() => selectMode(tab.id)}
+                aria-pressed={tab.id === mode}
                 className={'linuxdo-control min-h-9 shrink-0 rounded-full px-4 py-1.5 text-[12px] font-semibold transition-all ' + (tab.id === mode ? 'bg-cinnabar text-white shadow-sm' : 'text-paper-muted hover:bg-ink-deep hover:text-paper')}
               >
                 {tab.label}
@@ -739,6 +745,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
       <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
         {route.kind === 'feed' ? (
           <FeedView
+            key={`${route.mode}:${session.authMode}:${session.currentUser?.id ?? ''}`}
             mode={route.mode}
             session={session}
             cacheRef={feedCacheRef}
@@ -768,7 +775,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         ) : route.kind === 'discover' ? (
           <DiscoverView initialScope={route.scope} cacheRef={discoverCacheRef} onScopeChange={replaceDiscoverScope} onOpen={(topic) => navigate({ kind: 'topic', topic })} />
         ) : route.kind === 'notifications' ? (
-          <NotificationsView session={session} onUnreadChange={applyNotificationUnread} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username, tab, badgeId) => navigate({ kind: 'user', username, tab, badgeId })} />
+          <NotificationsView key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} onUnreadChange={applyNotificationUnread} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username, tab, badgeId) => navigate({ kind: 'user', username, tab, badgeId })} />
         ) : route.kind === 'user' ? (
           <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} />
         ) : route.kind === 'bookmarks' ? (

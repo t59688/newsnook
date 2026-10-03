@@ -61,7 +61,7 @@ function parseJsonFeed(source: NewsSource, payload: string, fetchedAt: number): 
       text(node.content_text) ||
       stripTags(html)
     const link = text(node.url) || text(node.external_url) || text(node.id)
-    const image = text(node.image) || imageOf(node, html)
+    const image = text(node.image) || imageOf(node, html, link)
     const video = videoMediaFromNode(node, html)
     const contentType =
       video.directUrl || video.playerPageUrl || isLikelyVideoArticleUrl(link)
@@ -129,7 +129,10 @@ export function parseXmlFeed(source: NewsSource, payload: string, fetchedAt: num
   }
 
   for (const node of nodes) {
-    const html = text(pick(node, 'encoded', 'content', 'description', 'summary'))
+    // Namespace removal can merge Atom content and media:content into an array.
+    const html = ['encoded', 'content', 'description', 'summary']
+      .flatMap((key) => toArray(node[key]).map(text))
+      .find(Boolean) ?? ''
     const descriptionText = stripTags(
       text(pick(node, 'description', 'summary')) || html,
     )
@@ -152,7 +155,7 @@ export function parseXmlFeed(source: NewsSource, payload: string, fetchedAt: num
         html,
         summaryText: descriptionText,
         dateRaw,
-        image: imageOf(node, html),
+        image: imageOf(node, html, link),
         audioUrl: audioUrlFromNode(node, html),
         contentType,
         videoUrl: video.directUrl,
