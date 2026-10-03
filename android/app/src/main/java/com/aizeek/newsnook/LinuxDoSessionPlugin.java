@@ -466,9 +466,7 @@ public class LinuxDoSessionPlugin extends Plugin {
                 });
                 return;
             }
-            // A User API Key and browser cookies may belong to different accounts.
-            // Key-authenticated reads must stay on the native identity path.
-            if (preferBrowserTransport && !userApiAuth.hasValidCredential()) {
+            if (preferBrowserTransport) {
                 performBrowserRequest(url, method, requestHeaders, body, new BrowserFetchCallback() {
                     @Override
                     public void onSuccess(BrowserFetchResponse response) {
@@ -598,9 +596,7 @@ public class LinuxDoSessionPlugin extends Plugin {
             String value = requestHeaders.optString(key, "");
             if (!value.isEmpty()) builder.header(key, value);
         }
-        boolean keyAuthenticated = userApiAuth.hasValidCredential();
-        if (keyAuthenticated) userApiAuth.applyHeaders(builder);
-        else if (!cookie.isEmpty()) builder.header("Cookie", cookie);
+        if (!cookie.isEmpty()) builder.header("Cookie", cookie);
         if (!userAgent.isEmpty()) builder.header("User-Agent", userAgent);
         if (method.equals("GET")) {
             builder.get();
@@ -632,7 +628,7 @@ public class LinuxDoSessionPlugin extends Plugin {
                 // In particular, do not hand JS a CSRF token until the matching
                 // session cookie is acknowledged by CookieManager.
                 syncResponseCookies(response, () -> {
-                    if (keyAuthenticated || !isCloudflareChallenge(status, responseText, responseHeaders)) {
+                    if (!isCloudflareChallenge(status, responseText, responseHeaders)) {
                         resolveRequest(call, status, responseText, responseHeaders);
                         return;
                     }

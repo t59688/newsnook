@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import React, { act } from 'react'
 import { parseHTML } from 'linkedom'
-import { Capacitor } from '@capacitor/core'
+import { Capacitor, registerPlugin } from '@capacitor/core'
 
 const { window } = parseHTML('<!doctype html><html><body></body></html>')
 Object.assign(globalThis, { window, document: window.document, Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement, HTMLImageElement: window.HTMLImageElement, React, IS_REACT_ACT_ENVIRONMENT: true })
@@ -10,6 +10,10 @@ window.cancelAnimationFrame = clearTimeout as any
 window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as any
 window.getComputedStyle = (() => ({ transform: 'none', getPropertyValue: () => '' })) as any
 Capacitor.isNativePlatform = () => false
+Capacitor.getPlatform = () => 'android'
+let requestNetwork: (request: any) => Promise<any> = async () => { throw new Error('unexpected native request') }
+const nativeBoundary = { request: (request: any) => requestNetwork(request) }
+registerPlugin('LinuxDoSession', { android: () => nativeBoundary, web: () => nativeBoundary })
 const { createRoot } = await import('react-dom/client')
 const { DiscoverView } = await import('../src/features/linuxdo/ui/DiscoverView')
 const { NotificationsView } = await import('../src/features/linuxdo/ui/CommunityViews')
@@ -36,7 +40,7 @@ await click('刷新发现')
 assert.ok(host.textContent?.includes('Recovered'), 'refresh must recover the failed taxonomy without remounting')
 assert.ok(!host.textContent?.includes('offline'))
 await act(async () => { root.render(null); await flush() })
-const session: any = { authenticated: true, authMode: 'user-api-key', currentUser: { username: 'reader', id: 1 } }
+const session: any = { authenticated: true, authMode: 'browser-session', currentUser: { username: 'reader', id: 1 } }
 let notificationTitle = 'Before refresh'
 linuxDoNotifications.list = async () => ({ items: [{ id: 1, notificationType: 1, read: true, createdAt: '2026-10-03', data: { topic_title: notificationTitle } }], nextOffset: undefined }) as any
 linuxDoNotifications.unreadCount = async () => 0
@@ -78,11 +82,19 @@ const page = (mode: string) => ({ users: [], topic_list: { topics: [{ id: mode =
 const feedRequests: string[] = []
 let releaseHot: (() => void) | undefined
 linuxDoApi.restore = async () => { linuxDoApi.setSession(session); return session }
-linuxDoApi.getJson = async (url: string) => {
-  const mode = new URL(url).pathname.slice(1).replace('.json', '')
+// Exercise the real API client and feed decoder, substituting only the native network boundary.
+Capacitor.isNativePlatform = () => true
+let failUnread = true
+requestNetwork = async ({ url, headers }: any) => {
+  const path = new URL(url).pathname
+  if (path.startsWith('/t/')) return { status: 404, data: '{"errors":["not found"]}', transport: 'browser' }
+  assert.equal(headers['Discourse-Logged-In'], 'true', 'feed reads must use the authenticated browser session')
+  assert.equal(headers['User-Api-Key'], undefined, 'the OTP exchange credential must not be used for ordinary feed reads')
+  const mode = path.slice(1).replace('.json', '')
   feedRequests.push(mode)
   if (mode === 'hot') await new Promise<void>((resolve) => { releaseHot = resolve })
-  return page(mode) as any
+  if (mode === 'unread' && failUnread) return { status: 403, data: '<html><title>Just a moment...</title></html>', headers: { 'cf-mitigated': 'challenge' }, transport: 'browser' }
+  return { status: 200, data: JSON.stringify(page(mode)), headers: { 'content-type': 'application/json' }, transport: 'browser' }
 }
 const backHandlerRef = { current: null } as any
 await act(async () => { root.render(<LinuxDoWorkspace onExit={noop} backHandlerRef={backHandlerRef} presetSwitcher={{ activeName: 'Test', items: [], onSelect: noop, onManage: noop }} />); await flush() })
@@ -96,6 +108,9 @@ await clickText('新')
 await act(async () => { releaseHot?.(); await flush() })
 assert.ok(host.textContent?.includes('channel-new'), 'late hot result must not overwrite the new channel')
 await clickText('未读')
+assert.ok(host.textContent?.includes('安全验证'), 'a rejected browser read must display a recoverable error rather than stale channel content')
+failUnread = false
+await click('刷新')
 assert.ok(host.textContent?.includes('channel-unread'))
 await clickText('最新')
 assert.ok(['latest', 'hot', 'new', 'unread'].every((mode) => feedRequests.includes(mode)), 'each channel must send its own server request')
@@ -103,7 +118,8 @@ let scroller = host.querySelector('.overflow-y-auto.page-x') as HTMLElement
 assert.ok(scroller)
 scroller.scrollTop = 420
 await act(async () => { scroller.dispatchEvent(new window.Event('scroll')); await flush() })
-await click('搜索')
+await click('打开主题：channel-latest')
+assert.ok(!host.querySelector('[aria-label="打开主题：channel-latest"]'), 'opening a topic must leave the feed surface')
 await act(async () => { backHandlerRef.current(); await flush() })
 scroller = host.querySelector('.overflow-y-auto.page-x') as HTMLElement
 assert.equal(scroller.scrollTop, 420, 'cached feed must restore its scroll before the next frame')
