@@ -355,6 +355,7 @@ export const FeedScreen = memo(function FeedScreen({
     usePullToRefresh({
       onRefresh,
       reduced,
+      surfaceRef: listRef,
     })
   const lastPullRefreshSeq = useRef(pullRefreshSeq)
 

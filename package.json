@@ -18,6 +18,7 @@
     "test:prestore": "rolldown scripts/prestore.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/prestore.test.mjs && node node_modules/.cache/newsnook/prestore.test.mjs",
     "test:encoding": "rolldown scripts/text-encoding.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/text-encoding.test.mjs && node node_modules/.cache/newsnook/text-encoding.test.mjs",
     "test:edge-swipe": "rolldown scripts/edge-swipe-back.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/edge-swipe-back.test.mjs && node node_modules/.cache/newsnook/edge-swipe-back.test.mjs",
+    "test:pull-to-refresh": "node --import tsx scripts/pull-to-refresh.test.ts && node --import tsx scripts/pull-to-refresh-gesture.test.tsx",
     "test:gesture-styles": "rolldown scripts/gesture-styles.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/gesture-styles.test.mjs && node node_modules/.cache/newsnook/gesture-styles.test.mjs",
     "test:easter-egg": "npx tsx scripts/easter-egg-trigger.test.ts",
     "test:easter-egg-screen-chrome": "npx tsx scripts/easter-egg-screen-chrome.test.ts",
