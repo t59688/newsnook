@@ -355,7 +355,7 @@ function FeedView({
   }> = [
     { id: 'unread', label: '未读', caption: '你已关注但还没有读完的主题', auth: true },
     { id: 'latest', label: '最新', caption: '按最近活动排序的全站主题' },
-    { id: 'new', label: '新', caption: 'LinuxDO 为当前账号判定的新主题 / 新回复', auth: true },
+    { id: 'new', label: '新', caption: 'LinuxDO 为当前账号判定的新主题', auth: true },
     { id: 'hot', label: '热门', caption: 'Discourse Hot 热度算法的当前热门主题' },
     { id: 'top', label: '排行榜', caption: '使用 LinuxDO 当前站点的 Top 时间范围' },
     { id: 'posted', label: '我的帖子', caption: '你参与过的主题', auth: true },

@@ -11,7 +11,8 @@ export const linuxDoEndpoints = {
     if (period) params.set('period', period)
     return ORIGIN + '/top.json?' + params.toString()
   },
-  newTopics: (page = 0) => ORIGIN + '/new.json?page=' + page,
+  // Keep the standalone new tab distinct from Discourse's unified new + unread view.
+  newTopics: (page = 0) => ORIGIN + '/new.json?page=' + page + '&subset=topics',
   unread: (page = 0) => ORIGIN + '/unread.json?page=' + page,
   posted: (page = 0) => ORIGIN + '/posted.json?page=' + page,
   read: (page = 0) => ORIGIN + '/read.json?page=' + page,
