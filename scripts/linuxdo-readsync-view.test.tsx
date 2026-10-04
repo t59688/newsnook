@@ -12,11 +12,13 @@ Object.assign(globalThis, {
   MutationObserver: window.MutationObserver, React, IS_REACT_ACT_ENVIRONMENT: true,
   requestAnimationFrame: (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0),
   cancelAnimationFrame: clearTimeout,
+  localStorage: { getItem: () => null, setItem: () => {} },
   ResizeObserver: class { observe() {} disconnect() {} },
 })
 window.requestAnimationFrame = (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0) as any
 window.cancelAnimationFrame = clearTimeout as any
 window.getComputedStyle = (() => ({ overflow: 'auto', overflowY: 'auto', getPropertyValue: () => '' })) as any
+window.HTMLElement.prototype.scrollTop = 0
 window.HTMLElement.prototype.getBoundingClientRect = function () {
   const post = Number(this.dataset.linuxdoPostNumber ?? 0)
   const top = post ? 50 + post * 120 : 0
