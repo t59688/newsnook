@@ -734,6 +734,45 @@ assert.equal(linuxDoEndpoints.posted(1), 'https://linux.do/posted.json?page=1')
 assert.equal(linuxDoEndpoints.read(4), 'https://linux.do/read.json?page=4')
 assert.equal(linuxDoEndpoints.bookmarkedTopics(2), 'https://linux.do/bookmarks.json?page=2')
 
+// Discourse TopicQuery#list_new returns new + unread without subset=topics
+// when unified_new_enabled? is true. Own unread topics lead that combined list.
+for (const unifiedNewEnabled of [true, false]) {
+  const unreadTopics = [
+    { id: 910, title: 'Own old topic with unread replies', posters: [{ user_id: 1 }], last_read_post_number: 1, highest_post_number: 3 },
+    { id: 911, title: 'Other tracked topic with unread replies', posters: [{ user_id: 2 }], last_read_post_number: 2, highest_post_number: 4 },
+  ]
+  const newPages = [
+    [{ id: 920, title: 'Unopened new topic', posters: [{ user_id: 2 }], last_read_post_number: null }],
+    [{ id: 921, title: 'Next unopened new topic', posters: [{ user_id: 2 }], last_read_post_number: null }],
+  ]
+  const personalizedFeed = new LinuxDoFeedService({
+    getJson: async (url: string, options?: { auth?: string }) => {
+      assert.equal(options?.auth, 'required')
+      const request = new URL(url)
+      const page = Number(request.searchParams.get('page'))
+      const topics = request.pathname === '/unread.json'
+        ? unreadTopics
+        : unifiedNewEnabled && request.searchParams.get('subset') !== 'topics'
+          ? [...unreadTopics, ...newPages[page]!]
+          : newPages[page]!
+      return {
+        users: [{ id: 1, username: 'self' }, { id: 2, username: 'other' }],
+        topic_list: { topics, more_topics_url: page === 0 ? '/new.json?page=1' : null },
+      }
+    },
+  } as any)
+  const newPage0 = await personalizedFeed.list('new')
+  assert.deepEqual(newPage0.items.map((topic) => topic.id), [920],
+    `new must exclude previously read topics even with unified new ${unifiedNewEnabled}`)
+  assert.equal(newPage0.hasMore, true)
+  assert.deepEqual((await personalizedFeed.list('new', 1)).items.map((topic) => topic.id), [921],
+    'pagination must retain the new-only subset')
+  const unreadPage = await personalizedFeed.list('unread')
+  assert.deepEqual(unreadPage.items.map((topic) => topic.id), [910, 911],
+    'unread must preserve upstream own-topic priority and include other tracked topics')
+  assert.deepEqual(unreadPage.items.map((topic) => topic.posters[0]?.username), ['self', 'other'])
+}
+
 const feedCalls: Array<{ url: string; auth?: string }> = []
 const feedService = new LinuxDoFeedService({
   getJson: async (url: string, options?: { auth?: string }) => {
@@ -768,7 +807,7 @@ assert.equal((await feedService.list('read', 1)).hasMore, false)
 assert.equal((await feedService.list('bookmarks', 1)).hasMore, false)
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/hot.json?page=0' && call.auth === 'optional'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/top.json?page=0' && call.auth === 'optional'))
-assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/new.json?page=1' && call.auth === 'required'))
+assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/new.json?page=1&subset=topics' && call.auth === 'required'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/unread.json?page=1' && call.auth === 'required'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/posted.json?page=1' && call.auth === 'required'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/read.json?page=1' && call.auth === 'required'))
