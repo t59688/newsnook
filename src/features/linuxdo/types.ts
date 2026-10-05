@@ -148,6 +148,7 @@ export interface LinuxDoTopic {
 }
 
 export interface LinuxDoNotification {
+  actingUserName?: string
   actingUserAvatarTemplate?: string
   id: number
   notificationType: number
