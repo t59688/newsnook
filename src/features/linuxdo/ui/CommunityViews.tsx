@@ -1,3 +1,5 @@
+import { PrivateMessagesView } from './PrivateMessagesView'
+import type { LinuxDoPrivateMessagesCache } from './privateMessagesCache'
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
 import { Loader2, RotateCw, Search, X } from 'lucide-react'
@@ -212,11 +214,23 @@ export function NotificationsView({
   onOpen,
   onOpenUser,
   onUnreadChange,
+  privateMessagesCacheRef,
+  onVerify,
+  onLogin,
+  initialFilter = 'all',
+  onFilterChange,
+  onPrivateError,
 }: {
   session: LinuxDoSessionSnapshot
   onOpen: (topic: LinuxDoTopicSummary, targetPostNumber?: number) => void
   onOpenUser: (username: string, tab?: 'badges', badgeId?: number) => void
   onUnreadChange: (count: number) => void
+  initialFilter?: LinuxDoNotificationFilter
+  onPrivateError?: (message: string) => void
+  onFilterChange?: (filter: LinuxDoNotificationFilter) => void
+  onVerify?: () => Promise<boolean>
+  onLogin?: () => void
+  privateMessagesCacheRef?: import('react').MutableRefObject<LinuxDoPrivateMessagesCache>
 }) {
   const [items, setItems] = useState<LinuxDoNotification[]>([])
   const [loading, setLoading] = useState(true)
@@ -224,12 +238,8 @@ export function NotificationsView({
   const [nextOffset, setNextOffset] = useState<number | undefined>()
   const [totalRows, setTotalRows] = useState<number | undefined>()
   const [error, setError] = useState('')
-  const [filter, setFilter] = useState<LinuxDoNotificationFilter>('all')
-  const [privateItems, setPrivateItems] = useState<LinuxDoTopicSummary[]>([])
-  const [privateLoading, setPrivateLoading] = useState(false)
-  const [privateLoadingMore, setPrivateLoadingMore] = useState(false)
-  const [privateNextPage, setPrivateNextPage] = useState<number | undefined>()
-  const [privateError, setPrivateError] = useState('')
+  const [filter, setFilter] = useState<LinuxDoNotificationFilter>(initialFilter)
+  const selectFilter = (next: LinuxDoNotificationFilter) => { setFilter(next); onFilterChange?.(next) }
   const [unreadCount, setUnreadCount] = useState(session.currentUser?.allUnreadNotificationsCount ?? session.currentUser?.unreadNotifications ?? 0)
   const [markingAll, setMarkingAll] = useState(false)
   const [markingIds, setMarkingIds] = useState<Set<number>>(() => new Set())
@@ -242,9 +252,6 @@ export function NotificationsView({
   const pendingIdsRef = useRef(new Set<number>())
   const markingAllRef = useRef(false)
   const loadingMoreRef = useRef(false)
-  const privateGenerationRef = useRef(0)
-  const privateLoadingRef = useRef(false)
-  const privateLoadingMoreRef = useRef(false)
 
   const applyUnreadCount = useCallback((count: number) => {
     const normalized = Math.max(0, Math.trunc(Number.isFinite(count) ? count : 0))
@@ -277,41 +284,6 @@ export function NotificationsView({
     }
   }, [applyUnreadCount])
 
-  const loadPrivateMessages = useCallback(async (page = 0) => {
-    const username = session.currentUser?.username
-    if (!session.authenticated || !username) return
-    if (page === 0) {
-      if (privateLoadingRef.current || privateLoadingMoreRef.current) return
-      privateLoadingRef.current = true
-      setPrivateLoading(true)
-    } else {
-      if (privateLoadingMoreRef.current || privateLoadingRef.current) return
-      privateLoadingMoreRef.current = true
-      setPrivateLoadingMore(true)
-    }
-    const generation = ++privateGenerationRef.current
-    setPrivateError('')
-    try {
-      const result = await notificationsApi.privateMessages(username, page)
-      if (!mountedRef.current || generation !== privateGenerationRef.current) return
-      setPrivateItems((previous) => page === 0
-        ? result.items
-        : previous.concat(result.items.filter((item) => !previous.some((existing) => existing.id === item.id))))
-      setPrivateNextPage(result.nextPage)
-    } catch (nextError) {
-      if (mountedRef.current && generation === privateGenerationRef.current) setPrivateError(readableError(nextError))
-    } finally {
-      if (generation === privateGenerationRef.current) {
-        if (page === 0) privateLoadingRef.current = false
-        else privateLoadingMoreRef.current = false
-        if (mountedRef.current) {
-          setPrivateLoading(false)
-          setPrivateLoadingMore(false)
-        }
-      }
-    }
-  }, [session.authenticated, session.currentUser?.username])
-
   const loadNotifications = useCallback(async (showSpinner: boolean) => {
     if (!session.authenticated || notificationLoadingRef.current || loadingMoreRef.current) return
     notificationLoadingRef.current = true
@@ -340,12 +312,6 @@ export function NotificationsView({
   }, [applyUnreadCount, session.authenticated])
 
   useEffect(() => {
-    if (filter === 'private' && privateItems.length === 0 && !privateLoading && !privateError) {
-      void loadPrivateMessages(0)
-    }
-  }, [filter, loadPrivateMessages, privateError, privateItems.length, privateLoading])
-
-  useEffect(() => {
     mountedRef.current = true
     if (!session.authenticated) {
       setItems([])
@@ -365,10 +331,7 @@ export function NotificationsView({
     return () => {
       mountedRef.current = false
       loadGenerationRef.current += 1
-      privateGenerationRef.current += 1
       notificationLoadingRef.current = false
-      privateLoadingRef.current = false
-      privateLoadingMoreRef.current = false
       document.removeEventListener('visibilitychange', handleVisibility)
     }
   }, [applyUnreadCount, loadNotifications, session.authenticated])
@@ -479,33 +442,30 @@ export function NotificationsView({
   }, [markOneRead, onOpen, onOpenUser, session.currentUser?.username])
 
   if (!session.authenticated) return <div className="px-6 py-20 text-center text-[13px] text-paper-muted">登录后可查看通知</div>
-  const isPrivate = filter === 'private'
-  const filteredItems = isPrivate ? [] : items.filter((item) => linuxDoNotificationMatchesFilter(item, filter))
+  if (filter === 'private') return <PrivateMessagesView onError={onPrivateError} onVerify={onVerify} onLogin={onLogin} session={session} onOpen={onOpen} onUnreadChange={onUnreadChange} onBack={() => selectFilter('all')} cacheRef={privateMessagesCacheRef} />
+  const filteredItems = items.filter((item) => linuxDoNotificationMatchesFilter(item, filter))
 
   return (
-    <RefreshSurface onRefresh={() => isPrivate ? loadPrivateMessages(0) : loadNotifications(true)} className="page-x pb-4 pt-3">
+    <RefreshSurface onRefresh={() => loadNotifications(true)} className="page-x pb-4 pt-3">
       <section className="mb-4 rounded-[24px] border border-haze/70 bg-ink-raised p-4 shadow-sm">
         <div className="flex items-center justify-between">
           <div><h2 className="text-[20px] font-bold tracking-[-0.03em] text-paper">通知</h2><p className="mt-1 text-[10.5px] text-paper-muted">不错过任何重要互动</p></div>
-          <button type="button" aria-label={isPrivate ? '刷新私信' : '刷新通知'} disabled={isPrivate ? privateLoading || privateLoadingMore : loading || loadingMore} onClick={() => void (isPrivate ? loadPrivateMessages(0) : loadNotifications(true))} className="linuxdo-control grid h-10 w-10 place-items-center rounded-full bg-cinnabar/10 text-cinnabar disabled:opacity-40">
-            <RotateCw size={18} className={(isPrivate ? privateLoading : loading) ? 'animate-spin' : ''} />
+          <button type="button" aria-label="刷新通知" disabled={loading || loadingMore} onClick={() => void loadNotifications(true)} className="linuxdo-control grid h-10 w-10 place-items-center rounded-full bg-cinnabar/10 text-cinnabar disabled:opacity-40">
+            <RotateCw size={18} className={loading ? 'animate-spin' : ''} />
           </button>
         </div>
         <div className="mt-4 grid grid-cols-5 rounded-2xl bg-ink-deep p-1">
           {([['all', '全部'], ['mentions', '提及'], ['replies', '回复'], ['private', '私信'], ['system', '系统']] as const).map(([key, label]) => (
-            <button key={key} type="button" onClick={() => setFilter(key)} className={'linuxdo-control min-h-9 rounded-xl px-2 text-[10.5px] font-semibold ' + (filter === key ? 'bg-cinnabar text-white shadow-sm' : 'text-paper-muted')}>{label}</button>
+            <button key={key} type="button" onClick={() => selectFilter(key)} className={'linuxdo-control min-h-9 rounded-xl px-2 text-[10.5px] font-semibold ' + (filter === key ? 'bg-cinnabar text-white shadow-sm' : 'text-paper-muted')}>{label}</button>
           ))}
         </div>
       </section>
 
       <div className="mb-3 flex items-center justify-between gap-3">
         <span className="text-[10.5px] text-paper-faint">
-          {isPrivate
-            ? `私信会话 ${privateItems.length}${privateNextPage !== undefined ? '+' : ''}`
-            : `未读 ${unreadCount} · 已加载 ${items.length}${totalRows !== undefined ? ` / ${totalRows}` : ''}`}
+          {`未读 ${unreadCount} · 已加载 ${items.length}${totalRows !== undefined ? ` / ${totalRows}` : ''}`}
         </span>
-        {!isPrivate ? (
-          <button
+        <button
             type="button"
             disabled={markingAll || unreadCount === 0 || loading}
             onClick={markAllRead}
@@ -513,38 +473,10 @@ export function NotificationsView({
           >
             {markingAll ? '处理中…' : '全部已读'}
           </button>
-        ) : (
-          <span className="text-[9.5px] text-paper-faint">私信已读状态以会话为准</span>
-        )}
       </div>
 
-      {!isPrivate && error ? <button type="button" onClick={() => void loadNotifications(true)} className="mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[10.5px] text-cinnabar-soft">{error} · 点击重试</button> : null}
-      {isPrivate && privateError ? (
-        <button type="button" onClick={() => void loadPrivateMessages(0)} className="mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[10.5px] text-cinnabar-soft">
-          私信加载失败：{privateError} · 点击重试
-        </button>
-      ) : null}
-
-      {isPrivate ? (
-        privateLoading ? <div className="flex justify-center py-16"><Loader2 className="animate-spin text-paper-faint" /></div> : (
-          <div className="space-y-3">
-            {privateItems.map((topic) => (
-              <TopicCard key={topic.id} topic={topic} onOpen={() => onOpen(topic)} />
-            ))}
-            {!privateItems.length ? <div className="py-14 text-center text-[11px] text-paper-faint">暂无私信会话</div> : null}
-            {privateNextPage !== undefined ? (
-              <button
-                type="button"
-                disabled={privateLoadingMore}
-                onClick={() => void loadPrivateMessages(privateNextPage)}
-                className="linuxdo-control w-full rounded-full border border-haze px-4 py-2 text-[10.5px] text-paper-muted disabled:opacity-40"
-              >
-                {privateLoadingMore ? '加载中…' : '加载更早私信'}
-              </button>
-            ) : null}
-          </div>
-        )
-      ) : loading ? <div className="flex justify-center py-16"><Loader2 className="animate-spin text-paper-faint" /></div> : (
+      {error ? <button type="button" onClick={() => void loadNotifications(true)} className="mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[10.5px] text-cinnabar-soft">{error} · 点击重试</button> : null}
+      {loading ? <div className="flex justify-center py-16"><Loader2 className="animate-spin text-paper-faint" /></div> : (
         <div className="space-y-2.5">
           {filteredItems.map((item) => (
             <button

@@ -67,6 +67,8 @@ export function decodeTopics(input: unknown): LinuxDoTopicSummary[] {
     slug: String(topic.slug ?? ''),
     title: String(topic.title ?? ''),
     fancyTitle: typeof topic.fancy_title === 'string' ? topic.fancy_title : undefined,
+    lastPosterUsername: typeof topic.last_poster_username === 'string' ? topic.last_poster_username : undefined,
+    bumpedAt: typeof topic.bumped_at === 'string' ? topic.bumped_at : undefined,
     postsCount: Number(topic.posts_count ?? 0),
     replyCount: Number(topic.reply_count ?? Math.max(0, Number(topic.posts_count ?? 1) - 1)),
     views: Number(topic.views ?? 0),
@@ -251,6 +253,7 @@ export function decodeNotifications(input: unknown): LinuxDoNotification[] {
     if (!id) return []
     return [{
       id,
+      actingUserAvatarTemplate: avatar(n.acting_user_avatar_template),
       notificationType: Number(n.notification_type ?? 0),
       read: n.read === true,
       createdAt: String(n.created_at ?? ''),

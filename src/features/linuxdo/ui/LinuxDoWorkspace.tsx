@@ -1,3 +1,6 @@
+import type { LinuxDoNotificationFilter } from '../notification/model'
+import { PrivateMessagesView } from './PrivateMessagesView'
+import { createLinuxDoPrivateMessagesCache, applyPrivateMessageReadProgress } from './privateMessagesCache'
 import { ArrowLeft, Bell, CheckCircle2, ChevronDown, Compass, Flame, History, ListFilter, Loader2, MessageCircle, Plus, RefreshCcw, Search, Trophy, UserRound, X } from 'lucide-react'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type MutableRefObject } from 'react'
 
@@ -34,6 +37,7 @@ type Route =
   | { kind: 'search' }
   | { kind: 'discover'; scope?: LinuxDoDiscoveryScope }
   | { kind: 'notifications' }
+  | { kind: 'messages' }
   | { kind: 'user'; username: string; tab?: 'badges'; badgeId?: number }
   | { kind: 'bookmarks' }
   | { kind: 'trust' }
@@ -535,6 +539,8 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
   const lastFeedModeRef = useRef<LinuxDoFeedMode>('latest')
   if (route.kind === 'feed') lastFeedModeRef.current = route.mode
   const discoverCacheRef = useRef(createLinuxDoDiscoveryCache())
+  const notificationFilterRef = useRef<LinuxDoNotificationFilter>('all')
+  const privateMessagesCacheRef = useRef(createLinuxDoPrivateMessagesCache())
   const searchCacheRef = useRef(createLinuxDoSearchCache())
   const [session, setSession] = useState<LinuxDoSessionSnapshot>({ authenticated: false, authMode: 'none' })
   const [composerTopic, setComposerTopic] = useState<LinuxDoTopic | undefined>()
@@ -579,6 +585,8 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
       }
     }
 
+    applyPrivateMessageReadProgress(privateMessagesCacheRef.current, topicId, highestSeen)
+
     // /read.json is server-derived; force a fresh page next time rather than
     // pretending that our cached membership/order is authoritative.
     feedCacheRef.current.read = emptyFeedCacheEntry()
@@ -609,6 +617,8 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
   }, [])
 
   const applyWorkspaceSession = useCallback((next: LinuxDoSessionSnapshot) => {
+    notificationFilterRef.current = 'all'
+    privateMessagesCacheRef.current = createLinuxDoPrivateMessagesCache()
     setSession(next)
     applyNotificationUnread(next.currentUser?.allUnreadNotificationsCount ?? next.currentUser?.unreadNotifications ?? 0)
     resetPersonalizedFeedCaches()
@@ -719,6 +729,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
       : route.kind === 'topic' ? '主题'
         : route.kind === 'search' ? '搜索'
           : route.kind === 'discover' ? '发现'
+            : route.kind === 'messages' ? '个人私信'
             : route.kind === 'notifications' ? '通知'
               : route.kind === 'user' ? '用户'
                 : route.kind === 'bookmarks' ? '书签'
@@ -775,7 +786,9 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         ) : route.kind === 'discover' ? (
           <DiscoverView initialScope={route.scope} cacheRef={discoverCacheRef} onScopeChange={replaceDiscoverScope} onOpen={(topic) => navigate({ kind: 'topic', topic })} />
         ) : route.kind === 'notifications' ? (
-          <NotificationsView key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} onUnreadChange={applyNotificationUnread} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username, tab, badgeId) => navigate({ kind: 'user', username, tab, badgeId })} />
+          <NotificationsView onPrivateError={setWorkspaceError} initialFilter={notificationFilterRef.current} onFilterChange={(filter) => { notificationFilterRef.current = filter }} onVerify={verify} onLogin={() => navigate({ kind: 'account' })} privateMessagesCacheRef={privateMessagesCacheRef} key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} onUnreadChange={applyNotificationUnread} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username, tab, badgeId) => navigate({ kind: 'user', username, tab, badgeId })} />
+        ) : route.kind === 'messages' ? (
+          <PrivateMessagesView onVerify={verify} onLogin={() => navigate({ kind: 'account' })} key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} cacheRef={privateMessagesCacheRef} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onUnreadChange={applyNotificationUnread} onError={setWorkspaceError} />
         ) : route.kind === 'user' ? (
           <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} />
         ) : route.kind === 'bookmarks' ? (
@@ -783,7 +796,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         ) : route.kind === 'trust' ? (
           <TrustLevelView session={session} />
         ) : (
-          <AccountView session={session} onSession={applyWorkspaceSession} onBookmarks={() => navigate({ kind: 'bookmarks' })} onProfile={(username) => navigate({ kind: 'user', username })} onTrustLevel={() => navigate({ kind: 'trust' })} />
+          <AccountView onPrivateMessages={() => navigate({ kind: 'messages' })} session={session} onSession={applyWorkspaceSession} onBookmarks={() => navigate({ kind: 'bookmarks' })} onProfile={(username) => navigate({ kind: 'user', username })} onTrustLevel={() => navigate({ kind: 'trust' })} />
         )}
       </div>
 
@@ -792,7 +805,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         <button type="button" onClick={() => setRoute({ kind: 'discover' })} className={'linuxdo-nav-item ' + (route.kind === 'discover' ? 'is-active' : '')} aria-label="发现"><Compass size={18} /><span>发现</span></button>
         <button type="button" onClick={() => { setComposerTopic(undefined); setComposerEditPost(undefined); setComposerInitialRaw(''); setComposerReplyTo(undefined); setComposerOpen(true) }} className="linuxdo-nav-compose" aria-label="发布"><span className="grid h-12 w-12 place-items-center rounded-full bg-cinnabar text-white shadow-lg"><Plus size={22} /></span><span>发布</span></button>
         <button type="button" onClick={() => setRoute({ kind: 'notifications' })} className={'linuxdo-nav-item relative ' + (route.kind === 'notifications' ? 'is-active' : '')} aria-label="通知"><Bell size={18} /><span>通知</span>{notificationUnread > 0 ? <i className="absolute right-[24%] top-1 h-2 w-2 rounded-full bg-[#ff4d4f]" /> : null}</button>
-        <button type="button" onClick={() => setRoute({ kind: 'account' })} className={'linuxdo-nav-item ' + (route.kind === 'account' || route.kind === 'user' || route.kind === 'bookmarks' || route.kind === 'trust' ? 'is-active' : '')} aria-label="我的"><UserRound size={18} /><span>我的</span></button>
+        <button type="button" onClick={() => setRoute({ kind: 'account' })} className={'linuxdo-nav-item ' + (route.kind === 'account' || route.kind === 'messages' || route.kind === 'user' || route.kind === 'bookmarks' || route.kind === 'trust' ? 'is-active' : '')} aria-label="我的"><UserRound size={18} /><span>我的</span></button>
       </nav>
 
       <LinuxDoComposer open={composerOpen} topic={composerTopic} session={session} initialRaw={composerInitialRaw} replyToPostNumber={composerReplyTo} editPost={composerEditPost} requestCloseRef={composerRequestCloseRef} onClose={closeComposer} onSent={(created, kind) => {

@@ -41,6 +41,8 @@ export interface LinuxDoTopicSummary {
   slug: string
   title: string
   fancyTitle?: string
+  lastPosterUsername?: string
+  bumpedAt?: string
   postsCount: number
   replyCount: number
   views: number
@@ -146,6 +148,7 @@ export interface LinuxDoTopic {
 }
 
 export interface LinuxDoNotification {
+  actingUserAvatarTemplate?: string
   id: number
   notificationType: number
   read: boolean
