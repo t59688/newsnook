@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core'
-import { BadgeCheck, Bookmark, ChevronRight, FileText, History, KeyRound, Loader2, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react'
+import { BadgeCheck, Bookmark, ChevronRight, FileText, History, KeyRound, Loader2, Mail, LockKeyhole, ShieldCheck, UserRound } from 'lucide-react'
 import { useState } from 'react'
 
 import { linuxDoCapabilities } from '../capabilities'
@@ -21,12 +21,14 @@ export function AccountView({
   onBookmarks,
   onProfile,
   onTrustLevel,
+  onPrivateMessages,
 }: {
   session: LinuxDoSessionSnapshot
   onSession: (next: LinuxDoSessionSnapshot) => void
   onBookmarks: () => void
   onProfile: (username: string) => void
   onTrustLevel: () => void
+  onPrivateMessages: () => void
 }) {
   const caps = linuxDoCapabilities()
   const native = Capacitor.isNativePlatform()
@@ -144,6 +146,7 @@ export function AccountView({
       </section>
 
       <div className="mt-4 grid grid-cols-2 gap-2.5">
+        <button type="button" disabled={!session.authenticated} onClick={onPrivateMessages} className="linuxdo-control col-span-2 flex min-h-16 items-center gap-3 rounded-[20px] border border-haze/70 bg-ink-raised px-4 py-3.5 text-left shadow-sm disabled:opacity-45"><span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-cinnabar/10 text-cinnabar"><Mail size={18} /></span><span className="min-w-0 flex-1"><span className="block text-[12px] font-semibold text-paper">个人私信</span><span className="mt-1 block text-[10px] text-paper-faint">最近互动、收件箱与归档会话</span></span><ChevronRight size={15} className="text-paper-faint" /></button>
         <button type="button" disabled={!session.authenticated} onClick={onTrustLevel} className="linuxdo-control col-span-2 flex items-center gap-3 rounded-[20px] border border-[#20c36b]/20 bg-[#20c36b]/[0.055] px-4 py-3.5 text-left shadow-sm transition-colors hover:bg-[#20c36b]/[0.085] disabled:opacity-45">
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-[#20c36b]/12 text-[#20c36b]"><BadgeCheck size={18} /></span>
           <span className="min-w-0 flex-1">
