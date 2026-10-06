@@ -272,7 +272,7 @@ export function SearchView({
       }}
       className="relative flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain"
     >
-      <div className="sticky top-0 z-20 shrink-0 border-b border-haze/50 bg-ink/85 supports-[backdrop-filter]:bg-ink/65 page-x pb-3 pt-3 backdrop-blur-2xl">
+      <div className="linuxdo-toolbar sticky top-0 z-20 shrink-0 page-x pb-2.5 pt-3">
         <form
           onSubmit={(event) => {
             event.preventDefault()
@@ -280,8 +280,8 @@ export function SearchView({
           }}
           role="search"
         >
-          <div className="flex min-h-11 items-center gap-2 rounded-[14px] bg-paper/[0.06] pl-3.5 pr-1.5 focus-within:ring-1 focus-within:ring-cinnabar/40">
-            <Search size={17} className="shrink-0 text-paper-faint" aria-hidden />
+          <div className="flex min-h-11 items-center gap-2 rounded-[18px] border border-haze/60 bg-paper/[0.045] pl-3.5 pr-1.5 shadow-sm transition-all focus-within:border-cinnabar/40 focus-within:bg-paper/[0.07] focus-within:ring-2 focus-within:ring-cinnabar/20">
+            <Search size={17} className="shrink-0 text-paper-faint transition-colors group-focus-within:text-cinnabar" aria-hidden />
             <input
               ref={inputRef}
               autoFocus={!lastQuery}
@@ -295,35 +295,36 @@ export function SearchView({
               }}
               placeholder={
                 activeTab === 'posts'
-                  ? '搜索帖子，支持高级语法'
+                  ? '搜索帖子，支持高级语法 (如 in:title, from:user)'
                   : activeTab === 'categories'
                   ? '搜索分类或标签'
                   : '搜索用户名或昵称'
               }
-              className="min-w-0 flex-1 bg-transparent py-3 text-[15px] text-paper outline-none placeholder:text-paper-faint"
+              className="min-w-0 flex-1 bg-transparent py-2.5 text-[14.5px] text-paper outline-none placeholder:text-paper-faint"
             />
             {query ? (
               <button
                 type="button"
                 onClick={clear}
                 aria-label="清空搜索词"
-                className="linuxdo-control grid h-10 w-9 shrink-0 place-items-center rounded-full text-paper-faint hover:bg-paper/5 hover:text-paper"
+                className="linuxdo-control grid h-9 w-9 shrink-0 place-items-center rounded-full text-paper-faint transition-colors hover:bg-paper/10 hover:text-paper active:scale-95"
               >
                 <X size={15} />
               </button>
             ) : null}
             <button
               type="submit"
-              className="linuxdo-control min-h-10 shrink-0 rounded-xl bg-cinnabar px-3.5 text-[13px] font-medium text-white"
+              className="linuxdo-control min-h-9 shrink-0 rounded-[12px] bg-cinnabar px-3.5 text-[13px] font-semibold text-white shadow-sm transition-all hover:brightness-105 active:scale-95"
             >
               搜索
             </button>
           </div>
         </form>
+
         <div
           role="tablist"
           aria-label="搜索类型"
-          className="mt-3 flex gap-1 rounded-[12px] bg-paper/[0.05] p-1"
+          className="linuxdo-segmented mt-2.5"
         >
           {tabs.map(([tab, label], index) => (
             <button
@@ -353,27 +354,28 @@ export function SearchView({
                 }
               }}
               className={
-                'linuxdo-control min-h-10 min-w-0 flex-1 rounded-[10px] text-[13px] font-medium transition-colors ' +
-                (activeTab === tab ? 'bg-ink text-paper shadow-sm' : 'text-paper-muted hover:text-paper')
+                'linuxdo-control linuxdo-segment min-h-9 min-w-0 flex-1 rounded-[10px] text-[12.5px] font-semibold transition-all ' +
+                (activeTab === tab ? 'is-active bg-ink-raised text-paper shadow-sm' : 'text-paper-muted hover:text-paper')
               }
             >
               {label}
             </button>
           ))}
         </div>
+
         {activeTab === 'posts' ? (
-          <div className="mt-3 flex items-center justify-between gap-2">
-            <span role="status" aria-live="polite" className="text-[12px] text-paper-faint">
-              {lastQuery ? `已加载 ${visibleCount} 条` : '查找主题与回复'}
+          <div className="mt-2.5 flex items-center justify-between gap-2 px-0.5">
+            <span role="status" aria-live="polite" className="text-[11.5px] font-medium text-paper-faint">
+              {lastQuery ? `已加载 ${visibleCount} 条匹配` : '查找主题与回复'}
             </span>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 aria-label={'排序：' + orderLabel}
                 onClick={() => setSortOpen(true)}
-                className="linuxdo-control inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-[12px] text-paper-muted hover:bg-paper/5"
+                className="linuxdo-control inline-flex min-h-8 items-center gap-1.5 rounded-full border border-haze/60 bg-paper/[0.035] px-3 text-[11.5px] font-medium text-paper-muted shadow-sm transition-all hover:border-paper/20 hover:text-paper active:scale-95"
               >
-                <ArrowDownWideNarrow size={14} />
+                <ArrowDownWideNarrow size={13} className="text-paper-faint" />
                 {orderLabel}
               </button>
               <button
@@ -382,14 +384,16 @@ export function SearchView({
                 aria-haspopup="dialog"
                 onClick={() => setFiltersOpen(true)}
                 className={
-                  'linuxdo-control inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-[12px] ' +
-                  (chips.length ? 'bg-cinnabar/10 text-cinnabar-soft' : 'text-paper-muted hover:bg-paper/5')
+                  'linuxdo-control inline-flex min-h-8 items-center gap-1.5 rounded-full border px-3 text-[11.5px] font-medium shadow-sm transition-all active:scale-95 ' +
+                  (chips.length
+                    ? 'border-cinnabar/30 bg-cinnabar/10 text-cinnabar-soft font-semibold'
+                    : 'border-haze/60 bg-paper/[0.035] text-paper-muted hover:border-paper/20 hover:text-paper')
                 }
               >
-                <SlidersHorizontal size={14} />
+                <SlidersHorizontal size={13} className={chips.length ? 'text-cinnabar-soft' : 'text-paper-faint'} />
                 筛选
                 {chips.length ? (
-                  <span className="rounded-full bg-cinnabar px-1.5 text-[10px] text-white">
+                  <span className="rounded-full bg-cinnabar px-1.5 text-[9.5px] font-bold text-white">
                     {chips.length}
                   </span>
                 ) : null}
@@ -398,24 +402,26 @@ export function SearchView({
           </div>
         ) : null}
       </div>
-      <div className="flex-1 page-x pb-6 pt-4">
+
+      <div className="flex-1 page-x pb-6 pt-3.5">
         {queryError ? (
-          <p role="alert" className="mb-4 rounded-xl bg-cinnabar/5 p-3 text-[13px] text-cinnabar-soft">
+          <p role="alert" className="mb-3.5 rounded-2xl border border-cinnabar/25 bg-cinnabar/[0.08] p-3 text-[12.5px] text-cinnabar-soft shadow-sm">
             {queryError}，请修改搜索条件
           </p>
         ) : null}
+
         {activeTab === 'posts' && chips.length ? (
-          <div className="mb-4 flex flex-wrap gap-2">
+          <div className="mb-3.5 flex flex-wrap items-center gap-1.5">
             {chips.map((chip) => (
               <button
                 key={chip.key + (chip.scope ?? '')}
                 type="button"
                 onClick={() => removeFilter(chip)}
                 aria-label={`移除条件：${chip.label}`}
-                className="linuxdo-control inline-flex min-h-9 max-w-full items-center gap-1.5 rounded-full border border-cinnabar/20 bg-cinnabar/5 px-3 text-[12px] text-cinnabar-soft"
+                className="linuxdo-control linuxdo-chip is-accent min-h-8 max-w-full items-center gap-1.5 rounded-full px-3 text-[11.5px]"
               >
                 <span className="truncate">{chip.label}</span>
-                <X size={12} className="shrink-0" />
+                <X size={12} className="shrink-0 opacity-70 hover:opacity-100" />
               </button>
             ))}
             <button
@@ -423,17 +429,18 @@ export function SearchView({
               onClick={() =>
                 applyQuery(buildLinuxDoSearch({ ...parsed, filters: emptyLinuxDoSearchFilters() }))
               }
-              className="linuxdo-control min-h-9 px-2 text-[12px] text-paper-faint"
+              className="linuxdo-control min-h-8 px-2 text-[11.5px] font-medium text-paper-faint hover:text-cinnabar transition-colors"
             >
               清除筛选
             </button>
           </div>
         ) : null}
+
         {!lastQuery && history.length ? (
           <div className="mb-5">
-            <div className="mb-2 flex items-center justify-between text-[12px] text-paper-faint">
+            <div className="mb-2.5 flex items-center justify-between text-[11.5px] font-medium text-paper-faint">
               <span className="flex items-center gap-1.5">
-                <Clock3 size={13} />
+                <Clock3 size={13} className="text-paper-muted" />
                 最近搜索
               </span>
               <button
@@ -446,7 +453,7 @@ export function SearchView({
                     log.storage.warn('LinuxDO search history clear failed', storageError)
                   }
                 }}
-                className="linuxdo-control min-h-10 px-2"
+                className="linuxdo-control min-h-8 px-2 text-[11.5px] text-paper-faint hover:text-cinnabar transition-colors"
               >
                 清除
               </button>
@@ -459,22 +466,24 @@ export function SearchView({
                   onClick={() =>
                     void run(1, activeTab === 'posts' ? item : parseLinuxDoSearch(item).text || item)
                   }
-                  className="linuxdo-control min-h-10 max-w-full truncate rounded-full bg-paper/[0.05] px-3 text-[13px] text-paper-muted"
+                  className="linuxdo-control inline-flex min-h-9 max-w-full items-center gap-1.5 truncate rounded-full border border-haze/60 bg-paper/[0.04] px-3.5 text-[12.5px] text-paper-muted transition-all hover:border-paper/20 hover:bg-paper/[0.08] hover:text-paper active:scale-95"
                 >
-                  {item}
+                  <Search size={11} className="shrink-0 opacity-50" />
+                  <span className="truncate">{item}</span>
                 </button>
               ))}
             </div>
           </div>
         ) : null}
+
         {loading ? (
-          <div role="status" aria-label="正在搜索" className="space-y-5 py-2">
+          <div role="status" aria-label="正在搜索" className="space-y-3 py-2">
             <span className="sr-only">搜索中…</span>
             {[0, 1, 2, 3].map((index) => (
-              <div key={index} className="flex gap-3 py-3">
+              <div key={index} className="flex gap-3.5 rounded-2xl border border-haze/40 bg-ink-raised/50 p-4">
                 <div className="linuxdo-skeleton h-11 w-11 shrink-0 rounded-full" />
-                <div className="flex-1 space-y-3">
-                  <div className="linuxdo-skeleton h-3 w-1/3 rounded" />
+                <div className="flex-1 space-y-2.5">
+                  <div className="linuxdo-skeleton h-3.5 w-1/4 rounded" />
                   <div className="linuxdo-skeleton h-4 w-4/5 rounded" />
                   <div className="linuxdo-skeleton h-3 w-3/5 rounded" />
                 </div>
@@ -482,123 +491,146 @@ export function SearchView({
             ))}
           </div>
         ) : null}
+
         {error ? (
-          <div role="alert" className="mb-4 rounded-2xl border border-cinnabar/20 bg-cinnabar/5 p-4">
-            <p className="text-[13px] text-cinnabar-soft">{error}</p>
-            {errorKind === 'auth-required' && onLogin ? (
+          <div role="alert" className="mb-4 rounded-2xl border border-cinnabar/25 bg-cinnabar/[0.07] p-4 shadow-sm">
+            <p className="text-[12.5px] font-medium leading-relaxed text-cinnabar-soft">{error}</p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              {errorKind === 'auth-required' && onLogin ? (
+                <button
+                  type="button"
+                  onClick={onLogin}
+                  className="linuxdo-control inline-flex min-h-9 items-center rounded-full bg-cinnabar px-4 text-[12.5px] font-medium text-white shadow-sm transition-transform active:scale-95"
+                >
+                  登录 LinuxDO
+                </button>
+              ) : null}
+              {errorKind === 'browser-verification' && onVerify ? (
+                <button
+                  type="button"
+                  disabled={verifying}
+                  onClick={async () => {
+                    const generation = generationRef.current
+                    setVerifying(true)
+                    try {
+                      const verified = await onVerify()
+                      if (verified && generation === generationRef.current)
+                        await run(retryRef.current.page, retryRef.current.query)
+                    } catch (nextError) {
+                      if (generation === generationRef.current) setError(readableError(nextError))
+                    } finally {
+                      setVerifying(false)
+                    }
+                  }}
+                  className="linuxdo-control inline-flex min-h-9 items-center rounded-full bg-cinnabar px-4 text-[12.5px] font-medium text-white shadow-sm transition-transform active:scale-95 disabled:opacity-50"
+                >
+                  {verifying ? '验证中…' : '完成安全验证'}
+                </button>
+              ) : null}
               <button
                 type="button"
-                onClick={onLogin}
-                className="linuxdo-control mr-3 mt-2 min-h-11 rounded-full bg-cinnabar px-4 text-[13px] text-white"
+                onClick={() => void run(retryRef.current.page, retryRef.current.query)}
+                className="linuxdo-control inline-flex min-h-9 items-center rounded-full border border-cinnabar/30 bg-cinnabar/10 px-3.5 text-[12px] font-medium text-cinnabar-soft hover:bg-cinnabar/15"
               >
-                登录 LinuxDO
+                {error} · 点击重试
               </button>
-            ) : null}
-            {errorKind === 'browser-verification' && onVerify ? (
-              <button
-                type="button"
-                disabled={verifying}
-                onClick={async () => {
-                  const generation = generationRef.current
-                  setVerifying(true)
-                  try {
-                    const verified = await onVerify()
-                    if (verified && generation === generationRef.current)
-                      await run(retryRef.current.page, retryRef.current.query)
-                  } catch (nextError) {
-                    if (generation === generationRef.current) setError(readableError(nextError))
-                  } finally {
-                    setVerifying(false)
-                  }
-                }}
-                className="linuxdo-control mr-3 mt-2 min-h-11 rounded-full bg-cinnabar px-4 text-[13px] text-white disabled:opacity-50"
-              >
-                {verifying ? '验证中…' : '完成安全验证'}
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => void run(retryRef.current.page, retryRef.current.query)}
-              className="linuxdo-control mt-2 min-h-10 text-[13px] font-medium text-cinnabar-soft"
-            >
-              {error} · 点击重试
-            </button>
+            </div>
           </div>
         ) : null}
+
         <div
           id="linuxdo-search-results"
           role="tabpanel"
           aria-labelledby={`linuxdo-search-tab-${activeTab}`}
           aria-busy={loading || loadingMore}
-          className="divide-y divide-haze/40"
+          className="space-y-2.5"
         >
-          {activeTab === 'posts'
-            ? posts.length
-              ? posts.map((post) => {
-                  const topic = topicById.get(post.topicId ?? 0)
-                  return (
+          {activeTab === 'posts' && (posts.length || topics.length) ? (
+            <div className="linuxdo-group" style={{ '--row-inset': '4.5rem' } as import('react').CSSProperties}>
+              {posts.length
+                ? posts.map((post) => {
+                    const topic = topicById.get(post.topicId ?? 0)
+                    return (
+                      <SearchResultRow
+                        key={post.id}
+                        topic={topic}
+                        post={post}
+                        category={categoriesById[topic?.categoryId ?? 0]}
+                        onOpen={() => openPost(post)}
+                      />
+                    )
+                  })
+                : topics.map((topic) => (
                     <SearchResultRow
-                      key={post.id}
+                      key={topic.id}
                       topic={topic}
-                      post={post}
-                      category={categoriesById[topic?.categoryId ?? 0]}
-                      onOpen={() => openPost(post)}
+                      category={categoriesById[topic.categoryId ?? 0]}
+                      onOpen={() => onOpen(topic)}
                     />
-                  )
-                })
-              : topics.map((topic) => (
-                  <SearchResultRow
-                    key={topic.id}
-                    topic={topic}
-                    category={categoriesById[topic.categoryId ?? 0]}
-                    onOpen={() => onOpen(topic)}
-                  />
-                ))
-            : null}
+                  ))}
+            </div>
+          ) : null}
+
           {activeTab === 'categories' ? (
             <>
               {categories.length ? (
-                <div className="pb-5">
-                  <h3 className="mb-2 text-[12px] font-medium text-paper-faint">
+                <div className="pb-3">
+                  <h3 className="mb-2.5 px-1 text-[12px] font-semibold text-paper-faint">
                     分类 · {categories.length}
                   </h3>
-                  {categories.map((category) => (
-                    <button
-                      key={category.id}
-                      type="button"
-                      disabled={!onOpenCategory}
-                      onClick={() => onOpenCategory?.(category)}
-                      className="linuxdo-control flex min-h-20 w-full items-center gap-3 py-3 text-left disabled:opacity-50"
-                    >
-                      <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-cinnabar/10 text-cinnabar-soft">
-                        <Hash size={20} />
-                      </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block text-[16px] font-semibold text-paper">{category.name}</span>
-                        {category.parentId && categoriesById[category.parentId] ? (
-                          <span className="mt-1 block text-[12px] text-paper-faint">
-                            {categoriesById[category.parentId].name} / {category.name}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    {categories.map((category) => {
+                      const catColor = category.color
+                        ? category.color.startsWith('#')
+                          ? category.color
+                          : `#${category.color}`
+                        : undefined
+                      return (
+                        <button
+                          key={category.id}
+                          type="button"
+                          disabled={!onOpenCategory}
+                          onClick={() => onOpenCategory?.(category)}
+                          style={{ '--cat-accent': catColor } as import('react').CSSProperties}
+                          className="linuxdo-control linuxdo-cat-card group flex min-h-[5rem] w-full items-center gap-3.5 rounded-[20px] p-4 text-left disabled:opacity-50"
+                        >
+                          <div className="linuxdo-cat-accent-bar" />
+                          <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-paper/[0.04] text-paper-muted group-hover:text-cinnabar group-hover:bg-cinnabar/10 transition-colors">
+                            <Hash size={19} />
                           </span>
-                        ) : null}
-                        {category.description ? (
-                          <span className="mt-1 line-clamp-2 text-[13px] text-paper-muted">
-                            {category.description}
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[15.5px] font-semibold text-paper group-hover:text-cinnabar transition-colors">
+                              {category.name}
+                            </span>
+                            {category.parentId && categoriesById[category.parentId] ? (
+                              <span className="mt-0.5 block truncate text-[11.5px] text-paper-faint">
+                                {categoriesById[category.parentId].name} / {category.name}
+                              </span>
+                            ) : null}
+                            {category.description ? (
+                              <span className="mt-1 line-clamp-2 text-[12px] leading-relaxed text-paper-muted">
+                                {category.description}
+                              </span>
+                            ) : null}
+                            {category.topicCount !== undefined ? (
+                              <span className="mt-1.5 inline-block text-[11px] tabular-nums font-medium text-paper-faint">
+                                {category.topicCount} 个话题
+                              </span>
+                            ) : null}
                           </span>
-                        ) : null}
-                        {category.topicCount !== undefined ? (
-                          <span className="mt-1 block text-[12px] text-paper-faint">
-                            {category.topicCount} 个话题
-                          </span>
-                        ) : null}
-                      </span>
-                      <ChevronRight size={16} className="text-paper-faint" />
-                    </button>
-                  ))}
+                          <ChevronRight size={16} className="text-paper-faint transition-transform group-hover:translate-x-0.5" />
+                        </button>
+                      )
+                    })}
+                  </div>
                 </div>
               ) : null}
+
               {tags.length ? (
-                <div className="pt-4">
-                  <h3 className="mb-3 text-[12px] font-medium text-paper-faint">标签 · {tags.length}</h3>
+                <div className="pt-3">
+                  <h3 className="mb-2.5 px-1 text-[12px] font-semibold text-paper-faint">
+                    标签 · {tags.length}
+                  </h3>
                   <div className="flex flex-wrap gap-2">
                     {tags.map((tag) => (
                       <button
@@ -607,53 +639,59 @@ export function SearchView({
                         disabled={!onOpenTag || tag.disabled}
                         title={tag.disabledReason}
                         onClick={() => onOpenTag?.(tag.name)}
-                        className="linuxdo-control inline-flex min-h-11 max-w-full items-center gap-2 rounded-xl border border-haze/60 bg-paper/[0.025] px-3 text-[14px] text-paper-muted disabled:opacity-50"
+                        className="linuxdo-control linuxdo-tag-chip inline-flex min-h-10 max-w-full items-center gap-2 rounded-xl px-3.5 text-[13.5px] text-paper-muted disabled:opacity-50"
                       >
-                        <span className="truncate">#{tag.name}</span>
+                        <span className="truncate font-medium">#{tag.name}</span>
                         {tag.topicCount !== undefined ? (
-                          <span className="shrink-0 text-[12px] tabular-nums text-paper-faint">
+                          <span className="shrink-0 rounded-full bg-paper/[0.06] px-1.5 py-0.5 font-mono text-[11px] text-paper-faint">
                             {tag.topicCount}
                           </span>
                         ) : null}
                       </button>
                     ))}
                   </div>
-                  <p className="mt-3 text-[12px] text-paper-faint">
+                  <p className="mt-3 px-1 text-[11.5px] text-paper-faint">
                     最多显示 30 个标签，可继续输入关键词缩小范围
                   </p>
                 </div>
               ) : null}
             </>
           ) : null}
-          {activeTab === 'users'
-            ? users.map((user) => (
+
+          {activeTab === 'users' && users.length ? (
+            <div className="linuxdo-group" style={{ '--row-inset': '4.5rem' } as import('react').CSSProperties}>
+              {users.map((user) => (
                 <button
                   type="button"
                   key={user.id}
                   onClick={() => onOpenUser(user.username)}
-                  className="linuxdo-control flex min-h-20 w-full items-center gap-3.5 py-3 text-left active:bg-paper/[0.035]"
+                  className="linuxdo-control linuxdo-row group flex min-h-[4.75rem] w-full items-center gap-3.5 px-4 py-3 text-left transition-colors hover:bg-paper/[0.03] active:bg-paper/[0.06]"
                 >
-                  <span className="h-12 w-12 shrink-0 overflow-hidden rounded-full bg-paper/5 ring-1 ring-black/5 dark:ring-white/10">
+                  <span className="h-11 w-11 shrink-0 overflow-hidden rounded-full bg-paper/5 ring-1 ring-black/5 dark:ring-white/10 shadow-sm">
                     {avatar(user.avatarTemplate, user.username)}
                   </span>
                   <span className="min-w-0 flex-1">
-                    <span className="block truncate text-[16px] font-semibold text-paper">
+                    <span className="block truncate text-[15px] font-semibold text-paper group-hover:text-cinnabar transition-colors">
                       {user.name || user.username}
                     </span>
-                    <span className="mt-0.5 block text-[13px] text-paper-faint">@{user.username}</span>
+                    <span className="mt-0.5 block text-[12px] text-paper-faint">@{user.username}</span>
                   </span>
-                  <ChevronRight size={16} className="text-paper-faint" />
+                  <ChevronRight size={16} className="text-paper-faint transition-transform group-hover:translate-x-0.5" />
                 </button>
-              ))
-            : null}
+              ))}
+            </div>
+          ) : null}
         </div>
+
         {!loading && !error && !visibleCount ? (
-          <div className="py-14 text-center">
-            <Search size={28} className="mx-auto mb-3 text-paper-faint" />
-            <p className="text-[14px] text-paper-muted">
+          <div className="py-20 text-center">
+            <div className="mx-auto mb-3.5 grid h-14 w-14 place-items-center rounded-3xl border border-haze/60 bg-paper/[0.035] text-paper-muted shadow-sm">
+              <Search size={24} className="text-paper-faint" />
+            </div>
+            <p className="text-[14.5px] font-semibold text-paper">
               {lastQuery ? '没有找到匹配结果' : '在社区里找到你需要的内容'}
             </p>
-            <p className="mt-2 text-[12px] text-paper-faint">
+            <p className="mt-1.5 text-[12px] leading-relaxed text-paper-faint">
               {lastQuery
                 ? chips.length && activeTab === 'posts'
                   ? '试试移除部分筛选条件，或换个关键词'
@@ -662,21 +700,23 @@ export function SearchView({
             </p>
           </div>
         ) : null}
+
         {activeTab === 'users' && users.length ? (
-          <p className="mt-4 text-center text-[12px] text-paper-faint">
+          <p className="mt-4 text-center text-[11.5px] text-paper-faint">
             最多显示 20 位成员，可输入更完整的用户名
           </p>
         ) : null}
+
         {lastQuery && hasMore ? (
           <button
             type="button"
             disabled={loading || loadingMore || query.trim() !== lastQuery}
             onClick={() => void run(page + 1)}
-            className="linuxdo-control mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-paper/[0.045] text-[13px] text-paper-muted disabled:opacity-40"
+            className="linuxdo-control mt-4 flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-haze/60 bg-paper/[0.03] text-[12.5px] font-medium text-paper-muted shadow-sm transition-all hover:bg-paper/[0.06] hover:text-paper active:scale-[0.99] disabled:opacity-40"
           >
             {loadingMore ? (
               <>
-                <Loader2 size={14} className="animate-spin" />
+                <Loader2 size={14} className="animate-spin text-paper-faint" />
                 加载中…
               </>
             ) : (
@@ -684,10 +724,12 @@ export function SearchView({
             )}
           </button>
         ) : null}
+
         {lastQuery && activeTab === 'posts' && page === 10 && !hasMore ? (
-          <p className="mt-5 text-center text-[12px] text-paper-faint">已达到搜索页数上限，请增加筛选条件</p>
+          <p className="mt-5 text-center text-[11.5px] text-paper-faint">已达到搜索页数上限，请增加筛选条件</p>
         ) : null}
       </div>
+
       {filtersOpen ? (
         <SearchFilters
           value={parsed}
@@ -697,6 +739,7 @@ export function SearchView({
           onClose={() => setFiltersOpen(false)}
         />
       ) : null}
+
       <OptionPickerDialog<LinuxDoSearchOrder>
         open={sortOpen}
         title="排序依据"
@@ -737,34 +780,42 @@ function SearchResultRow({
       aria-label={'打开搜索结果：' + title}
       disabled={!topic && !post?.topicId}
       onClick={onOpen}
-      className="linuxdo-control flex w-full items-start gap-3.5 py-4 text-left active:bg-paper/[0.035] disabled:opacity-50"
+      className="linuxdo-control linuxdo-row group flex w-full items-start gap-3.5 px-4 py-4 text-left transition-colors hover:bg-paper/[0.03] active:bg-paper/[0.06] disabled:opacity-50"
     >
-      <span className="mt-0.5 h-11 w-11 shrink-0 overflow-hidden rounded-full bg-paper/5 ring-1 ring-black/5 dark:ring-white/10">
+      <span className="mt-0.5 h-11 w-11 shrink-0 overflow-hidden rounded-full bg-paper/5 ring-1 ring-black/5 dark:ring-white/10 shadow-sm">
         {avatar(author?.avatarTemplate, author?.username)}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="line-clamp-2 text-[16px] font-semibold leading-[1.45] tracking-[-0.01em] text-paper">
+        <span className="line-clamp-2 text-[15.5px] font-semibold leading-[1.45] tracking-[-0.01em] text-paper group-hover:text-cinnabar transition-colors">
           {title}
         </span>
-        <span className="mt-1.5 flex flex-wrap items-baseline gap-x-2 gap-y-1 text-[12px] text-paper-faint">
+        <span className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-0.5 text-[11.5px] text-paper-faint">
           <span className="max-w-full truncate font-medium text-paper-muted">{displayName}</span>
           {post?.name && post.username !== post.name ? <span>@{post.username}</span> : null}
-          <span>{ago(post?.createdAt || topic?.lastPostedAt || '')}</span>
+          <span>· {ago(post?.createdAt || topic?.lastPostedAt || '')}</span>
         </span>
         {post?.cooked ? (
           <span
-            className="mt-2 block line-clamp-3 text-[14px] leading-[1.55] text-paper-muted [&_b]:font-semibold [&_b]:text-cinnabar-soft [&_mark]:bg-cinnabar/15 [&_.search-highlight]:font-semibold [&_.search-highlight]:text-cinnabar-soft"
+            className="mt-2 block rounded-xl border border-haze/40 bg-paper/[0.025] px-3 py-2 text-[13px] leading-[1.6] text-paper-muted line-clamp-3 [&_b]:font-semibold [&_b]:text-cinnabar-soft [&_mark]:bg-cinnabar/20 [&_mark]:text-inherit [&_.search-highlight]:font-semibold [&_.search-highlight]:text-cinnabar-soft"
             dangerouslySetInnerHTML={{ __html: post.cooked }}
           />
         ) : null}
-        <span className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-paper-faint">
-          {category ? <span className="text-cinnabar-soft">{category.name}</span> : null}
+        <span className="mt-2.5 flex flex-wrap items-center gap-x-2 gap-y-1.5 text-[11px] text-paper-faint">
+          {category ? (
+            <span className="rounded-md bg-cinnabar/10 px-1.5 py-0.5 font-medium text-cinnabar-soft">
+              {category.name}
+            </span>
+          ) : null}
           {topic?.tags.slice(0, 2).map((tag) => (
-            <span key={tag}>#{tag}</span>
+            <span key={tag} className="rounded-md border border-haze/60 bg-paper/[0.025] px-1.5 py-0.5 font-mono text-paper-muted">
+              #{tag}
+            </span>
           ))}
-          <span>{post ? `匹配楼层 #${post.postNumber}` : `${topic?.replyCount || 0} 条回复`}</span>
+          <span className="font-mono text-paper-muted">
+            {post ? `匹配楼层 #${post.postNumber}` : `${topic?.replyCount || 0} 条回复`}
+          </span>
           {topic ? (
-            <span>
+            <span className="font-mono">
               {topic.views} 浏览 · {topic.likeCount} 赞
             </span>
           ) : null}
@@ -773,3 +824,4 @@ function SearchResultRow({
     </button>
   )
 }
+

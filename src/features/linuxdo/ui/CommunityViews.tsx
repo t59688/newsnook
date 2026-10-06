@@ -282,70 +282,163 @@ export function NotificationsView({
 
   return (
     <RefreshSurface onRefresh={() => loadNotifications(true)} className="page-x pb-4 pt-3">
-      <section className="mb-4 rounded-[24px] border border-haze/70 bg-ink-raised p-4 shadow-sm">
+      <section className="mb-4 overflow-hidden rounded-[24px] border border-haze/70 bg-ink-raised p-4 shadow-sm">
         <div className="flex items-center justify-between">
-          <div><h2 className="text-[20px] font-bold tracking-[-0.03em] text-paper">通知</h2><p className="mt-1 text-[10.5px] text-paper-muted">不错过任何重要互动</p></div>
-          <button type="button" aria-label="刷新通知" disabled={loading || loadingMore} onClick={() => void loadNotifications(true)} className="linuxdo-control grid h-10 w-10 place-items-center rounded-full bg-cinnabar/10 text-cinnabar disabled:opacity-40">
-            <RotateCw size={18} className={loading ? 'animate-spin' : ''} />
+          <div className="flex items-center gap-2.5">
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-[20px] font-bold tracking-[-0.03em] text-paper">通知</h2>
+                {unreadCount > 0 ? (
+                  <span className="linuxdo-count-badge">
+                    {unreadCount > 99 ? '99+' : unreadCount}
+                  </span>
+                ) : null}
+              </div>
+              <p className="mt-1 text-[11px] text-paper-muted">不错过任何重要互动</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            aria-label="刷新通知"
+            disabled={loading || loadingMore}
+            onClick={() => void loadNotifications(true)}
+            className="linuxdo-control grid h-10 w-10 place-items-center rounded-full border border-haze/60 bg-paper/[0.04] text-paper-muted shadow-sm transition-all hover:bg-paper/[0.08] hover:text-cinnabar active:scale-95 disabled:opacity-40"
+          >
+            <RotateCw size={17} className={loading ? 'animate-spin text-cinnabar' : ''} />
           </button>
         </div>
-        <div className="mt-4 grid grid-cols-5 rounded-2xl bg-ink-deep p-1">
+
+        <div className="linuxdo-segmented mt-3.5">
           {([['all', '全部'], ['mentions', '提及'], ['replies', '回复'], ['private', '私信'], ['system', '系统']] as const).map(([key, label]) => (
-            <button key={key} type="button" onClick={() => selectFilter(key)} className={'linuxdo-control min-h-11 rounded-xl px-2 text-[12px] font-semibold ' + (filter === key ? 'bg-cinnabar text-white shadow-sm' : 'text-paper-muted')}>{label}</button>
+            <button
+              key={key}
+              type="button"
+              onClick={() => selectFilter(key)}
+              className={
+                'linuxdo-control linuxdo-segment min-h-10 rounded-xl px-2 text-[12.5px] font-semibold transition-all ' +
+                (filter === key ? 'is-active bg-cinnabar text-white shadow-sm' : 'text-paper-muted hover:text-paper')
+              }
+            >
+              {label}
+            </button>
           ))}
         </div>
       </section>
 
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <span className="text-[10.5px] text-paper-faint">
+      <div className="mb-3 flex items-center justify-between gap-3 px-1">
+        <span className="text-[11px] font-medium text-paper-faint">
           {`未读 ${unreadCount} · 已加载 ${items.length}${totalRows !== undefined ? ` / ${totalRows}` : ''}`}
         </span>
         <button
-            type="button"
-            disabled={markingAll || unreadCount === 0 || loading}
-            onClick={markAllRead}
-            className="linuxdo-control min-h-11 rounded-full border border-haze bg-ink-raised px-3 py-1.5 text-[12px] text-paper-muted disabled:opacity-40"
-          >
-            {markingAll ? '处理中…' : '全部已读'}
-          </button>
+          type="button"
+          disabled={markingAll || unreadCount === 0 || loading}
+          onClick={markAllRead}
+          className="linuxdo-control inline-flex min-h-9 items-center gap-1.5 rounded-full border border-haze/70 bg-ink-raised px-3.5 py-1 text-[11.5px] font-medium text-paper-muted shadow-sm transition-all hover:border-paper/20 hover:text-paper active:scale-95 disabled:opacity-40"
+        >
+          {markingAll ? (
+            <>
+              <Loader2 size={13} className="animate-spin text-paper-faint" />
+              <span>处理中…</span>
+            </>
+          ) : (
+            '全部已读'
+          )}
+        </button>
       </div>
 
-      {error ? <button type="button" onClick={() => void loadNotifications(true)} className="mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[10.5px] text-cinnabar-soft">{error} · 点击重试</button> : null}
-      {loading ? <div className="flex justify-center py-16"><Loader2 className="animate-spin text-paper-faint" /></div> : (
-        <div className="overflow-hidden rounded-2xl bg-ink-raised/30 divide-y divide-haze/50">
-          {filteredItems.map((item) => <NotificationRow key={item.id} item={item} marking={markingIds.has(item.id)} onOpen={() => openNotification(item)} />)}
-          {!error && !filteredItems.length ? <div className="py-14 text-center text-[11px] text-paper-faint">当前分类暂无通知</div> : null}
+      {error ? (
+        <button
+          type="button"
+          onClick={() => void loadNotifications(true)}
+          className="mb-3.5 w-full rounded-2xl border border-cinnabar/25 bg-cinnabar/[0.08] px-3.5 py-2.5 text-left text-[11px] font-medium leading-relaxed text-cinnabar-soft shadow-sm transition-colors hover:bg-cinnabar/[0.12]"
+        >
+          {error} · 点击重试
+        </button>
+      ) : null}
+
+      {loading ? (
+        <div className="linuxdo-group p-2 space-y-2">
+          {Array.from({ length: 4 }, (_, index) => (
+            <div key={index} className="linuxdo-skeleton h-20 rounded-xl" />
+          ))}
+        </div>
+      ) : (
+        <div className="linuxdo-group" style={{ '--row-inset': '4.25rem' } as import('react').CSSProperties}>
+          {filteredItems.map((item) => (
+            <NotificationRow key={item.id} item={item} marking={markingIds.has(item.id)} onOpen={() => openNotification(item)} />
+          ))}
+          {!error && !filteredItems.length ? (
+            <div className="py-16 text-center">
+              <div className="mx-auto mb-2.5 grid h-12 w-12 place-items-center rounded-2xl bg-paper/[0.04] text-paper-faint">
+                <RotateCw size={20} className="opacity-40" />
+              </div>
+              <p className="text-[13px] font-medium text-paper-muted">当前分类暂无通知</p>
+              <p className="mt-1 text-[11px] text-paper-faint">有新动态时会第一时间显示在这里</p>
+            </div>
+          ) : null}
           {nextOffset !== undefined ? (
-            <button
-              type="button"
-              disabled={loadingMore}
-              onClick={() => void loadMoreNotifications()}
-              className="linuxdo-control w-full rounded-full border border-haze px-4 py-2 text-[10.5px] text-paper-muted disabled:opacity-40"
-            >
-              {loadingMore ? '加载中…' : '加载更多通知'}
-            </button>
+            <div className="p-3">
+              <button
+                type="button"
+                disabled={loadingMore}
+                onClick={() => void loadMoreNotifications()}
+                className="linuxdo-control flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-haze/60 bg-paper/[0.025] text-[12px] font-medium text-paper-muted transition-all hover:bg-paper/[0.06] hover:text-paper active:scale-[0.99] disabled:opacity-40"
+              >
+                {loadingMore ? (
+                  <>
+                    <Loader2 size={14} className="animate-spin text-paper-faint" />
+                    <span>加载中…</span>
+                  </>
+                ) : (
+                  '加载更多通知'
+                )}
+              </button>
+            </div>
           ) : null}
         </div>
       )}
 
       {detailItem ? (
-        <div className="fixed inset-0 z-[90] grid place-items-end bg-black/25 p-3 pb-[max(16px,var(--sab))] sm:place-items-center" role="presentation" onClick={() => setDetailItem(null)}>
+        <div
+          className="linuxdo-sheet-backdrop fixed inset-0 z-[90] grid place-items-end bg-black/50 p-3 pb-[max(16px,var(--sab))] backdrop-blur-sm sm:place-items-center"
+          role="presentation"
+          onClick={() => setDetailItem(null)}
+        >
           <section
             role="dialog"
             aria-modal="true"
             aria-label="通知详情"
             onClick={(event) => event.stopPropagation()}
-            className="w-full max-w-md rounded-[24px] border border-haze/80 bg-ink-raised p-5 shadow-2xl"
+            className="linuxdo-sheet w-full max-w-md rounded-[28px] border border-haze/80 bg-ink-raised p-5 shadow-2xl"
           >
+            <div className="linuxdo-sheet-grabber mb-3" />
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <div className="text-[10px] font-semibold text-cinnabar-soft">{linuxDoNotificationLabel(detailItem.notificationType)}</div>
-                <h3 className="mt-1 text-[17px] font-bold tracking-[-0.02em] text-paper">{linuxDoNotificationTitle(detailItem)}</h3>
+                <div className="inline-flex rounded-full bg-cinnabar/10 px-2.5 py-0.5 text-[10px] font-semibold text-cinnabar-soft">
+                  {linuxDoNotificationLabel(detailItem.notificationType)}
+                </div>
+                <h3 className="mt-2 text-[17px] font-bold tracking-[-0.02em] text-paper">{linuxDoNotificationTitle(detailItem)}</h3>
               </div>
-              <button type="button" onClick={() => setDetailItem(null)} className="linuxdo-control grid h-8 w-8 shrink-0 place-items-center rounded-full border border-haze text-paper-muted" aria-label="关闭通知详情"><X size={15} /></button>
+              <button
+                type="button"
+                onClick={() => setDetailItem(null)}
+                className="linuxdo-control grid h-9 w-9 shrink-0 place-items-center rounded-full border border-haze/70 bg-paper/[0.04] text-paper-muted transition-colors hover:bg-paper/[0.08] hover:text-paper"
+                aria-label="关闭通知详情"
+              >
+                <X size={16} />
+              </button>
             </div>
-            <p className="mt-3 text-[11.5px] leading-6 text-paper-muted">{linuxDoNotificationDetail(detailItem)}</p>
-            <div className="mt-4 text-[9.5px] text-paper-faint">{ago(detailItem.createdAt)}</div>
+            <p className="mt-3.5 text-[12px] leading-relaxed text-paper-muted">{linuxDoNotificationDetail(detailItem)}</p>
+            <div className="mt-5 flex items-center justify-between border-t border-haze/40 pt-3 text-[10px] text-paper-faint">
+              <span>{ago(detailItem.createdAt)}</span>
+              <button
+                type="button"
+                onClick={() => setDetailItem(null)}
+                className="linuxdo-control rounded-full bg-paper/[0.05] px-3 py-1 text-[11px] font-medium text-paper-muted hover:text-paper"
+              >
+                关闭
+              </button>
+            </div>
           </section>
         </div>
       ) : null}
@@ -383,58 +476,148 @@ export function BookmarksView({ session, onOpenTopic }: { session: LinuxDoSessio
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto page-x pb-4 pt-4">
-      <div className="space-y-2.5">
+      <div className="space-y-3">
         {items.map((item) => (
-          <div key={item.id} className="rounded-[18px] border border-haze/60 bg-ink-raised/40 px-4 py-3">
-            <div className="flex items-start gap-3">
-              <button type="button" onClick={() => item.topicId && onOpenTopic({ id: item.topicId, slug: item.topicSlug || 'topic', title: item.topicTitle || 'Linux.do 主题', postsCount: 0, replyCount: 0, views: 0, likeCount: 0, createdAt: item.createdAt || '', lastPostedAt: item.createdAt || '', tags: [], posters: [] }, item.postNumber)} className="linuxdo-control min-w-0 flex-1 text-left">
-                <div className="line-clamp-2 text-[13px] font-medium text-paper">{item.topicTitle || item.name || '已收藏帖子'}</div>
-                <div className="mt-1 text-[10px] text-paper-faint">{item.username ? '@' + item.username + ' · ' : ''}{item.postNumber ? '#' + item.postNumber : ''}{item.name ? ' · ' + item.name : ''}{item.reminderAt ? ' · ' + new Date(item.reminderAt).toLocaleString('zh-CN') : ''}</div>
+          <div key={item.id} className="rounded-[20px] border border-haze/60 bg-ink-raised/60 p-4 shadow-sm transition-all hover:border-haze">
+            <div className="flex items-start gap-3.5">
+              <button
+                type="button"
+                onClick={() =>
+                  item.topicId &&
+                  onOpenTopic(
+                    {
+                      id: item.topicId,
+                      slug: item.topicSlug || 'topic',
+                      title: item.topicTitle || 'Linux.do 主题',
+                      postsCount: 0,
+                      replyCount: 0,
+                      views: 0,
+                      likeCount: 0,
+                      createdAt: item.createdAt || '',
+                      lastPostedAt: item.createdAt || '',
+                      tags: [],
+                      posters: [],
+                    },
+                    item.postNumber
+                  )
+                }
+                className="linuxdo-control min-w-0 flex-1 text-left"
+              >
+                <div className="line-clamp-2 text-[14px] font-semibold leading-snug text-paper hover:text-cinnabar transition-colors">
+                  {item.topicTitle || item.name || '已收藏帖子'}
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[10.5px] text-paper-faint">
+                  {item.username ? <span className="font-medium text-paper-muted">@{item.username}</span> : null}
+                  {item.postNumber ? <span>#{item.postNumber}</span> : null}
+                  {item.name ? <span className="rounded-md bg-paper/[0.04] px-1.5 py-0.5 text-paper-muted">{item.name}</span> : null}
+                  {item.reminderAt ? (
+                    <span className="text-[#f5b326]">· 提醒：{new Date(item.reminderAt).toLocaleString('zh-CN')}</span>
+                  ) : null}
+                </div>
               </button>
-              <button type="button" onClick={() => {
-                setEditingId(item.id)
-                setEditName(item.name || '')
-                if (item.reminderAt) {
-                  const date = new Date(item.reminderAt)
-                  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
-                  setEditReminder(local)
-                } else setEditReminder('')
-              }} className="linuxdo-control shrink-0 rounded-full bg-paper/5 px-2.5 py-1.5 text-[10px] text-paper-muted">编辑</button>
+              <button
+                type="button"
+                onClick={() => {
+                  setEditingId(item.id)
+                  setEditName(item.name || '')
+                  if (item.reminderAt) {
+                    const date = new Date(item.reminderAt)
+                    const local = new Date(date.getTime() - date.getTimezoneOffset() * 60000).toISOString().slice(0, 16)
+                    setEditReminder(local)
+                  } else setEditReminder('')
+                }}
+                className="linuxdo-control shrink-0 rounded-full border border-haze/60 bg-paper/[0.04] px-3 py-1.5 text-[11px] font-medium text-paper-muted transition-colors hover:text-paper"
+              >
+                编辑
+              </button>
             </div>
-            {editingId === item.id ? <div className="mt-3 grid gap-2 rounded-2xl bg-ink/55 p-3 sm:grid-cols-[1fr_1fr_auto]">
-              <input value={editName} onChange={(event) => setEditName(event.target.value)} placeholder="书签备注" className="rounded-xl border border-haze bg-ink px-3 py-2 text-[11px] text-paper outline-none" />
-              <input type="datetime-local" value={editReminder} onChange={(event) => setEditReminder(event.target.value)} className="rounded-xl border border-haze bg-ink px-3 py-2 text-[11px] text-paper outline-none" />
-              <div className="flex gap-1.5">
-                <button type="button" disabled={saving} onClick={async () => {
-                  setSaving(true)
-                  setError('')
-                  try {
-                    const reminderAt = editReminder ? new Date(editReminder).toISOString() : ''
-                    await bookmarkApi.update(item.id, { name: editName.trim(), reminderAt })
-                    setItems((previous) => previous.map((candidate) => candidate.id === item.id ? { ...candidate, name: editName.trim() || undefined, reminderAt: reminderAt || undefined } : candidate))
-                    setEditingId(undefined)
-                  } catch (nextError) {
-                    setError(readableError(nextError))
-                  } finally {
-                    setSaving(false)
-                  }
-                }} className="linuxdo-control rounded-full bg-cinnabar px-3 py-2 text-[10px] text-white disabled:opacity-40">保存</button>
-                <button type="button" disabled={saving} onClick={() => setEditingId(undefined)} className="linuxdo-control rounded-full border border-haze px-3 py-2 text-[10px] text-paper-muted">取消</button>
-                <button type="button" disabled={saving} onClick={() => setDeleteTargetId(item.id)} className="linuxdo-control rounded-full border border-haze px-3 py-2 text-[10px] text-paper-faint disabled:opacity-40">删除</button>
+            {editingId === item.id ? (
+              <div className="mt-3.5 grid gap-2.5 rounded-2xl border border-haze/60 bg-ink/75 p-3.5 sm:grid-cols-[1fr_1fr_auto]">
+                <input
+                  value={editName}
+                  onChange={(event) => setEditName(event.target.value)}
+                  placeholder="书签备注"
+                  className="rounded-xl border border-haze bg-ink px-3 py-2 text-[12px] text-paper outline-none focus:border-cinnabar/60"
+                />
+                <input
+                  type="datetime-local"
+                  value={editReminder}
+                  onChange={(event) => setEditReminder(event.target.value)}
+                  className="rounded-xl border border-haze bg-ink px-3 py-2 text-[12px] text-paper outline-none focus:border-cinnabar/60"
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={async () => {
+                      setSaving(true)
+                      setError('')
+                      try {
+                        const reminderAt = editReminder ? new Date(editReminder).toISOString() : ''
+                        await bookmarkApi.update(item.id, { name: editName.trim(), reminderAt })
+                        setItems((previous) =>
+                          previous.map((candidate) =>
+                            candidate.id === item.id
+                              ? { ...candidate, name: editName.trim() || undefined, reminderAt: reminderAt || undefined }
+                              : candidate
+                          )
+                        )
+                        setEditingId(undefined)
+                      } catch (nextError) {
+                        setError(readableError(nextError))
+                      } finally {
+                        setSaving(false)
+                      }
+                    }}
+                    className="linuxdo-control rounded-full bg-cinnabar px-3.5 py-2 text-[11px] font-medium text-white shadow-sm disabled:opacity-40"
+                  >
+                    保存
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setEditingId(undefined)}
+                    className="linuxdo-control rounded-full border border-haze px-3.5 py-2 text-[11px] text-paper-muted"
+                  >
+                    取消
+                  </button>
+                  <button
+                    type="button"
+                    disabled={saving}
+                    onClick={() => setDeleteTargetId(item.id)}
+                    className="linuxdo-control rounded-full border border-haze px-3.5 py-2 text-[11px] text-paper-faint hover:text-cinnabar-soft disabled:opacity-40"
+                  >
+                    删除
+                  </button>
+                </div>
               </div>
-            </div> : null}
+            ) : null}
           </div>
         ))}
         {!items.length ? <div className="py-16 text-center text-[12px] text-paper-faint">暂无书签</div> : null}
-        {nextUrl ? <button type="button" disabled={loadingMore} onClick={() => {
-          const username = session.currentUser?.username
-          if (!username) return
-          setLoadingMore(true)
-          void bookmarkApi.list(username, nextUrl).then((result) => {
-            setItems((previous) => previous.concat(result.items.filter((item) => !previous.some((existing) => existing.id === item.id))))
-            setNextUrl(result.nextUrl)
-          }).catch((nextError) => setError(readableError(nextError))).finally(() => setLoadingMore(false))
-        }} className="linuxdo-control w-full rounded-full border border-haze px-4 py-2 text-[10.5px] text-paper-muted disabled:opacity-40">{loadingMore ? '加载中…' : '加载更多书签'}</button> : null}
+        {nextUrl ? (
+          <button
+            type="button"
+            disabled={loadingMore}
+            onClick={() => {
+              const username = session.currentUser?.username
+              if (!username) return
+              setLoadingMore(true)
+              void bookmarkApi.list(username, nextUrl)
+                .then((result) => {
+                  setItems((previous) =>
+                    previous.concat(result.items.filter((item) => !previous.some((existing) => existing.id === item.id)))
+                  )
+                  setNextUrl(result.nextUrl)
+                })
+                .catch((nextError) => setError(readableError(nextError)))
+                .finally(() => setLoadingMore(false))
+            }}
+            className="linuxdo-control w-full rounded-full border border-haze px-4 py-2 text-[11px] text-paper-muted disabled:opacity-40"
+          >
+            {loadingMore ? '加载中…' : '加载更多书签'}
+          </button>
+        ) : null}
       </div>
       <ConfirmDialog
         open={deleteTargetId !== undefined}
@@ -443,19 +626,25 @@ export function BookmarksView({ session, onOpenTopic }: { session: LinuxDoSessio
         confirmLabel={saving ? '删除中…' : '删除'}
         cancelLabel="取消"
         danger
-        onCancel={() => { if (!saving) setDeleteTargetId(undefined) }}
+        onCancel={() => {
+          if (!saving) setDeleteTargetId(undefined)
+        }}
         onConfirm={() => {
           const id = deleteTargetId
           if (id === undefined || saving) return
           setSaving(true)
           setError('')
-          void bookmarkApi.delete(id).then(() => {
-            setItems((previous) => previous.filter((candidate) => candidate.id !== id))
-            setEditingId(undefined)
-            setDeleteTargetId(undefined)
-          }).catch((nextError) => setError(readableError(nextError))).finally(() => setSaving(false))
+          void bookmarkApi.delete(id)
+            .then(() => {
+              setItems((previous) => previous.filter((candidate) => candidate.id !== id))
+              setEditingId(undefined)
+              setDeleteTargetId(undefined)
+            })
+            .catch((nextError) => setError(readableError(nextError)))
+            .finally(() => setSaving(false))
         }}
       />
     </div>
   )
 }
+

@@ -370,16 +370,16 @@ function FeedView({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-      <div className="sticky top-0 z-10 border-b border-haze/50 bg-ink/95 backdrop-blur-xl">
-        <div className="page-x flex items-center gap-1.5 py-2.5">
-          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-full bg-paper/[0.035] p-1 scrollbar-none">
+      <div className="sticky top-0 z-10 border-b border-haze/60 bg-ink/90 backdrop-blur-xl">
+        <div className="page-x flex items-center gap-2 py-2.5">
+          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-full bg-paper/[0.04] p-1 scrollbar-none">
             {feedTabs.map((tab) => (
               <button
                 key={tab.id}
                 type="button"
                 onClick={() => selectMode(tab.id)}
                 aria-pressed={tab.id === mode}
-                className={'linuxdo-control min-h-9 shrink-0 rounded-full px-4 py-1.5 text-[12px] font-semibold transition-all ' + (tab.id === mode ? 'bg-cinnabar text-white shadow-sm' : 'text-paper-muted hover:bg-ink-deep hover:text-paper')}
+                className={'linuxdo-control min-h-9 shrink-0 rounded-full px-4 py-1.5 text-[12px] font-semibold transition-all ' + (tab.id === mode ? 'bg-cinnabar text-white shadow-sm shadow-cinnabar/25' : 'text-paper-muted hover:bg-paper/5 hover:text-paper')}
               >
                 {tab.label}
               </button>
@@ -388,14 +388,14 @@ function FeedView({
           <button
             type="button"
             onClick={() => setFilterMenuOpen(true)}
-            className={'linuxdo-control inline-flex h-10 shrink-0 items-center gap-1 rounded-full border px-2.5 text-[10.5px] font-medium shadow-sm ' + (feedTabs.some((tab) => tab.id === mode) ? 'border-haze/70 bg-ink-raised text-paper-muted' : 'border-cinnabar/35 bg-cinnabar/10 text-cinnabar-soft')}
+            className={'linuxdo-control inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-3 text-[11px] font-medium shadow-sm transition active:scale-95 ' + (feedTabs.some((tab) => tab.id === mode) ? 'border-haze/70 bg-ink-raised text-paper-muted hover:border-haze hover:text-paper' : 'border-cinnabar/40 bg-cinnabar/10 text-cinnabar-soft font-semibold')}
             aria-label="LinuxDO 主题筛选"
           >
-            <ListFilter size={14} />
+            <ListFilter size={13} />
             {!feedTabs.some((tab) => tab.id === mode) ? <span className="max-w-[4.5rem] truncate">{feedLabels[mode]}</span> : null}
-            <ChevronDown size={11} />
+            <ChevronDown size={11} className="text-paper-faint" />
           </button>
-          <button type="button" disabled={refreshing || loading} onClick={() => void load(true)} className="linuxdo-control grid h-10 w-10 shrink-0 place-items-center rounded-full border border-haze/70 bg-ink-raised text-paper-muted shadow-sm hover:text-cinnabar disabled:opacity-55" aria-label={refreshing ? '正在刷新' : '刷新'}>
+          <button type="button" disabled={refreshing || loading} onClick={() => void load(true)} className="linuxdo-control grid h-9 w-9 shrink-0 place-items-center rounded-full border border-haze/70 bg-ink-raised text-paper-muted shadow-sm hover:border-cinnabar/40 hover:text-cinnabar transition active:scale-95 disabled:opacity-50" aria-label={refreshing ? '正在刷新' : '刷新'}>
             <RefreshCcw size={14} className={refreshing ? 'animate-spin' : ''} />
           </button>
         </div>
@@ -480,17 +480,18 @@ function FeedView({
       </div>
 
       {filterMenuOpen ? (
-        <div className="absolute inset-0 z-40 flex items-end bg-black/55 backdrop-blur-[2px] sm:items-center sm:justify-center sm:p-4" role="presentation" onClick={() => setFilterMenuOpen(false)}>
-          <div role="dialog" aria-modal="true" aria-label="LinuxDO 主题筛选" className="w-full max-h-[78dvh] overflow-hidden rounded-t-[28px] border border-haze bg-ink-raised shadow-2xl sm:max-w-md sm:rounded-[28px]" onClick={(event) => event.stopPropagation()}>
-            <div className="flex items-center justify-between border-b border-haze/60 px-4 py-3">
+        <div className="linuxdo-sheet-backdrop fixed inset-0 z-50 flex items-end justify-center bg-black/60 backdrop-blur-sm sm:items-center sm:p-4" role="presentation" onClick={() => setFilterMenuOpen(false)}>
+          <div role="dialog" aria-modal="true" aria-label="LinuxDO 主题筛选" className="linuxdo-sheet flex max-h-[82dvh] w-full flex-col overflow-hidden rounded-t-[28px] border-t border-haze/80 bg-ink-raised shadow-2xl sm:max-w-md sm:rounded-[28px] sm:border" onClick={(event) => event.stopPropagation()}>
+            <div className="linuxdo-sheet-grabber mx-auto sm:hidden" />
+            <div className="flex items-center justify-between border-b border-haze/60 px-5 py-3.5">
               <div>
-                <h3 className="text-[15px] font-semibold text-paper">主题筛选</h3>
-                <p className="mt-0.5 text-[9.5px] text-paper-faint">对应 LinuxDO PWA 的原生筛选，不做本地伪排序</p>
+                <h3 className="text-[16px] font-semibold text-paper">主题筛选</h3>
+                <p className="mt-0.5 text-[11px] text-paper-faint">对应 LinuxDO PWA 的原生筛选，不做本地伪排序</p>
               </div>
-              <button type="button" onClick={() => setFilterMenuOpen(false)} className="linuxdo-control grid h-9 w-9 place-items-center rounded-full bg-paper/5 text-paper-muted" aria-label="关闭筛选"><X size={15} /></button>
+              <button type="button" onClick={() => setFilterMenuOpen(false)} className="linuxdo-control grid h-9 w-9 place-items-center rounded-full bg-paper/5 text-paper-muted hover:bg-paper/10 hover:text-paper transition active:scale-95" aria-label="关闭筛选"><X size={16} /></button>
             </div>
-            <div className="max-h-[calc(78dvh-68px)] overflow-y-auto overscroll-contain p-3 pb-[max(14px,var(--sab))]">
-              <div className="grid gap-1.5">
+            <div className="max-h-[calc(82dvh-72px)] overflow-y-auto overscroll-contain p-4 pb-[max(16px,var(--sab))] scrollbar-thin">
+              <div className="grid gap-2">
                 {filterItems.map((item) => {
                   const selected = item.id === mode
                   const needsAuth = Boolean(item.auth && !session.authenticated)
@@ -506,18 +507,18 @@ function FeedView({
                         }
                         selectMode(item.id)
                       }}
-                      className={'linuxdo-control flex min-h-[58px] items-center gap-3 rounded-2xl border px-3.5 py-2.5 text-left transition-colors ' + (selected ? 'border-cinnabar/35 bg-cinnabar/[0.08]' : 'border-transparent bg-paper/[0.025] hover:bg-paper/[0.05]')}
+                      className={'linuxdo-control flex min-h-[60px] items-center gap-3.5 rounded-2xl border px-4 py-3 text-left transition select-none ' + (selected ? 'border-cinnabar/40 bg-cinnabar/[0.09] shadow-sm' : 'border-haze/50 bg-paper/[0.025] hover:border-haze hover:bg-paper/[0.05]')}
                     >
-                      <span className={'grid h-9 w-9 shrink-0 place-items-center rounded-xl ' + (selected ? 'bg-cinnabar/15 text-cinnabar-soft' : 'bg-paper/[0.05] text-paper-muted')}>
-                        {item.id === 'hot' ? <Flame size={16} /> : item.id === 'top' ? <Trophy size={16} /> : item.id === 'read' ? <History size={16} /> : item.id === 'categories' ? <Compass size={16} /> : item.id === 'bookmarks' ? <CheckCircle2 size={16} /> : <MessageCircle size={16} />}
+                      <span className={'grid h-10 w-10 shrink-0 place-items-center rounded-xl transition ' + (selected ? 'bg-cinnabar/15 text-cinnabar shadow-sm' : 'bg-paper/[0.05] text-paper-muted')}>
+                        {item.id === 'hot' ? <Flame size={18} /> : item.id === 'top' ? <Trophy size={18} /> : item.id === 'read' ? <History size={18} /> : item.id === 'categories' ? <Compass size={18} /> : item.id === 'bookmarks' ? <CheckCircle2 size={18} /> : <MessageCircle size={18} />}
                       </span>
                       <span className="min-w-0 flex-1">
-                        <span className="flex items-center gap-2 text-[12px] font-semibold text-paper">
+                        <span className="flex items-center gap-2 text-[13px] font-semibold text-paper">
                           {item.label}
-                          {selected ? <span className="rounded-full bg-cinnabar/12 px-1.5 py-0.5 text-[8px] font-medium text-cinnabar-soft">当前</span> : null}
-                          {needsAuth ? <span className="rounded-full bg-paper/[0.06] px-1.5 py-0.5 text-[8px] font-medium text-paper-faint">需登录</span> : null}
+                          {selected ? <span className="rounded-full bg-cinnabar/15 px-2 py-0.5 text-[10px] font-medium text-cinnabar-soft">当前</span> : null}
+                          {needsAuth ? <span className="rounded-full bg-paper/[0.08] px-2 py-0.5 text-[10px] font-medium text-paper-faint">需登录</span> : null}
                         </span>
-                        <span className="mt-0.5 block text-[9.5px] leading-4 text-paper-faint">{item.caption}</span>
+                        <span className="mt-0.5 block text-[11px] leading-4 text-paper-faint">{item.caption}</span>
                       </span>
                     </button>
                   )
@@ -744,15 +745,15 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
 
   return (
     <div className="linuxdo-workspace relative flex h-full min-h-0 flex-col overflow-hidden bg-ink text-paper">
-      {route.kind !== 'topic' ? <header className="linuxdo-brand-header linuxdo-control shrink-0 border-b border-haze/60 bg-ink/95 page-x select-none">
-        <div className="flex min-h-[60px] items-center gap-1.5 py-2 sm:gap-2">
-          <button type="button" onClick={() => { if (route.kind === 'discover' && route.scope) { setRoute({ kind: 'discover' }); return } if (!goBack()) onExit() }} className="linuxdo-icon-button grid h-10 w-10 shrink-0 place-items-center rounded-full text-paper-muted" aria-label="返回 NewsNook"><ArrowLeft size={18} /></button>
+      {route.kind !== 'topic' ? <header className="linuxdo-brand-header linuxdo-control shrink-0 border-b border-haze/60 bg-ink/90 page-x select-none backdrop-blur-xl">
+        <div className="flex min-h-[62px] items-center gap-2 py-2 sm:gap-2.5">
+          <button type="button" onClick={() => { if (route.kind === 'discover' && route.scope) { setRoute({ kind: 'discover' }); return } if (!goBack()) onExit() }} className="linuxdo-icon-button grid h-10 w-10 shrink-0 place-items-center rounded-full text-paper-muted hover:bg-paper/5 hover:text-paper transition active:scale-95" aria-label="返回 NewsNook"><ArrowLeft size={18} /></button>
           <div className="min-w-0 flex-1 overflow-hidden">
-            <div className="flex min-w-0 items-baseline gap-1.5 overflow-hidden whitespace-nowrap"><span className="shrink-0 text-[19px] font-bold tracking-[-0.03em] text-paper min-[400px]:text-[20px]">Linux.do</span><span className="hidden min-w-0 truncate text-[9.5px] font-medium text-paper-faint min-[400px]:inline">in NewsNook</span></div>
-            <div className="mt-0.5 truncate text-[10.5px] text-paper-muted">{route.kind === 'feed' ? '更好的技术讨论，从这里开始' : title}</div>
+            <div className="flex min-w-0 items-center gap-1.5 overflow-hidden whitespace-nowrap"><span className="shrink-0 text-[19px] font-bold tracking-tight text-paper min-[400px]:text-[20px]">Linux.do</span><span className="hidden min-w-0 truncate text-[10px] font-medium text-paper-faint min-[400px]:inline">in NewsNook</span></div>
+            <div className="mt-0.5 truncate text-[11px] text-paper-muted">{route.kind === 'feed' ? '更好的技术讨论，从这里开始' : title}</div>
           </div>
-          <button type="button" onClick={() => navigate({ kind: 'search' })} className={'linuxdo-icon-button grid h-9 w-9 shrink-0 place-items-center rounded-full ' + (route.kind === 'search' ? 'is-active' : 'text-paper-muted')} aria-label="搜索"><Search size={18} /></button>
-          <button type="button" onClick={() => navigate({ kind: 'notifications' })} className={'linuxdo-icon-button relative grid h-9 w-9 shrink-0 place-items-center rounded-full ' + (route.kind === 'notifications' ? 'is-active' : 'text-paper-muted')} aria-label="通知"><Bell size={18} />{notificationUnread > 0 ? <span className="absolute right-1 top-1 min-w-4 rounded-full bg-[#ff4d4f] px-1 text-center font-mono text-[8px] leading-4 text-white">{notificationUnread > 99 ? '99+' : notificationUnread}</span> : null}</button>
+          <button type="button" onClick={() => navigate({ kind: 'search' })} className={'linuxdo-icon-button grid h-9 w-9 shrink-0 place-items-center rounded-full transition active:scale-95 ' + (route.kind === 'search' ? 'is-active bg-cinnabar/10 text-cinnabar' : 'text-paper-muted hover:bg-paper/5 hover:text-paper')} aria-label="搜索"><Search size={18} /></button>
+          <button type="button" onClick={() => navigate({ kind: 'notifications' })} className={'linuxdo-icon-button relative grid h-9 w-9 shrink-0 place-items-center rounded-full transition active:scale-95 ' + (route.kind === 'notifications' ? 'is-active bg-cinnabar/10 text-cinnabar' : 'text-paper-muted hover:bg-paper/5 hover:text-paper')} aria-label="通知"><Bell size={18} />{notificationUnread > 0 ? <span className="absolute right-0.5 top-0.5 min-w-4 rounded-full bg-[#ff4d4f] px-1 text-center font-mono text-[8px] font-bold leading-4 text-white shadow-sm">{notificationUnread > 99 ? '99+' : notificationUnread}</span> : null}</button>
           <div className="linuxdo-preset-slot shrink-0"><PresetSwitcher {...presetSwitcher} /></div>
         </div>
       </header> : null}
@@ -806,12 +807,12 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         )}
       </div>
 
-      <nav className="linuxdo-bottom-nav linuxdo-control relative z-30 mx-2 sm:mx-3 mb-[max(10px,var(--sab))] mt-2 grid shrink-0 grid-cols-5 items-end rounded-[22px] sm:rounded-[24px] border border-haze/70 bg-ink-raised/95 px-2 py-1.5 shadow-2xl backdrop-blur-xl select-none">
-        <HomeRefreshButton active={route.kind === 'feed'} onNavigateHome={() => setRoute({ kind: 'feed', mode: lastFeedModeRef.current })} onRefresh={() => feedHomeRefreshRef.current?.()} className={'linuxdo-nav-item ' + (route.kind === 'feed' ? 'is-active' : '')} aria-label="首页"><MessageCircle size={18} /><span>首页</span></HomeRefreshButton>
-        <button type="button" onClick={() => setRoute({ kind: 'discover' })} className={'linuxdo-nav-item ' + (route.kind === 'discover' ? 'is-active' : '')} aria-label="发现"><Compass size={18} /><span>发现</span></button>
-        <button type="button" onClick={() => { setComposerTopic(undefined); setComposerEditPost(undefined); setComposerInitialRaw(''); setComposerReplyTo(undefined); setComposerOpen(true) }} className="linuxdo-nav-compose" aria-label="发布"><span className="grid h-12 w-12 place-items-center rounded-full bg-cinnabar text-white shadow-lg"><Plus size={22} /></span><span>发布</span></button>
-        <button type="button" onClick={() => setRoute({ kind: 'notifications' })} className={'linuxdo-nav-item relative ' + (route.kind === 'notifications' ? 'is-active' : '')} aria-label="通知"><Bell size={18} /><span>通知</span>{notificationUnread > 0 ? <i className="absolute right-[24%] top-1 h-2 w-2 rounded-full bg-[#ff4d4f]" /> : null}</button>
-        <button type="button" onClick={() => setRoute({ kind: 'account' })} className={'linuxdo-nav-item ' + (route.kind === 'account' || route.kind === 'messages' || route.kind === 'user' || route.kind === 'bookmarks' || route.kind === 'trust' ? 'is-active' : '')} aria-label="我的"><UserRound size={18} /><span>我的</span></button>
+      <nav className="linuxdo-bottom-nav linuxdo-control relative z-30 mx-2.5 sm:mx-3 mb-[max(10px,var(--sab))] mt-2 grid shrink-0 grid-cols-5 items-end rounded-[24px] border border-haze/70 bg-ink-raised/95 px-2 py-1.5 shadow-2xl backdrop-blur-xl select-none">
+        <HomeRefreshButton active={route.kind === 'feed'} onNavigateHome={() => setRoute({ kind: 'feed', mode: lastFeedModeRef.current })} onRefresh={() => feedHomeRefreshRef.current?.()} className={'linuxdo-nav-item ' + (route.kind === 'feed' ? 'is-active' : '')} aria-label="首页"><span className="linuxdo-nav-icon"><MessageCircle size={18} /></span><span>首页</span></HomeRefreshButton>
+        <button type="button" onClick={() => setRoute({ kind: 'discover' })} className={'linuxdo-nav-item ' + (route.kind === 'discover' ? 'is-active' : '')} aria-label="发现"><span className="linuxdo-nav-icon"><Compass size={18} /></span><span>发现</span></button>
+        <button type="button" onClick={() => { setComposerTopic(undefined); setComposerEditPost(undefined); setComposerInitialRaw(''); setComposerReplyTo(undefined); setComposerOpen(true) }} className="linuxdo-nav-compose" aria-label="发布"><span className="grid h-12 w-12 place-items-center rounded-full bg-cinnabar text-white shadow-lg shadow-cinnabar/30 transition active:scale-95"><Plus size={22} /></span><span>发布</span></button>
+        <button type="button" onClick={() => setRoute({ kind: 'notifications' })} className={'linuxdo-nav-item relative ' + (route.kind === 'notifications' ? 'is-active' : '')} aria-label="通知"><span className="linuxdo-nav-icon relative"><Bell size={18} />{notificationUnread > 0 ? <i className="absolute right-2 top-0.5 h-2 w-2 rounded-full bg-[#ff4d4f] ring-2 ring-ink-raised" /> : null}</span><span>通知</span></button>
+        <button type="button" onClick={() => setRoute({ kind: 'account' })} className={'linuxdo-nav-item ' + (route.kind === 'account' || route.kind === 'messages' || route.kind === 'user' || route.kind === 'bookmarks' || route.kind === 'trust' ? 'is-active' : '')} aria-label="我的"><span className="linuxdo-nav-icon"><UserRound size={18} /></span><span>我的</span></button>
       </nav>
 
       <LinuxDoComposer open={composerOpen} topic={composerTopic} session={session} initialRaw={composerInitialRaw} replyToPostNumber={composerReplyTo} editPost={composerEditPost} requestCloseRef={composerRequestCloseRef} onClose={closeComposer} onSent={(created, kind) => {
