@@ -92,6 +92,11 @@ export interface LinuxDoBoost {
   canFlag?: boolean
 }
 
+export interface LinuxDoPostDevice {
+  model: string
+  source: 'ios-app'
+}
+
 export interface LinuxDoPost {
   id: number
   postNumber: number
@@ -104,6 +109,7 @@ export interface LinuxDoPost {
   read?: boolean
   cooked: string
   raw?: string
+  device?: LinuxDoPostDevice
   replyToPostNumber?: number
   replyToUser?: LinuxDoReplyTarget
   reactions?: LinuxDoReaction[]

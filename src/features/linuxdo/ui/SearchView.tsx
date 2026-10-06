@@ -92,32 +92,128 @@ export function SearchView({ onOpen, onOpenUser, cacheRef }: {
     onOpen(topic, post.postNumber)
   }
   return (
-    <div ref={scrollerRef} onScroll={event => { cacheRef.current.scrollTop = event.currentTarget.scrollTop; stateRef.current.scrollTop = event.currentTarget.scrollTop }} className="min-h-0 flex-1 overflow-y-auto overscroll-contain page-x pb-4 pt-4">
-      <form onSubmit={event => { event.preventDefault(); void run() }} role="search" className="sticky top-0 z-10 rounded-2xl bg-ink pb-3">
-        <div className="flex items-center gap-2 rounded-2xl border border-haze/70 bg-ink-raised p-2 pl-3 focus-within:border-cinnabar/60">
-          <Search size={18} className="shrink-0 text-paper-faint" />
-          <input ref={inputRef} autoFocus={!lastQuery} type="search" enterKeyHint="search" aria-label="搜索主题、帖子、用户" value={query} onChange={event => update({ query: event.target.value })} placeholder="搜索主题、帖子、用户" className="min-w-0 flex-1 bg-transparent py-2 text-[16px] text-paper outline-none placeholder:text-paper-faint" />
-          {query ? <button type="button" onClick={clear} aria-label="清空搜索词" className="linuxdo-control grid h-11 w-11 place-items-center rounded-full text-paper-faint"><X size={18} /></button> : null}
-          <button type="submit" className="linuxdo-control min-h-11 rounded-xl bg-cinnabar px-3 text-[13px] font-medium text-white">搜索</button>
-        </div>
-        <div role="tablist" aria-label="搜索类型" className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-paper/[0.04] p-1">
-          {([['topics', '主题'], ['posts', '帖子'], ['users', '用户']] as const).map(([tab, label]) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => selectTab(tab)} className={'linuxdo-control min-h-11 rounded-lg text-[13px] font-medium ' + (activeTab === tab ? 'bg-ink-raised text-paper shadow-sm' : 'text-paper-muted')}>{label}</button>)}
-        </div>
-      </form>
-      {!lastQuery && history.length ? <div className="mb-4 flex flex-wrap items-center gap-2"><span className="text-[12px] text-paper-faint">最近搜索</span>{history.map(item => <button type="button" key={item} onClick={() => void run(1, item)} className="linuxdo-control min-h-11 rounded-full bg-paper/5 px-3 text-[13px] text-paper-muted">{item}</button>)}<button type="button" onClick={() => { setHistory([]); localStorage.removeItem('newsnook-linuxdo-search-history') }} className="linuxdo-control min-h-11 px-2 text-[12px] text-paper-faint">清除</button></div> : null}
-      {loading ? <div role="status" className="flex items-center justify-center gap-2 py-6 text-[12px] text-paper-faint"><Loader2 size={16} className="animate-spin" />搜索中…</div> : null}
-      {error ? <button type="button" onClick={() => void run(retryPage)} className="linuxdo-control my-3 min-h-11 w-full rounded-xl bg-cinnabar/10 p-3 text-[13px] text-cinnabar-soft">{error} · 点击重试</button> : null}
-      <div role="tabpanel" aria-busy={loading || loadingMore} className="divide-y divide-haze/50">
-        {activeTab === 'topics' ? topics.map(topic => {
-          const match = posts.find(post => post.topicId === topic.id)
-          return <SearchResultRow key={topic.id} topic={topic} post={match} onOpen={() => onOpen(topic, match?.postNumber)} />
-        }) : null}
-        {activeTab === 'posts' ? posts.map(post => <SearchResultRow key={post.id} topic={topics.find(topic => topic.id === post.topicId)} post={post} onOpen={() => openPost(post)} />) : null}
-        {activeTab === 'users' ? users.map(user => <button type="button" key={user.id} onClick={() => onOpenUser(user.username)} className="linuxdo-control flex min-h-20 w-full items-center gap-3 py-4 text-left"><span className="h-11 w-11 shrink-0 rounded-full bg-paper/5">{avatar(user.avatarTemplate, user.username)}</span><span className="min-w-0"><span className="block truncate text-[14px] font-semibold text-paper">{user.name || user.username}</span><span className="block text-[12px] text-paper-faint">@{user.username}</span></span></button>) : null}
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-haze/50 bg-ink/95 page-x pb-3 pt-3 backdrop-blur-xl">
+        <form onSubmit={event => { event.preventDefault(); void run() }} role="search">
+          <div className="flex h-11 items-center gap-2 rounded-full border border-haze/70 bg-ink-raised pl-3.5 pr-1.5 focus-within:border-cinnabar/50">
+            <Search size={16} className="shrink-0 text-paper-faint" aria-hidden />
+            <input
+              ref={inputRef}
+              autoFocus={!lastQuery}
+              type="search"
+              enterKeyHint="search"
+              aria-label="搜索主题、帖子、用户"
+              value={query}
+              onChange={event => update({ query: event.target.value })}
+              placeholder="搜索主题、帖子、用户"
+              className="min-w-0 flex-1 bg-transparent py-2 text-[16px] leading-none text-paper outline-none placeholder:text-paper-faint"
+            />
+            {query ? (
+              <button type="button" onClick={clear} aria-label="清空搜索词" className="linuxdo-control grid h-8 w-8 shrink-0 place-items-center rounded-full text-paper-faint hover:bg-paper/5 hover:text-paper">
+                <X size={15} />
+              </button>
+            ) : null}
+            <button type="submit" className="linuxdo-control h-8 shrink-0 rounded-full bg-cinnabar px-3.5 text-[13px] font-medium text-white">
+              搜索
+            </button>
+          </div>
+          <div role="tablist" aria-label="搜索类型" className="mt-3 grid grid-cols-3 gap-0.5 rounded-full bg-paper/[0.045] p-1">
+            {([['topics', '主题'], ['posts', '帖子'], ['users', '用户']] as const).map(([tab, label]) => (
+              <button
+                key={tab}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab}
+                onClick={() => selectTab(tab)}
+                className={'linuxdo-control h-9 rounded-full text-[13px] font-medium transition-colors ' + (activeTab === tab ? 'bg-ink-raised text-paper shadow-sm' : 'text-paper-muted')}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </form>
       </div>
-      {!loading && !error && lastQuery && !visibleCount ? <p className="py-14 text-center text-[13px] text-paper-muted">没有找到相关{activeTab === 'topics' ? '主题' : activeTab === 'posts' ? '帖子' : '用户'}，试试其他关键词</p> : null}
-      {!lastQuery && !loading && !error && !history.length ? <p className="py-14 text-center text-[13px] text-paper-muted">搜索社区主题、回复和成员</p> : null}
-      {lastQuery && hasMore ? <button type="button" disabled={loading || loadingMore || query.trim() !== lastQuery} onClick={() => void run(page + 1)} className="linuxdo-control mt-4 min-h-11 w-full rounded-xl bg-paper/5 text-[13px] text-paper-muted disabled:opacity-40">{loadingMore ? '加载中…' : '加载更多结果'}</button> : null}
+
+      <div
+        ref={scrollerRef}
+        onScroll={event => { cacheRef.current.scrollTop = event.currentTarget.scrollTop; stateRef.current.scrollTop = event.currentTarget.scrollTop }}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain page-x pb-6 pt-2"
+      >
+        {!lastQuery && history.length ? (
+          <div className="mb-3 flex flex-wrap items-center gap-2 px-0.5">
+            <span className="text-[12px] font-medium text-paper-faint">最近</span>
+            {history.map(item => (
+              <button type="button" key={item} onClick={() => void run(1, item)} className="linuxdo-control h-8 max-w-[11rem] truncate rounded-full bg-paper/[0.05] px-3 text-[12.5px] text-paper-muted">
+                {item}
+              </button>
+            ))}
+            <button
+              type="button"
+              onClick={() => { setHistory([]); localStorage.removeItem('newsnook-linuxdo-search-history') }}
+              className="linuxdo-control h-8 px-1.5 text-[12px] text-paper-faint"
+            >
+              清除
+            </button>
+          </div>
+        ) : null}
+
+        {loading ? (
+          <div role="status" className="flex items-center justify-center gap-2 py-10 text-[12px] text-paper-faint">
+            <Loader2 size={15} className="animate-spin" />搜索中…
+          </div>
+        ) : null}
+
+        {error ? (
+          <button type="button" onClick={() => void run(retryPage)} className="linuxdo-control my-2 min-h-11 w-full rounded-2xl bg-cinnabar/10 px-3 py-3 text-[13px] text-cinnabar-soft">
+            {error} · 点击重试
+          </button>
+        ) : null}
+
+        <div role="tabpanel" aria-busy={loading || loadingMore} className="divide-y divide-haze/40">
+          {activeTab === 'topics' ? topics.map(topic => {
+            const match = posts.find(post => post.topicId === topic.id)
+            return <SearchResultRow key={topic.id} topic={topic} post={match} onOpen={() => onOpen(topic, match?.postNumber)} />
+          }) : null}
+          {activeTab === 'posts' ? posts.map(post => (
+            <SearchResultRow key={post.id} topic={topics.find(topic => topic.id === post.topicId)} post={post} onOpen={() => openPost(post)} />
+          )) : null}
+          {activeTab === 'users' ? users.map(user => (
+            <button
+              type="button"
+              key={user.id}
+              onClick={() => onOpenUser(user.username)}
+              className="linuxdo-control flex min-h-[64px] w-full items-center gap-3 py-3 text-left active:bg-paper/[0.035]"
+            >
+              <span className="h-10 w-10 shrink-0 overflow-hidden rounded-full bg-paper/5 ring-1 ring-black/5 dark:ring-white/10">
+                {avatar(user.avatarTemplate, user.username)}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-[15px] font-medium leading-snug text-paper">{user.name || user.username}</span>
+                <span className="mt-0.5 block text-[12.5px] text-paper-faint">@{user.username}</span>
+              </span>
+            </button>
+          )) : null}
+        </div>
+
+        {!loading && !error && lastQuery && !visibleCount ? (
+          <p className="py-16 text-center text-[13px] text-paper-muted">
+            没有找到相关{activeTab === 'topics' ? '主题' : activeTab === 'posts' ? '帖子' : '用户'}，试试其他关键词
+          </p>
+        ) : null}
+        {!lastQuery && !loading && !error && !history.length ? (
+          <p className="py-16 text-center text-[13px] text-paper-muted">搜索社区主题、回复和成员</p>
+        ) : null}
+        {lastQuery && hasMore ? (
+          <button
+            type="button"
+            disabled={loading || loadingMore || query.trim() !== lastQuery}
+            onClick={() => void run(page + 1)}
+            className="linuxdo-control mt-3 min-h-11 w-full rounded-full bg-paper/[0.045] text-[13px] text-paper-muted disabled:opacity-40"
+          >
+            {loadingMore ? '加载中…' : '加载更多结果'}
+          </button>
+        ) : null}
+      </div>
     </div>
   )
 }
@@ -125,14 +221,36 @@ export function SearchView({ onOpen, onOpenUser, cacheRef }: {
 function SearchResultRow({ topic, post, onOpen }: { topic?: LinuxDoTopicSummary; post?: LinuxDoPost; onOpen: () => void }) {
   const author = post ?? topic?.posters[0]
   const title = topic?.title || post?.topicTitle || '搜索结果'
-  return <button type="button" aria-label={'打开搜索结果：' + title} disabled={!topic && !post?.topicId} onClick={onOpen} className="linuxdo-control flex w-full items-start gap-3 py-4 text-left active:bg-paper/5 disabled:opacity-50">
-    <span className="mt-0.5 h-10 w-10 shrink-0 rounded-full bg-paper/5">{avatar(author?.avatarTemplate, author?.username)}</span>
-    <span className="min-w-0 flex-1">
-      <span className="mb-1 flex items-center justify-between gap-2"><span className="truncate text-[13px] font-semibold text-paper">{post?.name || author?.username || '作者信息暂缺'}</span><span className="shrink-0 text-[11px] text-paper-faint">{ago(post?.createdAt || topic?.lastPostedAt || '')}</span></span>
-      {post?.name && post.username !== post.name ? <span className="mb-1 block text-[11px] text-paper-faint">@{post.username}</span> : null}
-      <span className="line-clamp-2 text-[15px] font-medium leading-snug text-paper">{title}</span>
-      {post?.cooked ? <span className="mt-1.5 block line-clamp-3 text-[13px] leading-relaxed text-paper-muted [&_b]:font-semibold [&_b]:text-cinnabar-soft [&_mark]:bg-cinnabar/15 [&_.search-highlight]:font-semibold [&_.search-highlight]:text-cinnabar-soft" dangerouslySetInnerHTML={{ __html: post.cooked }} /> : null}
-      <span className="mt-2 block text-[11px] text-paper-faint">{post ? `匹配楼层 #${post.postNumber}` : `${topic?.replyCount || 0} 条回复`}</span>
-    </span>
-  </button>
+  const displayName = post?.name || author?.username || '作者信息暂缺'
+  const showHandle = Boolean(post?.name && post.username && post.username !== post.name)
+  return (
+    <button
+      type="button"
+      aria-label={'打开搜索结果：' + title}
+      disabled={!topic && !post?.topicId}
+      onClick={onOpen}
+      className="linuxdo-control flex w-full items-start gap-3 py-3.5 text-left active:bg-paper/[0.035] disabled:opacity-50"
+    >
+      <span className="mt-0.5 h-10 w-10 shrink-0 overflow-hidden rounded-full bg-paper/5 ring-1 ring-black/5 dark:ring-white/10">
+        {avatar(author?.avatarTemplate, author?.username)}
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="flex items-baseline justify-between gap-3">
+          <span className="min-w-0 truncate text-[13px] font-medium text-paper-muted">{displayName}</span>
+          <span className="shrink-0 text-[12px] tabular-nums text-paper-faint">{ago(post?.createdAt || topic?.lastPostedAt || '')}</span>
+        </span>
+        {showHandle ? <span className="mt-0.5 block text-[12px] text-paper-faint">@{post?.username}</span> : null}
+        <span className="mt-1.5 line-clamp-2 text-[15px] font-medium leading-[1.35] tracking-[-0.01em] text-paper">{title}</span>
+        {post?.cooked ? (
+          <span
+            className="mt-1.5 block line-clamp-2 text-[13px] leading-[1.45] text-paper-muted [&_b]:font-medium [&_b]:text-cinnabar-soft [&_mark]:bg-cinnabar/15 [&_.search-highlight]:font-medium [&_.search-highlight]:text-cinnabar-soft"
+            dangerouslySetInnerHTML={{ __html: post.cooked }}
+          />
+        ) : null}
+        <span className="mt-2 block text-[12px] text-paper-faint">
+          {post ? `匹配楼层 #${post.postNumber}` : `${topic?.replyCount || 0} 条回复`}
+        </span>
+      </span>
+    </button>
+  )
 }

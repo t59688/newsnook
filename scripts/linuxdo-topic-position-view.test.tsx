@@ -42,7 +42,7 @@ let serverRead = 40
 let fail = false
 const requests: string[] = []
 const stream = Array.from({ length: 100 }, (_, i) => 1001 + i)
-const post = (number: number) => ({ ...(number === 42 ? { reply_to_post_number: 8, reply_to_user: { username: 'quoted' } } : {}), id: 1000 + number, post_number: number, username: 'reader', read: false, cooked: '<p>Reply</p>', actions_summary: [] })
+const post = (number: number) => ({ ...(number === 42 ? { reply_to_post_number: 8, reply_to_user: { username: 'quoted' }, via_ios_app: true, ios_device_name: 'iPhone 17' } : {}), id: 1000 + number, post_number: number, username: 'reader', read: false, cooked: '<p>Reply</p>', actions_summary: [] })
 let releaseResponse: (() => void) | undefined
 let delayTopic: number | undefined
 const native = {
@@ -99,6 +99,13 @@ const scroll = async (top: number) => {
 mock.timers.enable({ apis: ['Date', 'setTimeout', 'setInterval'], now: 100000 })
 try {
   await render()
+  const devicePost = host.querySelector('[data-linuxdo-post-number="42"]')!
+  const deviceLabel = devicePost.querySelector('[data-linuxdo-post-device]')!
+  assert.ok(deviceLabel, 'device information must be present without hover or click')
+  assert.match(deviceLabel.textContent || '', /回复自 iPhone 17/)
+  assert.equal(devicePost.querySelector('header [data-linuxdo-post-device]'), null, 'device belongs below the post body')
+  assert.ok(devicePost.querySelector('.linuxdo-post-prose')!.compareDocumentPosition(deviceLabel) & 4)
+  assert.equal(host.querySelector('[data-linuxdo-post-number="41"] [data-linuxdo-post-device]'), null)
   assert.ok(requests.includes('https://linux.do/t/test/100/41.json'), 'plain open must load the server-derived first unread floor outside the initial window')
   assert.equal(scroller().scrollTop, 340, 'restored floor must be visible, not merely fetched')
   console.log('PASS server cursor opens the correct post window and positions it')

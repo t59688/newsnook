@@ -131,32 +131,158 @@ function PrivateMessagesContent({ session, onOpen, onUnreadChange, onBack, onErr
     else setError(new Error('这条私信提醒没有可打开的会话，请刷新后重试'))
   }
 
-  if (!owner) return <div className="page-x py-20 text-center text-[13px] text-paper-muted">登录后可查看个人私信{onLogin ? <button type="button" onClick={onLogin} className="linuxdo-control mx-auto mt-4 block min-h-11 rounded-full bg-cinnabar px-5 text-white">登录 Linux.do</button> : null}</div>
+  if (!owner) {
+    return (
+      <div className="page-x py-20 text-center text-[13px] text-paper-muted">
+        登录后可查看个人私信
+        {onLogin ? (
+          <button type="button" onClick={onLogin} className="linuxdo-control mx-auto mt-4 block min-h-11 rounded-full bg-cinnabar px-5 text-[13px] font-medium text-white">
+            登录 Linux.do
+          </button>
+        ) : null}
+      </div>
+    )
+  }
+
   return (
-    <RefreshSurface onRefresh={() => load()} scrollerRef={scrollerRef} onScroll={(event) => {
-      const cached = cacheRef.current.entries[scope]
-      if (cached) cached.scrollTop = event.currentTarget.scrollTop
-    }} className="page-x pb-4 pt-3">
-      {onBack ? <button type="button" onClick={onBack} className="linuxdo-control mb-3 inline-flex min-h-10 items-center gap-1.5 text-[11px] text-paper-muted"><ArrowLeft size={14} />全部通知</button> : null}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div><h2 className="text-[20px] font-bold text-paper">{groupName ? `${groupName} · 私信` : '个人私信'}</h2><p className="mt-1 text-[10.5px] text-paper-faint">{filter === 'recent' ? '最近互动与未读消息' : '会话与阅读状态随账号同步'}</p></div>
-        <button type="button" aria-label="刷新私信" disabled={busy !== null} onClick={() => void load()} className="linuxdo-control grid h-10 w-10 shrink-0 place-items-center rounded-full bg-cinnabar/10 text-cinnabar disabled:opacity-40"><RefreshCcw size={17} className={busy === 'refresh' ? 'animate-spin' : ''} /></button>
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div className="shrink-0 border-b border-haze/50 bg-ink/95 page-x pb-3 pt-3 backdrop-blur-xl">
+        {onBack ? (
+          <button type="button" onClick={onBack} className="linuxdo-control mb-2 inline-flex h-8 items-center gap-1 text-[12px] font-medium text-paper-muted">
+            <ArrowLeft size={14} />全部通知
+          </button>
+        ) : null}
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-[17px] font-semibold tracking-[-0.02em] text-paper">
+              {groupName ? `${groupName} · 私信` : '个人私信'}
+            </h2>
+            <p className="mt-0.5 text-[12px] leading-snug text-paper-faint">
+              {filter === 'recent' ? '最近互动与未读消息' : '会话与阅读状态随账号同步'}
+            </p>
+          </div>
+          <button
+            type="button"
+            aria-label="刷新私信"
+            disabled={busy !== null}
+            onClick={() => void load()}
+            className="linuxdo-control grid h-9 w-9 shrink-0 place-items-center rounded-full bg-paper/[0.05] text-paper-muted disabled:opacity-40"
+          >
+            <RefreshCcw size={15} className={busy === 'refresh' ? 'animate-spin' : ''} />
+          </button>
+        </div>
+        {groupName ? (
+          <button type="button" onClick={() => select('recent', null)} className="linuxdo-control mt-2 text-[12px] font-medium text-cinnabar">
+            返回个人私信
+          </button>
+        ) : null}
+        <div role="tablist" aria-label="私信分类" className="scrollbar-none mt-3 -mx-0.5 flex gap-1 overflow-x-auto px-0.5">
+          {filters.filter((item) => !groupName || (item.id !== 'recent' && item.id !== 'sent')).map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              role="tab"
+              aria-selected={filter === item.id}
+              onClick={() => select(item.id)}
+              className={'linuxdo-control h-8 shrink-0 rounded-full px-3 text-[12.5px] font-medium transition-colors ' + (filter === item.id ? 'bg-cinnabar text-white' : 'bg-paper/[0.04] text-paper-muted')}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
       </div>
-      {groupName ? <button type="button" onClick={() => select('recent', null)} className="linuxdo-control mb-3 text-[11px] text-cinnabar">返回个人私信</button> : null}
-      <div role="tablist" aria-label="私信分类" className="scrollbar-none mb-3 flex gap-1 overflow-x-auto border-b border-haze/60 pb-2">
-        {filters.filter((item) => !groupName || (item.id !== 'recent' && item.id !== 'sent')).map((item) => <button key={item.id} type="button" role="tab" aria-selected={filter === item.id} onClick={() => select(item.id)} className={'linuxdo-control min-h-10 shrink-0 rounded-full px-3 text-[11px] font-medium ' + (filter === item.id ? 'bg-cinnabar text-white' : 'text-paper-muted hover:bg-paper/5')}>{item.label}</button>)}
-      </div>
-      {error != null ? <div role="alert" className="mb-3 rounded-2xl border border-cinnabar/25 bg-cinnabar/[0.06] px-4 py-3 text-[11px] leading-5 text-paper-muted"><p>私信加载失败：{readableError(error)}</p><button type="button" disabled={busy !== null} onClick={() => void load(lastResetRef.current)} className="linuxdo-control mt-2 min-h-9 font-medium text-cinnabar">重试私信</button>{error instanceof LinuxDoApiError && error.kind === 'browser-verification' && onVerify ? <button type="button" onClick={async () => { if (await onVerify()) await load() }} className="linuxdo-control ml-3 min-h-9 font-medium text-cinnabar">打开安全验证</button> : null}{error instanceof LinuxDoApiError && error.kind === 'auth-required' && onLogin ? <button type="button" onClick={onLogin} className="linuxdo-control ml-3 min-h-9 font-medium text-cinnabar">重新登录</button> : null}</div> : null}
-      {!entry.loaded && busy ? <div role="status" className="flex items-center justify-center gap-2 py-16 text-[11px] text-paper-faint"><Loader2 size={16} className="animate-spin" />正在加载私信</div> : <div className="divide-y divide-haze/50 rounded-2xl border border-haze/60 bg-ink-raised/40">
-        {entry.items.map((item) => <button type="button" key={item.key} aria-label={'打开私信：' + item.title} onClick={() => open(item)} className="linuxdo-control flex min-h-[86px] w-full items-start gap-3 px-3 py-3.5 text-left hover:bg-paper/[0.025]">
-          <span className="relative mt-0.5 h-9 w-9 shrink-0 rounded-full bg-paper/5">{avatar(item.avatarTemplate, item.sender)}<Mail size={11} className="absolute -bottom-0.5 -right-0.5 rounded bg-ink-raised text-paper-muted" /></span>
-          <span className="min-w-0 flex-1"><span className="flex items-center justify-between gap-2"><span className="truncate text-[11.5px] font-semibold text-paper">{item.sender}</span><span className="shrink-0 text-[9px] text-paper-faint">{ago(item.createdAt)}</span></span><span className="mt-1 block line-clamp-2 text-[12px] leading-[1.5] text-paper-muted">{item.title}</span></span>
-          {item.unread ? <span aria-label="未读私信" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-cinnabar" /> : <ChevronRight size={13} className="mt-2 shrink-0 text-paper-faint" />}
-        </button>)}
-      </div>}
-      {entry.loaded && !entry.items.length && error == null ? <div className="py-14 text-center text-[11px] text-paper-faint">{filters.find((item) => item.id === filter)?.empty}</div> : null}
-      {entry.nextPage !== undefined ? <button type="button" disabled={busy !== null} onClick={() => void load(false)} className="linuxdo-control mt-3 min-h-11 w-full rounded-full border border-haze text-[11px] text-paper-muted disabled:opacity-40">{busy === 'more' ? '加载中…' : '加载更早私信'}</button> : null}
-      {filter === 'recent' && entry.loaded ? <button type="button" onClick={() => select('inbox')} className="linuxdo-control mt-3 min-h-11 w-full rounded-full border border-haze text-[11px] text-paper-muted">查看全部私信<ChevronRight size={13} className="ml-1 inline" /></button> : null}
-    </RefreshSurface>
+
+      <RefreshSurface
+        onRefresh={() => load()}
+        scrollerRef={scrollerRef}
+        onScroll={(event) => {
+          const cached = cacheRef.current.entries[scope]
+          if (cached) cached.scrollTop = event.currentTarget.scrollTop
+        }}
+        className="page-x pb-6 pt-1"
+      >
+        {error != null ? (
+          <div role="alert" className="mb-3 rounded-2xl border border-cinnabar/25 bg-cinnabar/[0.06] px-4 py-3 text-[12px] leading-5 text-paper-muted">
+            <p>私信加载失败：{readableError(error)}</p>
+            <button type="button" disabled={busy !== null} onClick={() => void load(lastResetRef.current)} className="linuxdo-control mt-2 min-h-9 font-medium text-cinnabar">
+              重试私信
+            </button>
+            {error instanceof LinuxDoApiError && error.kind === 'browser-verification' && onVerify ? (
+              <button type="button" onClick={async () => { if (await onVerify()) await load() }} className="linuxdo-control ml-3 min-h-9 font-medium text-cinnabar">
+                打开安全验证
+              </button>
+            ) : null}
+            {error instanceof LinuxDoApiError && error.kind === 'auth-required' && onLogin ? (
+              <button type="button" onClick={onLogin} className="linuxdo-control ml-3 min-h-9 font-medium text-cinnabar">
+                重新登录
+              </button>
+            ) : null}
+          </div>
+        ) : null}
+
+        {!entry.loaded && busy ? (
+          <div role="status" className="flex items-center justify-center gap-2 py-16 text-[12px] text-paper-faint">
+            <Loader2 size={15} className="animate-spin" />正在加载私信
+          </div>
+        ) : (
+          <div className="divide-y divide-haze/40">
+            {entry.items.map((item) => (
+              <button
+                type="button"
+                key={item.key}
+                aria-label={'打开私信：' + item.title}
+                onClick={() => open(item)}
+                className="linuxdo-control flex min-h-[68px] w-full items-start gap-3 py-3.5 text-left active:bg-paper/[0.035]"
+              >
+                <span className="relative mt-0.5 h-10 w-10 shrink-0">
+                  <span className="block h-full w-full overflow-hidden rounded-full bg-paper/5 ring-1 ring-black/5 dark:ring-white/10">
+                    {avatar(item.avatarTemplate, item.sender)}
+                  </span>
+                  <span className="absolute -bottom-0.5 -right-0.5 grid h-[18px] w-[18px] place-items-center rounded-full bg-ink-raised text-paper-muted ring-2 ring-ink">
+                    <Mail size={10} aria-hidden />
+                  </span>
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex items-baseline justify-between gap-3">
+                    <span className="min-w-0 truncate text-[14px] font-medium text-paper">{item.sender}</span>
+                    <span className="shrink-0 text-[12px] tabular-nums text-paper-faint">{ago(item.createdAt)}</span>
+                  </span>
+                  <span className="mt-1 block line-clamp-2 text-[13px] leading-[1.4] text-paper-muted">{item.title}</span>
+                </span>
+                {item.unread ? (
+                  <span aria-label="未读私信" className="mt-2.5 h-2 w-2 shrink-0 rounded-full bg-cinnabar" />
+                ) : (
+                  <ChevronRight size={14} className="mt-2 shrink-0 text-paper-faint/70" aria-hidden />
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {entry.loaded && !entry.items.length && error == null ? (
+          <div className="py-16 text-center text-[13px] text-paper-faint">{filters.find((item) => item.id === filter)?.empty}</div>
+        ) : null}
+        {entry.nextPage !== undefined ? (
+          <button
+            type="button"
+            disabled={busy !== null}
+            onClick={() => void load(false)}
+            className="linuxdo-control mt-3 min-h-11 w-full rounded-full bg-paper/[0.045] text-[13px] text-paper-muted disabled:opacity-40"
+          >
+            {busy === 'more' ? '加载中…' : '加载更早私信'}
+          </button>
+        ) : null}
+        {filter === 'recent' && entry.loaded ? (
+          <button
+            type="button"
+            onClick={() => select('inbox')}
+            className="linuxdo-control mt-2 inline-flex min-h-11 w-full items-center justify-center gap-1 rounded-full text-[13px] font-medium text-paper-muted"
+          >
+            查看全部私信
+            <ChevronRight size={14} aria-hidden />
+          </button>
+        ) : null}
+      </RefreshSurface>
+    </div>
   )
 }

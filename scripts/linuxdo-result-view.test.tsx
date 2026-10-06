@@ -70,12 +70,13 @@ failMore = false
 await click('offline · 点击重试')
 assert.equal(requestedPage, 2)
 assert.ok(host.textContent?.includes('第二页'))
-const scroller = host.firstElementChild as HTMLElement
+const scroller = host.querySelector('.overflow-y-auto') as HTMLElement
+assert.ok(scroller, 'search results must live in a dedicated scroll container')
 scroller.scrollTop = 220
 await act(async () => { scroller.dispatchEvent(new window.Event('scroll')); await flush() })
 await act(async () => { root.render(<div />); await flush() })
 await act(async () => { root.render(<SearchView cacheRef={raceCache} onOpen={() => {}} onOpenUser={() => {}} />); await flush() })
-assert.equal((host.firstElementChild as HTMLElement).scrollTop, 220, 'return must restore loaded page and position')
+assert.equal((host.querySelector('.overflow-y-auto') as HTMLElement).scrollTop, 220, 'return must restore loaded page and position')
 assert.ok(host.textContent?.includes('第二页'))
 // Real notification service decoding, including JSON-string data.
 linuxDoApi.getJson = async (url: string) => (url.includes('session/current') ? { current_user: { id: 1, username: 'self', all_unread_notifications_count: 1 } } : { notifications: [{ id: 5, notification_type: 25, topic_id: 41, post_number: 6, slug: 'reader', read: false, acting_user_name: 'Alice', acting_user_avatar_template: '/alice/{size}.png', data: JSON.stringify({ display_username: 'alice', topic_title: 'RSS 阅读器' }), created_at: '2026-10-05' }] }) as any

@@ -38,7 +38,7 @@ export function LinuxDoAvatar({
   const initial = (name || '?').trim().slice(0, 1).toUpperCase() || '?'
 
   return (
-    <span className="flex h-full w-full items-center justify-center overflow-hidden select-none">
+    <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full select-none">
       {url && !failed ? (
         <img
           src={url}

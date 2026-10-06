@@ -39,6 +39,7 @@ import { resolveLinuxDoTemplate, type LinuxDoComposerTemplate, type LinuxDoTempl
 import { LinuxDoReadTracker } from '../topic/readTracker'
 import { verifyLinuxDoBrowserSession } from '../session/native'
 import { ReadSyncStatus } from './ReadSyncStatus'
+import { PostDevice } from './PostDevice'
 import { readSyncDiagnostic, type ReadSyncFailure } from '../topic/readSyncDiagnostic'
 import { applyLinuxDoTopicReadProgress } from '../topic/readState'
 import { LINUXDO_UPLOAD_BATCH_LIMIT } from '../upload/service'
@@ -1458,6 +1459,7 @@ export function LinuxDoTopicView({
                         // Invalid links remain inert instead of navigating the app WebView.
                       }
                     }} />
+                    <PostDevice device={post.device} postNumber={post.postNumber} />
                     <BoostCloud boosts={post.boosts ?? []} onOpenUser={onOpenUser} />
                     <footer className="linuxdo-control mt-3 sm:mt-3.5 flex items-center justify-between gap-1.5 sm:gap-2 border-t border-haze/40 pt-2 sm:pt-2.5 select-none">
                       <button

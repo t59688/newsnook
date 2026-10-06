@@ -8,6 +8,7 @@ import type {
   LinuxDoUser,
 } from '../types'
 import { sanitizeLinuxDoCooked } from '../content/sanitize'
+import { normalizeDeviceModel } from '../topic/postDevice'
 
 type Json = Record<string, any>
 
@@ -135,6 +136,7 @@ export function decodePost(post: Json): LinuxDoPost {
     read: typeof post.read === 'boolean' ? post.read : undefined,
     cooked: sanitizeLinuxDoCooked(String(post.cooked ?? '')),
     raw: typeof post.raw === 'string' ? post.raw : undefined,
+    device: post.via_ios_app === true ? { model: normalizeDeviceModel(post.ios_device_name) ?? 'iOS 客户端', source: 'ios-app' } : undefined,
     replyToPostNumber: typeof post.reply_to_post_number === 'number' ? post.reply_to_post_number : undefined,
     replyToUser: replyToUser && typeof replyToUser.username === 'string' ? {
       id: typeof replyToUser.id === 'number' ? replyToUser.id : undefined,

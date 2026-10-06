@@ -3422,9 +3422,7 @@ html[data-eink='1'] .linuxdo-composer-choice {
   }
 
   .linuxdo-workspace .linuxdo-bottom-nav {
-    left: 50%;
-    right: auto;
     width: min(540px, calc(100% - 32px));
-    transform: translateX(-50%);
+    margin-inline: auto;
   }
 }

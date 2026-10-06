@@ -13,7 +13,7 @@ Object.assign(globalThis, {
 })
 
 const { detectBrowserChallenge } = await import('../src/lib/browserChallenge')
-const { decodeBoost, decodeCategories, decodeCurrentUser, decodeNotifications, decodeTagNames, decodeTopic, decodeTopics } = await import('../src/features/linuxdo/api/decode')
+const { decodeBoost, decodeCategories, decodeCurrentUser, decodeNotifications, decodePost, decodeTagNames, decodeTopic, decodeTopics } = await import('../src/features/linuxdo/api/decode')
 const { linuxDoCapabilities } = await import('../src/features/linuxdo/capabilities')
 const { linuxDoEndpoints } = await import('../src/features/linuxdo/api/endpoints')
 const { sanitizeLinuxDoCooked } = await import('../src/features/linuxdo/content/sanitize')
@@ -40,6 +40,16 @@ const loadingModel = await import('../src/features/linuxdo/ui/loadingModel').cat
 const engagementModel = await import('../src/features/linuxdo/ui/engagementModel').catch(() => null)
 const composerModel = await import('../src/features/linuxdo/editor/model').catch(() => null)
 const composerPreview = await import('../src/features/linuxdo/editor/preview').catch(() => null)
+
+assert.deepEqual(decodePost({ via_ios_app: true, ios_device_name: ' iPhone 17 ' }).device, { model: 'iPhone 17', source: 'ios-app' })
+assert.equal(decodePost({ via_ios_app: false, ios_device_name: 'iPhone 17' }).device, undefined, 'a model without its source flag must not imply a device origin')
+assert.deepEqual(decodePost({ via_ios_app: true }).device, { model: 'iOS 客户端', source: 'ios-app' })
+assert.deepEqual(decodePost({ via_ios_app: true, ios_device_name: {} }).device, { model: 'iOS 客户端', source: 'ios-app' })
+assert.equal(decodePost({ via_ios_app: 'true', ios_device_name: 'iPhone 17' }).device, undefined)
+assert.deepEqual(decodePost({ via_ios_app: true, ios_device_name: '\u202eiPhone 17\u0000' }).device, { model: 'iPhone 17', source: 'ios-app' })
+assert.equal(decodePost({ via_ios_app: true, ios_device_name: 'unknown' }).device?.model, 'iOS 客户端')
+assert.equal(decodePost({ via_ios_app: true, ios_device_name: 'A'.repeat(1000) }).device?.model.length, 80)
+console.log('PASS Linux.do device metadata respects the server source flag and tolerates missing models')
 
 assert.ok(composerModel, 'linuxdo composer text model should exist')
 assert.deepEqual(
@@ -1642,7 +1652,7 @@ const userWithProtoAvatar = decodeCurrentUser({
 assert.equal(userWithProtoAvatar?.avatarTemplate, 'https://cdn.linux.do/user_avatar/proto_user/96/1.png')
 
 const utilsSource = readFileSync(new URL('../src/features/linuxdo/ui/utils.tsx', import.meta.url), 'utf8')
-assert.match(utilsSource, /flex h-full w-full items-center justify-center overflow-hidden select-none/)
+assert.match(utilsSource, /flex h-full w-full items-center justify-center overflow-hidden rounded-full select-none/)
 assert.match(accountViewSource, /UserRound size=\{26\}/)
 assert.match(accountViewSource, /flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full/)
 const sharedViewsSource = readFileSync(new URL('../src/features/linuxdo/ui/shared.tsx', import.meta.url), 'utf8')
