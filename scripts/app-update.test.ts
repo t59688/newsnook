@@ -562,3 +562,36 @@ assert.deepEqual(
 )
 
 console.log('✓ strict channel isolation / prefs migration ok')
+
+console.log('--- app-update download notification ---')
+
+const appUpdatePluginSource = readFileSync(
+  new URL('../android/app/src/main/java/com/aizeek/newsnook/AppUpdatePlugin.java', import.meta.url),
+  'utf8',
+)
+const appUpdateNotifierSource = readFileSync(
+  new URL(
+    '../android/app/src/main/java/com/aizeek/newsnook/AppUpdateDownloadNotifier.java',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const androidManifestSource = readFileSync(
+  new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url),
+  'utf8',
+)
+
+assert.match(appUpdatePluginSource, /VISIBILITY_HIDDEN/)
+assert.match(appUpdatePluginSource, /AppUpdateDownloadNotifier/)
+assert.match(appUpdatePluginSource, /startProgressPolling/)
+assert.match(appUpdatePluginSource, /ensureNotifier\(\)\.complete\(/)
+assert.doesNotMatch(appUpdatePluginSource, /VISIBILITY_VISIBLE_NOTIFY_COMPLETED/)
+
+assert.match(appUpdateNotifierSource, /TITLE_DOWNLOADING = "有所闻 · 正在下载更新"/)
+assert.match(appUpdateNotifierSource, /TITLE_READY = "有所闻 · 更新已就绪"/)
+assert.match(appUpdateNotifierSource, /setProgress/)
+assert.match(appUpdateNotifierSource, /formatBytes/)
+
+assert.match(androidManifestSource, /android\.permission\.DOWNLOAD_WITHOUT_NOTIFICATION/)
+
+console.log('✓ download notification contract ok')

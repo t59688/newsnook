@@ -591,39 +591,43 @@ export function ZhihuWorkspace({ onExit, backHandlerRef, presetSwitcher, fontSca
   return (
     <section className="relative flex h-full min-h-0 flex-1 flex-col bg-ink" aria-label="知乎工作区">
       {/* AppShell 已经统一吃掉顶部 safe-area；工作区再次加 --sat 会在打孔/刘海机型上形成双倍顶部留白。 */}
-      <header className={`relative z-20 flex shrink-0 items-center gap-2 border-b border-haze/50 bg-ink/92 px-3 backdrop-blur-xl sm:px-5 ${primaryRoute ? 'min-h-[56px]' : 'min-h-[50px]'}`}>
+      <header className={`relative z-20 flex shrink-0 items-center gap-2.5 border-b border-haze/45 bg-ink/94 px-3 backdrop-blur-xl sm:px-5 ${primaryRoute ? 'min-h-[56px]' : 'min-h-[50px]'}`}>
         <button
           type="button"
           onClick={() => (handleWorkspaceBack() ? undefined : onExit())}
           aria-label={frames.length > 1 ? '返回上一页' : '返回 NewsNook'}
-          className="flex size-9 shrink-0 items-center justify-center rounded-lg text-paper-muted/80 transition-colors hover:bg-paper/5 hover:text-cinnabar"
+          className="flex size-9 shrink-0 items-center justify-center rounded-xl text-paper-muted/80 transition-colors hover:bg-paper/5 hover:text-sky-500 active:scale-95"
         >
-          <ArrowLeft size={18} strokeWidth={1.6} />
+          <ArrowLeft size={18} strokeWidth={1.8} />
         </button>
-        <div className={`min-w-0 flex-1 truncate font-display font-medium tracking-[0.01em] text-paper ${primaryRoute ? 'text-[18px]' : 'text-[15px] text-paper-muted'}`}>{currentTitle}</div>
+
+        {current.route.screen === 'feed' ? (
+          <button
+            type="button"
+            onClick={() => pushSearch('')}
+            aria-label="搜索知乎内容、问题、答主"
+            className="flex h-9 min-w-0 flex-1 items-center gap-2 rounded-full border border-haze/60 bg-ink-raised/40 px-3.5 text-[13px] text-paper-faint transition-[border-color,background-color,color,transform] hover:border-sky-500/40 hover:bg-ink-raised/75 hover:text-paper active:scale-[0.99]"
+          >
+            <Search size={14} strokeWidth={2} className="shrink-0 text-sky-500" />
+            <span className="truncate">搜索知乎内容、问题、答主…</span>
+          </button>
+        ) : (
+          <div className="min-w-0 flex-1 truncate font-sans text-[16px] font-semibold tracking-tight text-paper">{currentTitle}</div>
+        )}
+
         {speedReadHeaderAction && (
           <button
             type="button"
             onClick={speedReadHeaderAction.onOpen}
             aria-expanded={speedReadHeaderAction.open}
             aria-label={speedReadHeaderAction.state === 'loading' ? '当前内容正在生成 AI 速读' : '打开当前内容的 AI 速读'}
-            className={`group flex h-9 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-[border-color,background-color,color,transform] active:scale-[0.97] ${speedReadHeaderAction.open || speedReadHeaderAction.state === 'ready' ? 'border-cinnabar/40 bg-cinnabar/10 text-cinnabar-soft' : 'border-haze/75 bg-ink-raised/45 text-paper-muted hover:border-cinnabar/35 hover:text-paper'}`}
+            className={`group flex h-8.5 shrink-0 items-center gap-1.5 rounded-full border px-2.5 text-[11px] font-medium transition-[border-color,background-color,color,transform] active:scale-[0.97] ${speedReadHeaderAction.open || speedReadHeaderAction.state === 'ready' ? 'border-sky-500/40 bg-sky-500/10 text-sky-500' : 'border-haze/75 bg-ink-raised/45 text-paper-muted hover:border-sky-500/35 hover:text-paper'}`}
           >
             {speedReadHeaderAction.state === 'loading'
-              ? <Loader2 size={14} className="animate-spin" />
-              : <ScrollText size={14} strokeWidth={1.7} />}
+              ? <Loader2 size={13} className="animate-spin" />
+              : <ScrollText size={13} strokeWidth={1.7} />}
             <span>AI 速读</span>
-            {speedReadHeaderAction.state === 'ready' && <span className="size-1 rounded-full bg-cinnabar" aria-hidden />}
-          </button>
-        )}
-        {current.route.screen === 'feed' && (
-          <button
-            type="button"
-            onClick={() => pushSearch('')}
-            aria-label="搜索知乎"
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg text-paper-muted/80 transition-colors hover:bg-paper/5 hover:text-cinnabar sm:hidden"
-          >
-            <Search size={17} strokeWidth={1.6} />
+            {speedReadHeaderAction.state === 'ready' && <span className="size-1 rounded-full bg-sky-500" aria-hidden />}
           </button>
         )}
         {primaryRoute && <PresetSwitcher {...presetSwitcher} />}
@@ -647,30 +651,30 @@ export function ZhihuWorkspace({ onExit, backHandlerRef, presetSwitcher, fontSca
       </div>
 
       {primaryRoute && (
-      <nav className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-haze/50 bg-ink/92 backdrop-blur-xl" style={{ paddingBottom: 'var(--sab)' }} aria-label="知乎主导航">
+      <nav className="absolute inset-x-0 bottom-0 z-20 grid grid-cols-3 border-t border-haze/45 bg-ink/94 backdrop-blur-xl" style={{ paddingBottom: 'max(var(--sab), 0.35rem)' }} aria-label="知乎主导航">
         <HomeRefreshButton
           active={current.route.screen === 'feed'}
           refreshing={feed.loading}
           onNavigateHome={goHome}
           onRefresh={refreshHomeFeed}
-          className={`group flex min-h-13 flex-col items-center justify-center gap-0.5 font-mono text-[10.5px] tracking-[0.12em] transition-colors ${current.route.screen === 'feed' ? 'font-medium text-cinnabar' : 'text-paper-muted/75 hover:text-paper'}`}
+          className={`group flex min-h-13 flex-col items-center justify-center gap-0.5 font-sans text-[11px] transition-[color,transform] active:scale-[0.96] ${current.route.screen === 'feed' ? 'font-semibold text-[#0066FF] dark:text-[#3B82F6]' : 'text-paper-muted/75 hover:text-paper'}`}
           aria-label="首页"
         >
-          <Home size={20} strokeWidth={current.route.screen === 'feed' ? 2 : 1.5} className={current.route.screen === 'feed' ? 'scale-105' : ''} /><span>首页</span>
+          <Home size={19} strokeWidth={current.route.screen === 'feed' ? 2.2 : 1.6} className={current.route.screen === 'feed' ? 'scale-105' : ''} /><span>首页</span>
         </HomeRefreshButton>
         <button
           type="button"
           onClick={() => openPrimaryRoute('notifications')}
-          className={`group flex min-h-13 flex-col items-center justify-center gap-0.5 font-mono text-[10.5px] tracking-[0.12em] transition-colors ${current.route.screen === 'notifications' ? 'font-medium text-cinnabar' : 'text-paper-muted/75 hover:text-paper'}`}
+          className={`group flex min-h-13 flex-col items-center justify-center gap-0.5 font-sans text-[11px] transition-[color,transform] active:scale-[0.96] ${current.route.screen === 'notifications' ? 'font-semibold text-[#0066FF] dark:text-[#3B82F6]' : 'text-paper-muted/75 hover:text-paper'}`}
         >
-          <Bell size={20} strokeWidth={current.route.screen === 'notifications' ? 2 : 1.5} className={current.route.screen === 'notifications' ? 'scale-105' : ''} /><span>消息</span>
+          <Bell size={19} strokeWidth={current.route.screen === 'notifications' ? 2.2 : 1.6} className={current.route.screen === 'notifications' ? 'scale-105' : ''} /><span>消息</span>
         </button>
         <button
           type="button"
           onClick={() => openPrimaryRoute('profile')}
-          className={`group flex min-h-13 flex-col items-center justify-center gap-0.5 font-mono text-[10.5px] tracking-[0.12em] transition-colors ${current.route.screen === 'profile' ? 'font-medium text-cinnabar' : 'text-paper-muted/75 hover:text-paper'}`}
+          className={`group flex min-h-13 flex-col items-center justify-center gap-0.5 font-sans text-[11px] transition-[color,transform] active:scale-[0.96] ${current.route.screen === 'profile' ? 'font-semibold text-[#0066FF] dark:text-[#3B82F6]' : 'text-paper-muted/75 hover:text-paper'}`}
         >
-          <UserRound size={20} strokeWidth={current.route.screen === 'profile' ? 2 : 1.5} className={current.route.screen === 'profile' ? 'scale-105' : ''} /><span>我的</span>
+          <UserRound size={19} strokeWidth={current.route.screen === 'profile' ? 2.2 : 1.6} className={current.route.screen === 'profile' ? 'scale-105' : ''} /><span>我的</span>
         </button>
       </nav>
       )}

@@ -9,6 +9,8 @@ import android.database.Cursor;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
+import android.os.Handler;
+import android.os.Looper;
 import android.provider.Settings;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.JSObject;
@@ -20,16 +22,29 @@ import java.io.File;
 import java.net.URI;
 
 /**
- * 从受信任更新源下载 APK（系统 DownloadManager + 通知栏进度），校验后调起安装。
+ * 从受信任更新源下载 APK（系统 DownloadManager + 自管通知栏进度），校验后调起安装。
+ * 系统 DownloadManager 通知标题在完成后不会更新，故隐藏其通知、改由 AppUpdateDownloadNotifier 展示进度与完成态。
  */
 @CapacitorPlugin(name = "AppUpdate")
 public class AppUpdatePlugin extends Plugin {
+
+    private static final long PROGRESS_POLL_MS = 500L;
 
     private Long activeDownloadId = null;
     private String activeFileName = null;
     private String activeExpectedSha256 = null;
     private Long activeExpectedSize = null;
     private BroadcastReceiver downloadReceiver = null;
+    private AppUpdateDownloadNotifier notifier = null;
+    private final Handler progressHandler = new Handler(Looper.getMainLooper());
+    private final Runnable progressTick = new Runnable() {
+        @Override
+        public void run() {
+            if (activeDownloadId == null) return;
+            pollActiveProgress(activeDownloadId);
+            progressHandler.postDelayed(this, PROGRESS_POLL_MS);
+        }
+    };
 
     @PluginMethod
     public void canInstallPackages(PluginCall call) {
@@ -113,7 +128,8 @@ public class AppUpdatePlugin extends Plugin {
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
         request.setTitle("有所闻 · 正在下载更新");
         request.setDescription(fileName);
-        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
+        // 系统通知完成后标题不会变，且多数国产 ROM 不展示进度条；改由自管通知。
+        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN);
         request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName);
         request.setAllowedOverMetered(true);
         request.setAllowedOverRoaming(true);
@@ -123,6 +139,8 @@ public class AppUpdatePlugin extends Plugin {
         activeFileName = fileName;
         activeExpectedSha256 = expectedSha256;
         activeExpectedSize = expectedSize;
+        ensureNotifier().start(fileName);
+        startProgressPolling();
 
         JSObject result = new JSObject();
         result.put("downloadId", downloadId);
@@ -200,6 +218,7 @@ public class AppUpdatePlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
+        stopProgressPolling();
         unregisterReceiverQuietly();
         super.handleOnDestroy();
     }
@@ -274,6 +293,7 @@ public class AppUpdatePlugin extends Plugin {
     }
 
     private void handleDownloadComplete(long downloadId) {
+        stopProgressPolling();
         DownloadManager manager = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
         if (manager == null) {
             emitFailed(downloadId, "download", "DownloadManager 不可用");
@@ -293,6 +313,13 @@ public class AppUpdatePlugin extends Plugin {
                 int reason = reasonIndex >= 0 ? cursor.getInt(reasonIndex) : -1;
                 emitFailed(downloadId, "download", "下载失败 (" + reason + ")");
                 return;
+            }
+            int bytesIndex = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR);
+            int totalIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES);
+            long received = bytesIndex >= 0 ? cursor.getLong(bytesIndex) : -1L;
+            long total = totalIndex >= 0 ? cursor.getLong(totalIndex) : -1L;
+            if (received >= 0L) {
+                ensureNotifier().updateBytes(received, total > 0L ? total : received);
             }
         }
 
@@ -314,6 +341,7 @@ public class AppUpdatePlugin extends Plugin {
             return;
         }
 
+        ensureNotifier().complete("下载完成，正在打开安装界面");
         try {
             installApk(apk);
             JSObject payload = new JSObject();
@@ -331,11 +359,14 @@ public class AppUpdatePlugin extends Plugin {
     }
 
     private void emitFailed(long downloadId, String kind, String message) {
+        stopProgressPolling();
+        String text = message != null ? message : "下载失败";
+        ensureNotifier().fail(text);
         clearActiveIfMatch(downloadId);
         JSObject payload = new JSObject();
         payload.put("downloadId", downloadId);
         payload.put("kind", kind);
-        payload.put("message", message != null ? message : "下载失败");
+        payload.put("message", text);
         notifyListeners("downloadFailed", payload);
     }
 
@@ -345,6 +376,43 @@ public class AppUpdatePlugin extends Plugin {
             activeFileName = null;
             activeExpectedSha256 = null;
             activeExpectedSize = null;
+        }
+    }
+
+    private AppUpdateDownloadNotifier ensureNotifier() {
+        if (notifier == null) {
+            notifier = new AppUpdateDownloadNotifier(getContext());
+        }
+        return notifier;
+    }
+
+    private void startProgressPolling() {
+        progressHandler.removeCallbacks(progressTick);
+        progressHandler.post(progressTick);
+    }
+
+    private void stopProgressPolling() {
+        progressHandler.removeCallbacks(progressTick);
+    }
+
+    private void pollActiveProgress(long downloadId) {
+        DownloadManager manager = (DownloadManager) getContext().getSystemService(Context.DOWNLOAD_SERVICE);
+        if (manager == null) return;
+        DownloadManager.Query query = new DownloadManager.Query().setFilterById(downloadId);
+        try (Cursor cursor = manager.query(query)) {
+            if (cursor == null || !cursor.moveToFirst()) return;
+            int statusIndex = cursor.getColumnIndex(DownloadManager.COLUMN_STATUS);
+            int status = statusIndex >= 0 ? cursor.getInt(statusIndex) : -1;
+            if (status == DownloadManager.STATUS_SUCCESSFUL || status == DownloadManager.STATUS_FAILED) {
+                // 完成广播会接手；此处只停轮询，避免与 complete/fail 抢通知文案
+                stopProgressPolling();
+                return;
+            }
+            int bytesIndex = cursor.getColumnIndex(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR);
+            int totalIndex = cursor.getColumnIndex(DownloadManager.COLUMN_TOTAL_SIZE_BYTES);
+            long received = bytesIndex >= 0 ? cursor.getLong(bytesIndex) : 0L;
+            long total = totalIndex >= 0 ? cursor.getLong(totalIndex) : -1L;
+            ensureNotifier().updateBytes(received, total);
         }
     }
 

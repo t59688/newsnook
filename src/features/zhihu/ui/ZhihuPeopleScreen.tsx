@@ -319,83 +319,121 @@ export function ZhihuPeopleScreen({ token, service, onOpen, interaction, authent
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-28 pt-5 sm:px-6">
       {profile && (
-        <header className="mb-5 border-b border-haze/55 pb-5">
-          <div className="flex items-start gap-3.5">
+        <header className="mb-5 overflow-hidden rounded-3xl border border-haze/50 bg-gradient-to-b from-ink-raised/60 to-ink-raised/20 p-4 sm:p-5 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)]">
+          <div className="flex items-start gap-4">
             {profile.avatarUrl ? (
-              <img src={profile.avatarUrl} alt="" className="size-16 rounded-2xl object-cover" loading="lazy" />
+              <img src={profile.avatarUrl} alt="" className="size-16 rounded-2xl border border-haze/60 object-cover shadow-sm sm:size-18" loading="lazy" />
             ) : (
-              <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-haze/70 bg-ink-raised/45 text-paper-muted"><UserRound size={24} strokeWidth={1.5} /></span>
+              <span className="flex size-16 shrink-0 items-center justify-center rounded-2xl border border-haze/60 bg-ink-deep text-paper-muted sm:size-18"><UserRound size={26} strokeWidth={1.5} /></span>
             )}
             <div className="min-w-0 flex-1">
-              <div className="flex items-start gap-2">
-                <h1 className="min-w-0 flex-1 truncate font-display text-[24px] font-medium leading-tight text-paper">{profile.name}</h1>
+              <div className="flex items-center gap-2">
+                <h1 className="min-w-0 flex-1 truncate font-sans text-[20px] font-bold leading-tight text-paper sm:text-[22px]">{profile.name}</h1>
                 {onSearchCreations && (
                   <button
                     type="button"
                     onClick={() => onSearchCreations(profile.id, profile.name)}
                     aria-label={`搜索 ${profile.name} 的创作`}
                     title="搜索 TA 的创作"
-                    className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-haze/70 bg-ink-raised/35 text-paper-faint transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft"
+                    className="flex size-8.5 shrink-0 items-center justify-center rounded-xl border border-haze/60 bg-ink-raised/50 text-paper-faint transition-colors hover:border-sky-500/40 hover:text-sky-500 active:scale-95"
                   >
-                    <Search size={15} strokeWidth={1.6} />
+                    <Search size={14.5} strokeWidth={1.8} />
                   </button>
                 )}
               </div>
-              {profile.headline && <p className="mt-1.5 text-[12.5px] leading-[1.65] text-paper-muted">{profile.headline}</p>}
-              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[10px] text-paper-faint">
-                {typeof profile.followerCount === 'number' && <span>{formatZhihuCount(profile.followerCount)} 关注者</span>}
-                {typeof profile.followingCount === 'number' && <span>{formatZhihuCount(profile.followingCount)} 关注</span>}
-                {typeof profile.answerCount === 'number' && <span>{formatZhihuCount(profile.answerCount)} 回答</span>}
-                {typeof profile.articleCount === 'number' && <span>{formatZhihuCount(profile.articleCount)} 文章</span>}
+              {profile.headline && <p className="mt-1 text-[12.5px] leading-relaxed text-paper-muted">{profile.headline}</p>}
+            </div>
+          </div>
+
+          {profile.description && (
+            <p className="mt-3 whitespace-pre-wrap rounded-xl bg-ink/40 p-2.5 text-[12px] leading-[1.7] text-paper-muted/90">
+              {profile.description}
+            </p>
+          )}
+
+          {/* 四栏数据统计看板 */}
+          <div className="mt-4 grid grid-cols-4 gap-1.5 rounded-2xl border border-haze/45 bg-ink/50 p-2 text-center">
+            <div className="min-w-0 py-1">
+              <div className="font-mono text-[15px] font-bold text-paper">
+                {typeof profile.followerCount === 'number' ? formatZhihuCount(profile.followerCount) : '—'}
               </div>
+              <div className="text-[10.5px] text-paper-faint">关注者</div>
+            </div>
+            <div className="min-w-0 py-1">
+              <div className="font-mono text-[15px] font-bold text-paper">
+                {typeof profile.followingCount === 'number' ? formatZhihuCount(profile.followingCount) : '—'}
+              </div>
+              <div className="text-[10.5px] text-paper-faint">关注</div>
+            </div>
+            <div className="min-w-0 py-1">
+              <div className="font-mono text-[15px] font-bold text-paper">
+                {typeof profile.answerCount === 'number' ? formatZhihuCount(profile.answerCount) : '—'}
+              </div>
+              <div className="text-[10.5px] text-paper-faint">回答</div>
+            </div>
+            <div className="min-w-0 py-1">
+              <div className="font-mono text-[15px] font-bold text-paper">
+                {typeof profile.articleCount === 'number' ? formatZhihuCount(profile.articleCount) : '—'}
+              </div>
+              <div className="text-[10.5px] text-paper-faint">文章</div>
             </div>
           </div>
 
           {authenticated && !isSelf && (
-            <div className="mt-4 flex items-center gap-2">
+            <div className="mt-3.5 flex items-center gap-2">
               <button
                 type="button"
                 onClick={() => onMessage(profile.id)}
-                aria-label="私信"
+                aria-label="发送私信"
                 title="私信"
-                className="flex size-9 items-center justify-center rounded-xl border border-haze/70 bg-ink-raised/45 text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft"
+                className="flex h-9 items-center gap-1.5 rounded-full border border-haze/65 bg-ink-raised/50 px-4 font-sans text-[12px] text-paper-muted transition-colors hover:border-sky-500/40 hover:text-paper active:scale-95"
               >
-                <MessageCircle size={15} strokeWidth={1.6} />
+                <MessageCircle size={14} strokeWidth={1.8} />
+                <span>发私信</span>
               </button>
+
               <button
                 type="button"
                 disabled={followBusy || !canExecuteZhihuOperation(profile.isFollowing ? 'follow.person.clear' : 'follow.person.set')}
                 onClick={() => void toggleFollow()}
                 aria-label={profile.isFollowing ? '取消关注' : '关注'}
                 title={profile.isFollowing ? '取消关注' : '关注'}
-                className={`flex min-h-9 items-center gap-1.5 rounded-xl border px-3 text-[11px] transition-colors disabled:opacity-35 ${profile.isFollowing ? 'border-cinnabar/40 bg-cinnabar/10 text-cinnabar-soft' : 'border-haze/70 bg-ink-raised/45 text-paper-muted hover:border-cinnabar/35 hover:text-cinnabar-soft'}`}
+                className={`flex h-9 min-w-20 items-center justify-center gap-1.5 rounded-full px-4 font-sans text-[12px] font-medium transition-[background-color,border-color,color,transform] active:scale-95 disabled:opacity-35 ${
+                  profile.isFollowing
+                    ? 'border border-haze/70 bg-ink-raised/60 text-paper-muted'
+                    : 'bg-[#0066FF] text-white shadow-sm hover:bg-[#005ce6]'
+                }`}
               >
-                {followBusy ? <Loader2 size={14} className="animate-spin" /> : <UserPlus size={14} strokeWidth={1.6} />}
+                {followBusy ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13.5} strokeWidth={2} />}
                 <span>{profile.isFollowing ? '已关注' : '关注'}</span>
               </button>
+
               <button
                 type="button"
                 disabled={blockBusy || !canExecuteZhihuOperation(profile.isBlocking ? 'block.person.clear' : 'block.person.set')}
                 onClick={() => void toggleBlock()}
                 aria-label={profile.isBlocking ? '取消屏蔽' : '屏蔽'}
                 title={profile.isBlocking ? '取消屏蔽' : '屏蔽'}
-                className={`ml-auto flex size-9 items-center justify-center rounded-xl border transition-colors disabled:opacity-35 ${profile.isBlocking ? 'border-cinnabar/35 bg-cinnabar/8 text-cinnabar-soft' : 'border-haze/70 text-paper-faint hover:bg-paper/5 hover:text-paper-muted'}`}
+                className={`ml-auto flex size-9 items-center justify-center rounded-full border transition-colors disabled:opacity-35 ${profile.isBlocking ? 'border-cinnabar/35 bg-cinnabar/8 text-cinnabar-soft' : 'border-haze/60 text-paper-faint hover:bg-paper/5 hover:text-paper-muted active:scale-95'}`}
               >
-                {blockBusy ? <Loader2 size={14} className="animate-spin" /> : <Ban size={15} strokeWidth={1.55} />}
+                {blockBusy ? <Loader2 size={14} className="animate-spin" /> : <Ban size={14.5} strokeWidth={1.7} />}
               </button>
             </div>
           )}
-          {profile.description && <p className="mt-4 whitespace-pre-wrap text-[12.5px] leading-[1.75] text-paper-muted">{profile.description}</p>}
         </header>
       )}
 
-      <div className="scroll-hidden -mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1">
+      <div className="scroll-hidden -mx-1 mb-3.5 flex gap-1.5 overflow-x-auto px-1 pb-1">
         {TABS.map((item) => (
           <button
             key={item.id}
             type="button"
             onClick={() => setTab(item.id)}
-            className={`h-8 shrink-0 rounded-full border px-3 text-[11px] transition-colors ${tab === item.id ? 'border-cinnabar/40 bg-cinnabar/12 text-cinnabar-soft' : 'border-haze/70 bg-ink-raised/35 text-paper-faint hover:bg-paper/5 hover:text-paper-muted'}`}
+            className={`h-8 shrink-0 rounded-full border px-3.5 font-sans text-[11.5px] transition-[background-color,border-color,color] ${
+              tab === item.id
+                ? 'border-sky-500/40 bg-sky-500/12 font-medium text-sky-500 shadow-2xs'
+                : 'border-haze/60 bg-ink-raised/35 text-paper-faint hover:bg-paper/5 hover:text-paper-muted'
+            }`}
           >
             {item.label}
           </button>

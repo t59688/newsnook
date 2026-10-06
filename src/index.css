@@ -2015,6 +2015,49 @@ html[data-eink='1'] .lead-cover-veil {
 .zhihu-content-row-title.is-compact,
 .zhihu-content-row-excerpt.is-compact { -webkit-line-clamp: 2; }
 
+/* 知乎社区专属视觉质感与微交互 */
+:root {
+  --zhihu-blue: #0066ff;
+  --zhihu-blue-hover: #005ce6;
+  --zhihu-blue-subtle: color-mix(in srgb, #0066ff 12%, transparent);
+  --zhihu-blue-border: color-mix(in srgb, #0066ff 28%, transparent);
+  --zhihu-hot-1: #ff3838;
+  --zhihu-hot-2: #ff7700;
+  --zhihu-hot-3: #f5a623;
+}
+
+.text-zhihu-blue {
+  color: #0066ff;
+}
+@media (prefers-color-scheme: dark) {
+  .text-zhihu-blue {
+    color: #3b82f6;
+  }
+}
+
+.bg-zhihu-blue-subtle {
+  background-color: var(--zhihu-blue-subtle);
+}
+
+.border-zhihu-blue-subtle {
+  border-color: var(--zhihu-blue-border);
+}
+
+/* 楼中楼评论树状微引线 */
+.zhihu-reply-bracket {
+  position: relative;
+}
+.zhihu-reply-bracket::before {
+  content: '';
+  position: absolute;
+  left: 0.85rem;
+  top: 2.2rem;
+  bottom: 0.75rem;
+  width: 1.5px;
+  background-color: color-mix(in srgb, var(--color-haze) 70%, transparent);
+  border-radius: 1px;
+}
+
 /* 知乎工作区正文复用 NewsNook 阅读器排版，只补知乎独有的站外引用卡片。 */
 .reader-prose.zhihu-prose a[data-reader-role='zhihu-link-card'],
 .reader-prose.zhihu-prose [data-reader-role='zhihu-video-page'] {

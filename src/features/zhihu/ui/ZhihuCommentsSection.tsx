@@ -414,11 +414,11 @@ function CommentItem({
                 onClick={() => setReplying((value) => !value)}
                 title={!authenticated ? '登录后可回复' : '回复'}
                 aria-label="回复"
-                className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-1.5 text-[10.5px] transition-colors disabled:opacity-35 ${
-                  replying ? 'bg-cinnabar/10 text-cinnabar-soft' : 'text-paper-faint hover:bg-paper/5 hover:text-paper-muted'
+                className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-medium transition-colors disabled:opacity-35 ${
+                  replying ? 'bg-sky-500/12 text-sky-500' : 'text-paper-faint hover:bg-paper/5 hover:text-paper-muted'
                 }`}
               >
-                <Reply size={12.5} strokeWidth={1.6} />
+                <Reply size={12} strokeWidth={1.8} />
                 <span>回复</span>
               </button>
               <button
@@ -427,11 +427,11 @@ function CommentItem({
                 onClick={() => void toggleLike()}
                 title={!authenticated ? '登录后可点赞' : liked ? '取消点赞' : '点赞'}
                 aria-label={liked ? '取消点赞' : '点赞'}
-                className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-1.5 font-mono text-[10px] transition-colors disabled:opacity-35 ${
-                  liked ? 'bg-cinnabar/10 text-cinnabar-soft' : 'text-paper-faint hover:bg-paper/5 hover:text-paper-muted'
+                className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 font-mono text-[11px] transition-colors disabled:opacity-35 ${
+                  liked ? 'bg-sky-500/12 font-semibold text-sky-500' : 'text-paper-faint hover:bg-paper/5 hover:text-paper-muted'
                 }`}
               >
-                <Heart size={12.5} strokeWidth={1.6} fill={liked ? 'currentColor' : 'none'} />
+                <Heart size={12} strokeWidth={1.8} fill={liked ? 'currentColor' : 'none'} />
                 {likeCount > 0 && <span>{formatZhihuCount(likeCount)}</span>}
               </button>
               {comment.canDelete && (
@@ -441,7 +441,7 @@ function CommentItem({
                   onClick={() => void remove()}
                   title="删除评论"
                   aria-label="删除评论"
-                  className="flex size-7 items-center justify-center rounded-lg text-paper-faint transition-colors hover:bg-cinnabar/8 hover:text-cinnabar-soft disabled:opacity-35"
+                  className="flex size-7 items-center justify-center rounded-lg text-paper-faint transition-colors hover:bg-paper/5 hover:text-cinnabar-soft disabled:opacity-35"
                 >
                   <Trash2 size={12.5} strokeWidth={1.6} />
                 </button>
@@ -450,43 +450,52 @@ function CommentItem({
           </div>
 
           {replying && (
-            <div className="mt-1.5 flex items-end gap-2 rounded-xl border border-haze/70 bg-ink-raised/35 p-2 focus-within:border-cinnabar/35">
+            <div className="mt-2.5 rounded-2xl border border-haze/60 bg-ink-raised/50 p-2.5 shadow-2xs">
               <textarea
                 value={replyDraft.value}
                 onChange={(event) => replyDraft.setValue(event.target.value)}
                 rows={2}
                 maxLength={5000}
-                placeholder={`回复 ${comment.author.name}`}
-                className="min-h-14 min-w-0 flex-1 resize-y bg-transparent text-[12.5px] leading-relaxed text-paper outline-none placeholder:text-paper-faint/65"
+                placeholder={`回复 @${comment.author.name}…`}
+                className="min-h-14 w-full resize-y bg-transparent text-[13px] leading-[1.6] text-paper outline-none placeholder:text-paper-faint/65"
               />
-              <button
-                type="button"
-                disabled={mutationBusy || !replyDraft.ready || !replyDraft.value.trim()}
-                onClick={() => void submitReply()}
-                className="flex size-9 shrink-0 items-center justify-center rounded-full border border-cinnabar/45 bg-cinnabar/12 text-cinnabar-soft disabled:opacity-35"
-                aria-label="发送回复"
-              >
-                {mutationBusy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-              </button>
+              <div className="mt-1 flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReplying(false)}
+                  className="rounded-full px-3 py-1 text-[11px] text-paper-faint hover:bg-paper/5 hover:text-paper"
+                >
+                  取消
+                </button>
+                <button
+                  type="button"
+                  disabled={mutationBusy || !replyDraft.ready || !replyDraft.value.trim()}
+                  onClick={() => void submitReply()}
+                  className="flex h-7.5 items-center gap-1 rounded-full bg-[#0066FF] px-3.5 text-[11.5px] font-medium text-white transition-colors hover:bg-[#005ce6] active:scale-95 disabled:opacity-35"
+                >
+                  {mutationBusy ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} strokeWidth={2} />}
+                  <span>回复</span>
+                </button>
+              </div>
             </div>
           )}
 
           {comment.childCount > 0 && (
-            <div className="mt-0.5">
+            <div className="mt-1.5">
               {!expanded || children.length < comment.childCount || nextCursor ? (
                 <button
                   type="button"
                   onClick={loadChildren}
                   disabled={loading}
-                  className="inline-flex min-h-6 items-center gap-1 rounded-md px-1 text-[10.5px] text-cinnabar-soft transition-colors hover:bg-cinnabar/8 disabled:opacity-45"
+                  className="inline-flex min-h-6.5 items-center gap-1 rounded-lg bg-ink-raised/40 px-2 text-[11px] font-medium text-sky-500 transition-colors hover:bg-sky-500/10 disabled:opacity-45"
                 >
-                  {loading ? <Loader2 size={12} className="animate-spin" /> : <ChevronDown size={12} strokeWidth={1.6} />}
-                  <span>{loading ? '正在读取' : expanded ? '更多回复' : `${comment.childCount} 条回复`}</span>
+                  {loading ? <Loader2 size={12} className="animate-spin" /> : <ChevronDown size={12} strokeWidth={2} />}
+                  <span>{loading ? '正在读取' : expanded ? '更多回复' : `展开 ${comment.childCount} 条回复`}</span>
                 </button>
               ) : null}
               {error && <div className="mt-1"><ZhihuErrorBanner>{error}</ZhihuErrorBanner></div>}
               {expanded && children.length > 0 && (
-                <div className="ml-1 mt-0 border-l border-haze/55 pl-2">
+                <div className="mt-2 space-y-1.5 rounded-2xl border border-haze/40 bg-ink-raised/20 p-2 sm:p-2.5">
                   {children.map((child) => (
                     <CommentItem
                       key={child.id}
@@ -646,7 +655,7 @@ export function ZhihuCommentsSection({ target, service, onNavigate, restoreAncho
   )
 
   const composer = authenticated && commentWritable ? (
-    <div className={`flex items-end gap-2 rounded-2xl border border-haze/70 bg-ink-raised/40 shadow-[var(--shadow-lift)] transition-colors focus-within:border-cinnabar/35 ${variant === 'dialog' ? 'p-2.5' : 'p-3'}`}>
+    <div className={`flex items-end gap-2.5 rounded-2xl border border-haze/55 bg-ink-raised/50 shadow-[var(--shadow-lift)] transition-[border-color,background-color] focus-within:border-sky-500/50 focus-within:bg-ink-raised/80 ${variant === 'dialog' ? 'p-2.5' : 'p-3'}`}>
       <textarea
         value={rootDraft.value}
         onChange={(event) => rootDraft.setValue(event.target.value)}
@@ -659,11 +668,11 @@ export function ZhihuCommentsSection({ target, service, onNavigate, restoreAncho
         type="button"
         disabled={sending || !rootDraft.ready || !rootDraft.value.trim()}
         onClick={() => void submitRoot()}
-        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-cinnabar/14 text-cinnabar-soft transition-colors hover:bg-cinnabar/22 disabled:opacity-30"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#0066FF] text-white transition-[background-color,transform] hover:bg-[#005ce6] active:scale-95 disabled:bg-paper/10 disabled:text-paper-faint/40"
         aria-label="发送评论"
         title="发送评论"
       >
-        {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} strokeWidth={1.8} />}
+        {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} strokeWidth={2} />}
       </button>
     </div>
   ) : (

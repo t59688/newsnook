@@ -110,21 +110,21 @@ export function ZhihuAccountScreen({ runtime, onOpenEditor, onOpenProfile, onOpe
 
   return (
     <div className="mx-auto w-full max-w-2xl px-4 pb-28 pt-5 sm:px-6">
-      <section className="overflow-hidden rounded-2xl border border-haze/70 bg-ink-raised/45 shadow-[var(--shadow-lift)]">
-        <div className="flex items-start gap-3.5 p-4 sm:p-5">
+      <section className="overflow-hidden rounded-3xl border border-haze/50 bg-gradient-to-b from-ink-raised/60 to-ink-raised/25 shadow-[0_8px_24px_-12px_rgba(0,0,0,0.5)]">
+        <div className="flex items-start gap-4 p-4.5 sm:p-5">
           {active?.account.avatarUrl || snapshot.account?.avatarUrl ? (
-            <img src={active?.account.avatarUrl || snapshot.account?.avatarUrl} alt="" className="size-14 rounded-2xl object-cover" referrerPolicy="no-referrer" />
+            <img src={active?.account.avatarUrl || snapshot.account?.avatarUrl} alt="" className="size-15 rounded-2xl border border-haze/60 object-cover shadow-sm" referrerPolicy="no-referrer" />
           ) : (
-            <div className="flex size-14 items-center justify-center rounded-2xl border border-haze/70 bg-ink text-paper-muted"><UserRound size={23} strokeWidth={1.5} /></div>
+            <div className="flex size-15 items-center justify-center rounded-2xl border border-haze/60 bg-ink-deep text-paper-muted"><UserRound size={25} strokeWidth={1.5} /></div>
           )}
           <div className="min-w-0 flex-1">
             <div className="flex min-w-0 items-center gap-2">
-              <h1 className="truncate font-display text-[20px] font-medium text-paper">
+              <h1 className="truncate font-sans text-[20px] font-bold text-paper">
                 {active?.account.name || snapshot.account?.name || '知乎账号'}
               </h1>
-              {authenticated && <ShieldCheck size={16} strokeWidth={1.65} className="shrink-0 text-cinnabar-soft" />}
+              {authenticated && <ShieldCheck size={16} strokeWidth={1.8} className="shrink-0 text-sky-500" />}
             </div>
-            <p className="mt-1 text-[12px] leading-[1.65] text-paper-muted">
+            <p className="mt-1 text-[12px] leading-relaxed text-paper-muted">
               {snapshot.auth === 'verification-required'
                 ? `${active?.account.headline || '账号资料已保存在本机'} · 需要完成知乎安全验证`
                 : snapshot.auth === 'expired'
@@ -136,21 +136,21 @@ export function ZhihuAccountScreen({ runtime, onOpenEditor, onOpenProfile, onOpe
           </div>
         </div>
 
-        {error && <div role="alert" className="mx-4 mb-3 rounded-xl border border-cinnabar/30 bg-cinnabar/8 px-3 py-2.5 text-[11.5px] leading-relaxed text-paper-muted">{error}</div>}
+        {error && <div role="alert" className="mx-4 mb-3 rounded-xl border border-cinnabar/30 bg-cinnabar/8 px-3.5 py-2.5 text-[11.5px] leading-relaxed text-paper-muted">{error}</div>}
 
-        <div className="border-t border-haze/55 px-3 py-3">
+        <div className="border-t border-haze/45 px-3 py-2.5">
           <button
             type="button"
             disabled={busy || !runtime.account.isNativeAuthAvailable()}
             onClick={() => void authenticate()}
-            className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 text-left transition-colors hover:bg-paper/5 disabled:opacity-45"
+            className="flex min-h-11 w-full items-center gap-3 rounded-xl px-2.5 text-left transition-colors hover:bg-paper/5 active:scale-[0.99] disabled:opacity-45"
           >
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-cinnabar/12 text-cinnabar-soft">
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-sky-500/12 text-sky-500">
               {busy ? <RefreshCw size={15} className="animate-spin" /> : hasStoredAccount ? <RefreshCw size={15} /> : <LogIn size={15} />}
             </span>
             <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium text-paper">{hasStoredAccount ? '重新验证知乎账号' : '登录 / 注册知乎'}</span>
-              <span className="mt-0.5 block text-[10.5px] text-paper-faint">{hasStoredAccount ? '刷新当前会话并确认账号状态' : '使用知乎第一方登录页'}</span>
+              <span className="block text-[13.5px] font-semibold text-paper">{hasStoredAccount ? '重新验证知乎账号' : '登录 / 注册知乎'}</span>
+              <span className="mt-0.5 block text-[11px] text-paper-faint">{hasStoredAccount ? '刷新当前会话并确认账号状态' : '使用知乎第一方登录页'}</span>
             </span>
             <ChevronRight size={15} strokeWidth={1.5} className="text-paper-faint" />
           </button>
@@ -158,7 +158,7 @@ export function ZhihuAccountScreen({ runtime, onOpenEditor, onOpenProfile, onOpe
       </section>
 
       {authenticated && (
-        <section className="mt-4 overflow-hidden rounded-2xl border border-haze/70 bg-ink-raised/40 shadow-[var(--shadow-lift)]">
+        <section className="mt-4 overflow-hidden rounded-2xl border border-haze/50 bg-ink-raised/35 shadow-[var(--shadow-lift)]">
           {[
             { label: '创作与草稿', hint: '继续草稿、写回答与发布想法', icon: <FilePenLine size={16} />, action: onOpenEditor },
             { label: '我的主页', hint: '回答、文章、动态与关注关系', icon: <UserRound size={16} />, action: () => activeToken && onOpenProfile(activeToken), disabled: !activeToken },

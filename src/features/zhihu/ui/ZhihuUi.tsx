@@ -1,11 +1,13 @@
 import { useMemo, useRef, type ReactNode } from 'react'
 import {
   Bookmark,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronUp,
   CircleHelp,
   FileText,
+  Flame,
   Hash,
   Lightbulb,
   LoaderCircle,
@@ -36,24 +38,123 @@ export function ZhihuEntityIcon({ kind, size = 13 }: { kind: ZhihuEntityKind; si
   }
 }
 
-export function ZhihuAuthorAvatar({ author, className = 'size-8' }: { author: ZhihuAuthor; className?: string }) {
-  const initial = author.name.trim().slice(0, 1) || '?'
+/** 知乎热榜前列名次徽章 (01, 02, 03 醒目高对比度数字) */
+export function ZhihuHotRankBadge({ rank }: { rank: number }) {
+  const display = rank < 10 ? `0${rank}` : String(rank)
+  if (rank === 1) {
+    return (
+      <span className="inline-flex min-w-[1.65rem] shrink-0 items-center justify-start font-mono text-[17px] font-black leading-none tracking-tight text-[#FF3838]">
+        {display}
+      </span>
+    )
+  }
+  if (rank === 2) {
+    return (
+      <span className="inline-flex min-w-[1.65rem] shrink-0 items-center justify-start font-mono text-[17px] font-black leading-none tracking-tight text-[#FF7700]">
+        {display}
+      </span>
+    )
+  }
+  if (rank === 3) {
+    return (
+      <span className="inline-flex min-w-[1.65rem] shrink-0 items-center justify-start font-mono text-[17px] font-black leading-none tracking-tight text-[#F5A623]">
+        {display}
+      </span>
+    )
+  }
   return (
-    <span
-      className={`relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-full border border-haze/70 bg-ink-raised/70 font-display text-paper-muted ${className}`}
-      aria-hidden
-    >
-      <span className="select-none text-[0.72em] leading-none">{initial}</span>
-      {author.avatarUrl && (
-        <img
-          src={author.avatarUrl}
-          alt=""
-          loading="lazy"
-          decoding="async"
-          referrerPolicy="no-referrer"
-          className="absolute inset-0 size-full object-cover"
-          onError={(event) => { event.currentTarget.style.display = 'none' }}
-        />
+    <span className="inline-flex min-w-[1.65rem] shrink-0 items-center justify-start font-mono text-[15.5px] font-bold leading-none tracking-tight text-paper-muted">
+      {display}
+    </span>
+  )
+}
+
+/** 内容类型优雅轻量徽标 (右下角展示：回答采用克制淡灰字标，文章采用清晰专栏微标签以防营销软文) */
+export function ZhihuKindBadge({ kind, className = '' }: { kind: ZhihuEntityKind; className?: string }) {
+  if (kind === 'article') {
+    return (
+      <span
+        title="知乎专栏/文章"
+        className={`inline-flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 font-sans text-[10.5px] font-medium leading-none text-purple-600 dark:text-purple-400 bg-purple-500/10 border border-purple-500/20 ${className}`}
+      >
+        <FileText size={10.5} strokeWidth={2} className="shrink-0" />
+        <span>文章</span>
+      </span>
+    )
+  }
+  if (kind === 'answer') {
+    return (
+      <span
+        title="知乎回答"
+        className={`inline-flex shrink-0 items-center gap-1 font-sans text-[11px] font-normal leading-none text-paper-faint/75 ${className}`}
+      >
+        <MessageSquareQuote size={11} strokeWidth={1.8} className="shrink-0 text-paper-faint/60" />
+        <span>回答</span>
+      </span>
+    )
+  }
+  if (kind === 'pin') {
+    return (
+      <span
+        title="知乎想法"
+        className={`inline-flex shrink-0 items-center gap-1 font-sans text-[11px] font-normal leading-none text-emerald-600/80 dark:text-emerald-400/80 ${className}`}
+      >
+        <Lightbulb size={11} strokeWidth={1.8} className="shrink-0" />
+        <span>想法</span>
+      </span>
+    )
+  }
+  if (kind === 'question') {
+    return (
+      <span
+        title="知乎提问"
+        className={`inline-flex shrink-0 items-center gap-1 font-sans text-[11px] font-normal leading-none text-amber-600/80 dark:text-amber-400/80 ${className}`}
+      >
+        <CircleHelp size={11} strokeWidth={1.8} className="shrink-0" />
+        <span>提问</span>
+      </span>
+    )
+  }
+  return null
+}
+
+export function ZhihuAuthorAvatar({
+  author,
+  className = 'size-8',
+  verified,
+}: {
+  author: ZhihuAuthor
+  className?: string
+  verified?: boolean
+}) {
+  const initial = author.name.trim().slice(0, 1) || '?'
+  const hasBadge = verified ?? Boolean(author.headline?.includes('优秀答主') || author.headline?.includes('认证'))
+  return (
+    <span className={`relative inline-flex shrink-0 ${className}`}>
+      <span
+        className="relative inline-flex size-full items-center justify-center overflow-hidden rounded-full border border-haze/60 bg-gradient-to-br from-ink-raised to-ink-deep font-sans text-paper-muted shadow-2xs"
+        aria-hidden
+      >
+        <span className="select-none text-[0.72em] font-medium leading-none">{initial}</span>
+        {author.avatarUrl && (
+          <img
+            src={author.avatarUrl}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            referrerPolicy="no-referrer"
+            className="absolute inset-0 size-full object-cover"
+            onError={(event) => { event.currentTarget.style.display = 'none' }}
+          />
+        )}
+      </span>
+      {hasBadge && (
+        <span
+          title="认证答主"
+          className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-[#0066FF] text-white ring-1.5 ring-ink"
+        >
+          <CheckCircle2 size={9} strokeWidth={2.8} />
+        </span>
       )}
     </span>
   )
@@ -296,49 +397,107 @@ export function ZhihuContentRow({
   showReason = true,
   trailing,
   compact = false,
+  hotRank,
+  hotMetric,
 }: {
   item: ZhihuContentSummary
   onOpen: (item: ZhihuContentSummary) => void
   showReason?: boolean
   trailing?: ReactNode
-  /** 首页信息流保持与 NewsNook 新闻列表相同的扫描密度：标题 2 行、摘要 2 行。 */
+  /** 首页信息流保持高扫描密度：标题 2 行、摘要 2 行。 */
   compact?: boolean
+  /** 热榜序号 (1, 2, 3...) */
+  hotRank?: number
+  /** 热度指数 (例如 "1850万热度") */
+  hotMetric?: string
 }) {
   const vote = formatZhihuCount(item.voteupCount)
   const comments = formatZhihuCount(item.commentCount)
+  const isHot = typeof hotRank === 'number'
+
   if (compact) {
     return (
       <button
         type="button"
         onClick={() => onOpen(item)}
-        className="group block w-full overflow-hidden rounded-2xl border border-haze/70 bg-ink-raised/48 p-3.5 text-left shadow-[0_12px_30px_-24px_rgba(0,0,0,0.75)] transition-[border-color,background-color,transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:border-cinnabar/35 hover:bg-ink-raised/72 hover:shadow-[0_18px_36px_-24px_rgba(0,0,0,0.86)] active:translate-y-0 active:scale-[0.995] sm:p-4"
+        className="group block w-full overflow-hidden rounded-2xl border border-haze/50 bg-ink-raised/35 p-3.5 text-left shadow-[0_4px_20px_-10px_rgba(0,0,0,0.45)] transition-[border-color,background-color,transform,box-shadow] duration-200 hover:border-sky-500/30 hover:bg-ink-raised/60 hover:shadow-[0_12px_28px_-12px_rgba(0,0,0,0.6)] active:scale-[0.992] sm:p-4"
       >
-        <span className="flex min-w-0 items-stretch gap-3.5">
+        <span className="flex min-w-0 items-start gap-3 sm:gap-3.5">
+          {/* 热榜模式下展示醒目的名次徽章 */}
+          {isHot && (
+            <span className="pt-0.5">
+              <ZhihuHotRankBadge rank={hotRank} />
+            </span>
+          )}
+
           <span className="flex min-w-0 flex-1 flex-col">
-            <span className="zhihu-content-row-title is-compact block font-display text-[17px] font-medium leading-[1.42] tracking-[0.005em] text-paper transition-colors group-hover:text-cinnabar-soft sm:text-[18px]">
+            <span className="zhihu-content-row-title is-compact block font-sans text-[16px] font-semibold leading-[1.42] tracking-[-0.01em] text-paper transition-colors group-hover:text-sky-500 sm:text-[17px]">
               {item.title}
             </span>
+
             {item.excerpt && (
-              <span className="zhihu-content-row-excerpt is-compact mt-1.5 block text-[12.5px] leading-[1.68] text-paper-muted">
+              <span className="zhihu-content-row-excerpt is-compact mt-1.5 block text-[13px] leading-[1.62] text-paper-muted">
                 {item.excerpt}
               </span>
             )}
-            {vote && (
-              <span className="mt-auto flex items-center gap-1.5 pt-2.5 font-mono text-[10.5px] text-paper-faint">
-                <ThumbsUp size={12.5} strokeWidth={1.65} className="text-cinnabar-soft/75" />
-                <span>{vote} 赞同</span>
+
+            {/* 底部元数据栏：作者信息 + 热度/点赞 + 讨论数；右下角展示优雅类型标识 */}
+            <span className="mt-2.5 flex items-center justify-between gap-2 text-[11px] text-paper-faint">
+              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2.5 gap-y-1">
+                {item.author && (
+                  <span className="inline-flex items-center gap-1.5 truncate text-paper-muted">
+                    <ZhihuAuthorAvatar author={item.author} className="size-4 shrink-0" />
+                    <span className="max-w-28 truncate font-medium text-paper-muted sm:max-w-40">
+                      {item.author.name}
+                    </span>
+                  </span>
+                )}
+
+                {/* 热度指标或赞同数 */}
+                {hotMetric ? (
+                  <span className="inline-flex items-center gap-1 font-medium text-[#FF7700]">
+                    <Flame size={12} strokeWidth={2.2} className="shrink-0" />
+                    <span>{hotMetric}</span>
+                  </span>
+                ) : vote ? (
+                  <span className="inline-flex items-center gap-1 font-mono text-paper-faint">
+                    <ThumbsUp size={11.5} strokeWidth={1.8} className="text-sky-500/80" />
+                    <span>{vote} 赞同</span>
+                  </span>
+                ) : null}
+
+                {comments && (
+                  <span className="inline-flex items-center gap-1 font-mono text-paper-faint/80">
+                    <MessageCircle size={11.5} strokeWidth={1.7} />
+                    <span>{comments} 讨论</span>
+                  </span>
+                )}
+
+                {showReason && item.recommendationReason && !hotMetric && (
+                  <span className="truncate rounded bg-ink px-1.5 py-0.5 text-[10px] text-sky-500/85">
+                    {item.recommendationReason}
+                  </span>
+                )}
               </span>
-            )}
+
+              {/* 右下角：低噪、优雅的内容类型与扩展操作 */}
+              <span className="ml-auto inline-flex shrink-0 items-center gap-1.5">
+                <ZhihuKindBadge kind={item.ref.kind} />
+                {trailing}
+              </span>
+            </span>
           </span>
+
+          {/* 右侧缩略图 */}
           {item.imageUrl && (
-            <span className="relative aspect-[4/3] w-[34%] max-w-32 shrink-0 overflow-hidden rounded-xl border border-haze/60 bg-ink-deep sm:max-w-36">
+            <span className="relative aspect-[4/3] w-[28%] max-w-24 shrink-0 overflow-hidden rounded-xl border border-haze/50 bg-ink-deep sm:max-w-32">
               <img
                 src={item.imageUrl}
                 alt=""
                 loading="lazy"
                 decoding="async"
                 referrerPolicy="no-referrer"
-                className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.035]"
+                className="absolute inset-0 size-full object-cover transition-transform duration-500 group-hover:scale-[1.04]"
                 onError={(event) => { event.currentTarget.parentElement?.classList.add('hidden') }}
               />
             </span>
@@ -347,48 +506,50 @@ export function ZhihuContentRow({
       </button>
     )
   }
+
   return (
     <button
       type="button"
       onClick={() => onOpen(item)}
-      className="group relative block w-full px-4 py-3.5 text-left transition-colors duration-200 hover:bg-ink-raised active:bg-ink-deep/25 sm:px-5 sm:py-4"
+      className="group relative block w-full px-4 py-3.5 text-left transition-colors duration-200 hover:bg-ink-raised/70 active:bg-ink-deep/30 sm:px-5 sm:py-4"
     >
-      <span className="flex items-center gap-1.5 font-mono text-[10.5px] tracking-[0.06em] text-paper-faint">
-        <span className="flex items-center gap-1.25 text-cinnabar-soft/85">
+      <span className="flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04em] text-paper-faint">
+        <span className="flex items-center gap-1 text-sky-500/90">
           <ZhihuEntityIcon kind={item.ref.kind} size={12} />
-          <span>{zhihuEntityLabel(item.ref.kind)}</span>
+          <span className="font-sans font-medium">{zhihuEntityLabel(item.ref.kind)}</span>
         </span>
         {item.author?.name && (
           <>
-            <span aria-hidden className="text-paper-faint/45">·</span>
-            <span className="truncate text-paper-muted/90">{item.author.name}</span>
+            <span aria-hidden className="text-paper-faint/35">·</span>
+            <span className="truncate font-sans text-paper-muted">{item.author.name}</span>
           </>
         )}
         <span className="ml-auto flex shrink-0 items-center gap-2 text-paper-faint">
           {vote && <span>{vote} 赞同</span>}
-          {comments && <span>{comments} 评论</span>}
+          {comments && <span>{comments} 讨论</span>}
           {trailing}
         </span>
       </span>
 
       <span className="mt-1.5 flex items-start gap-3">
         <span className="min-w-0 flex-1">
-          <span className={`zhihu-content-row-title block font-display text-[17px] font-medium leading-[1.46] tracking-[0.005em] text-paper transition-colors group-hover:text-cinnabar sm:text-[18px] ${compact ? 'is-compact' : ''}`}>
+          <span className={`zhihu-content-row-title block font-sans text-[16.5px] font-semibold leading-[1.45] text-paper transition-colors group-hover:text-sky-500 sm:text-[17.5px] ${compact ? 'is-compact' : ''}`}>
             {item.title}
           </span>
           {item.excerpt && (
-            <span className={`zhihu-content-row-excerpt mt-1.5 block text-[13px] leading-[1.72] text-paper-muted ${compact ? 'is-compact' : ''}`}>
+            <span className={`zhihu-content-row-excerpt mt-1.5 block text-[13px] leading-[1.68] text-paper-muted ${compact ? 'is-compact' : ''}`}>
               {item.excerpt}
             </span>
           )}
           {showReason && item.recommendationReason && (
-            <span className="mt-2 block font-mono text-[10.5px] leading-relaxed text-cinnabar-soft/85">
+            <span className="mt-2 block font-mono text-[11px] leading-relaxed text-sky-500/90">
               {item.recommendationReason}
             </span>
           )}
         </span>
-        <ChevronRight size={16} strokeWidth={1.45} className="mt-1 shrink-0 text-paper-faint/60 transition-transform group-hover:translate-x-0.5 group-hover:text-cinnabar-soft" />
+        <ChevronRight size={16} strokeWidth={1.5} className="mt-1 shrink-0 text-paper-faint/50 transition-transform group-hover:translate-x-0.5 group-hover:text-sky-500" />
       </span>
     </button>
   )
 }
+
