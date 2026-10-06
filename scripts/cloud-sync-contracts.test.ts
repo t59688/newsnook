@@ -34,6 +34,10 @@ const MUTATION_ID = '0f1f1c3e-6a91-4a2b-9a7c-3a3a2b1c0d9e'
 // ---------- 协议版本 ----------
 
 assert.equal(SYNC_PROTOCOL_VERSION, 1)
+const discoveryMetadata = { providerId: 'rsshub-docs', entryId: 'route', generator: 'rsshub', params: { id: 'demo' } }
+assert.deepEqual(subscriptionPayloadSchema.parse({ kind: 'custom', enabled: true, sortRank: 'a', paused: true, discovery: discoveryMetadata }).discovery, discoveryMetadata, 'real schema must preserve discovery provenance')
+assert.equal(subscriptionPayloadSchema.parse({ kind: 'custom', enabled: true, sortRank: 'a', paused: true }).paused, true)
+assert.equal(subscriptionPayloadSchema.parse({ kind: 'custom', enabled: true, sortRank: 'a' }).paused, undefined, 'old payloads remain accepted')
 
 // ---------- push 请求 ----------
 

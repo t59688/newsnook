@@ -116,6 +116,11 @@ function toCustomSource(entity: MergedEntity): NewsSource | null {
     enabled: payload.enabled !== false,
     isCustom: true,
     createdAt: typeof payload.createdAt === 'number' ? payload.createdAt : Date.now(),
+    paused: payload.paused === true,
+    discovery:
+      payload.discovery && typeof payload.discovery === 'object'
+        ? (payload.discovery as NewsSource['discovery'])
+        : undefined,
   }
   if (payload.frameworkHint && typeof payload.frameworkHint === 'object') {
     source.frameworkHint = payload.frameworkHint as NewsSource['frameworkHint']

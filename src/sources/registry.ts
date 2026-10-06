@@ -18,6 +18,7 @@ export {
   SOURCE_GROUP_ORDER,
   SOURCE_GROUPS,
   type NewsSource,
+  type SourceDiscoveryMetadata,
   type PagingStrategy,
   type SourceGroup,
   type SourceKind,

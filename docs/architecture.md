@@ -169,6 +169,16 @@ PresetSwitcher / 切换布局
 
 主题（`lib/theme.ts`）：明暗解析后写入 `<html data-theme>`；风格方案写入 `<html data-scheme>`（默认 `ink` 墨问，另有天青、现代优雅两套内置配色与 `custom` 自定义；已下线方案在读取偏好时自动回落墨问）。`index.css` 语义色 `--color-ink / --color-paper / …` 统一指向 `--tone-*`；内置方案块按 `[data-scheme][data-theme]` 重绑同一组 token，`--tone-cinnabar` 是「主题强调色」语义 token（各方案取色不同，名称保留兼容）。自定义配色（`lib/customScheme.ts`）：用户只选昼/夜两档的「底色 + 强调色」（存 `prefs.customScheme`），其余 token 由 `deriveSchemeTokens` 按对比度推导并内联到 `<html>`（内联优先于样式表，故无静态方案块；切回内置方案按 `CUSTOM_TOKEN_KEYS` 移除）；推导含文字色/强调色可读性兜底。图片查看器与视频播放器局部 `data-theme="dark"`（自定义方案下保持墨问夜读底色，与既有「固定深色」设计一致）。首屏由 `index.html` 内联脚本先行定色，并同步写入 `data-scheme` / `data-eink` 防闪。
 
+### 7.4 RSS 订阅商店
+
+`features/feedDiscovery/onlineSearch.ts` 使用 Feedly 按关键词检索少量 Feed 地址；输入网址时，经 `siteDiscovery.ts` 直连目标网站发现，必要时调用 Feedsearch。沿已有原生 HTTP / Web 代理路径联网，搜索不依赖登录或 NewsNook Cloud；订阅前用 `preview.ts` 实际验证。结果仅保留页面/导航内存，未订阅地址不写 localStorage 或 IndexedDB，不打包、下载或索引全量目录。订阅仍使用 `kind: 'feed'`，最终 URL 先落本机，再沿原有可选同步路径上传。
+
+旧 IndexedDB `newsnook:feed-discovery` 与目录小配置在商店启动时清理；目录缓存统计、目录备份和快照生成脚本已移除，已有订阅与正文缓存不受迁移影响。
+
+自建源可选 `paused`（缺省 false）与 `discovery` 元数据经过偏好归一化、备份、同步 projection/merge 和共享 contracts。暂停独立于综合 `enabledIds` 与分类成员关系：缓存仍展示，自动列表抓取、滚动加载、推荐候选、稍后读正文补齐和预存请求跳过暂停源。预存网络计划与保留窗口分离，暂停不会回收其已有正文。手动预览与主动阅读仍可联网。旧版本接受旧订阅数据，但不具备暂停语义，旧客户端重新写回订阅可能丢掉新字段。
+
+在线接口、存储边界和验证说明见 [RSS 订阅商店](./rss-subscription-store.md)。
+
 ## 8. 核心数据流
 
 ### 8.1 列表加载

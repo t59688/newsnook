@@ -43,6 +43,26 @@ export function normalizeSourceKind(kind: string | undefined): SourceKind {
   return (kind as SourceKind) || 'feed'
 }
 
+export interface SourceDiscoveryMetadata {
+  /** Stable catalog provider id that produced this subscription. */
+  providerId: string
+  /** Stable entry id within the provider catalog. */
+  entryId: string
+  /** Generator protocol used to build the final feed URL. */
+  generator: 'rsshub' | 'rss-bridge' | 'feed' | 'opml'
+  /** Optional instance id selected when the feed URL was generated. */
+  instanceId?: string
+  /** Provider-specific stable route/bridge key used for cross-instance matching. */
+  routeKey?: string
+  /** User-supplied route parameters. Kept as plain metadata; secrets must never be stored here. */
+  params?: Record<string, string | number | boolean>
+  /** Last explicit subscription preview state; informational only, never a feed liveness guarantee. */
+  verification?: {
+    status: 'verified' | 'unverified'
+    checkedAt?: number
+  }
+}
+
 export interface NewsSource {
   id: string
   name: string
@@ -80,6 +100,13 @@ export interface NewsSource {
   isCustom?: boolean
   /** 自建时间戳 */
   createdAt?: number
+  /**
+   * 用户可逆的全局暂停。只影响自动抓取，不改变综合/分类成员关系；
+   * 旧数据缺省为 false。
+   */
+  paused?: boolean
+  /** 订阅商店来源元数据；阅读链路永远只依赖 url，不依赖目录仍然存在。 */
+  discovery?: SourceDiscoveryMetadata
   /** CMS 框架探测结果（仅自定义 web-catalog 源） */
   frameworkHint?: import('../../features/frameworkDetect/types').FrameworkHint
 }
