@@ -12,6 +12,7 @@ import {
   Plus,
   Rss,
   Search,
+  Store,
   Trash2,
   Upload,
   X,
@@ -60,6 +61,7 @@ interface Props {
   onDeleteCustomSource: (sourceId: string) => void
   onDeleteCustomSources: (sourceIds: string[]) => void
   onBatchImport: (sources: NewsSource[], categories?: NewsCategory[]) => void
+  onOpenFeedStore: () => void
   onBack: () => void
 }
 
@@ -70,6 +72,7 @@ export function CustomSourcesScreen({
   onDeleteCustomSource,
   onDeleteCustomSources,
   onBatchImport,
+  onOpenFeedStore,
   onBack,
 }: Props) {
   const customSources = prefs.customSources ?? []
@@ -523,14 +526,24 @@ export function CustomSourcesScreen({
             完成
           </button>
         ) : (
-          <button
-            type="button"
-            onClick={openAddModal}
-            className="flex items-center gap-1 shrink-0 rounded-full border border-cinnabar bg-cinnabar/20 px-3.5 py-1.5 font-mono text-[10.5px] font-medium tracking-[0.1em] text-cinnabar-soft transition-colors hover:bg-cinnabar/30"
-          >
-            <Plus size={13} strokeWidth={2.4} />
-            添加订阅
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onOpenFeedStore}
+              className="flex items-center gap-1 shrink-0 rounded-full border border-haze px-3 py-1.5 font-mono text-[10px] text-paper-muted transition-colors hover:text-paper"
+            >
+              <Store size={12} strokeWidth={1.8} />
+              订阅商店
+            </button>
+            <button
+              type="button"
+              onClick={openAddModal}
+              className="flex items-center gap-1 shrink-0 rounded-full border border-cinnabar bg-cinnabar/20 px-3.5 py-1.5 font-mono text-[10.5px] font-medium tracking-[0.1em] text-cinnabar-soft transition-colors hover:bg-cinnabar/30"
+            >
+              <Plus size={13} strokeWidth={2.4} />
+              添加订阅
+            </button>
+          </div>
         )
       }
     >

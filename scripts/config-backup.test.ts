@@ -120,6 +120,9 @@ const { nextPrefs } = addCustomSource(
 )
 
 memory.setItem('newsnook:preferences', JSON.stringify(nextPrefs))
+const discovery = { providerId: 'rsshub-docs', entryId: 'route', generator: 'rsshub', params: { id: 'demo' } }
+const backupPrefs = { ...nextPrefs, customSources: nextPrefs.customSources.map((source) => ({ ...source, paused: true, discovery })) }
+memory.setItem('newsnook:preferences', JSON.stringify(backupPrefs))
 memory.setItem('newsnook:enabled', JSON.stringify(['sspai', 'ithome']))
 memory.setItem('newsnook:read', JSON.stringify(['r1', 'r2', 'r3']))
 memory.setItem(
@@ -206,6 +209,8 @@ assert.deepEqual(JSON.parse(memory.getItem('newsnook:read')!), ['r1', 'r2', 'r3'
 const restoredPrefs = JSON.parse(memory.getItem('newsnook:preferences')!)
 assert.equal(restoredPrefs.customSources.length, 1)
 assert.equal(restoredPrefs.customSources[0].name, '阮一峰的网络日志')
+assert.equal(restoredPrefs.customSources[0].paused, true)
+assert.deepEqual(restoredPrefs.customSources[0].discovery, discovery)
 
 // 13. 脏偏好在写盘前被 normalize 兜住
 const dirty = parseBackup(

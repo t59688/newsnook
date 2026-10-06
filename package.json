@@ -27,6 +27,7 @@
     "test:custom-category": "rolldown scripts/custom-category-lifecycle.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/custom-category-lifecycle.test.mjs && node node_modules/.cache/newsnook/custom-category-lifecycle.test.mjs",
     "test:category-source-usage": "npx tsx scripts/category-source-usage.test.ts",
     "test:custom-sources": "npx tsx scripts/custom-sources-opml.test.ts",
+    "test:feed-discovery": "npx tsx scripts/feed-discovery.test.ts && npx tsx scripts/feed-discovery-runtime.test.ts && npx tsx scripts/feed-discovery-online.test.ts && npx tsx scripts/feed-discovery-ui.test.tsx",
     "test:framework-detect": "npx tsx scripts/framework-detect.test.ts",
     "test:catalog-engine": "npx tsx scripts/catalog-engine.test.ts",
     "test:async-pool": "npx tsx scripts/async-pool.test.ts",

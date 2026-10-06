@@ -203,6 +203,16 @@ function recordsFromProjection(state: LocalRuntimeState): SyncRecord[] {
         enabled: true,
         isCustom: true,
         createdAt: 1_700_000_000_000,
+        paused: true,
+        discovery: {
+          providerId: 'rsshub-docs',
+          entryId: 'example:route',
+          generator: 'rsshub',
+          instanceId: 'rsshub-official',
+          routeKey: 'example:route',
+          params: { user: 'demo' },
+          verification: { status: 'verified', checkedAt: 1_700_000_000_100 },
+        },
       },
     ],
     customCategories: [
@@ -237,6 +247,16 @@ function recordsFromProjection(state: LocalRuntimeState): SyncRecord[] {
   assert.equal(custom.url, 'https://example.com/feed.xml/')
   assert.equal(custom.siteUrl, 'https://example.com')
   assert.equal(custom.createdAt, 1_700_000_000_000)
+  assert.equal(custom.paused, true)
+  assert.deepEqual(custom.discovery, {
+    providerId: 'rsshub-docs',
+    entryId: 'example:route',
+    generator: 'rsshub',
+    instanceId: 'rsshub-official',
+    routeKey: 'example:route',
+    params: { user: 'demo' },
+    verification: { status: 'verified', checkedAt: 1_700_000_000_100 },
+  })
 
   const category = restored.prefs.customCategories?.find((entry) => entry.id === 'custom-cat')
   assert.ok(category)

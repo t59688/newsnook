@@ -71,6 +71,7 @@ newsnook/
 |---|---|
 | 导航 / 返回键 / 设置栈 | `src/App.tsx` |
 | 新增或修复内置源 | `src/sources/registry.ts` → `lib/parseFeed.ts` / `lib/resolveBody.ts`；探测笔记 `docs/news-sources.md` |
+| RSS 订阅商店 / 在线发现 | `features/feedDiscovery/onlineSearch.ts` · `siteDiscovery.ts` · `preview.ts` · `screens/settings/FeedStoreScreen.tsx`；只在线检索少量命中地址，不打包或缓存全量 RSS 目录。订阅与缓存阅读继续本地优先；说明见 `docs/rss-subscription-store.md` |
 | 分类 / 场景预设 | `sources/categories.ts` · `presets.ts` · `hooks/usePresets.ts` |
 | 列表拉取与缓存 | `hooks/useFeeds.ts` · `lib/http.ts` · `lib/storage.ts` |
 | 配置备份与恢复 | `lib/backup.ts` · `components/BackupPanel.tsx`（入口在 `screens/settings/StorageScreen.tsx`）；与云同步并存，本地文件备份不依赖账号 |

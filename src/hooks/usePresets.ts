@@ -17,6 +17,7 @@ import {
   listResolvedBuiltins,
   normalizePresetsState,
   renameUserPreset,
+  removeSourcesFromPresets,
   resolvePreset,
   restoreBuiltinFactory,
   saveAsUserPreset,
@@ -67,6 +68,7 @@ export interface UsePresetsApi {
   restoreFactory: (id?: string) => void
   rename: (id: string, name: string) => void
   remove: (id: string) => void
+  removeSourceReferences: (sourceIds: string | string[]) => void
   /**
    * 云同步专用入口：整包替换预设。
    * 远端下发的运行时（偏好 + 启用信源）与预设在同一批里写回，
@@ -181,6 +183,11 @@ export function usePresets({
     setState(ensureValidActivePreset(next))
   }, [])
 
+  const removeSourceReferences = useCallback((sourceIds: string | string[]) => {
+    const ids = Array.isArray(sourceIds) ? sourceIds : [sourceIds]
+    setState((prev) => removeSourcesFromPresets(prev, ids))
+  }, [])
+
   const remove = useCallback(
     (id: string) => {
       const prev = stateRef.current
@@ -204,6 +211,7 @@ export function usePresets({
     restoreFactory,
     rename,
     remove,
+    removeSourceReferences,
     replaceFromSync,
   }
 }

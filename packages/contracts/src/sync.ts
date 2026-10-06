@@ -69,6 +69,10 @@ export const subscriptionPayloadSchema = z.object({
   /** 归一化后的 URL，仅用于自建源跨设备去重 */
   normalizedUrl: shortTextSchema.optional(),
   createdAt: z.number().int().nonnegative().optional(),
+  /** Custom subscription automatic-fetch pause state; independent from category membership/enabled. */
+  paused: z.boolean().optional(),
+  /** Optional feed-discovery provenance. Clients that do not understand it may ignore it. */
+  discovery: z.unknown().optional(),
   frameworkHint: z.unknown().optional(),
 })
 export type SubscriptionPayload = z.infer<typeof subscriptionPayloadSchema>

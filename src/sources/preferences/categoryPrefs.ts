@@ -30,6 +30,16 @@ export function allRegisteredSources(prefs?: Preferences): NewsSource[] {
   return [...SOURCES.filter((source) => !source.workspaceOnly), ...(prefs?.customSources ?? [])]
 }
 
+/** 自动抓取路径是否应跳过该源。暂停只适用于自建源，内置源始终返回 false。 */
+export function isSourcePaused(sourceId: string, prefs: Preferences): boolean {
+  return prefs.customSources?.some((source) => source.id === sourceId && source.paused === true) ?? false
+}
+
+/** 过滤全局暂停源；分类成员关系本身不被修改。 */
+export function automaticSourceIds(sourceIds: readonly string[], prefs: Preferences): string[] {
+  return sourceIds.filter((sourceId) => !isSourcePaused(sourceId, prefs))
+}
+
 /** 获取全部可用分类（内置 + 用户自建） */
 export function allRegisteredCategories(prefs: Preferences): NewsCategory[] {
   return [...CATEGORIES, ...(prefs.customCategories ?? [])]
@@ -186,10 +196,10 @@ export function recommendationScopeSourceIds(
   }
   for (const category of visibleCategories(prefs)) {
     if (category.id === FOLLOWS_ENABLED_SOURCES) {
-      enabledIds.forEach(push)
+      automaticSourceIds(enabledIds, prefs).forEach(push)
       continue
     }
-    categorySourceIds(category.id, prefs).forEach(push)
+    automaticSourceIds(categorySourceIds(category.id, prefs), prefs).forEach(push)
   }
   return ids
 }
@@ -233,7 +243,10 @@ export function defaultFeedCategoryId(categories: NewsCategory[]): CategoryId {
   )
 }
 
-/** 当前分类要拉取的信源；综合回落到频道启用列表，推荐取可见分类信源并集 */
+/**
+ * 当前分类的展示成员关系。暂停不会改动分类/综合/收藏成员，因而缓存内容仍可读取；
+ * 只有推荐候选天然属于自动计算范围，会排除暂停源。
+ */
 export function sourceIdsForCategoryWithPrefs(
   categoryId: CategoryId,
   prefs: Preferences,

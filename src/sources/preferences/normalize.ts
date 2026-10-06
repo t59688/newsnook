@@ -26,6 +26,7 @@ import {
   makeCustomSourceId,
   normalizeSourceKind,
   type NewsSource,
+  type SourceDiscoveryMetadata,
   type SourceGroup,
 } from '../registry'
 import {
@@ -43,6 +44,45 @@ import {
 } from './model'
 import { describeSources } from './categoryPrefs'
 import { migrateLegacyCategoryLayout } from '../taxonomyMigration'
+
+function normalizeDiscoveryMetadata(raw: unknown): SourceDiscoveryMetadata | undefined {
+  if (!raw || typeof raw !== 'object') return undefined
+  const input = raw as Partial<SourceDiscoveryMetadata>
+  const providerId = typeof input.providerId === 'string' ? input.providerId.trim() : ''
+  const entryId = typeof input.entryId === 'string' ? input.entryId.trim() : ''
+  const generator = input.generator
+  if (!providerId || !entryId || !['rsshub', 'rss-bridge', 'feed', 'opml'].includes(String(generator))) {
+    return undefined
+  }
+  const params: Record<string, string | number | boolean> = {}
+  if (input.params && typeof input.params === 'object') {
+    Object.entries(input.params).forEach(([key, value]) => {
+      if (!key || key.length > 120) return
+      if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        params[key] = value
+      }
+    })
+  }
+  return {
+    providerId,
+    entryId,
+    generator: generator as SourceDiscoveryMetadata['generator'],
+    instanceId: typeof input.instanceId === 'string' && input.instanceId.trim() ? input.instanceId.trim() : undefined,
+    routeKey: typeof input.routeKey === 'string' && input.routeKey.trim() ? input.routeKey.trim() : undefined,
+    params: Object.keys(params).length ? params : undefined,
+    verification:
+      input.verification && typeof input.verification === 'object' &&
+      (input.verification.status === 'verified' || input.verification.status === 'unverified')
+        ? {
+            status: input.verification.status,
+            checkedAt:
+              typeof input.verification.checkedAt === 'number'
+                ? input.verification.checkedAt
+                : undefined,
+          }
+        : undefined,
+  }
+}
 
 function uniqueValidSourceIds(raw: unknown, knownSourceIds: Set<string>): string[] {
   if (!Array.isArray(raw)) return []
@@ -96,6 +136,8 @@ export function normalizePreferences(raw: unknown): Preferences {
         enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
         isCustom: true,
         createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+        paused: item.paused === true,
+        discovery: normalizeDiscoveryMetadata(item.discovery),
       }
       if (item.frameworkHint && typeof item.frameworkHint === 'object') {
         source.frameworkHint = item.frameworkHint

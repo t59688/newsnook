@@ -9,6 +9,7 @@ import {
   normalizeSourceKind,
   normalizeWechatAlbumUrl,
   type NewsSource,
+  type SourceDiscoveryMetadata,
   type SourceGroup,
 } from '../registry'
 import type { Preferences } from './model'
@@ -26,6 +27,8 @@ export function addCustomSource(
     group?: SourceGroup
     kind?: NewsSource['kind']
     frameworkHint?: import('../../features/frameworkDetect/types').FrameworkHint
+    discovery?: SourceDiscoveryMetadata
+    paused?: boolean
   },
   targetCategoryId?: CategoryId,
 ): { nextPrefs: Preferences; newSourceId: string } {
@@ -51,13 +54,15 @@ export function addCustomSource(
     enabled: true,
     isCustom: true,
     createdAt: Date.now(),
+    paused: draft.paused === true,
+    ...(draft.discovery ? { discovery: draft.discovery } : {}),
     ...(draft.frameworkHint ? { frameworkHint: draft.frameworkHint } : {}),
   }
 
   let nextSources: NewsSource[]
   if (existingIndex >= 0) {
+    // 重复订阅只复用现有源并处理分类归属；不得覆盖用户改过的名称、createdAt 或状态。
     nextSources = [...existingList]
-    nextSources[existingIndex] = { ...existingList[existingIndex], ...newSource }
   } else {
     nextSources = [...existingList, newSource]
   }
@@ -100,7 +105,7 @@ export function addCustomSource(
 export function updateCustomSource(
   prefs: Preferences,
   sourceId: string,
-  patch: Partial<Pick<NewsSource, 'name' | 'label' | 'url' | 'siteUrl' | 'group' | 'kind'>>,
+  patch: Partial<Pick<NewsSource, 'name' | 'label' | 'url' | 'siteUrl' | 'group' | 'kind' | 'paused' | 'discovery'>>,
 ): Preferences {
   const list = prefs.customSources ?? []
   const index = list.findIndex((s) => s.id === sourceId)
@@ -122,6 +127,8 @@ export function updateCustomSource(
     siteUrl,
     group,
     kind,
+    ...(patch.paused !== undefined ? { paused: patch.paused } : {}),
+    ...(patch.discovery !== undefined ? { discovery: patch.discovery } : {}),
   }
 
   const nextList = [...list]

@@ -577,6 +577,52 @@ export function updateActiveSnapshot(state: PresetsState, snapshot: LayoutSnapsh
   return updateUserPresetSnapshot(state, state.activePresetId, snapshot)
 }
 
+function removeSourceIdsFromSnapshot(
+  snapshot: LayoutSnapshot,
+  sourceIds: ReadonlySet<string>,
+): LayoutSnapshot {
+  const categorySources: Record<CategoryId, string[]> = {}
+  Object.entries(snapshot.categorySources).forEach(([categoryId, ids]) => {
+    categorySources[categoryId] = ids.filter((id) => !sourceIds.has(id))
+  })
+  return normalizeSnapshot({
+    ...snapshot,
+    categorySources,
+    customCategories: snapshot.customCategories.map((category) => ({
+      ...category,
+      sourceIds: (category.sourceIds ?? []).filter((id) => !sourceIds.has(id)),
+    })),
+    enabledSourceIds: snapshot.enabledSourceIds.filter((id) => !sourceIds.has(id)),
+    favoriteSourceIds: (snapshot.favoriteSourceIds ?? []).filter((id) => !sourceIds.has(id)),
+  })
+}
+
+/** 删除自建订阅时清理所有场景快照，避免之后切换预设把悬空 source id 带回运行态。 */
+export function removeSourcesFromPresets(
+  state: PresetsState,
+  sourceIds: readonly string[],
+): PresetsState {
+  const targets = new Set(sourceIds.filter(Boolean))
+  if (!targets.size) return state
+
+  const userPresets = state.userPresets.map((preset) => ({
+    ...preset,
+    snapshot: removeSourceIdsFromSnapshot(preset.snapshot, targets),
+    updatedAt: Date.now(),
+  }))
+
+  const builtinOverrides: Record<string, LayoutSnapshot> = {}
+  Object.entries(builtinOverridesOf(state)).forEach(([id, snapshot]) => {
+    const cleaned = removeSourceIdsFromSnapshot(snapshot, targets)
+    const factory = findBuiltinPreset(id)
+    if (!factory || !snapshotsEqual(cleaned, factory.snapshot)) {
+      builtinOverrides[id] = cleaned
+    }
+  })
+
+  return { ...state, userPresets, builtinOverrides }
+}
+
 export function renameUserPreset(state: PresetsState, presetId: string, name: string): PresetsState {
   if (findBuiltinPreset(presetId)) return state
   const trimmed = name.trim()
