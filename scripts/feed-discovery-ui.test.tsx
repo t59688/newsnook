@@ -23,8 +23,8 @@ const originalFetch = globalThis.fetch
 const props = {
   prefs: DEFAULT_PREFERENCES, currentCategoryId: 'cn-headlines', currentPresetId: 'test', currentPresetName: '测试预设', enabledIds: [],
   onSubscribe: (...args: unknown[]) => { subscription = args; return { ok: true } },
-  onAddBuiltinToCategory: () => ({ ok: true }), onUpdateSubscription: () => ({ ok: true }), onPause: () => ({ ok: true }), onDelete: () => ({ ok: true }), onOpenSource() {}, onBack() {}, onNavigationStateChange() {},
-  navigationState: { tab: 'discover' as const, query: 'OpenAI', scrollTop: 0 },
+  onAddBuiltinToCategory: () => ({ ok: true }), onUpdateSubscription: () => ({ ok: true }), onPause: () => ({ ok: true }), onDelete: () => ({ ok: true }), onOpenSource() {}, onBack() {},
+  initialQuery: 'OpenAI',
 }
 function button(text: string): HTMLButtonElement {
   const found = [...document.querySelectorAll('button')].find((item) => item.textContent?.trim() === text)

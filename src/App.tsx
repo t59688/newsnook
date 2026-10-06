@@ -83,7 +83,6 @@ import { CategorySettingsScreen } from './screens/settings/CategorySettingsScree
 import { CategorySourcesScreen } from './screens/settings/CategorySourcesScreen'
 import { CategoryEditScreen } from './screens/settings/CategoryEditScreen'
 import { CustomSourcesScreen } from './screens/settings/CustomSourcesScreen'
-import type { FeedStoreNavigationState } from './screens/settings/FeedStoreScreen'
 import { HistoryScreen } from './screens/settings/HistoryScreen'
 import { LaterScreen } from './screens/settings/LaterScreen'
 import { LocalSearchScreen } from './screens/settings/LocalSearchScreen'
@@ -313,11 +312,6 @@ export default function App() {
     () => defaultFeedCategoryId(visibleCategories(prefs)),
   )
   const [settingsRoute, setSettingsRoute] = useState<SettingsRoute | null>(null)
-  const [feedStoreNavigation, setFeedStoreNavigation] = useState<FeedStoreNavigationState>({
-    tab: 'discover',
-    query: '',
-    scrollTop: 0,
-  })
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
   const [focusReturnRoute, setFocusReturnRoute] = useState<SettingsRoute | null>(null)
   const [enabledIds, setEnabledIds] = useState<string[]>(() => loadEnabledSources() ?? DEFAULT_ENABLED)
@@ -1395,8 +1389,6 @@ export default function App() {
             return { ok: true }
           }}
           onOpenSource={(sourceId) => openSourceFeed(sourceId, settingsRoute)}
-          navigationState={feedStoreNavigation}
-          onNavigationStateChange={setFeedStoreNavigation}
           onBack={() => setSettingsRoute(settingsRoute.returnTo ? { name: settingsRoute.returnTo } : null)}
         />
         </Suspense>
