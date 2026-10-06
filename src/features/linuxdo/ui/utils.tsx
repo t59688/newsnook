@@ -55,7 +55,7 @@ export function LinuxDoAvatar({
 }
 
 export function avatar(url?: string, name?: string): ReactNode {
-  return <LinuxDoAvatar url={url} name={name} />
+  return <LinuxDoAvatar key={url || name} url={url} name={name} />
 }
 
 export function tagGlyph(name: string): string {

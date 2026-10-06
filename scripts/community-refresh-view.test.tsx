@@ -61,8 +61,10 @@ await touch('touchmove', 200)
 await touch('touchend', 200)
 assert.ok(host.textContent?.includes('Pulled refresh'), 'touch pull must use the same notification refresh pipeline')
 let privateTitle = 'Private before'
-linuxDoNotifications.privateMessages = async () => ({ items: [{ id: 7, slug: 'private', title: privateTitle, tags: [], posters: [] }], nextPage: undefined }) as any
+let menuReads = 0
+linuxDoNotifications.recentPrivateMessages = async () => { menuReads++; return [{ key: 'topic:7', title: privateTitle, sender: 'alice', createdAt: '2026-10-05', unread: false, topic: { id: 7, slug: 'private', title: privateTitle, tags: [], posters: [] } }] as any }
 await act(async () => { Array.from(host.querySelectorAll('button')).find((button) => button.textContent === '私信')!.dispatchEvent(new window.Event('click', { bubbles: true })); await flush() })
+assert.ok(menuReads >= 1, 'private entry must load the official mixed menu, not the personal inbox')
 privateTitle = 'Private after'
 await click('刷新私信')
 assert.ok(host.textContent?.includes('Private after'), 'private refresh must reload conversations while keeping the private tab')
@@ -124,5 +126,16 @@ await act(async () => { backHandlerRef.current(); await flush() })
 scroller = host.querySelector('.overflow-y-auto.page-x') as HTMLElement
 assert.equal(scroller.scrollTop, 420, 'cached feed must restore its scroll before the next frame')
 assert.ok(host.textContent?.includes('channel-latest'))
+await click('通知')
+await clickText('私信')
+await click('打开私信：Private after')
+await act(async () => { backHandlerRef.current(); await flush() })
+assert.ok(host.querySelector('[aria-label="刷新私信"]'), 'notification private entry must return to the private list after reading')
+await clickText('我的')
+await clickText('个人私信最近互动、收件箱与归档会话')
+assert.ok(host.textContent?.includes('个人私信'))
+await click('打开私信：Private after')
+await act(async () => { backHandlerRef.current(); await flush() })
+assert.ok(host.querySelector('[aria-label="刷新私信"]'), 'back from a private conversation returns to its list')
 await act(async () => { root.unmount(); await flush() })
 console.log('community-refresh-view: ok')

@@ -64,9 +64,13 @@ export const linuxDoEndpoints = {
     if (filter) params.set('filter', filter)
     return ORIGIN + '/notifications.json?' + params.toString()
   },
-  privateMessages: (username: string, page = 0) => {
+  privateMessageMenu: (username: string) => ORIGIN + '/u/' + encodeURIComponent(username) + '/user-menu-private-messages.json',
+  privateMessages: (username: string, page = 0, filter: 'inbox' | 'new' | 'unread' | 'sent' | 'archive' = 'inbox', groupName?: string) => {
     const params = page > 0 ? '?page=' + encodeURIComponent(String(page)) : ''
-    return ORIGIN + '/topics/private-messages/' + encodeURIComponent(username) + '.json' + params
+    const suffix = filter === 'inbox' ? '' : '-' + filter
+    const user = encodeURIComponent(username)
+    if (groupName) return ORIGIN + '/topics/private-messages-group/' + user + '/' + encodeURIComponent(groupName) + (filter === 'inbox' ? '' : '/' + filter) + '.json' + params
+    return ORIGIN + '/topics/private-messages' + suffix + '/' + user + '.json' + params
   },
   markNotificationsRead: ORIGIN + '/notifications/mark-read',
   topicTimings: ORIGIN + '/topics/timings',

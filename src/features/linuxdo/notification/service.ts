@@ -1,3 +1,4 @@
+import { decodePrivateMessageMenu, type LinuxDoPrivateMessageFilter, type LinuxDoPrivateMessageItem } from './privateMessages'
 import { linuxDoEndpoints } from '../api/endpoints'
 import { decodeCurrentUser, decodeNotifications, decodeTopics } from '../api/decode'
 import type { LinuxDoApiClient } from '../api/client'
@@ -35,15 +36,23 @@ export class LinuxDoNotificationService {
     return { items: decodeNotifications(payload), nextOffset, totalRows }
   }
 
+  async recentPrivateMessages(username: string, signal?: AbortSignal): Promise<LinuxDoPrivateMessageItem[]> {
+    const payload = await this.api.getJson<unknown>(linuxDoEndpoints.privateMessageMenu(username), { auth: 'required', signal })
+    return decodePrivateMessageMenu(payload)
+  }
+
   async privateMessages(
     username: string,
     page = 0,
     signal?: AbortSignal,
+    filter: LinuxDoPrivateMessageFilter = 'inbox',
+    groupName?: string,
   ): Promise<{ items: LinuxDoTopicSummary[]; nextPage?: number }> {
     const payload = await this.api.getJson<any>(
-      linuxDoEndpoints.privateMessages(username, page),
+      linuxDoEndpoints.privateMessages(username, page, filter, groupName),
       { auth: 'required', signal },
     )
+    if (!Array.isArray(payload?.topic_list?.topics)) throw new Error('Linux.do 返回了无法识别的私信数据')
     const items = decodeTopics(payload)
     const moreTopicsUrl = typeof payload?.topic_list?.more_topics_url === 'string'
       ? payload.topic_list.more_topics_url
@@ -53,9 +62,9 @@ export class LinuxDoNotificationService {
       try {
         const parsed = new URL(moreTopicsUrl, linuxDoEndpoints.origin)
         const value = Number(parsed.searchParams.get('page'))
-        nextPage = Number.isInteger(value) && value >= 0 ? value : page + 1
+        nextPage = Number.isInteger(value) && value > page ? value : undefined
       } catch {
-        nextPage = page + 1
+        nextPage = undefined
       }
     }
     return { items, nextPage }
