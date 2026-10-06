@@ -1161,35 +1161,64 @@ export function LinuxDoTopicView({
 
   return (
     <div data-linuxdo-topic-view className="flex h-full min-h-0 flex-col">
-      <div className="sticky top-0 z-20 flex items-center gap-2 border-b border-haze/50 bg-ink/95 page-x py-2.5 backdrop-blur-xl">
-        <button type="button" onClick={onBack} className="linuxdo-control grid h-9 w-9 shrink-0 place-items-center rounded-full bg-paper/6 text-paper-muted"><ArrowLeft size={17} /></button>
-        <div className="min-w-0 flex-1">
-          <div className="truncate text-[13px] font-semibold text-paper">{summary.title}</div>
-          <div className="mt-0.5 text-[9.5px] text-paper-faint">{String(summary.replyCount) + ' 回复 · ' + compact(summary.views) + ' 浏览'}</div>
+      <div className="sticky top-0 z-20 flex h-12 items-center gap-2 border-b border-haze/45 bg-ink/90 page-x backdrop-blur-2xl">
+        <button
+          type="button"
+          onClick={onBack}
+          className="linuxdo-control grid h-8 w-8 shrink-0 place-items-center rounded-full bg-paper/[0.05] text-paper-muted hover:bg-paper/10 hover:text-paper transition active:scale-90"
+          aria-label="返回"
+        >
+          <ArrowLeft size={16} />
+        </button>
+
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="truncate text-[13.5px] font-semibold text-paper leading-tight">{summary.title}</div>
+          <div className="mt-0.5 flex items-center gap-1.5 font-mono text-[9.5px] text-paper-faint">
+            <span>{String(summary.replyCount) + ' 回复'}</span>
+            <span aria-hidden="true">·</span>
+            <span>{compact(summary.views) + ' 浏览'}</span>
+          </div>
         </div>
-        {topic && session.authenticated ? <>
-          <button type="button" onClick={() => setNotificationPickerOpen(true)} className="linuxdo-control rounded-full border border-haze bg-ink px-2.5 py-1.5 text-[10px] text-paper-muted transition-colors hover:border-cinnabar/35">
-            {['静音', '普通', '跟踪', '关注'][topic.details?.notificationLevel ?? 1] || '普通'}
+
+        {topic && session.authenticated ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setNotificationPickerOpen(true)}
+              className="linuxdo-control rounded-full border border-haze/60 bg-paper/[0.03] px-2.5 py-1 text-[10px] font-medium text-paper-muted transition-colors hover:border-cinnabar/35 active:scale-95"
+            >
+              {['静音', '普通', '跟踪', '关注'][topic.details?.notificationLevel ?? 1] || '普通'}
+            </button>
+            <OptionPickerDialog
+              open={notificationPickerOpen}
+              title="主题通知"
+              value={String(topic.details?.notificationLevel ?? 1)}
+              options={[{ id: '0', label: '静音' }, { id: '1', label: '普通' }, { id: '2', label: '跟踪' }, { id: '3', label: '关注' }]}
+              onCancel={() => setNotificationPickerOpen(false)}
+              onChange={(value) => {
+                const nextLevel = Number(value)
+                const previous = topic.details?.notificationLevel ?? 1
+                setNotificationPickerOpen(false)
+                setTopic({ ...topic, details: { ...topic.details, notificationLevel: nextLevel } })
+                void linuxDoTopics.setNotificationLevel(topic.id, nextLevel).then(() => showToast('通知设置已更新')).catch((nextError) => {
+                  setTopic((current) => current ? { ...current, details: { ...current.details, notificationLevel: previous } } : current)
+                  showToast('通知设置失败：' + readableError(nextError))
+                })
+              }}
+            />
+          </>
+        ) : null}
+
+        {topic ? (
+          <button
+            type="button"
+            onClick={() => onCompose(topic)}
+            className="linuxdo-control inline-flex items-center gap-1 rounded-full bg-cinnabar px-3 py-1.5 text-[11px] font-semibold text-white shadow-xs shadow-cinnabar/20 active:scale-95"
+          >
+            <MessageCircle size={12.5} />
+            <span>回复</span>
           </button>
-          <OptionPickerDialog
-            open={notificationPickerOpen}
-            title="主题通知"
-            value={String(topic.details?.notificationLevel ?? 1)}
-            options={[{ id: '0', label: '静音' }, { id: '1', label: '普通' }, { id: '2', label: '跟踪' }, { id: '3', label: '关注' }]}
-            onCancel={() => setNotificationPickerOpen(false)}
-            onChange={(value) => {
-              const nextLevel = Number(value)
-              const previous = topic.details?.notificationLevel ?? 1
-              setNotificationPickerOpen(false)
-              setTopic({ ...topic, details: { ...topic.details, notificationLevel: nextLevel } })
-              void linuxDoTopics.setNotificationLevel(topic.id, nextLevel).then(() => showToast('通知设置已更新')).catch((nextError) => {
-                setTopic((current) => current ? { ...current, details: { ...current.details, notificationLevel: previous } } : current)
-                showToast('通知设置失败：' + readableError(nextError))
-              })
-            }}
-          />
-        </> : null}
-        {topic ? <button type="button" onClick={() => onCompose(topic)} className="linuxdo-control inline-flex items-center gap-1.5 rounded-full bg-cinnabar px-3.5 py-2 text-[11.5px] font-medium text-white"><MessageCircle size={13} />回复</button> : null}
+        ) : null}
       </div>
 
       {readSyncFailure ? <ReadSyncStatus
@@ -1533,6 +1562,7 @@ export function LinuxDoTopicView({
           </>
         ) : null}
       </div>
+
       {jumpingPostNumber ? <div className="pointer-events-none absolute bottom-16 left-1/2 z-30 -translate-x-1/2 rounded-full border border-haze bg-ink-raised/95 px-3 py-2 text-[10px] text-paper-muted shadow-xl"><span className="inline-flex items-center gap-2"><Loader2 size={13} className="animate-spin" />正在定位 #{jumpingPostNumber}</span></div> : null}
       {returnPostNumber ? <button type="button" onClick={() => { const target = returnPostNumber; setReturnPostNumber(undefined); void jumpToPost(target) }} className="linuxdo-control absolute bottom-4 right-4 z-30 rounded-full border border-haze bg-ink-raised/95 px-3 py-2 text-[10.5px] text-paper shadow-xl">返回引用处 #{returnPostNumber}</button> : null}
       {toast ? (

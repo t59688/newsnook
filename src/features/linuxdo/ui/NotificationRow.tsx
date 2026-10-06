@@ -55,8 +55,10 @@ export function NotificationRow({ item, marking, onOpen }: { item: LinuxDoNotifi
       onClick={onOpen}
       aria-label={'打开通知：' + title}
       className={
-        'linuxdo-control linuxdo-row group relative flex min-h-[5rem] w-full items-start gap-3.5 px-3.5 py-3.5 text-left transition-colors ' +
-        (item.read ? 'hover:bg-paper/[0.03] active:bg-paper/[0.06]' : 'is-unread bg-cinnabar/[0.035] hover:bg-cinnabar/[0.055] active:bg-cinnabar/[0.08]')
+        'linuxdo-control linuxdo-row group relative flex min-h-[4.75rem] w-full items-start gap-3 px-3 py-3 text-left transition-colors ' +
+        (item.read
+          ? 'hover:bg-paper/[0.025] active:bg-paper/[0.05]'
+          : 'is-unread bg-cinnabar/[0.04] hover:bg-cinnabar/[0.06] active:bg-cinnabar/[0.08] shadow-[inset_3px_0_0_var(--color-cinnabar)]')
       }
     >
       <span className="relative mt-0.5 h-11 w-11 shrink-0">

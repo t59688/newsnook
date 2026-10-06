@@ -95,7 +95,7 @@ export function AccountView({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto page-x pb-4 pt-5">
-      <section className="mb-4 overflow-hidden rounded-[28px] border border-haze/70 bg-ink-raised p-5 shadow-md">
+      <section className="mb-3.5 overflow-hidden rounded-2xl border border-haze/60 bg-gradient-to-br from-ink-raised to-ink-deep p-4.5 shadow-sm">
         <div className="flex items-start justify-between gap-4">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full bg-cinnabar/10 px-3 py-1 text-[10px] font-semibold text-cinnabar"><ShieldCheck size={12} />第一方安全登录</div>
@@ -106,7 +106,7 @@ export function AccountView({
         </div>
       </section>
 
-      <section className="rounded-[24px] border border-haze/70 bg-ink-raised p-5 shadow-sm">
+      <section className="rounded-2xl border border-haze/60 bg-ink-raised/90 p-4.5 shadow-sm backdrop-blur-md">
         <div className="flex items-center gap-4">
           <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full border border-haze bg-ink-deep">
             {session.authenticated ? (

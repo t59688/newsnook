@@ -6,13 +6,14 @@
 .linuxdo-skeleton {
   background:
     linear-gradient(
-      105deg,
-      color-mix(in srgb, var(--color-paper) 4%, transparent) 28%,
-      color-mix(in srgb, var(--color-paper) 14%, transparent) 42%,
-      color-mix(in srgb, var(--color-paper) 4%, transparent) 56%
+      110deg,
+      color-mix(in srgb, var(--color-paper) 3.5%, transparent) 20%,
+      color-mix(in srgb, var(--color-paper) 10%, transparent) 40%,
+      color-mix(in srgb, var(--color-paper) 3.5%, transparent) 60%
     );
-  background-size: 240% 100%;
-  animation: linuxdo-skeleton-shimmer 1.15s linear infinite;
+  background-size: 200% 100%;
+  animation: linuxdo-skeleton-shimmer 1.3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  border-radius: 8px;
 }
 
 @keyframes linuxdo-card-in {
