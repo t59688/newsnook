@@ -1,6 +1,6 @@
-import type { LinuxDoPost, LinuxDoTopicSummary, LinuxDoUser } from '../types'
+import type { LinuxDoCategory, LinuxDoTag, LinuxDoPost, LinuxDoTopicSummary, LinuxDoUser } from '../types'
 
-export type LinuxDoSearchTab = 'topics' | 'posts' | 'users'
+export type LinuxDoSearchTab = 'posts' | 'categories' | 'users'
 
 export interface LinuxDoSearchCache {
   query: string
@@ -8,6 +8,9 @@ export interface LinuxDoSearchCache {
   topics: LinuxDoTopicSummary[]
   posts: LinuxDoPost[]
   users: LinuxDoUser[]
+  categories: LinuxDoCategory[]
+  tags: LinuxDoTag[]
+  tabs: Partial<Record<LinuxDoSearchTab, Omit<LinuxDoSearchCache, 'tabs'>>>
   activeTab: LinuxDoSearchTab
   page: number
   hasMore: boolean
@@ -21,7 +24,10 @@ export function createLinuxDoSearchCache(): LinuxDoSearchCache {
     topics: [],
     posts: [],
     users: [],
-    activeTab: 'topics',
+    categories: [],
+    tags: [],
+    tabs: {},
+    activeTab: 'posts',
     page: 1,
     hasMore: false,
     scrollTop: 0,

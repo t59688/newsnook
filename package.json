@@ -119,7 +119,7 @@
     "test:zhihu-segments": "npx tsx scripts/zhihu-segments.test.ts",
     "test:zhihu-cache": "npx tsx scripts/zhihu-cache.test.ts",
     "test:zhihu": "npx tsx scripts/zhihu.test.ts",
-    "test:linuxdo-results": "node --import tsx scripts/linuxdo-result-data.test.ts && node --import tsx scripts/linuxdo-result-view.test.tsx",
+    "test:linuxdo-results": "node --import tsx scripts/linuxdo-search.test.ts && node --import tsx scripts/linuxdo-result-data.test.ts && node --import tsx scripts/linuxdo-result-view.test.tsx",
     "test:linuxdo-private-messages": "node --import tsx scripts/linuxdo-private-messages.test.ts && node --import tsx scripts/linuxdo-private-messages-view.test.tsx",
     "test:linuxdo": "npm run test:linuxdo-results && npm run test:linuxdo-private-messages && npx tsx scripts/linuxdo.test.ts && npx tsx scripts/community-refresh-view.test.tsx && npm run test:linuxdo-topic-position && npm run test:linuxdo-readsync",
     "test:linuxdo-topic-position": "node --import tsx scripts/linuxdo-topic-position-view.test.tsx",

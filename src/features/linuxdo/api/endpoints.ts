@@ -51,6 +51,7 @@ export const linuxDoEndpoints = {
   posts: (topicId: number, ids: number[]) =>
     ORIGIN + '/t/' + topicId + '/posts.json?' + ids.map((id) => 'post_ids[]=' + encodeURIComponent(String(id))).join('&'),
   search: (q: string, page = 1) => ORIGIN + '/search.json?q=' + encodeURIComponent(q) + '&page=' + page,
+  searchUsers: (term: string) => ORIGIN + '/u/search/users.json?' + new URLSearchParams({ term: term.replace(/^@/, ''), limit: '20' }),
   user: (username: string) => ORIGIN + '/u/' + encodeURIComponent(username) + '.json',
   userSummary: (username: string) => ORIGIN + '/u/' + encodeURIComponent(username) + '/summary.json',
   userBadges: (username: string) => ORIGIN + '/user-badges/' + encodeURIComponent(username) + '.json',

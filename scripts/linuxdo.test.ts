@@ -1267,7 +1267,7 @@ assert.equal(search.posts[0]?.topicId, 44)
 assert.equal(search.posts[0]?.topicSlug, 'search-hit')
 assert.match(search.posts[0]?.cooked ?? '', /matched/)
 const searchCache = createLinuxDoSearchCache()
-assert.deepEqual({ query: searchCache.query, activeTab: searchCache.activeTab, page: searchCache.page, hasMore: searchCache.hasMore, scrollTop: searchCache.scrollTop }, { query: '', activeTab: 'topics', page: 1, hasMore: false, scrollTop: 0 })
+assert.deepEqual({ query: searchCache.query, activeTab: searchCache.activeTab, page: searchCache.page, hasMore: searchCache.hasMore, scrollTop: searchCache.scrollTop }, { query: '', activeTab: 'posts', page: 1, hasMore: false, scrollTop: 0 })
 
 const notificationWrites: Array<{ url: string; form: Record<string, unknown> }> = []
 const serverUnreadNotificationIds = new Set([12, 13, 14, 15, 16, 17, 18])

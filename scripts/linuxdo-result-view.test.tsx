@@ -30,6 +30,52 @@ assert.equal(opened[0][1], 6, 'topic result must open the matching floor')
 assert.equal(host.textContent?.includes('加载更多结果'), false)
 await click('帖子')
 assert.equal(host.querySelector('img')?.getAttribute('src'), 'https://cdn.example/alice/96.png', 'post result must also show avatar')
+assert.deepEqual([...host.querySelectorAll('[role="tab"]')].map(tab => tab.textContent), ['帖子', '类别与标签', '用户'])
+const typeRequests: string[] = []
+linuxDoApi.getJson = async (url: string) => {
+  typeRequests.push(url)
+  if (url.includes('search/users')) return { users: [{ id: 7, username: 'rss-user', name: 'RSS 成员' }] } as any
+  if (url.includes('/categories')) return { category_list: { categories: [{ id: 12, name: 'RSS 阅读', slug: 'rss' }] } } as any
+  if (url.includes('/tags/filter/search')) return { results: [{ name: 'rss', count: 9 }] } as any
+  return result('RSS 阅读器') as any
+}
+await click('用户')
+assert.ok(typeRequests.at(-1)?.includes('/u/search/users.json'), 'switching tabs must issue the appropriate search')
+assert.ok(host.textContent?.includes('RSS 成员'))
+await click('类别与标签')
+assert.ok(host.textContent?.includes('RSS 阅读'))
+assert.ok(host.textContent?.includes('#rss'))
+await click('帖子')
+assert.ok(host.textContent?.includes('RSS 阅读器'), 'switching back restores the saved post results')
+const postRequestsBeforeSort = typeRequests.length
+await click('排序：相关性')
+const sortOption = [...document.querySelectorAll('button')].find(button => button.textContent?.trim() === '赞最多')
+assert.ok(sortOption)
+await act(async () => { sortOption.click(); await flush() })
+assert.equal(typeRequests.length, postRequestsBeforeSort + 1)
+assert.equal(new URL(typeRequests.at(-1)!).searchParams.get('q'), 'rss order:likes', 'sort must requery upstream, not reorder the current page')
+await click('高级筛选')
+assert.ok(document.querySelector('[role="dialog"]'), 'advanced filters must open an accessible dialog')
+assert.ok(document.querySelector<HTMLInputElement>('[aria-label="作者用户名"]'))
+const cancelFilters = document.querySelector<HTMLButtonElement>('[aria-label="关闭高级筛选"]')!
+await act(async () => { cancelFilters.click(); await flush() })
+assert.equal(document.querySelector('[role="dialog"]'), null)
+assert.equal(cacheRef.current.query, 'rss order:likes', 'cancel must not apply filter drafts')
+await act(async () => { root.render(<SearchView cacheRef={cacheRef} categoriesById={{ 12: { id: 12, name: '开发调优', slug: 'dev' } }} onOpen={(...args) => opened.push(args)} onOpenUser={() => {}} />); await flush() })
+await click('高级筛选')
+const sheetClick = async (name: string) => {
+  const button = [...document.querySelectorAll('[role="dialog"] button')].find(button => button.textContent?.trim() === name || button.getAttribute('aria-label') === name) as HTMLButtonElement
+  assert.ok(button, name)
+  await act(async () => { if (button.type === 'submit') button.closest('form')!.dispatchEvent(new window.Event('submit', { bubbles: true, cancelable: true })); else button.click(); await flush() })
+}
+await sheetClick('选择搜索分类')
+await sheetClick('开发调优')
+assert.equal(cacheRef.current.query, 'rss order:likes', 'editing a filter must not immediately submit it')
+await sheetClick('应用并搜索')
+assert.equal(new URL(typeRequests.at(-1)!).searchParams.get('q'), 'rss category:12 order:likes')
+assert.ok(host.querySelector('[aria-label="移除条件：分类：开发调优"]'))
+await click('移除条件：分类：开发调优')
+assert.equal(new URL(typeRequests.at(-1)!).searchParams.get('q'), 'rss order:likes')
 // A response from the old query must not overwrite results after clearing.
 let resolveOld!: (value: any) => void
 linuxDoApi.getJson = async () => await new Promise(resolve => { resolveOld = resolve }) as any
@@ -78,6 +124,19 @@ await act(async () => { root.render(<div />); await flush() })
 await act(async () => { root.render(<SearchView cacheRef={raceCache} onOpen={() => {}} onOpenUser={() => {}} />); await flush() })
 assert.equal((host.querySelector('.overflow-y-auto') as HTMLElement).scrollTop, 220, 'return must restore loaded page and position')
 assert.ok(host.textContent?.includes('第二页'))
+const { LinuxDoApiError } = await import('../src/features/linuxdo/types')
+let loginOpened = false
+linuxDoApi.getJson = async () => { throw new LinuxDoApiError('auth-required', '请先登录 Linux.do') }
+await act(async () => { root.render(<SearchView key="login-required" cacheRef={{ current: { ...createLinuxDoSearchCache(), query: 'rss' } }} onOpen={() => {}} onOpenUser={() => {}} onLogin={() => { loginOpened = true }} />); await flush() })
+await click('搜索')
+await click('登录 LinuxDO')
+assert.equal(loginOpened, true, 'login-required search must provide an actionable login entry')
+let verified = false
+linuxDoApi.getJson = async () => { if (!verified) throw new LinuxDoApiError('browser-verification', '需要安全验证'); return result('验证后的结果') as any }
+await act(async () => { root.render(<SearchView key="verification" cacheRef={{ current: { ...createLinuxDoSearchCache(), query: 'rss' } }} onOpen={() => {}} onOpenUser={() => {}} onVerify={async () => { verified = true; return true }} />); await flush() })
+await click('搜索')
+await click('完成安全验证')
+assert.ok(host.textContent?.includes('验证后的结果'), 'successful verification must retry the failed search')
 // Real notification service decoding, including JSON-string data.
 linuxDoApi.getJson = async (url: string) => (url.includes('session/current') ? { current_user: { id: 1, username: 'self', all_unread_notifications_count: 1 } } : { notifications: [{ id: 5, notification_type: 25, topic_id: 41, post_number: 6, slug: 'reader', read: false, acting_user_name: 'Alice', acting_user_avatar_template: '/alice/{size}.png', data: JSON.stringify({ display_username: 'alice', topic_title: 'RSS 阅读器' }), created_at: '2026-10-05' }] }) as any
 linuxDoApi.putForm = async () => ({}) as any

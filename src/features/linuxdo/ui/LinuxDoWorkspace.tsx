@@ -542,6 +542,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
   const notificationFilterRef = useRef<LinuxDoNotificationFilter>('all')
   const privateMessagesCacheRef = useRef(createLinuxDoPrivateMessagesCache())
   const searchCacheRef = useRef(createLinuxDoSearchCache())
+  const searchSessionKeyRef = useRef('guest')
   const [session, setSession] = useState<LinuxDoSessionSnapshot>({ authenticated: false, authMode: 'none' })
   const [composerTopic, setComposerTopic] = useState<LinuxDoTopic | undefined>()
   const [composerOpen, setComposerOpen] = useState(false)
@@ -619,6 +620,11 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
   const applyWorkspaceSession = useCallback((next: LinuxDoSessionSnapshot) => {
     notificationFilterRef.current = 'all'
     privateMessagesCacheRef.current = createLinuxDoPrivateMessagesCache()
+    const searchSessionKey = next.authenticated ? String(next.currentUser?.id ?? 'member') : 'guest'
+    if (searchSessionKeyRef.current !== searchSessionKey) {
+      searchCacheRef.current = createLinuxDoSearchCache()
+      searchSessionKeyRef.current = searchSessionKey
+    }
     setSession(next)
     applyNotificationUnread(next.currentUser?.allUnreadNotificationsCount ?? next.currentUser?.unreadNotifications ?? 0)
     resetPersonalizedFeedCaches()
@@ -782,7 +788,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
             else void topicsApi.raw(post.id).then(openEditor).catch((nextError) => setWorkspaceError(readableError(nextError)))
           }} />
         ) : route.kind === 'search' ? (
-          <SearchView cacheRef={searchCacheRef} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} />
+          <SearchView cacheRef={searchCacheRef} key={session.authenticated ? session.currentUser?.id ?? 'member' : 'guest'} authenticated={session.authenticated} categoriesById={workspaceCategories} onVerify={verify} onLogin={() => navigate({ kind: 'account' })} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} onOpenCategory={(category) => navigate({ kind: 'discover', scope: { kind: 'category', category } })} onOpenTag={(name) => navigate({ kind: 'discover', scope: { kind: 'tag', name } })} />
         ) : route.kind === 'discover' ? (
           <DiscoverView initialScope={route.scope} cacheRef={discoverCacheRef} onScopeChange={replaceDiscoverScope} onOpen={(topic) => navigate({ kind: 'topic', topic })} />
         ) : route.kind === 'notifications' ? (
