@@ -1,7 +1,8 @@
+import { readAppStyles } from './helpers/readAppStyles'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
-const css = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+const css = readAppStyles()
 const reader = readFileSync(new URL('../src/screens/ReaderScreen.tsx', import.meta.url), 'utf8')
 const speedRead = readFileSync(new URL('../src/components/AiSpeedReadPanel.tsx', import.meta.url), 'utf8')
 const categoryRail = readFileSync(new URL('../src/components/CategoryRail.tsx', import.meta.url), 'utf8')

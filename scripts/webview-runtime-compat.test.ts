@@ -1,3 +1,4 @@
+import { readAppStyles } from './helpers/readAppStyles'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
@@ -6,7 +7,7 @@ const viteConfig = readFileSync(new URL('../vite.config.ts', import.meta.url), '
 const inlineVideoPages = readFileSync(new URL('../src/components/InlineVideoPages.tsx', import.meta.url), 'utf8')
 const inkVideoPlayer = readFileSync(new URL('../src/components/InkVideoPlayer.tsx', import.meta.url), 'utf8')
 const originPlayerSurface = readFileSync(new URL('../src/components/OriginPlayerSurface.tsx', import.meta.url), 'utf8')
-const indexCss = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+const indexCss = readAppStyles()
 const mediaSnifferCore = readFileSync(new URL('../src/features/mediaSniffer/core.ts', import.meta.url), 'utf8')
 const mediaSnifferNative = readFileSync(new URL('../src/features/mediaSniffer/native.ts', import.meta.url), 'utf8')
 

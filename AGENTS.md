@@ -88,8 +88,8 @@ newsnook/
 | 代理 / 网络 | `features/proxy/` · `lib/http.ts` · `vite.config.ts` · `functions/` |
 | 跟贴 | `features/comments/` |
 | 分享短链 / App 唤起深链 | `lib/shareToken.ts`（token 编解码） · `lib/shareLink.ts` · `lib/appDeepLink.ts` · `functions/lib/shareCard.ts`（爬虫 OG 卡片） · `wrangler.jsonc`（`run_worker_first`） |
-| 墨水屏 | `lib/eink.ts` · `hooks/usePagedReader.ts` · `index.css` 中 `[data-eink]` |
-| 主题 / 排版 | `lib/theme.ts`（明暗 + 风格方案注册表） · `lib/customScheme.ts`（自定义配色推导） · `sources/preferences.ts` · `index.css`（`data-scheme` 方案块） |
+| 墨水屏 | `lib/eink.ts` · `hooks/usePagedReader.ts` · `styles/accessibility.css` 中 `[data-eink]`（站点补充规则在对应样式模块） |
+| 主题 / 排版 | `lib/theme.ts`（明暗 + 风格方案注册表） · `lib/customScheme.ts`（自定义配色推导） · `sources/preferences.ts` · `styles/theme.css`（`data-scheme` 方案块） · `styles/reader/`（阅读排版）；`index.css` 仅维护导入顺序 |
 | 应用更新 | `features/appUpdate/` |
 | 日志 / 调试输出 | `lib/logger.ts`（`log.*` 命名空间；禁止 `src/` 直接 `console.*`） |
 | Android 构建 / 签名 | `docs/android-build.md` · `scripts/android-*.mjs` |

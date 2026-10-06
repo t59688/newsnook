@@ -1,0 +1,61 @@
+/*
+ * 切换明暗时给一次短过渡，避免整屏硬跳；
+ * 只在切换瞬间挂上，平时不给全站元素加 transition。
+ */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition:
+    background-color 240ms var(--ease-ink),
+    border-color 240ms var(--ease-ink),
+    color 240ms var(--ease-ink),
+    fill 240ms var(--ease-ink);
+}
+
+/* 预设切换抽屉：只用 translateY，避免 scale + 全屏 blur 在 WebView 上卡首帧 */
+@keyframes preset-switcher-in {
+  from {
+    opacity: 0.85;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes context-action-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.context-action-menu {
+  animation: context-action-menu-in 120ms var(--ease-ink) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-action-menu {
+    animation: none;
+  }
+}
+
+.preset-switcher-sheet {
+  animation: preset-switcher-in 160ms var(--ease-ink) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .preset-switcher-sheet {
+    animation: none;
+  }
+}
+
+html[data-eink='1'] .preset-switcher-sheet {
+  animation: none;
+}
+

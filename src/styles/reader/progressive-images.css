@@ -1,0 +1,60 @@
+/*
+ * 正文图片由 dangerouslySetInnerHTML 注入，无法直接套 React 组件。
+ * useProgressiveImages 在运行时挂上这些类，实现占位 → 渐显。
+ */
+.reader-prose img.async-img:not(.reader-img-badge):not([data-reader-role='badge']) {
+  min-height: 140px;
+  border-radius: 10px;
+}
+
+.reader-deferred-host {
+  appearance: none;
+  position: relative;
+  display: flex;
+  min-height: 140px;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-paper) 8%, transparent);
+  cursor: pointer;
+  text-align: center;
+}
+
+.reader-deferred-host > img,
+.reader-deferred-host > video {
+  display: none;
+  pointer-events: none;
+}
+
+.reader-deferred-label {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--color-paper-muted);
+}
+
+.reader-deferred-host.is-loading {
+  cursor: wait;
+}
+
+.reader-deferred-host.is-loading .reader-deferred-label {
+  position: relative;
+  z-index: 1;
+}
+
+.reader-deferred-host.is-failed .reader-deferred-label {
+  color: var(--color-cinnabar-soft, var(--color-paper-muted));
+}
+
+.reader-prose img.async-img-done {
+  min-height: 0;
+  background: none;
+  animation: ink-image-in 520ms var(--ease-ink) both;
+}
+
+/* 失效图直接收起，避免正文中留下空洞 */
+.reader-prose img.async-img-failed {
+  display: none;
+}
+

@@ -1,0 +1,93 @@
+/* Linux.do product shell. It deliberately consumes NewsNook's semantic theme
+ * tokens so every scheme, custom palette and light/dark mode keeps working. */
+.linuxdo-workspace {
+  background-color: var(--color-ink);
+  background-image: radial-gradient(circle at 50% -4%, color-mix(in srgb, var(--color-cinnabar) 6%, transparent), transparent 28rem);
+  color: var(--color-paper);
+}
+
+.linuxdo-workspace .linuxdo-brand-header {
+  background: color-mix(in srgb, var(--color-ink) 94%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--color-paper) 6%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.linuxdo-workspace .linuxdo-icon-button {
+  border: 1px solid color-mix(in srgb, var(--color-haze) 80%, transparent);
+  background: color-mix(in srgb, var(--color-ink-raised) 78%, transparent);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 7%);
+  transition: transform 160ms var(--ease-ink), background 160ms var(--ease-ink), color 160ms var(--ease-ink);
+}
+
+.linuxdo-workspace .linuxdo-icon-button.is-active {
+  border-color: color-mix(in srgb, var(--color-cinnabar) 76%, transparent);
+  background: var(--color-cinnabar);
+  color: white;
+}
+
+.linuxdo-workspace .linuxdo-icon-button:active {
+  transform: scale(0.94);
+}
+
+@media (max-width: 399px) {
+  .linuxdo-workspace .linuxdo-preset-slot > button {
+    max-width: 6.25rem;
+    padding-inline: 0.5rem;
+  }
+}
+
+.linuxdo-workspace .linuxdo-bottom-nav {
+  box-shadow: 0 14px 40px rgb(0 0 0 / 16%);
+}
+
+.linuxdo-nav-item,
+.linuxdo-nav-compose {
+  display: flex;
+  min-height: 48px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border-radius: 16px;
+  color: var(--color-paper-muted);
+  font-size: 10px;
+  font-weight: 600;
+  transition: color 160ms var(--ease-ink), transform 160ms var(--ease-ink), background 160ms var(--ease-ink);
+}
+
+.linuxdo-nav-item.is-active,
+.linuxdo-nav-compose {
+  color: var(--color-cinnabar);
+}
+
+.linuxdo-nav-item:active,
+.linuxdo-nav-compose:active {
+  transform: scale(0.96);
+}
+
+.linuxdo-nav-compose {
+  margin-top: -18px;
+}
+
+.linuxdo-nav-compose > span:first-child {
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--color-cinnabar) 32%, transparent);
+}
+
+.linuxdo-workspace button:focus-visible,
+.linuxdo-workspace a:focus-visible,
+.linuxdo-workspace select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-cinnabar) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.linuxdo-workspace input:focus-visible:not([class*="outline-none"]),
+.linuxdo-workspace textarea:focus-visible:not([class*="outline-none"]) {
+  outline: 2px solid color-mix(in srgb, var(--color-cinnabar) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.linuxdo-workspace input[class*="outline-none"],
+.linuxdo-workspace textarea[class*="outline-none"] {
+  outline: none !important;
+}
+

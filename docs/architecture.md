@@ -167,7 +167,7 @@ PresetSwitcher / 切换布局
 - 翻译引擎、语言、呈现方式、云 API 配置、列表标题翻译
 - 代理模式与地址、切换分类时自动刷新
 
-主题（`lib/theme.ts`）：明暗解析后写入 `<html data-theme>`；风格方案写入 `<html data-scheme>`（默认 `ink` 墨问，另有天青、现代优雅两套内置配色与 `custom` 自定义；已下线方案在读取偏好时自动回落墨问）。`index.css` 语义色 `--color-ink / --color-paper / …` 统一指向 `--tone-*`；内置方案块按 `[data-scheme][data-theme]` 重绑同一组 token，`--tone-cinnabar` 是「主题强调色」语义 token（各方案取色不同，名称保留兼容）。自定义配色（`lib/customScheme.ts`）：用户只选昼/夜两档的「底色 + 强调色」（存 `prefs.customScheme`），其余 token 由 `deriveSchemeTokens` 按对比度推导并内联到 `<html>`（内联优先于样式表，故无静态方案块；切回内置方案按 `CUSTOM_TOKEN_KEYS` 移除）；推导含文字色/强调色可读性兜底。图片查看器与视频播放器局部 `data-theme="dark"`（自定义方案下保持墨问夜读底色，与既有「固定深色」设计一致）。首屏由 `index.html` 内联脚本先行定色，并同步写入 `data-scheme` / `data-eink` 防闪。
+主题（`lib/theme.ts`）：明暗解析后写入 `<html data-theme>`；风格方案写入 `<html data-scheme>`（默认 `ink` 墨问，另有天青、现代优雅两套内置配色与 `custom` 自定义；已下线方案在读取偏好时自动回落墨问）。`styles/theme.css` 语义色 `--color-ink / --color-paper / …` 统一指向 `--tone-*`；内置方案块按 `[data-scheme][data-theme]` 重绑同一组 token，`--tone-cinnabar` 是「主题强调色」语义 token（各方案取色不同，名称保留兼容）。自定义配色（`lib/customScheme.ts`）：用户只选昼/夜两档的「底色 + 强调色」（存 `prefs.customScheme`），其余 token 由 `deriveSchemeTokens` 按对比度推导并内联到 `<html>`（内联优先于样式表，故无静态方案块；切回内置方案按 `CUSTOM_TOKEN_KEYS` 移除）；推导含文字色/强调色可读性兜底。图片查看器与视频播放器局部 `data-theme="dark"`（自定义方案下保持墨问夜读底色，与既有「固定深色」设计一致）。首屏由 `index.html` 内联脚本先行定色，并同步写入 `data-scheme` / `data-eink` 防闪。
 
 ### 7.4 RSS 订阅商店
 
@@ -565,7 +565,7 @@ einkMode=true
 einkMode=false → 完全恢复现有上下滚动阅读，零残留
 ```
 
-实现落点：`lib/eink.ts`、`lib/readerPagination.ts`、`hooks/usePagedReader.ts`、`components/EinkReaderMenu.tsx`、`lib/volumePageTurn.ts`、`index.css` 中 `[data-eink='1']` 规则。
+实现落点：`lib/eink.ts`、`lib/readerPagination.ts`、`hooks/usePagedReader.ts`、`components/EinkReaderMenu.tsx`、`lib/volumePageTurn.ts`、`styles/accessibility.css` 中 `[data-eink='1']` 规则（站点补充规则在对应样式模块）。
 
 ## 11. UI 模块职责速查
 
@@ -676,7 +676,7 @@ npm run android:apk | android:aab
 | 分享 | `src/lib/shareLink.ts` · `src/lib/shareToken.ts` · `src/lib/articleId.ts` · `src/lib/shareArticle.ts` · `src/components/ShareArticleSheet.tsx` · `functions/lib/shareCard.ts` |
 | 本地搜索 | `src/lib/localSearch.ts` · `src/screens/settings/LocalSearchScreen.tsx` |
 | 本地推荐 | [docs/local-recommend.md](./local-recommend.md) · `src/lib/recommend.ts` · `src/lib/articleId.ts` · `src/sources/categories.ts`（`RECOMMEND_CATEGORY`） · `src/sources/preferences/categoryPrefs.ts` |
-| 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/index.css` |
+| 主题 / 墨水屏 | `src/lib/theme.ts` · `src/lib/eink.ts` · `src/styles/theme.css` · `src/styles/accessibility.css` |
 | HTTP / 代理 | `src/lib/http.ts` · `src/features/proxy/` |
 | 翻译 | `src/features/translation/` |
 | 跟贴 | `src/features/comments/` |

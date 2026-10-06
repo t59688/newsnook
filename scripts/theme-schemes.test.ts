@@ -1,3 +1,4 @@
+import { readAppStyles } from './helpers/readAppStyles'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
@@ -122,7 +123,7 @@ console.log('theme-scheme registry: ok')
 
 // —— CSS 完备性：内置方案块都要定义完整 token 组，且与注册表 swatch 同步 ——
 
-const css = readFileSync(resolve('src/index.css'), 'utf8')
+const css = readAppStyles()
 
 /** 取选择器到块结尾的文本，用于断言块内 token */
 function blockOf(selector: string): string {

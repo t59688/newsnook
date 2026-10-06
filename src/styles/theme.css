@@ -1,0 +1,299 @@
+/*
+ * 语义色只在这里声明一层间接引用：ink 系是承托面，paper 系是落在其上的字。
+ * 真正的色值放在下方 --tone-* 里按主题切换，因此 bg-ink / text-paper 等类
+ * 无需区分明暗，任何子树也能通过 data-theme 局部改写。
+ *
+ * 注意：@theme 里的 --color-* 会在 :root 上被算成具体色并向下继承。
+ * 子树若只改 --tone-*，text-paper 等仍会拿到祖先已解析的旧色（昼读下播放器控件变墨色）。
+ * 因此每个 [data-theme] 必须同步重绑 --color-* → 当前 --tone-*。
+ */
+@theme {
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+
+  --font-display: 'Instrument Serif', 'Noto Serif SC', 'Songti SC', serif;
+  --font-body: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, monospace;
+
+  --ease-ink: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 夜读（默认）：冷墨底 + 暖纸字 */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --tone-paper-rgb: 234 228 216;
+  --tone-ink-rgb: 14 15 18;
+  --tone-ink-raised-rgb: 22 24 29;
+  --tone-ink-deep-rgb: 8 9 11;
+  --tone-paper-muted-rgb: 168 161 148;
+  --tone-paper-faint-rgb: 120 114 104;
+  --tone-cinnabar-rgb: 196 92 74;
+  --tone-cinnabar-soft-rgb: 217 132 116;
+
+  --tone-ink: #0e0f12;
+  --tone-ink-raised: #16181d;
+  --tone-ink-deep: #08090b;
+  --tone-paper: #eae4d8;
+  --tone-paper-muted: #a8a194;
+  --tone-paper-faint: #787268;
+  --tone-cinnabar: #c45c4a;
+  --tone-cinnabar-soft: #d98474;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  /* 头条图上的压底渐变；浅底需要更厚才压得住图片细节 */
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 12px 40px -16px rgb(0 0 0 / 0.85);
+  /* 已隐藏项的弱化：深底压暗，浅底靠降对比 */
+  --dim-hidden: brightness(0.72);
+  --grain-opacity: 0.035;
+  --grain-blend: normal;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/*
+ * 昼读：宣纸而非白纸。底色带一点暖黄灰，字用饱满深邃的墨黑，
+ * 增强未读字体的骨力与清晰度，拉大已读/未读明度差，建立高/中/低三级清晰对比。
+ */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --tone-paper-rgb: 26 24 21;
+  --tone-ink-rgb: 246 242 233;
+  --tone-ink-raised-rgb: 255 252 245;
+  --tone-ink-deep-rgb: 235 228 214;
+  --tone-paper-muted-rgb: 82 76 64;
+  --tone-paper-faint-rgb: 115 107 92;
+  --tone-cinnabar-rgb: 180 61 38;
+  --tone-cinnabar-soft-rgb: 190 74 51;
+
+  --tone-ink: #f6f2e9;
+  --tone-ink-raised: #fffcf5;
+  --tone-ink-deep: #ebe4d6;
+  --tone-paper: #1a1815;
+  --tone-paper-muted: #524c40;
+  --tone-paper-faint: #736b5c;
+  --tone-cinnabar: #b43d26;
+  --tone-cinnabar-soft: #be4a33;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.11);
+
+  --tone-body-text: #201e1a;
+  --tone-quote-text: #5c5547;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 14px 34px -18px rgb(72 58 38 / 0.38);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  /* 纸纹在浅底上直接叠加会发灰，改用正片叠底让噪点沉进纸里 */
+  --grain-opacity: 0.04;
+  --grain-blend: multiply;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/*
+ * 风格方案（data-scheme）
+ *
+ * 与 data-theme 正交：同一套语义 token，不同配色与展示字体。
+ * --tone-cinnabar 是「主题强调色」语义 token（名称保留兼容，各方案取色不同）。
+ * 未命中任何方案块时（data-scheme 缺省或为 ink），上方 [data-theme] 两块即墨问。
+ *
+ * 选择器写双联：既命中 <html> 根节点，也命中方案根下局部强制深/浅的子树
+ * （图片查看器、视频播放器的 data-theme="dark"）。
+ */
+
+/* 天青 · 夜：窑黛深釉，月白字，青瓷青一点 */
+[data-scheme='celadon'][data-theme='dark'],
+[data-scheme='celadon'] [data-theme='dark'] {
+  color-scheme: dark;
+
+  --tone-paper-rgb: 222 229 223;
+  --tone-ink-rgb: 18 24 23;
+  --tone-ink-raised-rgb: 26 34 32;
+  --tone-ink-deep-rgb: 11 16 15;
+  --tone-paper-muted-rgb: 149 162 155;
+  --tone-paper-faint-rgb: 107 120 113;
+  --tone-cinnabar-rgb: 143 179 174;
+  --tone-cinnabar-soft-rgb: 163 196 190;
+
+  --tone-ink: #121817;
+  --tone-ink-raised: #1a2220;
+  --tone-ink-deep: #0b100f;
+  --tone-paper: #dee5df;
+  --tone-paper-muted: #95a29b;
+  --tone-paper-faint: #6b7871;
+  --tone-cinnabar: #8fb3ae;
+  --tone-cinnabar-soft: #a3c4be;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 12px 40px -16px rgb(0 0 0 / 0.85);
+  --dim-hidden: brightness(0.72);
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 天青 · 昼：汝窑釉面，黛墨，单色青的克制 */
+[data-scheme='celadon'][data-theme='light'],
+[data-scheme='celadon'] [data-theme='light'] {
+  color-scheme: light;
+
+  --tone-paper-rgb: 31 36 38;
+  --tone-ink-rgb: 230 235 232;
+  --tone-ink-raised-rgb: 240 244 241;
+  --tone-ink-deep-rgb: 211 219 214;
+  --tone-paper-muted-rgb: 84 96 91;
+  --tone-paper-faint-rgb: 120 133 127;
+  --tone-cinnabar-rgb: 62 102 99;
+  --tone-cinnabar-soft-rgb: 79 122 118;
+
+  --tone-ink: #e6ebe8;
+  --tone-ink-raised: #f0f4f1;
+  --tone-ink-deep: #d3dbd6;
+  --tone-paper: #1f2426;
+  --tone-paper-muted: #54605b;
+  --tone-paper-faint: #78857f;
+  --tone-cinnabar: #3e6663;
+  --tone-cinnabar-soft: #4f7a76;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.1);
+
+  --tone-body-text: #23282a;
+  --tone-quote-text: #4f5b56;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 14px 34px -18px rgb(52 72 66 / 0.32);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 现代优雅 · 夜：纯黑底，系统抬升灰，系统蓝。和墨问暖墨不是一路。 */
+[data-scheme='pearl'][data-theme='dark'],
+[data-scheme='pearl'] [data-theme='dark'] {
+  color-scheme: dark;
+
+  --tone-paper-rgb: 245 245 247;
+  --tone-ink-rgb: 0 0 0;
+  --tone-ink-raised-rgb: 28 28 30;
+  --tone-ink-deep-rgb: 0 0 0;
+  --tone-paper-muted-rgb: 152 152 157;
+  --tone-paper-faint-rgb: 99 99 102;
+  --tone-cinnabar-rgb: 10 132 255;
+  --tone-cinnabar-soft-rgb: 64 156 255;
+
+  --tone-ink: #000000;
+  --tone-ink-raised: #1c1c1e;
+  --tone-ink-deep: #000000;
+  --tone-paper: #f5f5f7;
+  --tone-paper-muted: #98989d;
+  --tone-paper-faint: #636366;
+  --tone-cinnabar: #0a84ff;
+  --tone-cinnabar-soft: #409cff;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 8px 28px -18px rgb(0 0 0 / 0.55);
+  --dim-hidden: brightness(0.72);
+  --grain-opacity: 0;
+
+  --font-display: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 现代优雅 · 昼：冷白纸面（苹果图书 White），正文与页面同一张纸；和墨问宣纸朱砂分开 */
+[data-scheme='pearl'][data-theme='light'],
+[data-scheme='pearl'] [data-theme='light'] {
+  color-scheme: light;
+
+  --tone-paper-rgb: 17 17 17;
+  --tone-ink-rgb: 250 250 250;
+  --tone-ink-raised-rgb: 255 255 255;
+  --tone-ink-deep-rgb: 250 250 250;
+  --tone-paper-muted-rgb: 110 110 115;
+  --tone-paper-faint-rgb: 142 142 147;
+  --tone-cinnabar-rgb: 0 122 255;
+  --tone-cinnabar-soft-rgb: 64 156 255;
+
+  --tone-ink: #fafafa;
+  --tone-ink-raised: #ffffff;
+  --tone-ink-deep: #fafafa;
+  --tone-paper: #111111;
+  --tone-paper-muted: #6e6e73;
+  --tone-paper-faint: #8e8e93;
+  --tone-cinnabar: #007aff;
+  --tone-cinnabar-soft: #409cff;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+
+  --tone-body-text: #111111;
+  --tone-quote-text: #6e6e73;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 10px 32px -18px rgb(0 0 0 / 0.12);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --grain-opacity: 0;
+
+  --font-display: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+

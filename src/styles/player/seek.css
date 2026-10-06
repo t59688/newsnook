@@ -1,0 +1,35 @@
+/* 自定义播放器进度条：隐藏原生轨道，只保留可点的拇指区域 */
+.ink-seek {
+  -webkit-appearance: none;
+  appearance: none;
+  margin: 0;
+  height: 100%;
+}
+.ink-seek::-webkit-slider-runnable-track {
+  height: 3px;
+  background: transparent;
+}
+.ink-seek::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5.5px;
+  border-radius: 999px;
+  border: 2px solid rgb(var(--tone-paper-rgb) / 0.9);
+  background: var(--color-cinnabar);
+  box-shadow: 0 0 0 4px rgb(var(--tone-ink-rgb) / 0.25);
+}
+.ink-seek::-moz-range-track {
+  height: 3px;
+  background: transparent;
+  border: none;
+}
+.ink-seek::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  border: 2px solid rgb(var(--tone-paper-rgb) / 0.9);
+  background: var(--color-cinnabar);
+}
+

@@ -1,0 +1,39 @@
+.reader-prose a {
+  color: var(--color-cinnabar-soft);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-cinnabar-soft) 35%, transparent);
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.reader-prose blockquote {
+  margin: 1.2em 0;
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in oklab, var(--color-cinnabar) 50%, transparent);
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line-height);
+  color: var(--tone-quote-text);
+  font-style: italic;
+}
+
+.reader-prose ul,
+.reader-prose ol {
+  margin: 0 0 var(--reader-paragraph-gap);
+  padding-left: 1.2em;
+  font-size: var(--reader-font-size);
+  color: var(--tone-body-text);
+  line-height: var(--reader-line-height);
+}
+
+.reader-prose figure {
+  min-width: 0;
+  max-width: 100%;
+  margin: 1em 0;
+}
+
+.reader-prose figcaption {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-paper-faint);
+}
+

@@ -1,0 +1,374 @@
+/* Linux.do: Discourse-specific semantics are converted to app-owned data roles
+ * before generic HTML sanitization strips source classes. Keep this section
+ * scoped so forum content cannot change the rest of NewsNook's reader rules. */
+.linuxdo-control,
+.linuxdo-control * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.linuxdo-post-prose,
+.linuxdo-post-prose * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Linux.do Markdown callouts. The source post stores GitHub-style markers such
+ * as [!WARNING] inside a blockquote; sanitize.ts converts only a leading marker
+ * into app-owned data attributes before source classes are removed. Keep status
+ * colors semantic and explicit so old Android WebViews do not depend on color-mix(). */
+.reader-prose.linuxdo-post-prose {
+  --linuxdo-callout-note-accent: #7bb7e6;
+  --linuxdo-callout-note-fg: #a7d0ef;
+  --linuxdo-callout-note-bg: rgba(71, 134, 181, 0.14);
+  --linuxdo-callout-note-border: rgba(123, 183, 230, 0.38);
+  --linuxdo-callout-success-accent: #63c98d;
+  --linuxdo-callout-success-fg: #91ddb0;
+  --linuxdo-callout-success-bg: rgba(67, 166, 108, 0.13);
+  --linuxdo-callout-success-border: rgba(99, 201, 141, 0.38);
+  --linuxdo-callout-important-accent: #d98474;
+  --linuxdo-callout-important-fg: #e8aa9e;
+  --linuxdo-callout-important-bg: rgba(196, 92, 74, 0.13);
+  --linuxdo-callout-important-border: rgba(217, 132, 116, 0.4);
+  --linuxdo-callout-warning-accent: #f0a548;
+  --linuxdo-callout-warning-fg: #f4bf79;
+  --linuxdo-callout-warning-bg: rgba(224, 145, 42, 0.14);
+  --linuxdo-callout-warning-border: rgba(240, 165, 72, 0.42);
+  --linuxdo-callout-caution-accent: #e47b75;
+  --linuxdo-callout-caution-fg: #efa39e;
+  --linuxdo-callout-caution-bg: rgba(205, 82, 76, 0.13);
+  --linuxdo-callout-caution-border: rgba(228, 123, 117, 0.4);
+}
+
+[data-theme='light'] .reader-prose.linuxdo-post-prose {
+  --linuxdo-callout-note-accent: #2f78ae;
+  --linuxdo-callout-note-fg: #245f8b;
+  --linuxdo-callout-note-bg: rgba(58, 133, 187, 0.1);
+  --linuxdo-callout-note-border: rgba(47, 120, 174, 0.32);
+  --linuxdo-callout-success-accent: #2d9b59;
+  --linuxdo-callout-success-fg: #237b47;
+  --linuxdo-callout-success-bg: rgba(45, 155, 89, 0.1);
+  --linuxdo-callout-success-border: rgba(45, 155, 89, 0.32);
+  --linuxdo-callout-important-accent: #b43d26;
+  --linuxdo-callout-important-fg: #92331f;
+  --linuxdo-callout-important-bg: rgba(180, 61, 38, 0.09);
+  --linuxdo-callout-important-border: rgba(180, 61, 38, 0.3);
+  --linuxdo-callout-warning-accent: #d47a00;
+  --linuxdo-callout-warning-fg: #ad6200;
+  --linuxdo-callout-warning-bg: rgba(238, 143, 20, 0.11);
+  --linuxdo-callout-warning-border: rgba(212, 122, 0, 0.34);
+  --linuxdo-callout-caution-accent: #c8453d;
+  --linuxdo-callout-caution-fg: #a73630;
+  --linuxdo-callout-caution-bg: rgba(200, 69, 61, 0.09);
+  --linuxdo-callout-caution-border: rgba(200, 69, 61, 0.3);
+}
+
+/* Generic reader CSS intentionally fills article images to 100%; forum posts
+ * should preserve an image's natural size instead of enlarging badges/screenshots. */
+.reader-prose.linuxdo-post-prose p {
+  text-indent: 0 !important;
+}
+
+.reader-prose.linuxdo-post-prose img[data-linuxdo-role='content-image'],
+.reader-prose.linuxdo-post-prose img[data-linuxdo-role='onebox-image'] {
+  width: auto;
+  max-width: 100%;
+  height: auto;
+  min-height: 0;
+  margin: 0;
+  object-fit: contain;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-block'] {
+  display: block;
+  max-width: 100%;
+  margin: 0.75rem 0;
+  line-height: 0;
+  text-align: center;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-link'] {
+  display: inline-block;
+  max-width: 100%;
+  line-height: 0;
+}
+
+.reader-prose.linuxdo-post-prose p[data-linuxdo-role='image-paragraph'] {
+  margin: 0.75rem 0;
+  text-indent: 0 !important;
+  line-height: 0;
+}
+
+/* Discourse renders emoji as 20x20 <img class="emoji">. The source class is
+ * deliberately removed by sanitizer, so the semantic marker restores inline size. */
+.reader-prose.linuxdo-post-prose img[data-linuxdo-role='emoji'] {
+  display: inline-block !important;
+  width: 1.25em !important;
+  max-width: 1.25em !important;
+  height: 1.25em !important;
+  max-height: 1.25em !important;
+  min-height: 0 !important;
+  margin: 0 0.08em !important;
+  border-radius: 0 !important;
+  vertical-align: -0.2em;
+  cursor: default;
+  object-fit: contain;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox'] {
+  display: block;
+  margin: 0.9rem 0;
+  padding: 0.85rem;
+  overflow: hidden;
+  border: 1px solid var(--color-haze);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-paper) 4%, transparent);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox'] img[data-linuxdo-role='onebox-image'] {
+  max-width: min(120px, 34%);
+  max-height: 120px;
+  margin: 0 0.75rem 0.5rem 0;
+  float: left;
+  border-radius: 10px;
+}
+
+.reader-prose.linuxdo-post-prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  border-collapse: collapse;
+  -webkit-overflow-scrolling: touch;
+}
+
+.reader-prose.linuxdo-post-prose th,
+.reader-prose.linuxdo-post-prose td {
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--color-haze);
+  white-space: normal;
+}
+
+.reader-prose.linuxdo-post-prose pre {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.reader-prose.linuxdo-post-prose code {
+  overflow-wrap: anywhere;
+}
+
+.reader-prose.linuxdo-post-prose {
+  font-family: var(--font-body);
+  font-size: 15.5px;
+  font-weight: 400;
+  line-height: 1.74;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+.reader-prose.linuxdo-post-prose p {
+  margin: 0 0 0.78em;
+  line-height: inherit;
+}
+
+.reader-prose.linuxdo-post-prose p:last-child {
+  margin-bottom: 0;
+}
+
+.reader-prose.linuxdo-post-prose a {
+  color: var(--color-cinnabar-soft);
+  text-decoration: none;
+  border-bottom: none !important;
+  text-underline-offset: 0.14em;
+}
+
+.reader-prose.linuxdo-post-prose a:active {
+  opacity: 0.72;
+}
+
+.reader-prose.linuxdo-post-prose strong,
+.reader-prose.linuxdo-post-prose b {
+  font-weight: 700;
+}
+
+.reader-prose.linuxdo-post-prose em,
+.reader-prose.linuxdo-post-prose i {
+  font-style: italic;
+}
+
+.reader-prose.linuxdo-post-prose h1,
+.reader-prose.linuxdo-post-prose h2,
+.reader-prose.linuxdo-post-prose h3,
+.reader-prose.linuxdo-post-prose h4,
+.reader-prose.linuxdo-post-prose h5,
+.reader-prose.linuxdo-post-prose h6 {
+  margin: 1.15em 0 0.5em;
+  font-family: var(--font-body);
+  font-weight: 700;
+  line-height: 1.36;
+}
+
+.reader-prose.linuxdo-post-prose h1 { font-size: 1.34em; }
+.reader-prose.linuxdo-post-prose h2 { font-size: 1.24em; }
+.reader-prose.linuxdo-post-prose h3 { font-size: 1.14em; }
+.reader-prose.linuxdo-post-prose h4,
+.reader-prose.linuxdo-post-prose h5,
+.reader-prose.linuxdo-post-prose h6 { font-size: 1.04em; }
+
+.reader-prose.linuxdo-post-prose ul,
+.reader-prose.linuxdo-post-prose ol {
+  margin: 0.55em 0 0.85em;
+  padding-left: 1.45em;
+}
+
+.reader-prose.linuxdo-post-prose li {
+  margin: 0.24em 0;
+}
+
+.reader-prose.linuxdo-post-prose hr {
+  margin: 1.15em 0;
+  border: 0;
+  border-top: 1px solid var(--color-haze);
+}
+
+.reader-prose.linuxdo-post-prose code {
+  border-radius: 5px;
+  background: var(--color-ink-deep);
+  padding: 0.12em 0.34em;
+  color: var(--color-paper);
+  font-family: var(--font-mono);
+  font-size: 0.88em;
+  overflow-wrap: anywhere;
+}
+
+.reader-prose.linuxdo-post-prose pre {
+  max-width: 100%;
+  margin: 0.85em 0;
+  overflow-x: auto;
+  border: 1px solid var(--color-haze);
+  border-radius: 10px;
+  background: var(--color-ink-deep);
+  padding: 0.85em 0.95em;
+  color: var(--color-paper);
+  white-space: pre;
+  -webkit-overflow-scrolling: touch;
+}
+
+.reader-prose.linuxdo-post-prose pre code {
+  background: transparent;
+  padding: 0;
+  font-size: 0.88em;
+  overflow-wrap: normal;
+}
+
+.reader-prose.linuxdo-post-prose kbd {
+  display: inline-block;
+  border: 1px solid var(--color-haze);
+  border-bottom-width: 2px;
+  border-radius: 5px;
+  background: var(--color-ink-raised);
+  padding: 0.08em 0.38em;
+  color: var(--color-paper-muted);
+  font-family: var(--font-mono);
+  font-size: 0.8em;
+}
+
+.reader-prose.linuxdo-post-prose blockquote {
+  font-style: normal !important;
+}
+
+.reader-prose.linuxdo-post-prose blockquote:not([data-linuxdo-role='quote-body']):not([data-linuxdo-role='callout']) {
+  margin: 0.8em 0;
+  padding: 0.45em 0.8em;
+  border-left: 3px solid var(--color-haze);
+  border-radius: 0 4px 4px 0;
+  background: var(--color-ink-deep);
+  color: var(--color-paper-muted);
+  font-style: normal !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout'] {
+  --linuxdo-callout-accent: var(--linuxdo-callout-note-accent);
+  --linuxdo-callout-fg: var(--linuxdo-callout-note-fg);
+  --linuxdo-callout-bg: var(--linuxdo-callout-note-bg);
+  --linuxdo-callout-border: var(--linuxdo-callout-note-border);
+  position: relative;
+  display: block;
+  margin: 0.82em 0;
+  padding: 0.72em 0.9em 0.72em 2.55em;
+  border: 1px solid var(--linuxdo-callout-border);
+  border-left: 4px solid var(--linuxdo-callout-accent);
+  border-radius: 8px;
+  background: var(--linuxdo-callout-bg);
+  color: var(--linuxdo-callout-fg);
+  font-style: normal !important;
+  line-height: 1.65;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout']::before {
+  position: absolute;
+  top: 0.72em;
+  left: 0.82em;
+  width: 1.1em;
+  color: var(--linuxdo-callout-accent);
+  font-size: 1em;
+  font-weight: 800;
+  line-height: 1.65;
+  text-align: center;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout'] p {
+  margin: 0 0 0.5em !important;
+  color: inherit;
+  font-style: normal !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout'] p:last-child {
+  margin-bottom: 0 !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout'] a,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout'] strong,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout'] b,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='callout'] code {
+  color: inherit;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='tip'],
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='success'] {
+  --linuxdo-callout-accent: var(--linuxdo-callout-success-accent);
+  --linuxdo-callout-fg: var(--linuxdo-callout-success-fg);
+  --linuxdo-callout-bg: var(--linuxdo-callout-success-bg);
+  --linuxdo-callout-border: var(--linuxdo-callout-success-border);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='important'] {
+  --linuxdo-callout-accent: var(--linuxdo-callout-important-accent);
+  --linuxdo-callout-fg: var(--linuxdo-callout-important-fg);
+  --linuxdo-callout-bg: var(--linuxdo-callout-important-bg);
+  --linuxdo-callout-border: var(--linuxdo-callout-important-border);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='warning'] {
+  --linuxdo-callout-accent: var(--linuxdo-callout-warning-accent);
+  --linuxdo-callout-fg: var(--linuxdo-callout-warning-fg);
+  --linuxdo-callout-bg: var(--linuxdo-callout-warning-bg);
+  --linuxdo-callout-border: var(--linuxdo-callout-warning-border);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='caution'] {
+  --linuxdo-callout-accent: var(--linuxdo-callout-caution-accent);
+  --linuxdo-callout-fg: var(--linuxdo-callout-caution-fg);
+  --linuxdo-callout-bg: var(--linuxdo-callout-caution-bg);
+  --linuxdo-callout-border: var(--linuxdo-callout-caution-border);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='note']::before { content: 'i'; }
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='tip']::before { content: '✓'; }
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='success']::before { content: '✓'; }
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='important']::before { content: '!'; }
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='warning']::before { content: '⚠'; }
+.reader-prose.linuxdo-post-prose [data-linuxdo-callout='caution']::before { content: '!'; }
+

@@ -1,0 +1,287 @@
+/* Linux.do design primitives. Every surface below is derived from semantic
+ * theme tokens so all schemes, custom palettes, light/dark and e-ink keep
+ * working. Views compose these instead of re-inventing one-off pills/cards. */
+.linuxdo-toolbar {
+  background: color-mix(in srgb, var(--color-ink) 90%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--color-haze) 45%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(1.3);
+  backdrop-filter: blur(18px) saturate(1.3);
+}
+
+.linuxdo-segmented {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-paper) 5.5%, transparent);
+}
+
+.linuxdo-segment {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  min-height: 36px;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  padding: 0 12px;
+  color: var(--color-paper-muted);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background-color 180ms var(--ease-ink), color 180ms var(--ease-ink), box-shadow 180ms var(--ease-ink);
+}
+
+.linuxdo-segment:hover {
+  color: var(--color-paper);
+}
+
+.linuxdo-segment.is-active,
+.linuxdo-segment[aria-selected='true'],
+.linuxdo-segment[aria-pressed='true'] {
+  background: var(--color-ink-raised);
+  color: var(--color-paper);
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 8%),
+    0 0 0 1px color-mix(in srgb, var(--color-haze) 70%, transparent);
+}
+
+.linuxdo-chip {
+  display: inline-flex;
+  min-height: 34px;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--color-haze) 80%, transparent);
+  border-radius: 999px;
+  padding: 0 14px;
+  color: var(--color-paper-muted);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: background-color 160ms var(--ease-ink), color 160ms var(--ease-ink), border-color 160ms var(--ease-ink), transform 160ms var(--ease-ink);
+}
+
+.linuxdo-chip:hover {
+  border-color: color-mix(in srgb, var(--color-paper) 22%, transparent);
+  color: var(--color-paper);
+}
+
+.linuxdo-chip:active {
+  transform: scale(0.97);
+}
+
+.linuxdo-chip.is-active,
+.linuxdo-chip[aria-selected='true'],
+.linuxdo-chip[aria-pressed='true'] {
+  border-color: transparent;
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+.linuxdo-chip.is-accent {
+  border-color: color-mix(in srgb, var(--color-cinnabar) 32%, transparent);
+  background: color-mix(in srgb, var(--color-cinnabar) 9%, transparent);
+  color: var(--color-cinnabar-soft);
+}
+
+/* Inset grouped list: one raised surface, hairline dividers aligned with
+ * the text column (set --row-inset on the group for avatar rows). */
+.linuxdo-group {
+  --row-inset: 16px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-haze) 55%, transparent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--color-ink-raised) 88%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+}
+
+.linuxdo-row {
+  position: relative;
+  display: flex;
+  width: 100%;
+  text-align: left;
+  transition: background-color 140ms var(--ease-ink);
+}
+
+.linuxdo-group > * + .linuxdo-row::before {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: var(--row-inset);
+  height: 1px;
+  background: color-mix(in srgb, var(--color-haze) 50%, transparent);
+  content: '';
+}
+
+.linuxdo-row:active {
+  background: color-mix(in srgb, var(--color-paper) 4.5%, transparent);
+}
+
+@media (hover: hover) {
+  .linuxdo-row:hover {
+    background: color-mix(in srgb, var(--color-paper) 2.5%, transparent);
+  }
+}
+
+.linuxdo-row.is-unread {
+  background: color-mix(in srgb, var(--color-cinnabar) 4.5%, transparent);
+}
+
+.linuxdo-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 20px 4px 8px;
+  color: var(--color-paper-faint);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.linuxdo-section-label:first-child {
+  margin-top: 4px;
+}
+
+.linuxdo-type-badge {
+  box-shadow: 0 0 0 2px var(--color-ink-raised);
+}
+
+.linuxdo-count-badge {
+  display: inline-grid;
+  min-width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 999px;
+  padding: 0 5px;
+  background: #ff4d4f;
+  color: white;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 0 0 2px var(--color-ink-raised);
+}
+
+.linuxdo-nav-icon {
+  position: relative;
+  display: grid;
+  width: 52px;
+  height: 28px;
+  place-items: center;
+  border-radius: 999px;
+  transition: background-color 200ms var(--ease-ink);
+}
+
+.linuxdo-nav-item.is-active .linuxdo-nav-icon {
+  background: color-mix(in srgb, var(--color-cinnabar) 13%, transparent);
+}
+
+.linuxdo-nav-icon .linuxdo-count-badge {
+  position: absolute;
+  top: -5px;
+  left: 30px;
+}
+
+@keyframes linuxdo-sheet-up {
+  from { transform: translateY(24px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes linuxdo-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.linuxdo-sheet-backdrop {
+  animation: linuxdo-fade-in 160ms var(--ease-ink) both;
+}
+
+.linuxdo-sheet {
+  animation: linuxdo-sheet-up 240ms var(--ease-ink) both;
+}
+
+.linuxdo-sheet-grabber {
+  width: 36px;
+  height: 4px;
+  margin: 8px auto 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-paper) 18%, transparent);
+}
+
+@media (min-width: 640px) {
+  .linuxdo-sheet-grabber {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .linuxdo-sheet,
+  .linuxdo-sheet-backdrop {
+    animation: none;
+  }
+}
+
+html[data-eink='1'] .linuxdo-toolbar,
+html[data-eink='1'] .linuxdo-group,
+html[data-eink='1'] .linuxdo-segmented {
+  background: transparent;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+
+html[data-eink='1'] .linuxdo-segment.is-active,
+html[data-eink='1'] .linuxdo-segment[aria-selected='true'],
+html[data-eink='1'] .linuxdo-segment[aria-pressed='true'] {
+  box-shadow: inset 0 0 0 1.5px var(--color-paper);
+}
+
+html[data-eink='1'] .linuxdo-row.is-unread {
+  background: transparent;
+}
+
+html[data-eink='1'] .linuxdo-nav-item.is-active .linuxdo-nav-icon {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--color-paper);
+}
+
+html[data-eink='1'] .linuxdo-type-badge {
+  background: var(--color-ink) !important;
+  color: var(--color-paper) !important;
+  box-shadow: 0 0 0 1px var(--color-paper);
+}
+
+html[data-eink='1'] .linuxdo-sheet,
+html[data-eink='1'] .linuxdo-sheet-backdrop {
+  animation: none;
+}
+
+/* LINUX DO 社区工作区专属水平留白规范：
+ * 移动端采用 8px (0.5rem) 现代微外槽，保留浮动卡片独立层级与微阴影，彻底释放横向空间；
+ * 平板与桌面端平滑提升边距，宽屏保持 860px 黄金阅读中轴，防止超宽显示器过度拉伸。 */
+.linuxdo-workspace .page-x {
+  padding-inline: 0.5rem;
+}
+
+@media (min-width: 640px) {
+  .linuxdo-workspace .page-x {
+    padding-inline: 1.25rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .linuxdo-workspace .page-x {
+    width: 100%;
+    max-width: 860px;
+    margin-inline: auto;
+    padding-inline: 1.5rem;
+  }
+
+  .linuxdo-workspace .linuxdo-bottom-nav {
+    width: min(540px, calc(100% - 32px));
+    margin-inline: auto;
+  }
+}

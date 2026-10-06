@@ -1,3 +1,4 @@
+import { readAppStyles } from './helpers/readAppStyles'
 /**
  * 视频全屏必须走原生藏栏；HTML requestFullscreen 在边到边 WebView 里只会让状态栏变透明浮层。
  * 用法：npx tsx scripts/native-fullscreen.test.ts
@@ -112,7 +113,7 @@ function clearBridge() {
   assert.match(plugin, /public void setVideoFullscreen\(PluginCall call\)/)
   assert.match(plugin, /\(\(MainActivity\) activity\)\.setVideoFullscreen\(active\)/)
 
-  const css = readFileSync(join(process.cwd(), 'src/index.css'), 'utf8')
+  const css = readAppStyles()
   assert.match(css, /\.ink-video-top-chrome\s*\{[^}]*padding:\s*0\.5rem 0\.625rem 2rem/s)
   assert.match(css, /\.ink-video-bottom-chrome\s*\{[^}]*padding:\s*3rem 1rem 0\.25rem/s)
   assert.doesNotMatch(player, /ink-video-top-chrome[^\n]*var\(--sal/)

@@ -1,0 +1,219 @@
+@keyframes linuxdo-skeleton-shimmer {
+  from { background-position: 160% 0; }
+  to { background-position: -60% 0; }
+}
+
+.linuxdo-skeleton {
+  background:
+    linear-gradient(
+      105deg,
+      color-mix(in srgb, var(--color-paper) 4%, transparent) 28%,
+      color-mix(in srgb, var(--color-paper) 14%, transparent) 42%,
+      color-mix(in srgb, var(--color-paper) 4%, transparent) 56%
+    );
+  background-size: 240% 100%;
+  animation: linuxdo-skeleton-shimmer 1.15s linear infinite;
+}
+
+@keyframes linuxdo-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.linuxdo-card-in {
+  animation: linuxdo-card-in 260ms var(--ease-ink) both;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-block'].is-loading,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-paragraph'].is-loading {
+  min-height: 140px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-paper) 4%, transparent);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-block'].is-loading img,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-paragraph'].is-loading img {
+  opacity: 0;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-block'].is-loaded img,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-paragraph'].is-loaded img {
+  animation: ink-image-in 320ms var(--ease-ink) both;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-block'].is-failed,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-paragraph'].is-failed {
+  min-height: 96px;
+  border: 1px dashed color-mix(in srgb, var(--color-cinnabar) 28%, var(--color-haze));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--color-paper) 3%, transparent);
+  cursor: pointer;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-block'].is-failed::after,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='image-paragraph'].is-failed::after {
+  content: '图片加载失败 · 点按重试';
+  display: flex;
+  min-height: 96px;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-paper-faint);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .linuxdo-card-in,
+  .linuxdo-skeleton,
+  .reader-prose.linuxdo-post-prose [data-linuxdo-role='image-block'].is-loading,
+  .reader-prose.linuxdo-post-prose [data-linuxdo-role='image-paragraph'].is-loading {
+    animation: none;
+  }
+}
+
+html[data-eink='1'] .linuxdo-skeleton {
+  animation: none;
+  background: color-mix(in srgb, var(--color-paper) 6%, transparent);
+}
+
+.linuxdo-reaction-button {
+  background: color-mix(in srgb, var(--color-paper) 4.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-haze) 60%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 3%);
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.linuxdo-reaction-button:active {
+  transform: scale(0.96);
+}
+
+.linuxdo-reaction-button.is-active {
+  background: color-mix(in srgb, var(--color-cinnabar) 12%, transparent);
+  border-color: color-mix(in srgb, var(--color-cinnabar) 38%, transparent);
+  color: var(--color-cinnabar-soft);
+}
+
+.linuxdo-boost-cloud {
+  background: transparent;
+  box-shadow: none;
+}
+
+.linuxdo-boost-chip {
+  background: color-mix(in srgb, var(--color-paper) 3.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-haze) 55%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 2%);
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.linuxdo-boost-chip:hover {
+  border-color: color-mix(in srgb, var(--color-cinnabar) 32%, var(--color-haze));
+  background: color-mix(in srgb, var(--color-paper) 7%, transparent);
+}
+
+.linuxdo-boost-chip:active {
+  transform: scale(0.96);
+}
+
+html[data-eink='1'] .linuxdo-reaction-button,
+html[data-eink='1'] .linuxdo-boost-cloud,
+html[data-eink='1'] .linuxdo-boost-chip {
+  background: transparent;
+  box-shadow: none;
+}
+
+.linuxdo-discover-hero {
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse 90% 70% at 85% -10%, color-mix(in srgb, var(--color-cinnabar) 14%, transparent), transparent 70%),
+    color-mix(in srgb, var(--color-ink-raised) 92%, var(--color-ink));
+  border: 1px solid color-mix(in srgb, var(--color-haze) 70%, transparent);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 4%);
+}
+
+.linuxdo-stat-card {
+  background: color-mix(in srgb, var(--color-paper) 3.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-haze) 50%, transparent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 2%);
+  transition: transform 140ms ease, border-color 140ms ease;
+}
+
+.linuxdo-stat-card:hover {
+  border-color: color-mix(in srgb, var(--color-cinnabar) 30%, transparent);
+}
+
+.linuxdo-cat-card {
+  position: relative;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--color-ink-raised) 85%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-haze) 55%, transparent);
+  box-shadow: 0 1px 3px rgb(0 0 0 / 3%);
+  transition: transform 160ms var(--ease-ink), border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.linuxdo-cat-card:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in srgb, var(--cat-accent, var(--color-cinnabar)) 45%, var(--color-haze));
+  box-shadow: 0 6px 20px rgb(0 0 0 / 7%);
+}
+
+.linuxdo-cat-card:active {
+  transform: scale(0.98);
+}
+
+.linuxdo-cat-accent-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3.5px;
+  background: var(--cat-accent, var(--color-cinnabar));
+  border-top-left-radius: 16px;
+  border-bottom-left-radius: 16px;
+}
+
+.linuxdo-tag-chip {
+  background: color-mix(in srgb, var(--color-paper) 4%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-haze) 60%, transparent);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 2%);
+  transition: transform 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.linuxdo-tag-chip:hover {
+  border-color: color-mix(in srgb, var(--color-cinnabar) 35%, var(--color-haze));
+  background: color-mix(in srgb, var(--color-paper) 7%, transparent);
+}
+
+.linuxdo-tag-chip:active {
+  transform: scale(0.96);
+}
+
+.linuxdo-tag-chip.is-rank-1 {
+  background: color-mix(in srgb, var(--color-cinnabar) 10%, transparent);
+  border-color: color-mix(in srgb, var(--color-cinnabar) 40%, transparent);
+}
+
+.linuxdo-tag-chip.is-rank-2 {
+  background: color-mix(in srgb, #8b5cf6 9%, transparent);
+  border-color: color-mix(in srgb, #8b5cf6 36%, transparent);
+}
+
+.linuxdo-tag-chip.is-rank-3 {
+  background: color-mix(in srgb, #f59e0b 9%, transparent);
+  border-color: color-mix(in srgb, #f59e0b 36%, transparent);
+}
+
+html[data-eink='1'] .linuxdo-discover-hero,
+html[data-eink='1'] .linuxdo-stat-card,
+html[data-eink='1'] .linuxdo-cat-card,
+html[data-eink='1'] .linuxdo-tag-chip {
+  background: transparent;
+  box-shadow: none;
+}
+

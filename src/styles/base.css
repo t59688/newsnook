@@ -1,0 +1,94 @@
+/* 安全区变量：优先取 Android 原生注入的高度，回退取 CSS env() */
+/* Chrome < 79 不支持 max()，先给 fallback，再用 @supports 覆盖 */
+:root {
+  --sat: var(--sat-native, env(safe-area-inset-top, 0px));
+  --sab: var(--sab-native, env(safe-area-inset-bottom, 0px));
+  --sal: var(--sal-native, env(safe-area-inset-left, 0px));
+  --sar: var(--sar-native, env(safe-area-inset-right, 0px));
+}
+@supports (width: max(1px, 2px)) {
+  :root {
+    --sat: max(var(--sat-native, 0px), env(safe-area-inset-top, 0px));
+    --sab: max(var(--sab-native, 0px), env(safe-area-inset-bottom, 0px));
+    --sal: max(var(--sal-native, 0px), env(safe-area-inset-left, 0px));
+    --sar: max(var(--sar-native, 0px), env(safe-area-inset-right, 0px));
+  }
+}
+
+/*
+ * 全屏播放器与普通 App 壳使用不同的安全区语义。普通页面要避开系统栏；
+ * 沉浸式视频已经隐藏系统栏，只避开真实 display cutout。这样不会把横屏前
+ * 记录下来的状态栏高度/侧边导航栏宽度再次叠到播放器控制区。
+ */
+:root {
+  --video-sat: var(--video-sat-native, env(safe-area-inset-top, 0px));
+  --video-sab: var(--video-sab-native, env(safe-area-inset-bottom, 0px));
+  --video-sal: var(--video-sal-native, env(safe-area-inset-left, 0px));
+  --video-sar: var(--video-sar-native, env(safe-area-inset-right, 0px));
+}
+
+/* Chrome < 79 以及部分存在 max() 嵌套 bug 的内核：统一改用极度健壮的 calc() 叠加安全区，替代 max() */
+.safe-pb-8 { padding-bottom: calc(var(--sab) + 8px); }
+.safe-pb-12 { padding-bottom: calc(var(--sab) + 12px); }
+.safe-pb-16 { padding-bottom: calc(var(--sab) + 16px); }
+.safe-pb-24 { padding-bottom: calc(var(--sab) + 24px); }
+.safe-bottom-20 { bottom: calc(var(--sab) + 20px); }
+
+/* 阅读排版：默认值写在这里，用户偏好在运行时覆盖同名变量 */
+:root {
+  --font-reader-sans: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --font-reader-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  --font-reader-system: system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  --reader-font-size: 15.5px;
+  --reader-line-height: 1.9;
+  --reader-paragraph-gap: 1.1em;
+  --reader-font-family: var(--font-reader-sans);
+  --reader-text-indent: 2em;
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-ink-deep);
+    color: var(--color-paper);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    overscroll-behavior: none;
+  }
+
+  /*
+   * Instrument Serif 只有 400：标题用 font-medium 时禁止伪粗拉丁，
+   * 避免发糊；中文仍走 Noto Serif SC 的真实 500。
+   */
+  .font-display {
+    font-synthesis: none;
+  }
+
+  button {
+    font-family: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-cinnabar);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-cinnabar) 26%, transparent);
+    color: var(--color-paper);
+  }
+}
+

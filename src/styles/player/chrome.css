@@ -1,0 +1,52 @@
+/*
+ * Tailwind v4 的 -translate-* 编译成独立 CSS translate 属性（Chrome 104+）。
+ * Pixel 6 Pro AVD / Android 12 WebView 仍是 Chrome 91，该属性会被忽略，
+ * left/top: 50% 只会把元素左上角放到正中，播放键看起来偏右。
+ */
+.ink-video-abs-center {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+.ink-video-abs-center:active {
+  transform: translate(-50%, -50%) scale(0.95);
+}
+
+/*
+ * 与上面的播放键同理：Tailwind v4 的 -translate-y-* 会编译成 Chrome 104+
+ * 才支持的独立 translate 属性。进度轨必须使用经典 transform，兼容
+ * Android WebView 69+。
+ */
+.ink-video-y-center {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+/*
+ * Player chrome is not application chrome. In landscape fullscreen, a punch-hole
+ * on the short edge can report a large safeInsetLeft/Right even though the top and
+ * bottom control rows never intersect that cutout. Applying the app-wide --sal/--sar
+ * to the whole row therefore produces the visibly asymmetric layout.
+ *
+ * Keep landscape controls symmetric. Portrait fullscreen only keeps the physical
+ * top/bottom cutout inset, where a centered notch can actually overlap the row.
+ */
+.ink-video-top-chrome {
+  padding: 0.5rem 0.625rem 2rem;
+}
+
+.ink-video-bottom-chrome {
+  padding: 3rem 1rem 0.25rem;
+}
+
+@media (orientation: portrait) {
+  [data-video-fullscreen='true'] .ink-video-top-chrome {
+    padding-top: calc(var(--video-sat, 0px) + 0.5rem);
+  }
+
+  [data-video-fullscreen='true'] .ink-video-bottom-chrome {
+    padding-bottom: calc(var(--video-sab, 0px) + 0.5rem);
+  }
+}
+

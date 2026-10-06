@@ -1,0 +1,307 @@
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote'] {
+  display: block;
+  margin: 0.9em 0;
+  overflow: hidden;
+  border-left: 3.5px solid color-mix(in srgb, var(--color-paper) 22%, transparent);
+  border-radius: 0 8px 8px 0;
+  background: color-mix(in srgb, var(--color-paper) 3.5%, transparent);
+  color: var(--color-paper);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-header'] {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 11px 5px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-header-main'] {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  flex: 1;
+  min-width: 0;
+}
+
+.reader-prose.linuxdo-post-prose img[data-linuxdo-role='quote-avatar'] {
+  display: inline-block !important;
+  width: 20px !important;
+  max-width: 20px !important;
+  height: 20px !important;
+  max-height: 20px !important;
+  min-height: 0 !important;
+  margin: 1px 0 0 0 !important;
+  border-radius: 50% !important;
+  object-fit: cover !important;
+  flex-shrink: 0;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-meta'] {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-title-row'] {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-title-link'] {
+  color: var(--color-cinnabar-soft) !important;
+  font-size: 13.5px !important;
+  font-weight: 600 !important;
+  line-height: 1.35 !important;
+  text-decoration: none !important;
+  border-bottom: none !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-title-link']:active {
+  opacity: 0.72;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-username'] {
+  color: var(--color-paper-muted);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-category-row'] {
+  display: flex;
+  align-items: center;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-category'] {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 1.3;
+  color: var(--color-paper-muted) !important;
+  text-decoration: none !important;
+  border-bottom: none !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-category-dot'] {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--quote-cat-color, #3ab54a);
+  flex-shrink: 0;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-controls'] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  padding-top: 1px;
+  color: var(--color-paper-faint);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-chevron'] {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--color-paper-faint);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-body'] {
+  margin: 0 !important;
+  padding: 3px 11px 9px !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  color: var(--color-paper) !important;
+  font-size: 13.5px !important;
+  font-style: normal !important;
+  line-height: 1.65 !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-body'] p {
+  margin-bottom: 0.5em !important;
+  font-style: normal !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-body'] p:last-child {
+  margin-bottom: 0 !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-body'] a {
+  border-bottom: none !important;
+  text-decoration: none !important;
+  color: var(--color-cinnabar-soft);
+  font-weight: 500;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-body'] a:hover,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='quote-body'] a:active {
+  text-decoration: underline !important;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox'],
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-topic'] {
+  display: block;
+  min-height: 0;
+  margin: 0.85em 0;
+  padding: 0.85em;
+  overflow: hidden;
+  border: 1px solid var(--color-haze);
+  border-radius: 10px;
+  background: var(--color-ink-deep);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 5%);
+  color: var(--color-paper);
+  cursor: pointer;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-source'] {
+  margin-bottom: 0.45em;
+  color: var(--color-paper-faint);
+  font-size: 10.5px;
+  line-height: 1.4;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-title'] {
+  margin: 0 0 0.36em;
+  color: var(--color-cinnabar-soft);
+  font-family: var(--font-body);
+  font-size: 15px;
+  font-weight: 650;
+  line-height: 1.38;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-description'] {
+  margin: 0.35em 0 0;
+  color: var(--color-paper-muted);
+  font-size: 12.5px;
+  line-height: 1.58;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox'] img[data-linuxdo-role='onebox-image'],
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-topic'] img[data-linuxdo-role='onebox-image'] {
+  float: left;
+  width: auto;
+  max-width: 35%;
+  max-height: 150px;
+  margin: 0 0.8em 0.45em 0;
+  border-radius: 7px;
+  object-fit: contain;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-body']::after,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox']::after,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-topic']::after {
+  display: table;
+  clear: both;
+  content: '';
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-category'],
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='onebox-tags'] {
+  color: var(--color-paper-faint);
+  font-size: 10.5px;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='mention'],
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='mention-group'] {
+  display: inline;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--color-cinnabar) 13%, transparent);
+  padding: 0.08em 0.32em;
+  color: var(--color-cinnabar-soft);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='spoiler'] {
+  border-radius: 4px;
+  background: var(--color-haze);
+  color: transparent;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--color-paper-muted) 65%, transparent);
+  cursor: pointer;
+  transition: color 120ms var(--ease-ink), background 120ms var(--ease-ink), text-shadow 120ms var(--ease-ink);
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='spoiler'][data-linuxdo-revealed='true'] {
+  background: var(--color-ink-deep);
+  color: inherit;
+  text-shadow: none;
+}
+
+.reader-prose.linuxdo-post-prose details {
+  margin: 0.75em 0;
+  border: 1px solid var(--color-haze);
+  border-radius: 8px;
+  background: var(--color-ink-deep);
+  padding: 0.55em 0.75em;
+}
+
+.reader-prose.linuxdo-post-prose summary {
+  cursor: pointer;
+  color: var(--color-paper-muted);
+  font-weight: 650;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='details-body'] {
+  padding-top: 0.55em;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='details-body'] > :first-child {
+  margin-top: 0;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='details-body'] > :last-child {
+  margin-bottom: 0;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='poll'] {
+  margin: 0.85em 0;
+  border: 1px solid var(--color-haze);
+  border-radius: 10px;
+  background: var(--color-ink-deep);
+  padding: 0.75em 0.9em;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='table'] {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin: 0.85em 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  -webkit-overflow-scrolling: touch;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='table'] th,
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='table'] td {
+  min-width: 7rem;
+  border: 1px solid var(--color-haze);
+  padding: 0.5em 0.7em;
+  text-align: left;
+  vertical-align: top;
+}
+
+.reader-prose.linuxdo-post-prose [data-linuxdo-role='attachment'] {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  border: 1px solid var(--color-haze);
+  border-radius: 8px;
+  background: var(--color-ink-deep);
+  padding: 0.32em 0.65em;
+  color: var(--color-cinnabar-soft);
+  font-weight: 600;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+

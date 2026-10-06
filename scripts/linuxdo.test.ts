@@ -1,3 +1,4 @@
+import { readAppStyles } from './helpers/readAppStyles'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { parseHTML } from 'linkedom'
@@ -1531,7 +1532,7 @@ assert.match(accountViewSource, /onTrustLevel/)
 assert.match(workspaceSource, /kind: 'trust'/)
 assert.match(workspaceSource, /<TrustLevelView session=\{session\}/)
 assert.doesNotMatch(accountViewSource, /Browser\.open\(\{ url: 'https:\/\/linux\.do\/login'/)
-const cssSource = readFileSync('src/index.css', 'utf8')
+const cssSource = readAppStyles()
 const paragraphCssFixture = parseHTML(
   '<html><body><div class="reader-prose"><p>啊哈哈，这个就好呀！<br>一个L站顶几十个的rss</p></div></body></html>',
 ).document.querySelector('p')

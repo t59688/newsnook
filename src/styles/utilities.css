@@ -1,0 +1,264 @@
+@layer utilities {
+  .scroll-hidden {
+    scrollbar-width: none;
+  }
+
+  .scroll-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  .speed-read-thinking-track {
+    mask-image: linear-gradient(90deg, transparent, black 12px, black calc(100% - 20px), transparent);
+    contain: layout style;
+  }
+
+  .speed-read-thinking-inner {
+    will-change: transform;
+  }
+
+  .speed-read-thinking-marquee {
+    animation: speed-read-thinking-marquee var(--speed-read-marquee-duration, 24s) linear infinite;
+  }
+
+  @keyframes speed-read-thinking-marquee {
+    from {
+      transform: translate3d(0, 0, 0);
+    }
+    to {
+      transform: translate3d(-50%, 0, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .speed-read-thinking-marquee {
+      animation: none;
+    }
+  }
+
+  /* 独立横向栏明确交给浏览器原生横滚，避免与列表纵滑/分类切换竞争。 */
+  .horizontal-scroll-rail {
+    touch-action: pan-x pinch-zoom;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* 页面水平边距：手机留白够点按，又不过分挤窄正文行宽 */
+  .page-x {
+    padding-inline: 1rem;
+  }
+
+  @media (min-width: 640px) {
+    .page-x {
+      padding-inline: 1.5rem;
+    }
+  }
+
+  @media (min-width: 768px) {
+    .page-x {
+      padding-inline: 1.75rem;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .page-x {
+      padding-inline: 2.25rem;
+    }
+  }
+
+  @media (min-width: 1280px) {
+    .page-x {
+      padding-inline: 2.75rem;
+    }
+  }
+
+  /* 列表项虚拟化与隔离降载：现代 WebView 跳过视口外 Layout/Paint，旧版 WebView 限制重排扩散 */
+  .article-row-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 110px;
+    contain: layout style;
+  }
+
+  /*
+   * 整块内容区搁起：模态引导（风格选择）盖住 <main> 时挂上。
+   *
+   * Chrome 69–84 不认识 content-visibility，所以必须先给一个真正能把长列表移出
+   * style/layout/paint 热路径的基线实现。display:none 不会卸载 React DOM/状态，且此时
+   * 上层是完全不透明的全屏预览，旧 WebView 看不到也不需要下层布局。
+   *
+   * Chrome 85+ 再用 feature query 渐进增强为 content-visibility:hidden：保留 <main>
+   * 的布局盒与滚动状态，同时跳过其内容渲染。不要反过来只写 content-visibility，
+   * 否则 Chrome 69 会静默忽略属性，主题预览重新退化为整页列表重算。
+   */
+  .content-parked {
+    display: none;
+  }
+
+  @supports (content-visibility: hidden) {
+    .content-parked {
+      display: flex;
+      content-visibility: hidden;
+    }
+  }
+
+  /* 加载占位：一层缓慢扫过的微光，走 GPU 合成层 */
+  .ink-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: rgb(var(--tone-paper-rgb) / 0.045);
+    transform: translateZ(0);
+  }
+
+  .ink-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translate3d(-100%, 0, 0);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(var(--tone-paper-rgb) / 0.075) 45%,
+      rgb(var(--tone-paper-rgb) / 0.075) 55%,
+      transparent 100%
+    );
+    animation: ink-shimmer-slide 1.7s var(--ease-ink) infinite;
+    will-change: transform;
+    pointer-events: none;
+  }
+
+  /* 顶栏细线上的不定量刷新指示 */
+  .ink-progress {
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      var(--color-cinnabar),
+      transparent
+    );
+    animation: ink-progress-slide 1.25s var(--ease-ink) infinite;
+  }
+
+  /*
+   * 图片下缘用蒙版渐隐，而不是盖一层与底色同调的遮罩：
+   * 主题切换、卡片叠在非 ink 底上时都不会露出错色的硬边。
+   */
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  }
+
+  /* 经典头条保持原来的全宽沉浸；新版双栏仅通过 is-framed 叠加卡片外观。 */
+  .lead-hero {
+    position: relative;
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    background-color: #0e0f12;
+  }
+
+  .lead-hero.is-framed {
+    width: calc(100% - 1.75rem);
+    margin: 0.5rem 0.875rem 0;
+    border: 1px solid var(--color-haze);
+    border-radius: 0.9rem;
+    box-shadow: 0 10px 28px -24px rgb(0 0 0 / 0.72);
+  }
+
+  .lead-cover-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background-image: linear-gradient(
+      to bottom,
+      rgb(0 0 0 / 0) 8%,
+      rgb(0 0 0 / 0.4) 42%,
+      rgb(0 0 0 / 0.78) 72%,
+      rgb(8 9 11 / 0.96) 100%
+    );
+  }
+
+  .lead-hero-copy {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 2;
+    color: #eae4d8;
+  }
+
+  .lead-hero-copy .lead-title {
+    color: #f4efe6;
+  }
+
+  .lead-hero-copy .lead-hero-kicker {
+    color: #e08a78;
+  }
+
+  .lead-hero-copy .lead-hero-summary {
+    color: rgb(234 228 216 / 0.72);
+  }
+
+  .lead-hero-copy .lead-hero-meta {
+    color: rgb(234 228 216 / 0.48);
+  }
+
+  .lead-hero-copy.is-read .lead-title {
+    color: rgb(234 228 216 / 0.7);
+  }
+
+  /* 横向滚动条两端渐隐，同样走蒙版，避免叠加渐变块与毛玻璃打架 */
+  .mask-fade-x {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 1.25rem,
+      #000 calc(100% - 1.25rem),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 1.25rem,
+      #000 calc(100% - 1.25rem),
+      transparent 100%
+    );
+  }
+
+  /* 分隔线两端自然消隐，比等宽实线更像纸上压痕 */
+  .rule-soft {
+    background-image: linear-gradient(
+      to right,
+      var(--color-haze),
+      var(--color-haze) 65%,
+      transparent
+    );
+  }
+
+  /* 信息流/稍后读等条目标题：跟随用户阅读字体，断行与字距单独调 */
+  .lead-title {
+    font-family: var(--reader-font-family);
+    font-synthesis: none;
+    text-wrap: balance;
+    letter-spacing: 0.005em;
+    font-feature-settings: 'palt' 1;
+  }
+
+  .row-title {
+    font-family: var(--reader-font-family);
+    font-synthesis: none;
+    text-wrap: pretty;
+    letter-spacing: 0.01em;
+    font-feature-settings: 'palt' 1;
+  }
+
+  /* 轻微纸纹，不依赖桌面模拟外框 */
+  .ink-grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    mix-blend-mode: var(--grain-blend);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+

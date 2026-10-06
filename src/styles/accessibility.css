@@ -1,0 +1,46 @@
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* 墨水屏模式：与 prefers-reduced-motion 同等压制动效，并弱化装饰（不改亮暗色板） */
+html[data-eink='1'] {
+  --shadow-lift: none;
+  --grain-opacity: 0;
+  scroll-behavior: auto;
+}
+
+html[data-eink='1'] *,
+html[data-eink='1'] *::before,
+html[data-eink='1'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+html[data-eink='1'] [data-surface='tabbar'],
+html[data-eink='1'] [data-surface='reader-chrome'] {
+  background-color: var(--color-ink);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-eink='1'] .lead-cover-veil {
+  background-image: linear-gradient(
+    to bottom,
+    rgb(0 0 0 / 0) 28%,
+    rgb(0 0 0 / 0.72) 68%,
+    rgb(0 0 0 / 0.94) 100%
+  );
+}
+
+
