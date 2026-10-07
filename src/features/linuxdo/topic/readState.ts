@@ -72,6 +72,34 @@ export function linuxDoTopicHasUnreadIndicator(
 }
 
 /**
+ * Capture the unread boundary from the list row before opening a topic.
+ * A topic GET may already reflect a newer server read cursor/read flag, but the
+ * detail view still needs to show which posts were unread at the moment the user
+ * entered. The boundary is kept until /topics/timings is acknowledged locally.
+ */
+export function linuxDoOpeningUnreadFloor(
+  topic: Parameters<typeof linuxDoTopicReadState>[0],
+): number | undefined {
+  if (linuxDoTopicReadState(topic) === 'read') return undefined
+
+  if (typeof topic.lastReadPostNumber === 'number') {
+    return Math.max(0, Math.trunc(topic.lastReadPostNumber))
+  }
+  if (topic.lastReadPostNumber === null) return 0
+
+  const pending = Math.max(
+    0,
+    Math.trunc(topic.unread ?? 0),
+    Math.trunc(topic.newPosts ?? 0),
+  )
+  if (pending > 0) {
+    return Math.max(0, linuxDoHighestPostNumber(topic) - pending)
+  }
+  if (topic.unseen === true || topic.isSeen === false) return 0
+  return undefined
+}
+
+/**
  * Apply a server-accepted /topics/timings acknowledgement to a cached list row.
  * We only advance the cursor monotonically. A regular (notification level < 2)
  * topic stops being NEW once any post has been read; tracked/watched topics keep

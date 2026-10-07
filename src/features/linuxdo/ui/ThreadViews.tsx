@@ -41,7 +41,7 @@ import { verifyLinuxDoBrowserSession } from '../session/native'
 import { ReadSyncStatus } from './ReadSyncStatus'
 import { PostDevice } from './PostDevice'
 import { readSyncDiagnostic, type ReadSyncFailure } from '../topic/readSyncDiagnostic'
-import { applyLinuxDoTopicReadProgress } from '../topic/readState'
+import { applyLinuxDoTopicReadProgress, linuxDoOpeningUnreadFloor } from '../topic/readState'
 import { LINUXDO_UPLOAD_BATCH_LIMIT } from '../upload/service'
 import { adjacentLinuxDoPostIds, linuxDoServerResumePosition, linuxDoTopicPositionOf, type LinuxDoTopicPosition } from '../topic/readingPosition'
 import { useTopicPosition } from './useTopicPosition'
@@ -825,6 +825,7 @@ export function LinuxDoTopicView({
   const visibleReadKeyRef = useRef('')
   const userId = session.authenticated ? session.currentUser?.id : undefined
   const [openingPosition, setOpeningPosition] = useState<LinuxDoTopicPosition | undefined>()
+  const openingUnreadFloorRef = useRef(linuxDoOpeningUnreadFloor(summary))
   const loadRequestRef = useRef(0)
   const preservePosition = useTopicPosition(summary.id, userId, topicScrollerRef, openingPosition, posts, !loading && !error && topic?.id === summary.id)
 
@@ -1310,7 +1311,8 @@ export function LinuxDoTopicView({
                 const like = post.actions.find((action) => action.id === 2)
                 const replyTarget = resolveReplyTarget(post, posts)
                 const readByServerCursor = post.read === undefined && typeof topic.lastReadPostNumber === 'number' && post.postNumber <= topic.lastReadPostNumber
-                const showUnreadDot = session.authenticated && post.read !== true && !readPostNumbers.has(post.postNumber) && !readByServerCursor
+                const unreadAtOpen = openingUnreadFloorRef.current !== undefined && post.postNumber > openingUnreadFloorRef.current
+                const showUnreadDot = session.authenticated && !readPostNumbers.has(post.postNumber) && (unreadAtOpen || (post.read !== true && !readByServerCursor))
                 const isTopicOwner = (summary?.posters?.[0]?.username && summary.posters[0].username === post.username) || post.postNumber === 1
                 return (
                   <article key={post.id} id={'linuxdo-post-' + post.postNumber} data-linuxdo-post-number={post.postNumber} data-linuxdo-read={showUnreadDot ? 'false' : 'true'} className="group rounded-xl sm:rounded-2xl border border-haze/45 bg-ink-raised/85 p-3 sm:p-4 shadow-[0_1px_3px_rgba(0,0,0,0.03)] backdrop-blur-sm transition-all duration-150 hover:border-haze/70">
