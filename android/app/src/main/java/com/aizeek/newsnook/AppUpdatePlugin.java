@@ -1,5 +1,6 @@
 package com.aizeek.newsnook;
 
+import android.Manifest;
 import android.app.DownloadManager;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -14,18 +15,26 @@ import android.os.Looper;
 import android.provider.Settings;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.JSObject;
+import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 import java.io.File;
 import java.net.URI;
 
 /**
  * 从受信任更新源下载 APK（系统 DownloadManager + 自管通知栏进度），校验后调起安装。
- * 系统 DownloadManager 通知标题在完成后不会更新，故隐藏其通知、改由 AppUpdateDownloadNotifier 展示进度与完成态。
+ * 自管通知可用时隐藏系统通知，否则保留系统下载通知兜底。
  */
-@CapacitorPlugin(name = "AppUpdate")
+@CapacitorPlugin(
+    name = "AppUpdate",
+    permissions = {
+        @Permission(alias = "notifications", strings = { Manifest.permission.POST_NOTIFICATIONS })
+    }
+)
 public class AppUpdatePlugin extends Plugin {
 
     private static final long PROGRESS_POLL_MS = 500L;
@@ -109,6 +118,36 @@ public class AppUpdatePlugin extends Plugin {
             return;
         }
 
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            && getPermissionState("notifications") != PermissionState.GRANTED) {
+            requestPermissionForAlias("notifications", call, "downloadPermissionsCallback");
+            return;
+        }
+
+        beginDownload(call);
+    }
+
+    @PermissionCallback
+    private void downloadPermissionsCallback(PluginCall call) {
+        // 拒绝通知权限不能阻止更新；beginDownload 会保留系统通知。
+        beginDownload(call);
+    }
+
+    private void beginDownload(PluginCall call) {
+        String url = call.getString("url");
+        String fileName = call.getString("fileName");
+        String rawSha256 = call.getString("sha256");
+        String expectedSha256 = rawSha256 == null ? null : AppUpdateIntegrity.normalizeSha256(rawSha256);
+        Long expectedSize = call.getLong("size");
+
+        // 权限弹窗期间可能已有另一调用启动下载。
+        if (activeDownloadId != null && isDownloadInProgress(activeDownloadId)) {
+            JSObject result = new JSObject();
+            result.put("downloadId", activeDownloadId);
+            call.resolve(result);
+            return;
+        }
+
         ensureReceiverRegistered();
 
         Context context = getContext();
@@ -128,8 +167,10 @@ public class AppUpdatePlugin extends Plugin {
         DownloadManager.Request request = new DownloadManager.Request(Uri.parse(url));
         request.setTitle("有所闻 · 正在下载更新");
         request.setDescription(fileName);
-        // 系统通知完成后标题不会变，且多数国产 ROM 不展示进度条；改由自管通知。
-        request.setNotificationVisibility(DownloadManager.Request.VISIBILITY_HIDDEN);
+        // 只有自管通知能显示时才隐藏系统通知，避免下载失去进度入口。
+        request.setNotificationVisibility(ensureNotifier().canPost()
+            ? DownloadManager.Request.VISIBILITY_HIDDEN
+            : DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED);
         request.setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, fileName);
         request.setAllowedOverMetered(true);
         request.setAllowedOverRoaming(true);

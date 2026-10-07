@@ -16,7 +16,7 @@ import java.util.Locale;
 
 /**
  * 应用更新下载通知：自管进度与完成态标题。
- * 系统 DownloadManager 的通知标题在完成后不会变，故隐藏系统通知、改由此类展示。
+ * 系统 DownloadManager 的通知标题在完成后不会变；通知可用时由此类展示。
  */
 final class AppUpdateDownloadNotifier {
     static final String CHANNEL_ID = "app_update_download";
@@ -161,13 +161,20 @@ final class AppUpdateDownloadNotifier {
         }
     }
 
-    private boolean canPost() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true;
-        return ContextCompat.checkSelfPermission(
+    boolean canPost() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+            && ContextCompat.checkSelfPermission(
                 appContext,
                 Manifest.permission.POST_NOTIFICATIONS
-            ) ==
-            PackageManager.PERMISSION_GRANTED;
+            ) != PackageManager.PERMISSION_GRANTED) return false;
+        if (!NotificationManagerCompat.from(appContext).areNotificationsEnabled()) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager manager = appContext.getSystemService(NotificationManager.class);
+            if (manager == null) return false;
+            NotificationChannel channel = manager.getNotificationChannel(CHANNEL_ID);
+            return channel != null && channel.getImportance() != NotificationManager.IMPORTANCE_NONE;
+        }
+        return true;
     }
 
     private PendingIntent launchPendingIntent() {

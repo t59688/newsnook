@@ -585,7 +585,7 @@ assert.match(appUpdatePluginSource, /VISIBILITY_HIDDEN/)
 assert.match(appUpdatePluginSource, /AppUpdateDownloadNotifier/)
 assert.match(appUpdatePluginSource, /startProgressPolling/)
 assert.match(appUpdatePluginSource, /ensureNotifier\(\)\.complete\(/)
-assert.doesNotMatch(appUpdatePluginSource, /VISIBILITY_VISIBLE_NOTIFY_COMPLETED/)
+assert.match(appUpdatePluginSource, /VISIBILITY_VISIBLE_NOTIFY_COMPLETED/)
 
 assert.match(appUpdateNotifierSource, /TITLE_DOWNLOADING = "有所闻 · 正在下载更新"/)
 assert.match(appUpdateNotifierSource, /TITLE_READY = "有所闻 · 更新已就绪"/)
