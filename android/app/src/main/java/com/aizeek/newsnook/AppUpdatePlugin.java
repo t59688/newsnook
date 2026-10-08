@@ -104,7 +104,7 @@ public class AppUpdatePlugin extends Plugin {
         String url = call.getString("url");
         String fileName = call.getString("fileName");
         String rawSha256 = call.getString("sha256");
-        Long expectedSize = call.getLong("size");
+        Long expectedSize = readLong(call, "size");
         String expectedSha256 = rawSha256 == null ? null : AppUpdateIntegrity.normalizeSha256(rawSha256);
         if (url == null || url.isEmpty() || fileName == null || fileName.isEmpty()) {
             call.reject("缺少 url 或 fileName");
@@ -164,8 +164,8 @@ public class AppUpdatePlugin extends Plugin {
                     call.getString("url"),
                     call.getString("fileName"),
                     AppUpdateIntegrity.normalizeSha256(call.getString("sha256")),
-                    call.getLong("size"),
-                    call.getLong("versionCode")
+                    readLong(call, "size"),
+                    readLong(call, "versionCode")
                 );
                 DeltaCandidate selected = chooseDelta(call, request);
                 activeUpdate = request;
@@ -186,6 +186,12 @@ public class AppUpdatePlugin extends Plugin {
                 call.reject("无法开始更新: " + error.getMessage());
             }
         });
+    }
+
+    private static Long readLong(PluginCall call, String name) {
+        // JSON parses small whole numbers as Integer; Capacitor getLong only accepts Long.
+        Object value = call.getData().opt(name);
+        return value instanceof Integer || value instanceof Long ? ((Number) value).longValue() : null;
     }
 
     private DeltaCandidate chooseDelta(PluginCall call, UpdateRequest request) {
