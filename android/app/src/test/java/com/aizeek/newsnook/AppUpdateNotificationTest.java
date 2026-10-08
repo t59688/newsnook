@@ -3,6 +3,7 @@ package com.aizeek.newsnook;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import android.Manifest;
 import android.app.Application;
@@ -16,6 +17,8 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.PluginCall;
 import java.lang.reflect.Method;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -96,7 +99,7 @@ public class AppUpdateNotificationTest {
     }
 
     @Test
-    public void grantedPermissionUsesCustomProgressWithoutDuplicateSystemNotification() {
+    public void grantedPermissionUsesCustomProgressWithoutDuplicateSystemNotification() throws Exception {
         TestPlugin plugin = new TestPlugin();
         plugin.permission = PermissionState.GRANTED;
         DownloadCall call = new DownloadCall();
@@ -110,7 +113,7 @@ public class AppUpdateNotificationTest {
     }
 
     @Test
-    public void blockedUpdateChannelKeepsSystemProgress() {
+    public void blockedUpdateChannelKeepsSystemProgress() throws Exception {
         manager.createNotificationChannel(new NotificationChannel(
             AppUpdateDownloadNotifier.CHANNEL_ID, "应用更新", NotificationManager.IMPORTANCE_NONE
         ));
@@ -125,13 +128,19 @@ public class AppUpdateNotificationTest {
         plugin.handleOnDestroy();
     }
 
-    private int visibility(DownloadCall call) {
+    private int visibility(DownloadCall call) throws InterruptedException {
+        // beginDownload hashes the source and enqueues off the bridge thread. Wait
+        // for its actual callback instead of racing the executor with a zero ID.
+        assertTrue("Download callback timed out", call.finished.await(10, TimeUnit.SECONDS));
+        assertNull("Download rejected: " + call.error, call.error);
         DownloadManager downloadManager = context.getSystemService(DownloadManager.class);
         return Shadows.shadowOf(Shadows.shadowOf(downloadManager).getRequest(call.downloadId)).getNotificationVisibility();
     }
 
     private static class DownloadCall extends PluginCall {
+        final CountDownLatch finished = new CountDownLatch(1);
         long downloadId;
+        String error;
 
         DownloadCall() {
             super(null, "AppUpdate", "test", "startDownload", options());
@@ -147,6 +156,13 @@ public class AppUpdateNotificationTest {
         @Override
         public void resolve(JSObject result) {
             downloadId = result.optLong("downloadId");
+            finished.countDown();
+        }
+
+        @Override
+        public void reject(String message) {
+            error = message;
+            finished.countDown();
         }
     }
 
