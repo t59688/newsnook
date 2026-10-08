@@ -104,10 +104,15 @@ export function useAppUpdate({ settingsOpen }: Options) {
     if (!supported) return
     return subscribeAppUpdateUi((state) => {
       setDownloading(state.downloading)
-      if (state.downloading) setManualStatus('downloading')
-      if (state.lastManualMessage) {
+      if (state.downloading) {
+        setManualStatus('downloading')
+        setManualHint(state.downloadMessage ?? '')
+      } else if (state.lastManualMessage) {
         setManualStatus('error')
         setManualHint(state.lastManualMessage)
+      } else {
+        setManualStatus((status) => status === 'downloading' ? 'idle' : status)
+        setManualHint(undefined)
       }
     })
   }, [supported])
@@ -486,7 +491,7 @@ export function useAppUpdate({ settingsOpen }: Options) {
 
   const manualCaption = useMemo(() => {
     if (manualStatus === 'checking') return '检查中…'
-    if (manualStatus === 'downloading' || downloading) return '正在下载…'
+    if (manualStatus === 'downloading' || downloading) return manualHint || '正在下载…'
     if (manualStatus === 'latest') return `已是${updateTrack === 'beta' ? '内测' : '正式'}通道最新`
     if (manualStatus === 'error') return manualHint || '检查失败，点按重试'
     if (hasUpdate && availableVersion) return `发现新版本 v${availableVersion} · 点按更新`

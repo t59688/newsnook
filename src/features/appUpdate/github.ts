@@ -15,6 +15,7 @@ import {
 import type {
   AndroidAbi,
   FetchReleaseApkResult,
+  LatestReleaseInfo,
   PackageFlavor,
   ReleaseNotesResult,
   UpdateCheckResult,
@@ -264,6 +265,32 @@ export async function fetchLatestRelease(
     return updateCheckFromManifest(cdn.manifest, localVersion, flavor, supportedAbis)
   }
   return fetchLatestReleaseFromGitHub(localVersion, flavor, track, supportedAbis)
+}
+
+/**
+ * 检查时短暂回退 GitHub 不应永久丢失差分能力。下载前仅补取一次主源元数据，
+ * 且必须仍是用户确认的同一份 APK；不能借机换版本、通道、变体或 ABI。
+ */
+export async function refreshReleaseForDownload(
+  release: LatestReleaseInfo,
+): Promise<LatestReleaseInfo> {
+  if (release.deltas?.length || !release.sha256 || !release.size
+    || release.subscriptionTrack !== release.track) return release
+
+  const cdn = await fetchUpdateManifest(release.track, 5_000)
+  if (cdn.status !== 'ok' || cdn.manifest.version !== release.version) return release
+  const candidate = releaseFromUpdateManifest(
+    cdn.manifest, release.flavor, release.abi ? [release.abi] : [],
+  )
+  if (!candidate.deltas?.length
+    || candidate.abi !== release.abi
+    || candidate.apkFileName !== release.apkFileName
+    || candidate.sha256 !== release.sha256
+    || candidate.size !== release.size) return release
+
+  // 原生差分验证要求 full URL 与 patch URL 同属受信任 CDN 的同一通道。
+  // 保留用户已确认的说明与版本，只更新相同字节目标的传输元数据。
+  return { ...release, apkUrl: candidate.apkUrl, deltas: candidate.deltas }
 }
 
 /** 从 tag Release JSON 解析指定安装包（不发起网络请求）。 */

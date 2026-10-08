@@ -258,11 +258,13 @@ export function updateCheckFromManifest(
 
 export async function fetchUpdateManifest(
   track: UpdateTrack,
+  timeoutMs?: number,
 ): Promise<FetchUpdateManifestResult> {
   const url = manifestUrl(track)
   try {
     const response = await CapacitorHttp.get({
       url: `${url}?t=${Date.now()}`,
+      ...(timeoutMs == null ? {} : { connectTimeout: timeoutMs, readTimeout: timeoutMs }),
       headers: {
         Accept: 'application/json',
         'Cache-Control': 'no-cache',

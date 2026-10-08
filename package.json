@@ -77,7 +77,7 @@
     "test:proxy": "npx tsx scripts/proxy-routing.test.ts",
     "test:comments": "npx tsx scripts/comments-provider.test.ts",
     "test:cf-proxy": "npx tsx scripts/cf-pages-proxy.test.ts",
-    "test:app-update": "npx tsx scripts/app-update.test.ts",
+    "test:app-update": "npx tsx scripts/app-update.test.ts && npx tsx scripts/app-update-download.test.ts",
     "test:markdown": "npx tsx scripts/markdown-safe.test.ts",
     "test:jazzyear-dates": "npx tsx scripts/jazzyear-dates.test.ts",
     "test:paulgraham-dates": "npx tsx scripts/paulgraham-dates.test.ts",

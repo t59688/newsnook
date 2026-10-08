@@ -13,6 +13,7 @@ import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
+import android.util.Log;
 import androidx.core.content.FileProvider;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -43,6 +44,7 @@ import org.json.JSONObject;
 )
 public class AppUpdatePlugin extends Plugin {
 
+    private static final String TAG = "NewsNookAppUpdate";
     private static final long PROGRESS_POLL_MS = 500L;
 
     private volatile Long activeDownloadId = null;
@@ -196,11 +198,21 @@ public class AppUpdatePlugin extends Plugin {
 
     private DeltaCandidate chooseDelta(PluginCall call, UpdateRequest request) {
         JSArray candidates = call.getArray("deltas");
-        if (candidates == null || candidates.length() == 0 || candidates.length() > 16
-            || request.sha256 == null || request.size == null || request.size <= 0
-            || request.versionCode == null || request.versionCode <= 0) return null;
+        if (candidates == null || candidates.length() == 0) {
+            Log.i(TAG, "transport=full reason=missing_delta_metadata");
+            return null;
+        }
+        if (candidates.length() > 16 || request.sha256 == null
+            || request.size == null || request.size <= 0
+            || request.versionCode == null || request.versionCode <= 0) {
+            Log.w(TAG, "transport=full reason=invalid_delta_metadata");
+            return null;
+        }
         File source = installedSingleApk();
-        if (source == null) return null;
+        if (source == null) {
+            Log.w(TAG, "transport=full reason=single_source_apk_unavailable");
+            return null;
+        }
         try {
             String installedSha256 = AppUpdateIntegrity.sha256(source);
             for (int index = 0; index < candidates.length(); index++) {
@@ -214,10 +226,14 @@ public class AppUpdatePlugin extends Plugin {
                 if (from == null || sha256 == null || !from.equals(installedSha256) || size <= 0) continue;
                 if (!fileName.equals("delta-" + from + "-" + request.sha256 + ".gdiff.gz")) continue;
                 if (!isAllowedDeltaUrl(url, fileName, request.url)) continue;
+                Log.i(TAG, "transport=delta sourceSha256=" + from
+                    + " targetSha256=" + request.sha256 + " bytes=" + size);
                 return new DeltaCandidate(source, from, url, fileName, sha256, size);
             }
-        } catch (IOException | NoSuchAlgorithmException ignored) {
-            // Non-readable base APK or damaged metadata always falls back to the full signed APK.
+            Log.w(TAG, "transport=full reason=no_matching_delta sourceSha256=" + installedSha256
+                + " targetSha256=" + request.sha256);
+        } catch (IOException | NoSuchAlgorithmException error) {
+            Log.w(TAG, "transport=full reason=source_hash_unavailable", error);
         }
         return null;
     }
@@ -579,6 +595,9 @@ public class AppUpdatePlugin extends Plugin {
             JSObject payload = new JSObject();
             payload.put("fromDownloadId", downloadId);
             payload.put("toDownloadId", nextId);
+            payload.put("message", message);
+            Log.w(TAG, "transport=full reason=delta_failed downloadId=" + downloadId
+                + " nextDownloadId=" + nextId + " detail=" + message);
             notifyListeners("downloadRedirected", payload);
         } catch (Exception error) {
             emitFailed(downloadId, "download", message + "；全量回退失败: " + error.getMessage());

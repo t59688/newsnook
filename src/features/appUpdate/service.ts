@@ -3,7 +3,7 @@ import { Capacitor } from '@capacitor/core'
 import { isLocalTranslationAvailable } from '../translation/native'
 import { normalizeSupportedAbis } from './abi'
 import { shouldAutoPrompt, shouldFetchForAutoCheck } from './gate'
-import { fetchLatestRelease } from './github'
+import { fetchLatestRelease, refreshReleaseForDownload } from './github'
 import { androidVersionCode, compareSemver, isNewerVersion } from './semver'
 import { AppUpdateNative } from './native'
 import {
@@ -22,6 +22,7 @@ import type {
 
 export type AppUpdateUiState = {
   downloading: boolean
+  downloadMessage?: string
   lastManualMessage?: string
 }
 
@@ -37,6 +38,7 @@ type BeginUpdateResult =
   | { error: string }
 
 let activeDownloadId: number | null = null
+let pendingStart: Promise<BeginUpdateResult> | null = null
 let uiState: AppUpdateUiState = { downloading: false }
 const uiListeners = new Set<(state: AppUpdateUiState) => void>()
 let nativeListenersBound = false
@@ -84,18 +86,29 @@ async function ensureNativeListeners(): Promise<void> {
   if (nativeListenersBound || !isAppUpdateSupported()) return
   nativeListenersBound = true
   await AppUpdateNative.addListener('downloadComplete', ({ downloadId }) => {
-    if (activeDownloadId === downloadId) activeDownloadId = null
-    setUi({ downloading: false, lastManualMessage: undefined })
+    if (activeDownloadId !== downloadId) return
+    activeDownloadId = null
+    setUi({ downloading: false, downloadMessage: undefined, lastManualMessage: undefined })
   })
-  await AppUpdateNative.addListener('downloadRedirected', ({ fromDownloadId, toDownloadId }) => {
-    if (activeDownloadId === fromDownloadId) activeDownloadId = toDownloadId
+  await AppUpdateNative.addListener('downloadRedirected', ({ fromDownloadId, toDownloadId, message }) => {
+    if (activeDownloadId !== fromDownloadId) return
+    activeDownloadId = toDownloadId
+    setUi({
+      downloading: true,
+      downloadMessage: message
+        ? `增量更新未完成，已切换全量下载：${message}`
+        : '增量更新未完成，已切换全量下载',
+      lastManualMessage: undefined,
+    })
   })
   await AppUpdateNative.addListener('downloadFailed', ({ downloadId, message, kind }) => {
-    if (activeDownloadId === downloadId) activeDownloadId = null
+    if (activeDownloadId !== downloadId) return
+    activeDownloadId = null
     const fallback =
       kind === 'install' ? '安装失败，可稍后在关于页重试' : '下载失败，点按重试'
     setUi({
       downloading: false,
+      downloadMessage: undefined,
       lastManualMessage: message || fallback,
     })
   })
@@ -200,7 +213,7 @@ export async function checkForAutoUpdate(options?: {
   isColdStart?: boolean
 }): Promise<AutoCheckOutcome | null> {
   if (!isAppUpdateSupported()) return null
-  if (activeDownloadId != null) return null
+  if (activeDownloadId != null || pendingStart != null) return null
 
   const prefs = loadAppUpdatePrefsNormalized()
   const trackPrefs = getUpdateTrackPrefs(prefs)
@@ -230,7 +243,14 @@ export async function checkForAutoUpdate(options?: {
   return { result, shouldPrompt, subscriptionTrack: prefs.track }
 }
 
-export async function beginUpdate(release: LatestReleaseInfo): Promise<BeginUpdateResult> {
+export function beginUpdate(release: LatestReleaseInfo): Promise<BeginUpdateResult> {
+  // 包括权限检查和元数据补取阶段，连续点击只能启动一次原生下载。
+  if (pendingStart) return pendingStart
+  pendingStart = beginUpdateOnce(release).finally(() => { pendingStart = null })
+  return pendingStart
+}
+
+async function beginUpdateOnce(release: LatestReleaseInfo): Promise<BeginUpdateResult> {
   if (!isAppUpdateSupported()) return { error: '当前平台不支持应用内更新' }
   await ensureNativeListeners()
   if (activeDownloadId != null) {
@@ -240,16 +260,18 @@ export async function beginUpdate(release: LatestReleaseInfo): Promise<BeginUpda
   try {
     const { value } = await AppUpdateNative.canInstallPackages()
     if (!value) return { needInstallPermission: true }
+    const downloadRelease = await refreshReleaseForDownload(release)
     const { downloadId } = await AppUpdateNative.startDownload({
-      url: release.apkUrl,
+      url: downloadRelease.apkUrl,
       fileName: release.apkFileName,
       sha256: release.sha256,
       size: release.size,
       versionCode: androidVersionCode(release.version) ?? undefined,
-      ...(release.sha256 && release.deltas?.length ? { deltas: release.deltas } : {}),
+      ...(downloadRelease.sha256 && downloadRelease.deltas?.length
+        ? { deltas: downloadRelease.deltas } : {}),
     })
     activeDownloadId = downloadId
-    setUi({ downloading: true, lastManualMessage: undefined })
+    setUi({ downloading: true, downloadMessage: undefined, lastManualMessage: undefined })
     return { downloadId }
   } catch (error) {
     return { error: error instanceof Error ? error.message : '开始下载失败' }

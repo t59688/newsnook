@@ -25,15 +25,20 @@ import org.robolectric.annotation.Config;
 public class AppUpdateBridgeTest {
     @Test
     public void selectsMatchingDeltaForJsonIntegerMetadata() throws Exception {
-        assertDownloadSelection(true);
+        assertDownloadSelection(true, false);
     }
 
     @Test
     public void downloadsFullApkWhenRebuiltSourceDoesNotMatchDelta() throws Exception {
-        assertDownloadSelection(false);
+        assertDownloadSelection(false, false);
     }
 
-    private void assertDownloadSelection(boolean matchingSource) throws Exception {
+    @Test
+    public void fullFallbackRetainsFailureReasonAndDoesNotRetryDelta() throws Exception {
+        assertDownloadSelection(true, true);
+    }
+
+    private void assertDownloadSelection(boolean matchingSource, boolean testFallback) throws Exception {
         Application context = RuntimeEnvironment.getApplication();
         File source = new File(context.getCacheDir(), "installed.apk");
         Files.write(source.toPath(), new byte[] { 1, 2, 3 });
@@ -61,10 +66,16 @@ public class AppUpdateBridgeTest {
                 finished.countDown();
             }
         };
+        java.util.List<String> events = new java.util.ArrayList<>();
+        java.util.List<JSObject> payloads = new java.util.ArrayList<>();
         AppUpdatePlugin plugin = new AppUpdatePlugin() {
             @Override public Context getContext() { return context; }
             @Override public PermissionState getPermissionState(String alias) {
                 return PermissionState.GRANTED;
+            }
+            @Override protected void notifyListeners(String event, JSObject data) {
+                events.add(event);
+                payloads.add(data);
             }
         };
         try {
@@ -73,6 +84,27 @@ public class AppUpdateBridgeTest {
             DownloadManager manager = context.getSystemService(DownloadManager.class);
             DownloadManager.Request request = Shadows.shadowOf(manager).getRequest(downloadId[0]);
             assertEquals(matchingSource ? patchUrl : fullUrl, Shadows.shadowOf(request).getUri().toString());
+            if (testFallback) {
+                // Inject the failure at the native fallback boundary, not at the JS event
+                // receiver: assert the real full request and the real emitted event.
+                java.lang.reflect.Method fallback = AppUpdatePlugin.class.getDeclaredMethod(
+                    "failOrFallback", long.class, String.class
+                );
+                fallback.setAccessible(true);
+                fallback.invoke(plugin, downloadId[0], "patch hash mismatch");
+                assertEquals(java.util.List.of("downloadRedirected"), events);
+                JSObject redirected = payloads.get(0);
+                assertEquals(downloadId[0], redirected.optLong("fromDownloadId"));
+                assertEquals("patch hash mismatch", redirected.optString("message"));
+                long fullId = redirected.optLong("toDownloadId");
+                assertTrue(fullId != downloadId[0]);
+                assertEquals(fullUrl, Shadows.shadowOf(
+                    Shadows.shadowOf(manager).getRequest(fullId)
+                ).getUri().toString());
+                fallback.invoke(plugin, fullId, "full request failed");
+                assertEquals(java.util.List.of("downloadRedirected", "downloadFailed"), events);
+                assertEquals(fullId, payloads.get(1).optLong("downloadId"));
+            }
         } finally {
             plugin.handleOnDestroy();
             context.getApplicationInfo().sourceDir = originalSource;

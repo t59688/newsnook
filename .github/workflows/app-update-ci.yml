@@ -1,0 +1,40 @@
+name: App Update CI
+on:
+  pull_request:
+    paths:
+      - 'src/features/appUpdate/**'
+      - 'android/app/**'
+      - 'scripts/app-update*.test.ts'
+      - 'scripts/android-delta-release.mjs'
+      - 'package*.json'
+      - '.github/workflows/app-update-ci.yml'
+      - '.github/workflows/android-release.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 cmake;3.22.1'
+      - run: npm ci
+      - run: npm run test:app-update
+      - run: npm run lint
+      - run: npm run build
+      - run: npx cap sync android
+      - name: Verify native update selection, fallback and integrity
+        working-directory: android
+        run: ./gradlew :app:testCloudDebugUnitTest --tests 'com.aizeek.newsnook.AppUpdate*Test' --no-daemon --console=plain

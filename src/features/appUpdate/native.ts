@@ -31,7 +31,7 @@ type AppUpdatePlugin = {
   ): Promise<PluginListenerHandle>
   addListener(
     eventName: 'downloadRedirected',
-    listenerFunc: (payload: { fromDownloadId: number; toDownloadId: number }) => void,
+    listenerFunc: (payload: { fromDownloadId: number; toDownloadId: number; message?: string }) => void,
   ): Promise<PluginListenerHandle>
   addListener(
     eventName: 'downloadFailed',
