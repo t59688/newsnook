@@ -139,6 +139,27 @@ afterEvaluate {
     }
 }
 
+// 同一个标准 GDIFF 编解码器同时用于 Android 和发版流水线，避免双端实现漂移。
+configurations {
+    updateDeltaTool
+}
+
+tasks.register('generateUpdateDelta', JavaExec) {
+    classpath = configurations.updateDeltaTool
+    mainClass = 'com.nothome.delta.Delta'
+    doFirst {
+        args project.property('deltaSource'), project.property('deltaTarget'), project.property('deltaOutput')
+    }
+}
+
+tasks.register('applyUpdateDelta', JavaExec) {
+    classpath = configurations.updateDeltaTool
+    mainClass = 'com.nothome.delta.GDiffPatcher'
+    doFirst {
+        args project.property('deltaSource'), project.property('deltaPatch'), project.property('deltaOutput')
+    }
+}
+
 repositories {
     flatDir{
         dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
@@ -154,6 +175,12 @@ dependencies {
     implementation "androidx.browser:browser:1.8.0"
     implementation "com.squareup.okhttp3:okhttp:$okhttpVersion"
     implementation project(':capacitor-android')
+    // 设备上仅执行 GDIFF patch；生成器依赖的 Trove 不应进入任何 APK。
+    implementation('com.nothome:javaxdelta:2.0.1') {
+        exclude group: 'trove', module: 'trove'
+    }
+    testImplementation 'trove:trove:1.0.2'
+    updateDeltaTool 'com.nothome:javaxdelta:2.0.1'
     localImplementation 'com.google.mlkit:translate:17.0.3'
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.robolectric:robolectric:4.14.1"

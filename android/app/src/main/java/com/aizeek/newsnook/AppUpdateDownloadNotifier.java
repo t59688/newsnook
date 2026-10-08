@@ -77,6 +77,20 @@ final class AppUpdateDownloadNotifier {
         );
     }
 
+    void assembling() {
+        if (!active) return;
+        lastUpdateElapsedMs = 0L;
+        post(
+            "有所闻 · 正在准备更新",
+            "正在校验并合成安装包…",
+            0,
+            0,
+            true,
+            true,
+            android.R.drawable.stat_sys_download
+        );
+    }
+
     void complete(String content) {
         active = false;
         lastUpdateElapsedMs = 0L;

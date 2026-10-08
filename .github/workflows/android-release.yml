@@ -273,8 +273,23 @@ jobs:
           unzip -Z1 "artifacts/android/newsnook-${VERSION}-local-arm64-v8a-release.apk" \
             | grep -q '^lib/arm64-v8a/libbergamot_jni.so$'
 
+      - name: Verify Android patch application
+        run: |
+          cd android
+          ./gradlew :app:testCloudDebugUnitTest \
+            --tests com.aizeek.newsnook.AppUpdateDeltaTest \
+            --no-daemon --console=plain
+
       - name: List artifacts
         run: ls -lh artifacts/android/
+
+      - name: Generate and verify signed-APK deltas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p "${RUNNER_TEMP}/newsnook-r2"
+          node scripts/android-delta-release.mjs "$VERSION" "$RELEASE_TRACK" "${RUNNER_TEMP}/newsnook-r2"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -309,6 +324,8 @@ jobs:
           LOCAL_X86_APK="artifacts/android/${LOCAL_X86_NAME}"
           LOCAL_X64_APK="artifacts/android/${LOCAL_X64_NAME}"
           PAYLOAD_DIR="${RUNNER_TEMP}/newsnook-r2"
+          DELTA_INDEX_FILE="${PAYLOAD_DIR}/delta-index.json"
+          test -f "$DELTA_INDEX_FILE"
           mkdir -p "$PAYLOAD_DIR"
 
           for file in "$CLOUD_APK" "$LOCAL_APK" "$LOCAL_ARM64_APK" "$LOCAL_ARM32_APK" "$LOCAL_X86_APK" "$LOCAL_X64_APK"; do
@@ -342,7 +359,7 @@ jobs:
           BASE_URL="${UPDATE_BASE_URL%/}"
           TRACK_URL="${BASE_URL}/newsnook/${RELEASE_TRACK}"
 
-          jq -n             --arg track "$RELEASE_TRACK"             --arg version "$VERSION"             --argjson versionCode "$VERSION_CODE"             --arg tagName "$GITHUB_REF_NAME"             --arg publishedAt "$PUBLISHED_AT"             --rawfile notes "$NOTES_FILE"             --arg cloudFileName "$CLOUD_NAME"             --arg cloudUrl "${TRACK_URL}/${CLOUD_NAME}"             --arg cloudSha256 "$CLOUD_SHA256"             --argjson cloudSize "$CLOUD_SIZE"             --arg localFileName "$LOCAL_NAME"             --arg localUrl "${TRACK_URL}/${LOCAL_NAME}"             --arg localSha256 "$LOCAL_SHA256"             --argjson localSize "$LOCAL_SIZE"             --arg arm64FileName "$LOCAL_ARM64_NAME"             --arg arm64Url "${TRACK_URL}/${LOCAL_ARM64_NAME}"             --arg arm64Sha256 "$LOCAL_ARM64_SHA256"             --argjson arm64Size "$LOCAL_ARM64_SIZE"             --arg arm32FileName "$LOCAL_ARM32_NAME"             --arg arm32Url "${TRACK_URL}/${LOCAL_ARM32_NAME}"             --arg arm32Sha256 "$LOCAL_ARM32_SHA256"             --argjson arm32Size "$LOCAL_ARM32_SIZE"             --arg x86FileName "$LOCAL_X86_NAME"             --arg x86Url "${TRACK_URL}/${LOCAL_X86_NAME}"             --arg x86Sha256 "$LOCAL_X86_SHA256"             --argjson x86Size "$LOCAL_X86_SIZE"             --arg x64FileName "$LOCAL_X64_NAME"             --arg x64Url "${TRACK_URL}/${LOCAL_X64_NAME}"             --arg x64Sha256 "$LOCAL_X64_SHA256"             --argjson x64Size "$LOCAL_X64_SIZE"             '{
+          jq -n             --slurpfile deltaIndex "$DELTA_INDEX_FILE"             --arg track "$RELEASE_TRACK"             --arg version "$VERSION"             --argjson versionCode "$VERSION_CODE"             --arg tagName "$GITHUB_REF_NAME"             --arg publishedAt "$PUBLISHED_AT"             --rawfile notes "$NOTES_FILE"             --arg cloudFileName "$CLOUD_NAME"             --arg cloudUrl "${TRACK_URL}/${CLOUD_NAME}"             --arg cloudSha256 "$CLOUD_SHA256"             --argjson cloudSize "$CLOUD_SIZE"             --arg localFileName "$LOCAL_NAME"             --arg localUrl "${TRACK_URL}/${LOCAL_NAME}"             --arg localSha256 "$LOCAL_SHA256"             --argjson localSize "$LOCAL_SIZE"             --arg arm64FileName "$LOCAL_ARM64_NAME"             --arg arm64Url "${TRACK_URL}/${LOCAL_ARM64_NAME}"             --arg arm64Sha256 "$LOCAL_ARM64_SHA256"             --argjson arm64Size "$LOCAL_ARM64_SIZE"             --arg arm32FileName "$LOCAL_ARM32_NAME"             --arg arm32Url "${TRACK_URL}/${LOCAL_ARM32_NAME}"             --arg arm32Sha256 "$LOCAL_ARM32_SHA256"             --argjson arm32Size "$LOCAL_ARM32_SIZE"             --arg x86FileName "$LOCAL_X86_NAME"             --arg x86Url "${TRACK_URL}/${LOCAL_X86_NAME}"             --arg x86Sha256 "$LOCAL_X86_SHA256"             --argjson x86Size "$LOCAL_X86_SIZE"             --arg x64FileName "$LOCAL_X64_NAME"             --arg x64Url "${TRACK_URL}/${LOCAL_X64_NAME}"             --arg x64Sha256 "$LOCAL_X64_SHA256"             --argjson x64Size "$LOCAL_X64_SIZE"             '{
               schemaVersion: 2,
               track: $track,
               version: $version,
@@ -355,18 +372,20 @@ jobs:
                   fileName: $cloudFileName,
                   url: $cloudUrl,
                   sha256: $cloudSha256,
-                  size: $cloudSize
+                  size: $cloudSize,
+                  deltas: $deltaIndex[0].cloud
                 },
                 local: {
                   fileName: $localFileName,
                   url: $localUrl,
                   sha256: $localSha256,
                   size: $localSize,
+                  deltas: $deltaIndex[0].local,
                   abis: {
-                    "arm64-v8a": { fileName: $arm64FileName, url: $arm64Url, sha256: $arm64Sha256, size: $arm64Size },
-                    "armeabi-v7a": { fileName: $arm32FileName, url: $arm32Url, sha256: $arm32Sha256, size: $arm32Size },
-                    "x86": { fileName: $x86FileName, url: $x86Url, sha256: $x86Sha256, size: $x86Size },
-                    "x86_64": { fileName: $x64FileName, url: $x64Url, sha256: $x64Sha256, size: $x64Size }
+                    "arm64-v8a": { fileName: $arm64FileName, url: $arm64Url, sha256: $arm64Sha256, size: $arm64Size, deltas: $deltaIndex[0]["local-arm64-v8a"] },
+                    "armeabi-v7a": { fileName: $arm32FileName, url: $arm32Url, sha256: $arm32Sha256, size: $arm32Size, deltas: $deltaIndex[0]["local-armeabi-v7a"] },
+                    "x86": { fileName: $x86FileName, url: $x86Url, sha256: $x86Sha256, size: $x86Size, deltas: $deltaIndex[0]["local-x86"] },
+                    "x86_64": { fileName: $x64FileName, url: $x64Url, sha256: $x64Sha256, size: $x64Size, deltas: $deltaIndex[0]["local-x86_64"] }
                   }
                 }
               }
@@ -414,6 +433,8 @@ jobs:
             echo "LOCAL_ARM32_APK=$LOCAL_ARM32_APK"
             echo "LOCAL_X86_APK=$LOCAL_X86_APK"
             echo "LOCAL_X64_APK=$LOCAL_X64_APK"
+            echo "R2_DELTA_INDEX=$DELTA_INDEX_FILE"
+            echo "R2_DELTA_DIR=$PAYLOAD_DIR/deltas"
             echo "R2_MANIFEST=$MANIFEST_FILE"
             echo "R2_LEGACY_MANIFEST=$LEGACY_MANIFEST_FILE"
           } >> "$GITHUB_ENV"
@@ -438,6 +459,24 @@ jobs:
 
           aws s3 cp "$LOCAL_APK" "${PREFIX}/latest-local.apk"             --endpoint-url "$R2_ENDPOINT"             --content-type 'application/vnd.android.package-archive'             --content-disposition "attachment; filename=\"${LOCAL_NAME}\""             --cache-control 'no-store,max-age=0'             --no-progress
 
+          # 上传并核验差分对象后再发布 latest.json（客户端只读取最新清单）。
+          while IFS= read -r name; do
+            test -f "${R2_DELTA_DIR}/${name}"
+            aws s3 cp "${R2_DELTA_DIR}/${name}" "${PREFIX}/deltas/${name}" \
+              --endpoint-url "$R2_ENDPOINT" --content-type 'application/octet-stream' \
+              --cache-control 'public,max-age=604800,immutable' --no-progress
+          done < <(jq -r '[.[] | .[] | .fileName] | .[]' "$R2_DELTA_INDEX")
+
+          # Publish the manifest only after every signed APK and referenced delta is reachable.
+          for name in "$CLOUD_NAME" "$LOCAL_NAME" "$LOCAL_ARM64_NAME" "$LOCAL_ARM32_NAME" "$LOCAL_X86_NAME" "$LOCAL_X64_NAME"; do
+            curl --fail --silent --show-error --location --retry 5 --retry-delay 3 \
+              --head "${UPDATE_BASE_URL}/newsnook/${RELEASE_TRACK}/${name}" > /dev/null
+          done
+          while IFS= read -r name; do
+            curl --fail --silent --show-error --location --retry 5 --retry-delay 3 \
+              --head "${UPDATE_BASE_URL}/newsnook/${RELEASE_TRACK}/deltas/${name}" > /dev/null
+          done < <(jq -r '[.[] | .[] | .fileName] | .[]' "$R2_DELTA_INDEX")
+
           aws s3 cp "$R2_MANIFEST" "${PREFIX}/latest.json"             --endpoint-url "$R2_ENDPOINT"             --content-type 'application/json; charset=utf-8'             --cache-control 'no-store,max-age=0'             --no-progress
 
       - name: Publish legacy stable compatibility endpoint
@@ -459,6 +498,11 @@ jobs:
             curl --fail --silent --show-error --location               --retry 5 --retry-delay 3 --head "${BASE}/${name}" > /dev/null
           done
 
+          while IFS= read -r name; do
+            curl --fail --silent --show-error --location \
+              --retry 5 --retry-delay 3 --head "${BASE}/deltas/${name}" > /dev/null
+          done < <(jq -r '[.[] | .[] | .fileName] | .[]' "$R2_DELTA_INDEX")
+
           PUBLISHED="${RUNNER_TEMP}/published-latest.json"
           curl --fail --silent --show-error --location             --retry 5 --retry-delay 3             "${BASE}/latest.json?t=${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" > "$PUBLISHED"
 
@@ -468,6 +512,14 @@ jobs:
               and .packages.cloud.fileName == $cloud
               and .packages.local.fileName == $local
               and (.packages.local.abis | keys | sort) == ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"]'             "$PUBLISHED" > /dev/null
+          jq -e --slurpfile index "$R2_DELTA_INDEX" \
+            '.packages.cloud.deltas == $index[0].cloud
+              and .packages.local.deltas == $index[0].local
+              and .packages.local.abis["arm64-v8a"].deltas == $index[0]["local-arm64-v8a"]
+              and .packages.local.abis["armeabi-v7a"].deltas == $index[0]["local-armeabi-v7a"]
+              and .packages.local.abis.x86.deltas == $index[0]["local-x86"]
+              and .packages.local.abis.x86_64.deltas == $index[0]["local-x86_64"]' \
+            "$PUBLISHED" > /dev/null
 
       - name: Verify legacy stable endpoint
         if: steps.release_contract.outputs.track == 'stable'
@@ -488,6 +540,14 @@ jobs:
           while IFS= read -r key; do
             case "$key" in
               "${PREFIX}latest.json"|"${PREFIX}latest-cloud.apk"|"${PREFIX}latest-local.apk"|"${PREFIX}${CLOUD_NAME}"|"${PREFIX}${LOCAL_NAME}"|"${PREFIX}${LOCAL_ARM64_NAME}"|"${PREFIX}${LOCAL_ARM32_NAME}"|"${PREFIX}${LOCAL_X86_NAME}"|"${PREFIX}${LOCAL_X64_NAME}")
+                ;;
+              "${PREFIX}deltas/"*)
+                name="${key##*/}"
+                if ! jq -e --arg name "$name" 'any(.[][]; .fileName == $name)' "$R2_DELTA_INDEX" > /dev/null; then
+                  echo "Deleting obsolete delta: $key"
+                  aws s3api delete-object --bucket "$R2_BUCKET" --key "$key" \
+                    --endpoint-url "$R2_ENDPOINT" > /dev/null
+                fi
                 ;;
               *)
                 echo "Deleting old ${RELEASE_TRACK} object: $key"
@@ -526,8 +586,10 @@ jobs:
           aws s3api list-objects-v2             --bucket "$R2_BUCKET"             --prefix "$PREFIX"             --endpoint-url "$R2_ENDPOINT"             --output json > "$FINAL"
 
           COUNT="$(jq '[.Contents[]?] | length' "$FINAL")"
-          if [ "$COUNT" -ne 9 ]; then
-            echo "::error::Expected exactly 9 objects under ${PREFIX}, got ${COUNT}."
+          DELTA_COUNT="$(jq '[.[] | .[]] | length' "$R2_DELTA_INDEX")"
+          EXPECTED_COUNT=$((9 + DELTA_COUNT))
+          if [ "$COUNT" -ne "$EXPECTED_COUNT" ]; then
+            echo "::error::Expected ${EXPECTED_COUNT} objects under ${PREFIX}, got ${COUNT}."
             jq -r '.Contents[]?.Key' "$FINAL"
             exit 1
           fi
@@ -542,5 +604,7 @@ jobs:
             --arg arm32 "${PREFIX}${LOCAL_ARM32_NAME}" \
             --arg x86 "${PREFIX}${LOCAL_X86_NAME}" \
             --arg x64 "${PREFIX}${LOCAL_X64_NAME}" \
-            '[.Contents[]?.Key] | sort == ([$manifest, $latestCloud, $latestLocal, $cloud, $local, $arm64, $arm32, $x86, $x64] | sort)' \
+            --arg deltaPrefix "${PREFIX}deltas/" \
+            --slurpfile index "$R2_DELTA_INDEX" \
+            '[.Contents[]?.Key] | sort == ([$manifest, $latestCloud, $latestLocal, $cloud, $local, $arm64, $arm32, $x86, $x64] + [$index[0][][] | $deltaPrefix + .fileName] | sort)' \
             "$FINAL" > /dev/null

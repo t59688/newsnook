@@ -8,3 +8,7 @@ the Free Software Foundation, either version 3 of the License, or
 
 See the LICENSE file for the full license text.
 
+Bundled Android update component: javaxdelta 2.0.1 (MIT).
+The required third-party notice is distributed within the APK at
+android/app/src/main/assets/licenses/javaxdelta-MIT.txt.
+
