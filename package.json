@@ -1,7 +1,7 @@
 {
   "name": "web",
   "private": true,
-  "version": "1.8.11-beta.12",
+  "version": "1.8.11-beta.13",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "workspaces": [
@@ -20,6 +20,7 @@
     "test:edge-swipe": "rolldown scripts/edge-swipe-back.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/edge-swipe-back.test.mjs && node node_modules/.cache/newsnook/edge-swipe-back.test.mjs",
     "test:pull-to-refresh": "node --import tsx scripts/pull-to-refresh.test.ts && node --import tsx scripts/pull-to-refresh-gesture.test.tsx",
     "test:gesture-styles": "rolldown scripts/gesture-styles.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/gesture-styles.test.mjs && node node_modules/.cache/newsnook/gesture-styles.test.mjs",
+    "test:scroll-lifecycle": "node --import tsx scripts/scroll-lifecycle.test.tsx",
     "test:easter-egg": "npx tsx scripts/easter-egg-trigger.test.ts",
     "test:easter-egg-screen-chrome": "npx tsx scripts/easter-egg-screen-chrome.test.ts",
     "test:easter-egg-autopilot": "node scripts/easter-egg-autopilot.test.mjs",

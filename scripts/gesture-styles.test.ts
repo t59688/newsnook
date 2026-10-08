@@ -74,4 +74,15 @@ assert.equal(document.body.style.overflow, '')
 recoverAppScrollAfterNavigation()
 assert.equal(document.body.style.overflow, '')
 
+// A cleanup from before navigation must not release a newer overlay's lock.
+const releaseBeforeNavigation = lockBodyScroll()
+resetBodyScrollLock()
+const releaseAfterNavigation = lockBodyScroll()
+releaseBeforeNavigation()
+assert.equal(bodyScrollLockDepth(), 1)
+assert.equal(document.body.style.overflow, 'hidden')
+releaseAfterNavigation()
+assert.equal(bodyScrollLockDepth(), 0)
+assert.equal(document.body.style.overflow, '')
+
 console.log('gesture-styles: ok')

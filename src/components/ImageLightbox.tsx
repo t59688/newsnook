@@ -12,6 +12,7 @@ import { ChevronLeft, ChevronRight, Download, Loader2, RefreshCcw, Share2, X } f
 import { saveImageToGallery, shareImage } from '../lib/imageActions'
 import { lockBodyScroll } from '../lib/bodyScrollLock'
 import { recoverAppScrollSurfaces } from '../lib/gestureStyles'
+import { shouldResetReaderPinchSequence } from '../lib/readerFontPinch'
 
 interface Props {
   src: string
@@ -136,27 +137,49 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
     [applyTransform, clampTranslation],
   )
 
-  const releaseStageCaptures = useCallback(() => {
-    const stage = stageRef.current
-    if (!stage) return
-    pointersRef.current.forEach((_, pointerId) => {
-      if (stage.hasPointerCapture(pointerId)) stage.releasePointerCapture(pointerId)
-    })
+  const releaseStageCaptures = useCallback((stage = stageRef.current) => {
+    const pointerIds = [...pointersRef.current.keys()]
+    // Clear state before releasing captures: lostpointercapture may fire during release.
     pointersRef.current.clear()
     pinchStartRef.current = null
     panStartRef.current = null
     closingSwipeRef.current.active = false
+    for (const pointerId of pointerIds) {
+      if (stage?.hasPointerCapture(pointerId)) stage.releasePointerCapture(pointerId)
+    }
   }, [])
 
+  const cancelGesture = useCallback(() => {
+    clearLongPress()
+    releaseStageCaptures()
+    movedRef.current = true
+    lastTapRef.current = null
+    const stage = stageRef.current
+    if (stage) stage.style.backgroundColor = ''
+    clampTranslation()
+    applyTransform(false)
+  }, [applyTransform, clampTranslation, clearLongPress, releaseStageCaptures])
+
   useEffect(() => {
+    // React clears refs before passive unmount cleanup; retain the capture owner.
+    const stage = stageRef.current
     const unlock = lockBodyScroll()
+    const onVisibilityChange = () => {
+      if (document.visibilityState !== 'visible') cancelGesture()
+    }
+    window.addEventListener('blur', cancelGesture)
+    window.addEventListener('pagehide', cancelGesture)
+    document.addEventListener('visibilitychange', onVisibilityChange)
     return () => {
+      window.removeEventListener('blur', cancelGesture)
+      window.removeEventListener('pagehide', cancelGesture)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
       clearLongPress()
-      releaseStageCaptures()
+      releaseStageCaptures(stage)
       unlock()
       recoverAppScrollSurfaces()
     }
-  }, [clearLongPress, releaseStageCaptures])
+  }, [cancelGesture, clearLongPress, releaseStageCaptures])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -217,6 +240,7 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
     if (menuOpen || busy) return
     const stage = stageRef.current
     if (!stage) return
+    if (shouldResetReaderPinchSequence(pointersRef.current.size, event)) cancelGesture()
     stage.setPointerCapture(event.pointerId)
     pointersRef.current.set(event.pointerId, { x: event.clientX, y: event.clientY })
     movedRef.current = false
@@ -331,10 +355,10 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
 
   const finishPointers = (event: ReactPointerEvent<HTMLDivElement>) => {
     clearLongPress()
+    pointersRef.current.delete(event.pointerId)
     if (stageRef.current?.hasPointerCapture(event.pointerId)) {
       stageRef.current.releasePointerCapture(event.pointerId)
     }
-    pointersRef.current.delete(event.pointerId)
 
     if (pointersRef.current.size < 2) pinchStartRef.current = null
     if (pointersRef.current.size === 0) {
@@ -452,7 +476,10 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={finishPointers}
+        onPointerCancel={cancelGesture}
+        onLostPointerCapture={(event) => {
+          if (pointersRef.current.has(event.pointerId)) cancelGesture()
+        }}
         onWheel={onWheel}
         onContextMenu={(event) => {
           event.preventDefault()
