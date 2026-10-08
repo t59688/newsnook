@@ -4,7 +4,7 @@ import { isLocalTranslationAvailable } from '../translation/native'
 import { normalizeSupportedAbis } from './abi'
 import { shouldAutoPrompt, shouldFetchForAutoCheck } from './gate'
 import { fetchLatestRelease } from './github'
-import { compareSemver, isNewerVersion } from './semver'
+import { androidVersionCode, compareSemver, isNewerVersion } from './semver'
 import { AppUpdateNative } from './native'
 import {
   getUpdateTrackPrefs,
@@ -86,6 +86,9 @@ async function ensureNativeListeners(): Promise<void> {
   await AppUpdateNative.addListener('downloadComplete', ({ downloadId }) => {
     if (activeDownloadId === downloadId) activeDownloadId = null
     setUi({ downloading: false, lastManualMessage: undefined })
+  })
+  await AppUpdateNative.addListener('downloadRedirected', ({ fromDownloadId, toDownloadId }) => {
+    if (activeDownloadId === fromDownloadId) activeDownloadId = toDownloadId
   })
   await AppUpdateNative.addListener('downloadFailed', ({ downloadId, message, kind }) => {
     if (activeDownloadId === downloadId) activeDownloadId = null
@@ -242,6 +245,8 @@ export async function beginUpdate(release: LatestReleaseInfo): Promise<BeginUpda
       fileName: release.apkFileName,
       sha256: release.sha256,
       size: release.size,
+      versionCode: androidVersionCode(release.version) ?? undefined,
+      ...(release.sha256 && release.deltas?.length ? { deltas: release.deltas } : {}),
     })
     activeDownloadId = downloadId
     setUi({ downloading: true, lastManualMessage: undefined })

@@ -106,6 +106,18 @@ artifacts/android/newsnook-<version>-local-release.aab
 
 ABI split **只用于 APK**。AAB 不在本地预拆 ABI，由 Google Play / bundletool 在分发阶段生成设备适配 split。`npm run android:apk:local` 因此会生成 5 个 local APK；Android Studio debug、`android:run:local` 和 AAB 构建不启用该 split。
 
+## 自托管 APK 统一增量更新
+
+应用内更新的唯一优化原则是：**已安装 APK 的精确字节 SHA-256 命中差分源，且能合成出发布时签名的目标 APK**。无论 cloud、local universal 还是 local 各 ABI，均使用同一个 GDIFF + Gzip 协议；不按包体大小、功能模块或变体添加开启阈值。
+
+- GitHub Actions 构建、签名并校验所有 APK；从同一 Stable/Beta 轨道最近 3 个已发布版本的 GitHub Releases 取回对应变体的**原始签名 APK**，对每个可用源 APK 与当前目标 APK 生成标准 GDIFF，然后压缩为 `.gdiff.gz`。这是一条“历史安装包 → 最新安装包”的直达路径，不要求用户逐版本升级。
+- 每个差分生成后，CI **实际反向合成**目标 APK，校验目标文件大小、SHA-256 和签名证书；不一致就终止发布。差分文件按源、目标 SHA 命名，R2 存储于 `newsnook/{track}/deltas/`。`latest.json` 的 `schemaVersion: 2` 为每个 APK asset 增加可选的 `deltas` 列表，仍保留完整 APK URL 和 SHA。旧客户端忽略新增字段，继续正常全量更新。
+- 新客户端读取 Android 当前安装的 `ApplicationInfo.sourceDir`，校验整个已安装 APK 的 SHA-256 后选择完全一致的差分。若设备以多个 split APK 安装、缺少历史差分、无法校验源文件，则自然退回完整 APK。这是对输入文件身份与可访问性的判断，不是 cloud/local 分类逻辑。
+- 原生下载器先核对补丁 SHA-256 与长度，再于工作目录流式合成临时 APK，限制最大输出大小，核对最终完整 APK 的 SHA-256、长度、包名、版本号与签名；**不编辑已安装 APK、不自行签名、不绕过 Android 系统安装器**。差分下载、校验或合成失败只回退一次完整 APK，禁止差分重试循环。
+- R2 先发布完整 APK 与差分对象，确认对象可访问后再原子更新最新清单；清理过期对象时仅保留最新清单引用的差分。GitHub Releases 一直保留完整 APK，兼作灾备和历史差分的可审计输入。对于已有旧版尚不支持增量的客户端，首次升级仍是完整 APK；升级到带增量能力的客户端后才能使用差分。
+
+差分是传输优化，**完整 APK 是正确性与灾备的永久兜底**。同一版本 cloud/local 切换如果没有精确源包差分也走完整 APK，不会尝试针对不一致的源包强行打补丁。Google Play AAB/split 安装暂不走此自托管单 APK 差分路径。
+
 只构建其中一种时使用 `npm run android:apk:cloud`、`npm run android:apk:local`、`npm run android:aab:cloud` 或 `npm run android:aab:local`。两个变体使用相同包名和签名，面向同一应用渠道，不能在同一设备上并存。
 
 版本号只改一处：`package.json` 的 `"version"`，同时必须让 `package-lock.json` 根版本保持一致。

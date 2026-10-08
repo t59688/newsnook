@@ -35,6 +35,7 @@ import {
   SNOOZE_MS,
   RESUME_CHECK_INTERVAL_MS,
 } from '../src/features/appUpdate/gate'
+import { deltaFileName, selectHistory } from './android-delta-release.mjs'
 import {
   androidVersionCodeForRelease,
   parseReleaseVersion,
@@ -212,6 +213,9 @@ assert.match(updateHookSource, /origin: 'auto'/)
 assert.match(updateHookSource, /origin: 'manual'/)
 assert.match(updateHookSource, /resolveSupportedAbis\(target\)/)
 assert.match(updateHookSource, /fetchReleaseApkForFlavor\(__APP_VERSION__, target, supportedAbis\)/)
+const notifierSource = readFileSync(new URL('../android/app/src/main/java/com/aizeek/newsnook/AppUpdateDownloadNotifier.java', import.meta.url), 'utf8')
+assert.match(notifierSource, /void assembling\(\)/)
+assert.match(notifierSource, /正在校验并合成安装包/)
 
 console.log('✓ asset / gate ok')
 
@@ -224,6 +228,26 @@ assert.equal(
 assert.equal(manifestUrl('beta'), 'https://news-update.aizeek.com/newsnook/beta/latest.json')
 
 const cdnHash = 'b'.repeat(64)
+const sourceHash = 'a'.repeat(64)
+const patchHash = 'c'.repeat(64)
+const patchName = deltaFileName(sourceHash, cdnHash)
+const stableDelta = {
+  algorithm: 'gdiff-gzip-v1',
+  fromSha256: sourceHash,
+  fileName: patchName,
+  url: `https://news-update.aizeek.com/newsnook/stable/deltas/${patchName}`,
+  sha256: patchHash,
+  size: 58,
+}
+assert.equal(patchName, `delta-${sourceHash}-${cdnHash}.gdiff.gz`)
+assert.deepEqual(selectHistory([
+  { tag_name: 'v1.8.7-beta.1', prerelease: true },
+  { tag_name: 'v1.8.7-beta.3', prerelease: true },
+  { tag_name: 'v1.8.7-beta.2', prerelease: true },
+  { tag_name: 'v1.8.7', prerelease: false },
+], '1.8.7-beta.4', 'beta', 2).map((x) => x.tag_name), [
+  'v1.8.7-beta.3', 'v1.8.7-beta.2',
+])
 const stableManifest = parseUpdateManifest(
   {
     schemaVersion: 2,
@@ -239,18 +263,21 @@ const stableManifest = parseUpdateManifest(
         url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-cloud-release.apk',
         sha256: cdnHash,
         size: 123,
+        deltas: [stableDelta],
       },
       local: {
         fileName: 'newsnook-1.8.7-local-release.apk',
         url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-release.apk',
         sha256: cdnHash,
         size: 456,
+        deltas: [stableDelta],
         abis: {
           'arm64-v8a': {
             fileName: 'newsnook-1.8.7-local-arm64-v8a-release.apk',
             url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-arm64-v8a-release.apk',
             sha256: cdnHash,
             size: 222,
+            deltas: [stableDelta],
           },
           x86_64: {
             fileName: 'newsnook-1.8.7-local-x86_64-release.apk',
@@ -266,6 +293,8 @@ const stableManifest = parseUpdateManifest(
 )
 assert.ok(stableManifest)
 if (stableManifest) {
+  assert.equal(releaseFromUpdateManifest(stableManifest, 'cloud').deltas?.[0]?.sha256, patchHash)
+  assert.equal(releaseFromUpdateManifest(stableManifest, 'local', ['arm64-v8a']).deltas?.[0]?.sha256, patchHash)
   const release = releaseFromUpdateManifest(stableManifest, 'local')
   assert.equal(release.apkFileName, 'newsnook-1.8.7-local-release.apk')
   const arm64Release = releaseFromUpdateManifest(stableManifest, 'local', ['arm64-v8a'])
@@ -281,6 +310,22 @@ if (stableManifest) {
   assert.equal(release.subscriptionTrack, 'stable')
   assert.equal(updateCheckFromManifest(stableManifest, '1.8.6', 'cloud').status, 'available')
   assert.equal(updateCheckFromManifest(stableManifest, '1.8.7-beta.4', 'cloud').status, 'available')
+  const malformed = (deltas: unknown) => parseUpdateManifest({
+    ...stableManifest,
+    packages: {
+      ...stableManifest.packages,
+      cloud: { ...stableManifest.packages.cloud, deltas },
+    },
+  }, 'stable')
+  assert.equal(malformed([{ ...stableDelta, url: `https://example.com/${patchName}` }]), null)
+  assert.equal(malformed([{ ...stableDelta, url: stableDelta.url.replace('/stable/', '/beta/') }]), null)
+  assert.equal(malformed([{ ...stableDelta, fileName: '../escape.gdiff.gz' }]), null)
+  assert.equal(malformed([{ ...stableDelta, algorithm: 'unsupported' }]), null)
+  assert.equal(malformed([{ ...stableDelta, fromSha256: cdnHash }]), null)
+  assert.equal(malformed([{ ...stableDelta, sha256: 'invalid' }]), null)
+  assert.equal(malformed([stableDelta, stableDelta]), null)
+  assert.equal(malformed(new Array(17).fill(stableDelta)), null)
+  assert.equal(malformed(undefined)?.packages.cloud.deltas, undefined)
 }
 
 const betaManifest = parseUpdateManifest(

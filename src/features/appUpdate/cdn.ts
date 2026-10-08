@@ -13,6 +13,7 @@ import type {
   PackageFlavor,
   UpdateCheckResult,
   UpdateTrack,
+  UpdateDelta,
 } from './types'
 
 export const UPDATE_BASE_URL = 'https://news-update.aizeek.com'
@@ -24,6 +25,7 @@ type ManifestAsset = {
   url: string
   sha256: string
   size: number
+  deltas?: UpdateDelta[]
 }
 
 type LocalManifestAsset = ManifestAsset & {
@@ -88,7 +90,40 @@ function parseAsset(
     return null
   }
 
-  return { fileName, url, sha256, size }
+  const deltas: UpdateDelta[] = []
+  if (record.deltas !== undefined) {
+    if (!Array.isArray(record.deltas) || record.deltas.length > 16) return null
+    const sources = new Set<string>()
+    for (const item of record.deltas) {
+      const delta = parseDeltaAsset(item, track, sha256)
+      if (!delta || sources.has(delta.fromSha256)) return null
+      sources.add(delta.fromSha256)
+      deltas.push(delta)
+    }
+  }
+  return { fileName, url, sha256, size, ...(deltas.length ? { deltas } : {}) }
+}
+
+function parseDeltaAsset(value: unknown, track: UpdateTrack, targetSha256: string): UpdateDelta | null {
+  const record = asRecord(value)
+  if (!record || record.algorithm !== 'gdiff-gzip-v1') return null
+  const fromSha256 = typeof record.fromSha256 === 'string' ? record.fromSha256.toLowerCase() : ''
+  const sha256 = typeof record.sha256 === 'string' ? record.sha256.toLowerCase() : ''
+  const fileName = typeof record.fileName === 'string' ? record.fileName : ''
+  const url = typeof record.url === 'string' ? record.url : ''
+  const size = record.size
+  if (!SHA256_RE.test(fromSha256) || !SHA256_RE.test(sha256) || fromSha256 === targetSha256) return null
+  if (fileName !== `delta-${fromSha256}-${targetSha256}.gdiff.gz`) return null
+  if (typeof size !== 'number' || !Number.isSafeInteger(size) || size <= 0) return null
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'https:' || parsed.hostname.toLowerCase() !== UPDATE_HOST) return null
+    if (parsed.pathname !== `/newsnook/${track}/deltas/${fileName}`) return null
+    if (parsed.search || parsed.hash || parsed.username || parsed.password || parsed.port) return null
+  } catch {
+    return null
+  }
+  return { algorithm: 'gdiff-gzip-v1', fromSha256, fileName, url, sha256, size }
 }
 
 function parseLocalAsset(
@@ -192,6 +227,7 @@ export function releaseFromUpdateManifest(
     apkFileName: asset.fileName,
     sha256: asset.sha256,
     size: asset.size,
+    ...(asset.deltas?.length ? { deltas: asset.deltas } : {}),
     flavor,
     ...(abi ? { abi } : {}),
     track: manifest.track,
