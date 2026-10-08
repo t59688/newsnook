@@ -370,9 +370,9 @@ function FeedView({
 
   return (
     <div className="relative flex h-full min-h-0 flex-col" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
-      <div className="sticky top-0 z-10 border-b border-haze/45 bg-ink/90 backdrop-blur-xl">
+      <div className="sticky top-0 z-10 border-b border-paper/[0.06] bg-ink/90 backdrop-blur-2xl">
         <div className="page-x flex items-center gap-1.5 py-1.5">
-          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl bg-paper/[0.035] p-0.5 scrollbar-none">
+          <div className="flex min-w-0 flex-1 gap-1 overflow-x-auto rounded-xl border border-paper/[0.06] bg-paper/[0.03] p-1 scrollbar-none">
             {feedTabs.map((tab) => (
               <button
                 key={tab.id}
@@ -380,10 +380,10 @@ function FeedView({
                 onClick={() => selectMode(tab.id)}
                 aria-pressed={tab.id === mode}
                 className={
-                  'linuxdo-control min-h-[30px] shrink-0 rounded-lg px-3 py-1 text-[11.5px] font-medium transition-all ' +
+                  'linuxdo-control min-h-[30px] shrink-0 rounded-lg px-3 py-1 text-[11.5px] font-medium transition-all duration-150 active:scale-95 ' +
                   (tab.id === mode
-                    ? 'bg-cinnabar text-white font-semibold shadow-xs shadow-cinnabar/25'
-                    : 'text-paper-muted hover:bg-paper/5 hover:text-paper')
+                    ? 'bg-cinnabar text-white font-semibold shadow-[0_2px_8px_rgba(235,68,54,0.35)]'
+                    : 'text-paper-muted/80 hover:bg-paper/[0.05] hover:text-paper')
                 }
               >
                 {tab.label}
@@ -394,10 +394,10 @@ function FeedView({
             type="button"
             onClick={() => setFilterMenuOpen(true)}
             className={
-              'linuxdo-control inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border px-2.5 text-[11px] font-medium transition active:scale-95 ' +
+              'linuxdo-control inline-flex h-8 shrink-0 items-center gap-1 rounded-xl border px-2.5 text-[11px] font-medium transition-all duration-150 active:scale-95 ' +
               (feedTabs.some((tab) => tab.id === mode)
-                ? 'border-haze/60 bg-paper/[0.025] text-paper-muted hover:border-haze hover:text-paper'
-                : 'border-cinnabar/40 bg-cinnabar/10 text-cinnabar-soft font-semibold')
+                ? 'border-paper/[0.08] bg-paper/[0.03] text-paper-muted hover:border-paper/[0.14] hover:bg-paper/[0.06] hover:text-paper'
+                : 'border-cinnabar/40 bg-cinnabar/12 text-cinnabar font-semibold shadow-[0_2px_8px_rgba(235,68,54,0.15)]')
             }
             aria-label="LinuxDO 主题筛选"
           >
@@ -411,7 +411,7 @@ function FeedView({
             type="button"
             disabled={refreshing || loading}
             onClick={() => void load(true)}
-            className="linuxdo-control grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-haze/60 bg-paper/[0.025] text-paper-muted hover:border-cinnabar/40 hover:text-cinnabar transition active:scale-95 disabled:opacity-40"
+            className="linuxdo-control grid h-8 w-8 shrink-0 place-items-center rounded-xl border border-paper/[0.08] bg-paper/[0.03] text-paper-muted hover:border-cinnabar/40 hover:bg-paper/[0.06] hover:text-cinnabar transition-all duration-150 active:scale-90 disabled:opacity-40"
             aria-label={refreshing ? '正在刷新' : '刷新'}
           >
             <RefreshCcw size={13} className={refreshing ? 'animate-spin' : ''} />
@@ -763,7 +763,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
 
   return (
     <div className="linuxdo-workspace relative flex h-full min-h-0 flex-col overflow-hidden bg-ink text-paper">
-      {route.kind !== 'topic' ? <header className="linuxdo-brand-header linuxdo-control shrink-0 border-b border-haze/50 bg-ink/90 page-x select-none backdrop-blur-xl">
+      {route.kind !== 'topic' ? <header className="linuxdo-brand-header linuxdo-control shrink-0 border-b border-paper/[0.06] bg-ink/90 page-x select-none backdrop-blur-2xl">
         <div className="flex h-12 items-center gap-2 sm:gap-2.5">
           <button
             type="button"
@@ -774,7 +774,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
               }
               if (!goBack()) onExit()
             }}
-            className="linuxdo-icon-button grid h-8 w-8 sm:h-8.5 sm:w-8.5 shrink-0 place-items-center rounded-full text-paper-muted hover:bg-paper/5 hover:text-paper transition active:scale-95"
+            className="linuxdo-icon-button grid h-8 w-8 sm:h-8.5 sm:w-8.5 shrink-0 place-items-center rounded-full text-paper-muted hover:bg-paper/5 hover:text-paper transition-all duration-150 active:scale-90"
             aria-label="返回 NewsNook"
           >
             <ArrowLeft size={16} />
@@ -785,7 +785,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
               {route.kind === 'feed' ? 'Linux.do' : title}
             </span>
             {route.kind === 'feed' ? (
-              <span className="hidden min-[380px]:inline-flex shrink-0 items-center rounded-full bg-cinnabar/10 px-2 py-0.2 font-mono text-[9px] font-semibold text-cinnabar-soft">
+              <span className="hidden min-[380px]:inline-flex shrink-0 items-center rounded-full border border-cinnabar/25 bg-cinnabar/10 px-2 py-0.5 font-mono text-[9px] font-semibold text-cinnabar">
                 Discourse
               </span>
             ) : null}
@@ -903,8 +903,8 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
           className="linuxdo-nav-compose"
           aria-label="发布"
         >
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-cinnabar text-white shadow-md shadow-cinnabar/30 transition active:scale-95">
-            <Plus size={20} strokeWidth={2.5} />
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-tr from-[#d32f2f] via-cinnabar to-[#ff6b57] text-white shadow-[0_4px_16px_rgba(235,68,54,0.45)] ring-2 ring-ink transition-transform duration-150 active:scale-90">
+            <Plus size={21} strokeWidth={2.5} />
           </span>
           <span className="mt-0.5">发布</span>
         </button>

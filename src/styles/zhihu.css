@@ -17,6 +17,7 @@
   --zhihu-blue-hover: #005ce6;
   --zhihu-blue-subtle: color-mix(in srgb, #0066ff 12%, transparent);
   --zhihu-blue-border: color-mix(in srgb, #0066ff 28%, transparent);
+  --zhihu-blue-glow: 0 2px 10px rgba(0, 102, 255, 0.35);
   --zhihu-hot-1: #ff3838;
   --zhihu-hot-2: #ff7700;
   --zhihu-hot-3: #f5a623;
@@ -37,6 +38,80 @@
 
 .border-zhihu-blue-subtle {
   border-color: var(--zhihu-blue-border);
+}
+
+/* 原生级 Tab 滑块指示胶囊 */
+.zhihu-tab-indicator {
+  position: absolute;
+  bottom: 1px;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--zhihu-blue);
+  box-shadow: 0 1px 6px rgba(0, 102, 255, 0.45);
+  transition: transform 240ms var(--ease-ink), width 240ms var(--ease-ink);
+}
+
+/* 原生级药丸搜索栏 */
+.zhihu-search-capsule {
+  display: flex;
+  align-items: center;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-paper) 4.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-paper) 8%, transparent);
+  transition: all 180ms var(--ease-ink);
+}
+.zhihu-search-capsule:hover {
+  background: color-mix(in srgb, var(--color-paper) 7%, transparent);
+  border-color: color-mix(in srgb, var(--zhihu-blue) 40%, transparent);
+}
+.zhihu-search-capsule:active {
+  transform: scale(0.985);
+}
+
+/* 原生微质感内容卡片 */
+.zhihu-content-card {
+  position: relative;
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-paper) 6.5%, transparent);
+  background: color-mix(in srgb, var(--color-ink-raised) 70%, transparent);
+  padding: 0.875rem 1rem;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 160ms var(--ease-ink), background-color 160ms var(--ease-ink), border-color 160ms var(--ease-ink), box-shadow 160ms var(--ease-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+.zhihu-content-card:hover {
+  border-color: color-mix(in srgb, var(--color-paper) 12%, transparent);
+  background: color-mix(in srgb, var(--color-ink-raised) 92%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+.zhihu-content-card:active {
+  transform: scale(0.988);
+}
+
+/* 原生悬浮操作岛 */
+.zhihu-action-dock {
+  border: 1px solid color-mix(in srgb, var(--color-paper) 9%, transparent);
+  background: color-mix(in srgb, var(--color-ink) 90%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+/* 原生赞同胶囊按钮 */
+.zhihu-vote-pill {
+  transition: all 160ms var(--ease-ink);
+}
+.zhihu-vote-pill:active {
+  transform: scale(0.94);
+}
+.zhihu-vote-pill.is-active {
+  background: var(--zhihu-blue);
+  color: #ffffff;
+  box-shadow: 0 3px 12px rgba(0, 102, 255, 0.38);
 }
 
 /* 楼中楼评论树状微引线 */

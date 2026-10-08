@@ -407,18 +407,18 @@ function CommentItem({
               {createdTime && comment.ipLocation && <span aria-hidden className="text-paper-faint/45">·</span>}
               {comment.ipLocation && <span className="truncate">IP属地 {comment.ipLocation}</span>}
             </div>
-            <div className="ml-auto flex items-center gap-0.5">
+            <div className="ml-auto flex items-center gap-1">
               <button
                 type="button"
                 disabled={!authenticated || mutationBusy || !replyWritable}
                 onClick={() => setReplying((value) => !value)}
                 title={!authenticated ? '登录后可回复' : '回复'}
                 aria-label="回复"
-                className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 text-[11px] font-medium transition-colors disabled:opacity-35 ${
-                  replying ? 'bg-sky-500/12 text-sky-500' : 'text-paper-faint hover:bg-paper/5 hover:text-paper-muted'
+                className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-medium transition-all duration-150 active:scale-95 disabled:opacity-35 ${
+                  replying ? 'bg-[#0066FF]/15 text-[#0066FF] dark:text-[#3B82F6] font-semibold' : 'text-paper-muted hover:bg-paper/5 hover:text-paper'
                 }`}
               >
-                <Reply size={12} strokeWidth={1.8} />
+                <Reply size={12} strokeWidth={2} />
                 <span>回复</span>
               </button>
               <button
@@ -427,11 +427,11 @@ function CommentItem({
                 onClick={() => void toggleLike()}
                 title={!authenticated ? '登录后可点赞' : liked ? '取消点赞' : '点赞'}
                 aria-label={liked ? '取消点赞' : '点赞'}
-                className={`inline-flex min-h-7 items-center gap-1 rounded-lg px-2 font-mono text-[11px] transition-colors disabled:opacity-35 ${
-                  liked ? 'bg-sky-500/12 font-semibold text-sky-500' : 'text-paper-faint hover:bg-paper/5 hover:text-paper-muted'
+                className={`inline-flex min-h-7 items-center gap-1 rounded-full px-2.5 font-mono text-[11px] transition-all duration-150 active:scale-95 disabled:opacity-35 ${
+                  liked ? 'bg-[#0066FF]/15 font-semibold text-[#0066FF] dark:text-[#3B82F6]' : 'text-paper-muted hover:bg-paper/5 hover:text-paper'
                 }`}
               >
-                <Heart size={12} strokeWidth={1.8} fill={liked ? 'currentColor' : 'none'} />
+                <Heart size={12} strokeWidth={2} fill={liked ? 'currentColor' : 'none'} />
                 {likeCount > 0 && <span>{formatZhihuCount(likeCount)}</span>}
               </button>
               {comment.canDelete && (
@@ -441,9 +441,9 @@ function CommentItem({
                   onClick={() => void remove()}
                   title="删除评论"
                   aria-label="删除评论"
-                  className="flex size-7 items-center justify-center rounded-lg text-paper-faint transition-colors hover:bg-paper/5 hover:text-cinnabar-soft disabled:opacity-35"
+                  className="flex size-7 items-center justify-center rounded-full text-paper-faint transition-all hover:bg-paper/5 hover:text-rose-500 active:scale-90 disabled:opacity-35"
                 >
-                  <Trash2 size={12.5} strokeWidth={1.6} />
+                  <Trash2 size={12.5} strokeWidth={1.8} />
                 </button>
               )}
             </div>
@@ -632,13 +632,13 @@ export function ZhihuCommentsSection({ target, service, onNavigate, restoreAncho
   }
 
   const sortControl = (
-    <div className="inline-flex items-center rounded-full bg-ink-raised/55 p-0.5" aria-label="评论排序">
+    <div className="inline-flex items-center rounded-full border border-paper/[0.08] bg-paper/[0.035] p-0.5" aria-label="评论排序">
       <button
         type="button"
         disabled={loading}
         onClick={() => setSort('score')}
         aria-pressed={sort === 'score'}
-        className={`min-h-8 rounded-full px-3 text-[11px] font-medium transition-colors disabled:opacity-40 ${sort === 'score' ? 'bg-paper/8 text-paper' : 'text-paper-faint hover:text-paper-muted'}`}
+        className={`min-h-7.5 rounded-full px-3 text-[11px] font-medium transition-all duration-150 active:scale-95 disabled:opacity-40 ${sort === 'score' ? 'bg-paper text-ink font-semibold shadow-xs' : 'text-paper-muted hover:text-paper'}`}
       >
         热度
       </button>
@@ -647,7 +647,7 @@ export function ZhihuCommentsSection({ target, service, onNavigate, restoreAncho
         disabled={loading}
         onClick={() => setSort('time')}
         aria-pressed={sort === 'time'}
-        className={`min-h-8 rounded-full px-3 text-[11px] font-medium transition-colors disabled:opacity-40 ${sort === 'time' ? 'bg-paper/8 text-paper' : 'text-paper-faint hover:text-paper-muted'}`}
+        className={`min-h-7.5 rounded-full px-3 text-[11px] font-medium transition-all duration-150 active:scale-95 disabled:opacity-40 ${sort === 'time' ? 'bg-paper text-ink font-semibold shadow-xs' : 'text-paper-muted hover:text-paper'}`}
       >
         最新
       </button>
@@ -655,7 +655,7 @@ export function ZhihuCommentsSection({ target, service, onNavigate, restoreAncho
   )
 
   const composer = authenticated && commentWritable ? (
-    <div className={`flex items-end gap-2.5 rounded-2xl border border-haze/55 bg-ink-raised/50 shadow-[var(--shadow-lift)] transition-[border-color,background-color] focus-within:border-sky-500/50 focus-within:bg-ink-raised/80 ${variant === 'dialog' ? 'p-2.5' : 'p-3'}`}>
+    <div className={`flex items-end gap-2.5 rounded-2xl border border-paper/[0.08] bg-paper/[0.035] backdrop-blur-xl transition-[border-color,background-color] focus-within:border-[#0066FF]/50 focus-within:bg-paper/[0.06] ${variant === 'dialog' ? 'p-2.5' : 'p-3'}`}>
       <textarea
         value={rootDraft.value}
         onChange={(event) => rootDraft.setValue(event.target.value)}
@@ -668,15 +668,15 @@ export function ZhihuCommentsSection({ target, service, onNavigate, restoreAncho
         type="button"
         disabled={sending || !rootDraft.ready || !rootDraft.value.trim()}
         onClick={() => void submitRoot()}
-        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#0066FF] text-white transition-[background-color,transform] hover:bg-[#005ce6] active:scale-95 disabled:bg-paper/10 disabled:text-paper-faint/40"
+        className="flex size-9 shrink-0 items-center justify-center rounded-full bg-[#0066FF] text-white shadow-[0_2px_10px_rgba(0,102,255,0.35)] transition-all hover:bg-[#005ce6] active:scale-90 disabled:bg-paper/10 disabled:text-paper-faint/40 disabled:shadow-none"
         aria-label="发送评论"
         title="发送评论"
       >
-        {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} strokeWidth={2} />}
+        {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} strokeWidth={2.2} />}
       </button>
     </div>
   ) : (
-    <div className="rounded-xl border border-haze/55 bg-ink-raised/30 px-3.5 py-2.5 text-[11px] leading-relaxed text-paper-faint">
+    <div className="rounded-xl border border-paper/[0.08] bg-paper/[0.03] px-3.5 py-2.5 text-[11px] leading-relaxed text-paper-faint">
       {!authenticated ? `登录知乎后可发表${stableTarget.kind === 'segment' ? '段评' : '评论'}、回复和点赞。` : `当前会话暂不可发表${stableTarget.kind === 'segment' ? '段评' : '评论'}。`}
     </div>
   )

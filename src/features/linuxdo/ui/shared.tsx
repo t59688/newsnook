@@ -50,23 +50,15 @@ export function TopicCard({
       onClick={onOpen}
       onKeyDown={openFromKeyboard}
       className={
-        'linuxdo-control group relative w-full rounded-xl sm:rounded-2xl border border-haze/50 bg-ink-raised/85 p-3 sm:p-4 text-left shadow-[0_1px_3px_rgba(0,0,0,0.03)] backdrop-blur-sm transition-all duration-150 select-none active:scale-[0.985] ' +
+        'linuxdo-control group relative w-full rounded-xl sm:rounded-2xl border border-haze/50 bg-ink-raised/85 p-3 sm:p-4 text-left transition-all duration-150 select-none active:scale-[0.988] shadow-[0_1px_3px_rgba(0,0,0,0.03)] ' +
         (isUnread
-          ? 'hover:border-cinnabar/40 shadow-[0_2px_8px_rgba(0,0,0,0.04)]'
-          : 'opacity-[0.92] hover:opacity-100 hover:border-haze/70')
+          ? 'hover:border-cinnabar/30'
+          : 'opacity-[0.92] hover:opacity-100')
       }
     >
-      {/* 未读左侧呼吸光标带 */}
-      {isUnread ? (
-        <span
-          className="absolute left-0 top-3 bottom-3 w-[3px] rounded-r-full bg-gradient-to-b from-cinnabar to-sky-400 opacity-90 shadow-[0_0_6px_rgba(230,57,70,0.3)]"
-          aria-hidden="true"
-        />
-      ) : null}
-
       <div className="flex items-start gap-2.5 sm:gap-3">
         {/* 头像 */}
-        <div className="relative mt-0.5 flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-black/5 dark:ring-white/10 bg-ink-deep shadow-sm">
+        <div className="relative mt-0.5 flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center overflow-hidden rounded-full ring-1 ring-paper/10 bg-ink-deep shadow-2xs">
           {avatar(author?.avatarTemplate, author?.username)}
         </div>
 
@@ -79,7 +71,7 @@ export function TopicCard({
                 {author?.username || 'Linux.do'}
               </span>
               {isHot ? (
-                <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-cinnabar/12 px-1.5 py-0.2 font-mono text-[9px] font-bold text-cinnabar">
+                <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-cinnabar/12 border border-cinnabar/25 px-1.5 py-0.2 font-mono text-[9px] font-bold text-cinnabar">
                   <Flame size={9.5} className="fill-cinnabar text-cinnabar" />
                   <span>HOT</span>
                 </span>
@@ -93,14 +85,14 @@ export function TopicCard({
           {/* 标题 */}
           <div className="flex items-start gap-1.5">
             <h3 className={
-              'line-clamp-2 flex-1 text-[14.5px] sm:text-[15.5px] font-semibold leading-[1.38] tracking-[-0.015em] transition-colors ' +
-              (isUnread ? 'text-paper group-hover:text-cinnabar-soft' : 'text-paper-muted group-hover:text-paper')
+              'line-clamp-2 flex-1 text-[15px] sm:text-[16px] font-semibold leading-[1.38] tracking-[-0.015em] transition-colors ' +
+              (isUnread ? 'text-paper group-hover:text-cinnabar-soft' : 'text-paper-muted/85 group-hover:text-paper')
             }>
               {topic.title}
             </h3>
             {isUnread ? (
               <span
-                className="mt-1 h-2 w-2 shrink-0 rounded-full bg-sky-400 ring-2 ring-sky-400/20"
+                className="mt-1.5 size-2 shrink-0 rounded-full bg-sky-400 shadow-[0_0_8px_rgba(56,189,248,0.7)] ring-2 ring-sky-400/20"
                 role="status"
                 aria-label={unreadLabel}
                 title={unreadLabel}
@@ -120,12 +112,13 @@ export function TopicCard({
                     onOpenCategory?.(category)
                   }}
                   style={{
-                    backgroundColor: catColor ? `color-mix(in srgb, ${catColor} 14%, transparent)` : 'color-mix(in srgb, var(--color-paper) 8%, transparent)',
+                    backgroundColor: catColor ? `color-mix(in srgb, ${catColor} 12%, transparent)` : 'color-mix(in srgb, var(--color-paper) 6%, transparent)',
                     color: catColor || 'var(--color-paper)',
+                    borderColor: catColor ? `color-mix(in srgb, ${catColor} 25%, transparent)` : 'transparent',
                   } as CSSProperties}
-                  className="linuxdo-control group/cat inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[10.5px] font-semibold transition-all active:scale-95 disabled:pointer-events-none"
+                  className="linuxdo-control group/cat inline-flex items-center gap-1.5 rounded-lg border px-2 py-0.5 text-[10.5px] font-semibold transition-all active:scale-95 disabled:pointer-events-none"
                 >
-                  <span className="font-mono text-[9px] font-bold opacity-80">
+                  <span className="font-mono text-[9.5px] font-bold opacity-90">
                     {category.slug === 'develop' ? '</>' : '■'}
                   </span>
                   <span>{category.name}</span>
@@ -143,7 +136,7 @@ export function TopicCard({
                       event.stopPropagation()
                       onOpenTag?.(tag)
                     }}
-                    className="linuxdo-control inline-flex items-center gap-1 rounded-md border border-haze/60 bg-paper/[0.035] px-2 py-0.5 text-[10.5px] font-medium text-paper-muted transition-all hover:border-cinnabar/30 hover:bg-paper/[0.08] hover:text-paper active:scale-95 disabled:pointer-events-none"
+                    className="linuxdo-control inline-flex items-center gap-1 rounded-md border border-paper/[0.06] bg-paper/[0.03] px-2 py-0.5 text-[10.5px] font-medium text-paper-muted/90 transition-all hover:border-cinnabar/30 hover:bg-paper/[0.07] hover:text-paper active:scale-95 disabled:pointer-events-none"
                   >
                     {glyph ? (
                       <span className="text-[9.5px] leading-none">{glyph}</span>
