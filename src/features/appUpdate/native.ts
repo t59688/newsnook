@@ -10,6 +10,7 @@ export type AppUpdateDownloadStatus =
 export type AppUpdateFailureKind = 'download' | 'install'
 
 type AppUpdatePlugin = {
+  getSupportedAbis(): Promise<{ abis: string[] }>
   canInstallPackages(): Promise<{ value: boolean }>
   openInstallSettings(): Promise<void>
   startDownload(options: {

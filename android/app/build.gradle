@@ -42,6 +42,11 @@ if (derivedVersionCode <= 0 || derivedVersionCode > 2100000000) {
 // 仅当 Play/商店迁移确有需要时允许显式覆盖；正常发布不得使用覆盖值。
 def appVersionCode = Integer.parseInt(System.getenv("NEWSNOOK_VERSION_CODE") ?: "${derivedVersionCode}")
 def appVersionName = System.getenv("NEWSNOOK_VERSION_NAME") ?: packageVersion
+// APK 自托管分发时按 ABI 拆 local 包；仅由 scripts/android-build.mjs 显式开启。
+// AAB / Android Studio / debug 默认关闭，避免影响 Play split 与日常开发。
+def enableLocalAbiSplits = providers.gradleProperty("newsnookLocalAbiSplits")
+    .map { it.toBoolean() }
+    .getOrElse(false)
 
 android {
     namespace = "com.aizeek.newsnook"
@@ -87,6 +92,14 @@ android {
         cmake {
             path = file("src/local/cpp/CMakeLists.txt")
             version = "3.22.1"
+        }
+    }
+    splits {
+        abi {
+            enable enableLocalAbiSplits
+            reset()
+            include "arm64-v8a", "armeabi-v7a", "x86", "x86_64"
+            universalApk true
         }
     }
     signingConfigs {

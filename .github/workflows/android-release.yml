@@ -230,20 +230,48 @@ jobs:
             exit 1
           fi
 
-          for flavor in cloud local; do
-            APK="artifacts/android/newsnook-${VERSION}-${flavor}-release.apk"
+          shopt -s nullglob
+          APKS=(
+            "artifacts/android/newsnook-${VERSION}-cloud-release.apk"
+            "artifacts/android/newsnook-${VERSION}-local-release.apk"
+            artifacts/android/newsnook-"${VERSION}"-local-*-release.apk
+          )
+          if [ "${#APKS[@]}" -ne 6 ]; then
+            echo "::error::Expected cloud + local universal + 4 local ABI APKs, got ${#APKS[@]}."
+            printf '%s\n' "${APKS[@]}"
+            exit 1
+          fi
+          for APK in "${APKS[@]}"; do
             BADGING="$("$AAPT2" dump badging "$APK" | head -n 1)"
             APK_VERSION_NAME="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionName='\\([^']*\\)'.*/\\1/p")"
             APK_VERSION_CODE="$(printf '%s\n' "$BADGING" | sed -n "s/.*versionCode='\\([^']*\\)'.*/\\1/p")"
             if [ "$APK_VERSION_NAME" != "$VERSION" ]; then
-              echo "::error::${flavor} APK versionName ${APK_VERSION_NAME} does not match ${VERSION}."
+              echo "::error::$APK versionName ${APK_VERSION_NAME} does not match ${VERSION}."
               exit 1
             fi
             if [ "$APK_VERSION_CODE" != "$VERSION_CODE" ]; then
-              echo "::error::${flavor} APK versionCode ${APK_VERSION_CODE} does not match ${VERSION_CODE}."
+              echo "::error::$APK versionCode ${APK_VERSION_CODE} does not match ${VERSION_CODE}."
               exit 1
             fi
           done
+
+          declare -A EXPECTED=(
+            [arm64-v8a]='lib/arm64-v8a/'
+            [armeabi-v7a]='lib/armeabi-v7a/'
+            [x86]='lib/x86/'
+            [x86_64]='lib/x86_64/'
+          )
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            apk="artifacts/android/newsnook-${VERSION}-local-${abi}-release.apk"
+            entries="$(unzip -Z1 "$apk" | grep '^lib/' || true)"
+            if [ -z "$entries" ] || printf '%s\n' "$entries" | grep -Ev "^${EXPECTED[$abi]}" > /dev/null; then
+              echo "::error::$apk contains missing or foreign ABI native libraries."
+              printf '%s\n' "$entries"
+              exit 1
+            fi
+          done
+          unzip -Z1 "artifacts/android/newsnook-${VERSION}-local-arm64-v8a-release.apk" \
+            | grep -q '^lib/arm64-v8a/libbergamot_jni.so$'
 
       - name: List artifacts
         run: ls -lh artifacts/android/
@@ -259,7 +287,7 @@ jobs:
           fail_on_unmatched_files: true
           files: |
             artifacts/android/newsnook-*-cloud-release.apk
-            artifacts/android/newsnook-*-local-release.apk
+            artifacts/android/newsnook-*-local*-release.apk
             artifacts/android/newsnook-*-cloud-release.aab
             artifacts/android/newsnook-*-local-release.aab
 
@@ -270,13 +298,22 @@ jobs:
           set -euo pipefail
           CLOUD_NAME="newsnook-${VERSION}-cloud-release.apk"
           LOCAL_NAME="newsnook-${VERSION}-local-release.apk"
+          LOCAL_ARM64_NAME="newsnook-${VERSION}-local-arm64-v8a-release.apk"
+          LOCAL_ARM32_NAME="newsnook-${VERSION}-local-armeabi-v7a-release.apk"
+          LOCAL_X86_NAME="newsnook-${VERSION}-local-x86-release.apk"
+          LOCAL_X64_NAME="newsnook-${VERSION}-local-x86_64-release.apk"
           CLOUD_APK="artifacts/android/${CLOUD_NAME}"
           LOCAL_APK="artifacts/android/${LOCAL_NAME}"
+          LOCAL_ARM64_APK="artifacts/android/${LOCAL_ARM64_NAME}"
+          LOCAL_ARM32_APK="artifacts/android/${LOCAL_ARM32_NAME}"
+          LOCAL_X86_APK="artifacts/android/${LOCAL_X86_NAME}"
+          LOCAL_X64_APK="artifacts/android/${LOCAL_X64_NAME}"
           PAYLOAD_DIR="${RUNNER_TEMP}/newsnook-r2"
           mkdir -p "$PAYLOAD_DIR"
 
-          test -f "$CLOUD_APK"
-          test -f "$LOCAL_APK"
+          for file in "$CLOUD_APK" "$LOCAL_APK" "$LOCAL_ARM64_APK" "$LOCAL_ARM32_APK" "$LOCAL_X86_APK" "$LOCAL_X64_APK"; do
+            test -f "$file"
+          done
 
           RELEASE_JSON="${PAYLOAD_DIR}/github-release.json"
           NOTES_FILE="${PAYLOAD_DIR}/release-notes.md"
@@ -292,12 +329,20 @@ jobs:
 
           CLOUD_SHA256="$(sha256sum "$CLOUD_APK" | awk '{print $1}')"
           LOCAL_SHA256="$(sha256sum "$LOCAL_APK" | awk '{print $1}')"
+          LOCAL_ARM64_SHA256="$(sha256sum "$LOCAL_ARM64_APK" | awk '{print $1}')"
+          LOCAL_ARM32_SHA256="$(sha256sum "$LOCAL_ARM32_APK" | awk '{print $1}')"
+          LOCAL_X86_SHA256="$(sha256sum "$LOCAL_X86_APK" | awk '{print $1}')"
+          LOCAL_X64_SHA256="$(sha256sum "$LOCAL_X64_APK" | awk '{print $1}')"
           CLOUD_SIZE="$(stat -c%s "$CLOUD_APK")"
           LOCAL_SIZE="$(stat -c%s "$LOCAL_APK")"
+          LOCAL_ARM64_SIZE="$(stat -c%s "$LOCAL_ARM64_APK")"
+          LOCAL_ARM32_SIZE="$(stat -c%s "$LOCAL_ARM32_APK")"
+          LOCAL_X86_SIZE="$(stat -c%s "$LOCAL_X86_APK")"
+          LOCAL_X64_SIZE="$(stat -c%s "$LOCAL_X64_APK")"
           BASE_URL="${UPDATE_BASE_URL%/}"
           TRACK_URL="${BASE_URL}/newsnook/${RELEASE_TRACK}"
 
-          jq -n             --arg track "$RELEASE_TRACK"             --arg version "$VERSION"             --argjson versionCode "$VERSION_CODE"             --arg tagName "$GITHUB_REF_NAME"             --arg publishedAt "$PUBLISHED_AT"             --rawfile notes "$NOTES_FILE"             --arg cloudFileName "$CLOUD_NAME"             --arg cloudUrl "${TRACK_URL}/${CLOUD_NAME}"             --arg cloudSha256 "$CLOUD_SHA256"             --argjson cloudSize "$CLOUD_SIZE"             --arg localFileName "$LOCAL_NAME"             --arg localUrl "${TRACK_URL}/${LOCAL_NAME}"             --arg localSha256 "$LOCAL_SHA256"             --argjson localSize "$LOCAL_SIZE"             '{
+          jq -n             --arg track "$RELEASE_TRACK"             --arg version "$VERSION"             --argjson versionCode "$VERSION_CODE"             --arg tagName "$GITHUB_REF_NAME"             --arg publishedAt "$PUBLISHED_AT"             --rawfile notes "$NOTES_FILE"             --arg cloudFileName "$CLOUD_NAME"             --arg cloudUrl "${TRACK_URL}/${CLOUD_NAME}"             --arg cloudSha256 "$CLOUD_SHA256"             --argjson cloudSize "$CLOUD_SIZE"             --arg localFileName "$LOCAL_NAME"             --arg localUrl "${TRACK_URL}/${LOCAL_NAME}"             --arg localSha256 "$LOCAL_SHA256"             --argjson localSize "$LOCAL_SIZE"             --arg arm64FileName "$LOCAL_ARM64_NAME"             --arg arm64Url "${TRACK_URL}/${LOCAL_ARM64_NAME}"             --arg arm64Sha256 "$LOCAL_ARM64_SHA256"             --argjson arm64Size "$LOCAL_ARM64_SIZE"             --arg arm32FileName "$LOCAL_ARM32_NAME"             --arg arm32Url "${TRACK_URL}/${LOCAL_ARM32_NAME}"             --arg arm32Sha256 "$LOCAL_ARM32_SHA256"             --argjson arm32Size "$LOCAL_ARM32_SIZE"             --arg x86FileName "$LOCAL_X86_NAME"             --arg x86Url "${TRACK_URL}/${LOCAL_X86_NAME}"             --arg x86Sha256 "$LOCAL_X86_SHA256"             --argjson x86Size "$LOCAL_X86_SIZE"             --arg x64FileName "$LOCAL_X64_NAME"             --arg x64Url "${TRACK_URL}/${LOCAL_X64_NAME}"             --arg x64Sha256 "$LOCAL_X64_SHA256"             --argjson x64Size "$LOCAL_X64_SIZE"             '{
               schemaVersion: 2,
               track: $track,
               version: $version,
@@ -316,12 +361,19 @@ jobs:
                   fileName: $localFileName,
                   url: $localUrl,
                   sha256: $localSha256,
-                  size: $localSize
+                  size: $localSize,
+                  abis: {
+                    "arm64-v8a": { fileName: $arm64FileName, url: $arm64Url, sha256: $arm64Sha256, size: $arm64Size },
+                    "armeabi-v7a": { fileName: $arm32FileName, url: $arm32Url, sha256: $arm32Sha256, size: $arm32Size },
+                    "x86": { fileName: $x86FileName, url: $x86Url, sha256: $x86Sha256, size: $x86Size },
+                    "x86_64": { fileName: $x64FileName, url: $x64Url, sha256: $x64Sha256, size: $x64Size }
+                  }
                 }
               }
             }' > "$MANIFEST_FILE"
 
-          jq -e --arg track "$RELEASE_TRACK" --arg version "$VERSION"             '.schemaVersion == 2 and .track == $track and .version == $version'             "$MANIFEST_FILE" > /dev/null
+          jq -e --arg track "$RELEASE_TRACK" --arg version "$VERSION"             '.schemaVersion == 2 and .track == $track and .version == $version
+              and (.packages.local.abis | keys | sort) == ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"]'             "$MANIFEST_FILE" > /dev/null
 
           # 1.8.6 及更早客户端只理解根目录 schemaVersion=1。
           # 仅 stable 发布该兼容清单，beta 从不触碰旧客户端更新入口。
@@ -354,6 +406,14 @@ jobs:
             echo "LOCAL_NAME=$LOCAL_NAME"
             echo "CLOUD_APK=$CLOUD_APK"
             echo "LOCAL_APK=$LOCAL_APK"
+            echo "LOCAL_ARM64_NAME=$LOCAL_ARM64_NAME"
+            echo "LOCAL_ARM32_NAME=$LOCAL_ARM32_NAME"
+            echo "LOCAL_X86_NAME=$LOCAL_X86_NAME"
+            echo "LOCAL_X64_NAME=$LOCAL_X64_NAME"
+            echo "LOCAL_ARM64_APK=$LOCAL_ARM64_APK"
+            echo "LOCAL_ARM32_APK=$LOCAL_ARM32_APK"
+            echo "LOCAL_X86_APK=$LOCAL_X86_APK"
+            echo "LOCAL_X64_APK=$LOCAL_X64_APK"
             echo "R2_MANIFEST=$MANIFEST_FILE"
             echo "R2_LEGACY_MANIFEST=$LEGACY_MANIFEST_FILE"
           } >> "$GITHUB_ENV"
@@ -362,7 +422,13 @@ jobs:
         run: |
           set -euo pipefail
           PREFIX="s3://${R2_BUCKET}/${R2_TRACK_PREFIX}"
-          for spec in "$CLOUD_APK:$CLOUD_NAME" "$LOCAL_APK:$LOCAL_NAME"; do
+          for spec in \
+            "$CLOUD_APK:$CLOUD_NAME" \
+            "$LOCAL_APK:$LOCAL_NAME" \
+            "$LOCAL_ARM64_APK:$LOCAL_ARM64_NAME" \
+            "$LOCAL_ARM32_APK:$LOCAL_ARM32_NAME" \
+            "$LOCAL_X86_APK:$LOCAL_X86_NAME" \
+            "$LOCAL_X64_APK:$LOCAL_X64_NAME"; do
             file="${spec%%:*}"
             name="${spec#*:}"
             aws s3 cp "$file" "${PREFIX}/${name}"               --endpoint-url "$R2_ENDPOINT"               --content-type 'application/vnd.android.package-archive'               --cache-control 'public,max-age=604800,immutable'               --no-progress
@@ -389,7 +455,7 @@ jobs:
         run: |
           set -euo pipefail
           BASE="${UPDATE_BASE_URL}/newsnook/${RELEASE_TRACK}"
-          for name in "$CLOUD_NAME" "$LOCAL_NAME" 'latest-cloud.apk' 'latest-local.apk'; do
+          for name in "$CLOUD_NAME" "$LOCAL_NAME" "$LOCAL_ARM64_NAME" "$LOCAL_ARM32_NAME" "$LOCAL_X86_NAME" "$LOCAL_X64_NAME" 'latest-cloud.apk' 'latest-local.apk'; do
             curl --fail --silent --show-error --location               --retry 5 --retry-delay 3 --head "${BASE}/${name}" > /dev/null
           done
 
@@ -400,7 +466,8 @@ jobs:
               and .track == $track
               and .version == $version
               and .packages.cloud.fileName == $cloud
-              and .packages.local.fileName == $local'             "$PUBLISHED" > /dev/null
+              and .packages.local.fileName == $local
+              and (.packages.local.abis | keys | sort) == ["arm64-v8a", "armeabi-v7a", "x86", "x86_64"]'             "$PUBLISHED" > /dev/null
 
       - name: Verify legacy stable endpoint
         if: steps.release_contract.outputs.track == 'stable'
@@ -420,7 +487,7 @@ jobs:
 
           while IFS= read -r key; do
             case "$key" in
-              "${PREFIX}latest.json"|"${PREFIX}latest-cloud.apk"|"${PREFIX}latest-local.apk"|"${PREFIX}${CLOUD_NAME}"|"${PREFIX}${LOCAL_NAME}")
+              "${PREFIX}latest.json"|"${PREFIX}latest-cloud.apk"|"${PREFIX}latest-local.apk"|"${PREFIX}${CLOUD_NAME}"|"${PREFIX}${LOCAL_NAME}"|"${PREFIX}${LOCAL_ARM64_NAME}"|"${PREFIX}${LOCAL_ARM32_NAME}"|"${PREFIX}${LOCAL_X86_NAME}"|"${PREFIX}${LOCAL_X64_NAME}")
                 ;;
               *)
                 echo "Deleting old ${RELEASE_TRACK} object: $key"
@@ -459,10 +526,21 @@ jobs:
           aws s3api list-objects-v2             --bucket "$R2_BUCKET"             --prefix "$PREFIX"             --endpoint-url "$R2_ENDPOINT"             --output json > "$FINAL"
 
           COUNT="$(jq '[.Contents[]?] | length' "$FINAL")"
-          if [ "$COUNT" -ne 5 ]; then
-            echo "::error::Expected exactly 5 objects under ${PREFIX}, got ${COUNT}."
+          if [ "$COUNT" -ne 9 ]; then
+            echo "::error::Expected exactly 9 objects under ${PREFIX}, got ${COUNT}."
             jq -r '.Contents[]?.Key' "$FINAL"
             exit 1
           fi
 
-          jq -e             --arg manifest "${PREFIX}latest.json"             --arg latestCloud "${PREFIX}latest-cloud.apk"             --arg latestLocal "${PREFIX}latest-local.apk"             --arg cloud "${PREFIX}${CLOUD_NAME}"             --arg local "${PREFIX}${LOCAL_NAME}"             '[.Contents[]?.Key] | sort == ([$manifest, $latestCloud, $latestLocal, $cloud, $local] | sort)'             "$FINAL" > /dev/null
+          jq -e \
+            --arg manifest "${PREFIX}latest.json" \
+            --arg latestCloud "${PREFIX}latest-cloud.apk" \
+            --arg latestLocal "${PREFIX}latest-local.apk" \
+            --arg cloud "${PREFIX}${CLOUD_NAME}" \
+            --arg local "${PREFIX}${LOCAL_NAME}" \
+            --arg arm64 "${PREFIX}${LOCAL_ARM64_NAME}" \
+            --arg arm32 "${PREFIX}${LOCAL_ARM32_NAME}" \
+            --arg x86 "${PREFIX}${LOCAL_X86_NAME}" \
+            --arg x64 "${PREFIX}${LOCAL_X64_NAME}" \
+            '[.Contents[]?.Key] | sort == ([$manifest, $latestCloud, $latestLocal, $cloud, $local, $arm64, $arm32, $x86, $x64] | sort)' \
+            "$FINAL" > /dev/null

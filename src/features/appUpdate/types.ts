@@ -1,4 +1,5 @@
 export type PackageFlavor = 'cloud' | 'local'
+export type AndroidAbi = 'arm64-v8a' | 'armeabi-v7a' | 'x86' | 'x86_64'
 
 /**
  * 更新订阅通道只属于发布基础设施。
@@ -27,6 +28,8 @@ export type LatestReleaseInfo = {
   sha256?: string
   size?: number
   flavor: PackageFlavor
+  /** local APK 命中的设备 ABI；undefined 表示 cloud 或 universal fallback。 */
+  abi?: AndroidAbi
   /** APK 实际来自哪个发布通道。 */
   track: UpdateTrack
   /** 用户订阅的更新通道；必须与 APK 实际发布通道一致。 */

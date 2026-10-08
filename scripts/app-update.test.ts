@@ -16,6 +16,7 @@ import {
   releaseTagUrl,
   truncateReleaseNotes,
 } from '../src/features/appUpdate/github'
+import { normalizeSupportedAbis, selectPreferredAbi } from '../src/features/appUpdate/abi'
 import {
   manifestUrl,
   parseUpdateManifest,
@@ -96,6 +97,16 @@ assert.equal(
   'newsnook-1.8.7-beta.2-cloud-release.apk',
 )
 assert.equal(buildApkFileName('1.8.7', 'local'), 'newsnook-1.8.7-local-release.apk')
+assert.equal(
+  buildApkFileName('1.8.7', 'local', 'arm64-v8a'),
+  'newsnook-1.8.7-local-arm64-v8a-release.apk',
+)
+assert.deepEqual(normalizeSupportedAbis(['arm64-v8a', 'unknown', 'x86_64', 'arm64-v8a']), [
+  'arm64-v8a',
+  'x86_64',
+])
+assert.equal(selectPreferredAbi(['x86_64', 'arm64-v8a'], ['arm64-v8a', 'x86_64']), 'x86_64')
+assert.equal(selectPreferredAbi(['armeabi-v7a'], ['arm64-v8a']), undefined)
 
 const assets = [
   {
@@ -199,6 +210,8 @@ assert.match(updateDialogSource, /不再提醒此版本/)
 assert.match(updateHookSource, /dialogOrigin !== 'manual'/)
 assert.match(updateHookSource, /origin: 'auto'/)
 assert.match(updateHookSource, /origin: 'manual'/)
+assert.match(updateHookSource, /resolveSupportedAbis\(target\)/)
+assert.match(updateHookSource, /fetchReleaseApkForFlavor\(__APP_VERSION__, target, supportedAbis\)/)
 
 console.log('✓ asset / gate ok')
 
@@ -232,6 +245,20 @@ const stableManifest = parseUpdateManifest(
         url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-release.apk',
         sha256: cdnHash,
         size: 456,
+        abis: {
+          'arm64-v8a': {
+            fileName: 'newsnook-1.8.7-local-arm64-v8a-release.apk',
+            url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-arm64-v8a-release.apk',
+            sha256: cdnHash,
+            size: 222,
+          },
+          x86_64: {
+            fileName: 'newsnook-1.8.7-local-x86_64-release.apk',
+            url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-x86_64-release.apk',
+            sha256: cdnHash,
+            size: 111,
+          },
+        },
       },
     },
   },
@@ -241,6 +268,14 @@ assert.ok(stableManifest)
 if (stableManifest) {
   const release = releaseFromUpdateManifest(stableManifest, 'local')
   assert.equal(release.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  const arm64Release = releaseFromUpdateManifest(stableManifest, 'local', ['arm64-v8a'])
+  assert.equal(arm64Release.apkFileName, 'newsnook-1.8.7-local-arm64-v8a-release.apk')
+  assert.equal(arm64Release.abi, 'arm64-v8a')
+  const preferredX64 = releaseFromUpdateManifest(stableManifest, 'local', ['x86_64', 'arm64-v8a'])
+  assert.equal(preferredX64.apkFileName, 'newsnook-1.8.7-local-x86_64-release.apk')
+  const fallbackUniversal = releaseFromUpdateManifest(stableManifest, 'local', ['x86'])
+  assert.equal(fallbackUniversal.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  assert.equal(fallbackUniversal.abi, undefined)
   assert.equal(release.flavor, 'local')
   assert.equal(release.track, 'stable')
   assert.equal(release.subscriptionTrack, 'stable')
@@ -323,6 +358,51 @@ assert.equal(noLocal.status, 'no-asset')
 if (noLocal.status === 'no-asset') {
   assert.equal(noLocal.flavor, 'local')
   assert.equal(noLocal.track, 'stable')
+}
+
+const localPayload = {
+  ...stablePayload,
+  assets: [
+    ...stablePayload.assets,
+    {
+      name: 'newsnook-1.8.7-local-release.apk',
+      browser_download_url: 'https://example.com/local-universal.apk',
+    },
+    {
+      name: 'newsnook-1.8.7-local-arm64-v8a-release.apk',
+      browser_download_url: 'https://example.com/local-arm64.apk',
+    },
+  ],
+}
+const localArm64 = releaseApkFromTagPayload(localPayload, '1.8.7', 'local', ['arm64-v8a'])
+assert.equal(localArm64.status, 'ok')
+if (localArm64.status === 'ok') {
+  assert.equal(localArm64.release.apkFileName, 'newsnook-1.8.7-local-arm64-v8a-release.apk')
+  assert.equal(localArm64.release.abi, 'arm64-v8a')
+}
+const localFallback = releaseApkFromTagPayload(localPayload, '1.8.7', 'local', ['x86_64'])
+assert.equal(localFallback.status, 'ok')
+if (localFallback.status === 'ok') {
+  assert.equal(localFallback.release.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  assert.equal(localFallback.release.abi, undefined)
+}
+const localBrokenAbiAsset = releaseApkFromTagPayload(
+  {
+    ...localPayload,
+    assets: localPayload.assets.map((asset) =>
+      asset.name === 'newsnook-1.8.7-local-arm64-v8a-release.apk'
+        ? { ...asset, browser_download_url: '' }
+        : asset,
+    ),
+  },
+  '1.8.7',
+  'local',
+  ['arm64-v8a'],
+)
+assert.equal(localBrokenAbiAsset.status, 'ok')
+if (localBrokenAbiAsset.status === 'ok') {
+  assert.equal(localBrokenAbiAsset.release.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  assert.equal(localBrokenAbiAsset.release.abi, undefined)
 }
 
 const cloud = releaseApkFromTagPayload(stablePayload, '1.8.7', 'cloud')

@@ -1,5 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core'
 
+import { ANDROID_ABIS, normalizeAndroidAbi, selectPreferredAbi } from './abi'
 import {
   androidVersionCode,
   isNewerVersion,
@@ -7,6 +8,7 @@ import {
   releaseTrackForVersion,
 } from './semver'
 import type {
+  AndroidAbi,
   LatestReleaseInfo,
   PackageFlavor,
   UpdateCheckResult,
@@ -24,6 +26,10 @@ type ManifestAsset = {
   size: number
 }
 
+type LocalManifestAsset = ManifestAsset & {
+  abis?: Partial<Record<AndroidAbi, ManifestAsset>>
+}
+
 export type UpdateManifest = {
   schemaVersion: 2
   track: UpdateTrack
@@ -32,7 +38,10 @@ export type UpdateManifest = {
   tagName: string
   publishedAt?: string
   notes: string
-  packages: Record<PackageFlavor, ManifestAsset>
+  packages: {
+    cloud: ManifestAsset
+    local: LocalManifestAsset
+  }
 }
 
 export type FetchUpdateManifestResult =
@@ -44,33 +53,68 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>
 }
 
+function expectedFileName(
+  version: string,
+  flavor: PackageFlavor,
+  abi?: AndroidAbi,
+): string {
+  return `newsnook-${version}-${flavor}${abi ? `-${abi}` : ''}-release.apk`
+}
+
 function parseAsset(
   value: unknown,
   version: string,
   flavor: PackageFlavor,
   track: UpdateTrack,
+  abi?: AndroidAbi,
 ): ManifestAsset | null {
   const record = asRecord(value)
   if (!record) return null
 
-  const expectedFileName = `newsnook-${version}-${flavor}-release.apk`
   const fileName = typeof record.fileName === 'string' ? record.fileName.trim() : ''
   const url = typeof record.url === 'string' ? record.url.trim() : ''
   const sha256 = typeof record.sha256 === 'string' ? record.sha256.trim().toLowerCase() : ''
   const size = record.size
+  const expected = expectedFileName(version, flavor, abi)
 
-  if (fileName !== expectedFileName || !SHA256_RE.test(sha256)) return null
+  if (fileName !== expected || !SHA256_RE.test(sha256)) return null
   if (typeof size !== 'number' || !Number.isSafeInteger(size) || size <= 0) return null
 
   try {
     const parsedUrl = new URL(url)
     if (parsedUrl.protocol !== 'https:' || parsedUrl.hostname.toLowerCase() !== UPDATE_HOST) return null
-    if (parsedUrl.pathname !== `/newsnook/${track}/${expectedFileName}`) return null
+    if (parsedUrl.pathname !== `/newsnook/${track}/${expected}`) return null
   } catch {
     return null
   }
 
   return { fileName, url, sha256, size }
+}
+
+function parseLocalAsset(
+  value: unknown,
+  version: string,
+  track: UpdateTrack,
+): LocalManifestAsset | null {
+  const base = parseAsset(value, version, 'local', track)
+  const record = asRecord(value)
+  if (!base || !record) return null
+
+  const rawAbis = record.abis
+  if (rawAbis === undefined) return base
+
+  const abiRecord = asRecord(rawAbis)
+  if (!abiRecord) return null
+
+  const abis: Partial<Record<AndroidAbi, ManifestAsset>> = {}
+  for (const [key, rawAsset] of Object.entries(abiRecord)) {
+    const abi = normalizeAndroidAbi(key)
+    if (!abi) return null
+    const asset = parseAsset(rawAsset, version, 'local', track, abi)
+    if (!asset) return null
+    abis[abi] = asset
+  }
+  return Object.keys(abis).length > 0 ? { ...base, abis } : base
 }
 
 export function manifestUrl(track: UpdateTrack): string {
@@ -108,7 +152,7 @@ export function parseUpdateManifest(
   if (!packages) return null
 
   const cloud = parseAsset(packages.cloud, version, 'cloud', track)
-  const local = parseAsset(packages.local, version, 'local', track)
+  const local = parseLocalAsset(packages.local, version, track)
   if (!cloud || !local) return null
 
   const publishedAt = typeof record.publishedAt === 'string' ? record.publishedAt.trim() : ''
@@ -129,8 +173,17 @@ export function parseUpdateManifest(
 export function releaseFromUpdateManifest(
   manifest: UpdateManifest,
   flavor: PackageFlavor,
+  supportedAbis: readonly AndroidAbi[] = [],
 ): LatestReleaseInfo {
-  const asset = manifest.packages[flavor]
+  let asset: ManifestAsset = manifest.packages[flavor]
+  let abi: AndroidAbi | undefined
+
+  if (flavor === 'local') {
+    const local = manifest.packages.local
+    abi = selectPreferredAbi(supportedAbis, Object.keys(local.abis ?? {}) as AndroidAbi[])
+    if (abi && local.abis?.[abi]) asset = local.abis[abi]!
+  }
+
   return {
     version: manifest.version,
     tagName: manifest.tagName,
@@ -140,6 +193,7 @@ export function releaseFromUpdateManifest(
     sha256: asset.sha256,
     size: asset.size,
     flavor,
+    ...(abi ? { abi } : {}),
     track: manifest.track,
     subscriptionTrack: manifest.track,
   }
@@ -149,6 +203,7 @@ export function updateCheckFromManifest(
   manifest: UpdateManifest,
   localVersion: string,
   flavor: PackageFlavor,
+  supportedAbis: readonly AndroidAbi[] = [],
 ): UpdateCheckResult {
   if (!isNewerVersion(manifest.version, localVersion)) {
     return {
@@ -161,7 +216,7 @@ export function updateCheckFromManifest(
   return {
     status: 'available',
     localVersion,
-    release: releaseFromUpdateManifest(manifest, flavor),
+    release: releaseFromUpdateManifest(manifest, flavor, supportedAbis),
   }
 }
 
@@ -191,3 +246,6 @@ export async function fetchUpdateManifest(
     }
   }
 }
+
+// 导出 ABI 列表用于 CI/测试保持发布契约一致。
+export { ANDROID_ABIS }

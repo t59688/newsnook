@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       flavor:
-        description: '打包变体 (all: 全部, local: 离线翻译版, cloud: 云翻译轻量版)'
+        description: '打包变体 (all: 全部, local: 离线翻译版 APK 会生成 4 个 ABI 专包 + universal, cloud: 云翻译轻量版)'
         required: true
         type: choice
         options:
@@ -106,6 +106,34 @@ jobs:
             npm run android:apk
           else
             npm run "android:apk:${{ inputs.flavor }}"
+          fi
+
+      - name: Verify local ABI APK outputs
+        if: ${{ (inputs.format == 'apk' || inputs.format == 'all') && (inputs.flavor == 'all' || inputs.flavor == 'local') }}
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./package.json').version")"
+          declare -A EXPECTED=(
+            [arm64-v8a]='lib/arm64-v8a/'
+            [armeabi-v7a]='lib/armeabi-v7a/'
+            [x86]='lib/x86/'
+            [x86_64]='lib/x86_64/'
+          )
+          test -f "artifacts/android/newsnook-${VERSION}-local-release.apk"
+          for abi in arm64-v8a armeabi-v7a x86 x86_64; do
+            apk="artifacts/android/newsnook-${VERSION}-local-${abi}-release.apk"
+            test -f "$apk"
+            entries="$(unzip -Z1 "$apk" | grep '^lib/' || true)"
+            if [ -z "$entries" ] || printf '%s\n' "$entries" | grep -Ev "^${EXPECTED[$abi]}" > /dev/null; then
+              echo "::error::$apk contains missing or foreign ABI native libraries."
+              printf '%s\n' "$entries"
+              exit 1
+            fi
+          done
+
+          if ! unzip -Z1 "artifacts/android/newsnook-${VERSION}-local-arm64-v8a-release.apk" | grep -q '^lib/arm64-v8a/libbergamot_jni.so$'; then
+            echo "::error::arm64 local APK must contain Bergamot JNI."
+            exit 1
           fi
 
       - name: Build signed AAB

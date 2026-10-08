@@ -1,6 +1,7 @@
 import { Capacitor } from '@capacitor/core'
 
 import { isLocalTranslationAvailable } from '../translation/native'
+import { normalizeSupportedAbis } from './abi'
 import { shouldAutoPrompt, shouldFetchForAutoCheck } from './gate'
 import { fetchLatestRelease } from './github'
 import { compareSemver, isNewerVersion } from './semver'
@@ -12,6 +13,7 @@ import {
   touchLastCheck,
 } from './prefs'
 import type {
+  AndroidAbi,
   LatestReleaseInfo,
   PackageFlavor,
   UpdateCheckResult,
@@ -150,12 +152,25 @@ export function selectEligibleUpdateResult(
   }
 }
 
+export async function resolveSupportedAbis(
+  flavor: PackageFlavor,
+): Promise<AndroidAbi[]> {
+  if (flavor !== 'local') return []
+  try {
+    return normalizeSupportedAbis((await AppUpdateNative.getSupportedAbis()).abis)
+  } catch {
+    // 旧原生壳或异常设备安全回退 universal local APK。
+    return []
+  }
+}
+
 async function fetchEligibleUpdate(
   localVersion: string,
   flavor: PackageFlavor,
   subscriptionTrack: UpdateTrack,
 ): Promise<UpdateCheckResult> {
-  const result = await fetchLatestRelease(localVersion, flavor, subscriptionTrack)
+  const supportedAbis = await resolveSupportedAbis(flavor)
+  const result = await fetchLatestRelease(localVersion, flavor, subscriptionTrack, supportedAbis)
   return selectEligibleUpdateResult(localVersion, subscriptionTrack, [result])
 }
 

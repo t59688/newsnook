@@ -14,6 +14,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.provider.Settings;
 import androidx.core.content.FileProvider;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.Plugin;
@@ -54,6 +55,13 @@ public class AppUpdatePlugin extends Plugin {
             progressHandler.postDelayed(this, PROGRESS_POLL_MS);
         }
     };
+
+    @PluginMethod
+    public void getSupportedAbis(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("abis", new JSArray(java.util.Arrays.asList(Build.SUPPORTED_ABIS)));
+        call.resolve(result);
+    }
 
     @PluginMethod
     public void canInstallPackages(PluginCall call) {

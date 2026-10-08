@@ -89,14 +89,22 @@ npm run android:apk:local
 - Bergamot 目前只为 `arm64-v8a` 编入原生库；32 位 ARM、x86 / x86_64 模拟器不支持
 - 在这些不支持设备上，应用会自动把 `bergamot` 视为不可用并回退到其它翻译 provider
 
+APK 自托管分发会对 `local` 按 ABI 拆包，避免每次更新重复下载其它 CPU 架构的 ML Kit native runtime。为了让尚未识别 ABI 清单的旧客户端平滑升级，发布流程仍保留一个 universal local APK；新客户端会按 `Build.SUPPORTED_ABIS` 优先下载匹配专包，专包缺失时自动回退 universal。
+
 最终产物位于：
 
 ```text
 artifacts/android/newsnook-<version>-cloud-release.apk
-artifacts/android/newsnook-<version>-local-release.apk
+artifacts/android/newsnook-<version>-local-release.apk                 # universal 迁移兼容包
+artifacts/android/newsnook-<version>-local-arm64-v8a-release.apk
+artifacts/android/newsnook-<version>-local-armeabi-v7a-release.apk
+artifacts/android/newsnook-<version>-local-x86-release.apk
+artifacts/android/newsnook-<version>-local-x86_64-release.apk
 artifacts/android/newsnook-<version>-cloud-release.aab
 artifacts/android/newsnook-<version>-local-release.aab
 ```
+
+ABI split **只用于 APK**。AAB 不在本地预拆 ABI，由 Google Play / bundletool 在分发阶段生成设备适配 split。`npm run android:apk:local` 因此会生成 5 个 local APK；Android Studio debug、`android:run:local` 和 AAB 构建不启用该 split。
 
 只构建其中一种时使用 `npm run android:apk:cloud`、`npm run android:apk:local`、`npm run android:aab:cloud` 或 `npm run android:aab:local`。两个变体使用相同包名和签名，面向同一应用渠道，不能在同一设备上并存。
 
@@ -107,7 +115,7 @@ NewsNook 只接受两种发布版本：
 - Stable：`X.Y.Z`，例如 `1.8.7`
 - Beta：`X.Y.Z-beta.N`，例如 `1.8.8-beta.3`（`N` 为 `1..998`）
 
-- 产物文件名：`newsnook-<version>-<cloud|local>-release.apk|aab`
+- 产物文件名：cloud / AAB 沿用 `newsnook-<version>-<cloud|local>-release.*`；local APK 另有 `newsnook-<version>-local-<abi>-release.apk`
 - 包内 `versionName`：同一版本字符串
 - 包内 `versionCode`：`core * 1000 + stage`，其中 `core = X*10000 + Y*100 + Z`；Beta 的 `stage=N`，Stable 的 `stage=999`
 
