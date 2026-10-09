@@ -154,7 +154,7 @@ export function ZhihuAnswerActionBar({
 
   return (
     <nav
-      className="pointer-events-none fixed inset-x-0 bottom-0 z-40 flex justify-center bg-ink-raised/98 border-t border-haze/70 px-2 sm:px-4"
+      className="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-haze/70 bg-ink-raised/98 px-2 sm:px-4"
       style={{ paddingBottom: 'var(--sab, 0px)' }}
       aria-label="回答操作"
     >

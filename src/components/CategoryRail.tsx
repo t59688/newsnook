@@ -70,14 +70,18 @@ export function CategoryRail({
     : undefined
   const isDynamicCategory = (id: CategoryId) =>
     id === FAVORITES_CATEGORY_ID || id === RECOMMEND_CATEGORY_ID
-  const actionIndex = actionCategory ? categories.findIndex((category) => category.id === actionCategory.id) : -1
+  // 推荐、收藏是系统固定入口；与隐藏分类都不应参与快捷排序的相邻索引。
+  const movableCategories = categories.filter((category) => !isDynamicCategory(category.id))
+  const actionIndex = actionCategory && !isDynamicCategory(actionCategory.id)
+    ? movableCategories.findIndex((category) => category.id === actionCategory.id)
+    : -1
   const actionItems: ContextActionItem[] = actionCategory
     ? [
         ...(onMoveCategory && actionIndex > 0 ? [{
           id: 'move-left', label: '向前移动', icon: ArrowLeft,
           onSelect: () => onMoveCategory(actionCategory.id, -1),
         }] : []),
-        ...(onMoveCategory && actionIndex >= 0 && actionIndex < categories.length - 1 ? [{
+        ...(onMoveCategory && actionIndex >= 0 && actionIndex < movableCategories.length - 1 ? [{
           id: 'move-right', label: '向后移动', icon: ArrowRight,
           onSelect: () => onMoveCategory(actionCategory.id, 1),
         }] : []),
@@ -246,10 +250,11 @@ export function CategoryRail({
       >
         {categories.map((category, index) => {
           const isActiveTab = category.id === activeId
-          const canManage =
-            (!isDynamicCategory(category.id) && Boolean(onRenameCategory)) ||
-            (!isDynamicCategory(category.id) && Boolean(onRemoveCategory)) ||
-            Boolean(onMoveCategory)
+          const canManage = !isDynamicCategory(category.id) && (
+            Boolean(onRenameCategory) ||
+            Boolean(onRemoveCategory) ||
+            (Boolean(onMoveCategory) && movableCategories.length > 1)
+          )
           // 计算字体的渐变权重 (0 ~ 1)
           let weight = 0
           if (isDragging || transitionMs > 0) {

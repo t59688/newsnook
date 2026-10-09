@@ -1075,11 +1075,21 @@ export default function App() {
   )
 
   const presetSwitcherConfig = useMemo(() => ({
-    activeName: findSite(activeSiteId)?.name ?? presets.activePreset?.name ?? '场景预设',
+    activeName: findSite(activeSiteId)?.name
+      ?? (tab === 'sites'
+        ? (cmsSources.find((source) => source.id === selectedCmsId)?.label
+          || cmsSources.find((source) => source.id === selectedCmsId)?.name
+          || 'CMS 站点')
+        : null)
+      ?? presets.activePreset?.name ?? '场景预设',
     items: presetSwitcherItems,
     onSelect: (id: string) => {
       if (activeSiteId) leaveActiveSite()
       if (id !== presets.state.activePresetId) presets.applyPreset(id)
+      // 从独立 CMS 站点切回资讯布局时，必须真的返回首页而非只改预设状态。
+      setSelectedCmsId(null)
+      setSettingsRoute(null)
+      setTab('today')
     },
     onManage: () => {
       if (activeSiteId) leaveActiveSite()
@@ -1104,13 +1114,17 @@ export default function App() {
     },
     onSites: frameworkSiteCount > 0 ? () => {
       if (activeSiteId) leaveActiveSite()
+      setSettingsRoute(null)
       setSelectedCmsId(null)
       setTab('sites')
     } : undefined,
-    siteCount: frameworkSiteCount,
+    cmsActive: tab === 'sites',
+    activeCmsId: tab === 'sites' ? selectedCmsId : null,
     cmsSites: cmsSources.map((source) => ({ id: source.id, name: source.label || source.name, description: source.url })),
     onSelectCms: (id: string) => {
+      if (!cmsSources.some((source) => source.id === id)) return
       if (activeSiteId) leaveActiveSite()
+      setSettingsRoute(null)
       setSelectedCmsId(id)
       setTab('sites')
     },
@@ -1119,7 +1133,7 @@ export default function App() {
       setTab('me')
       setSettingsRoute({ name: 'custom-sources' })
     },
-  }), [activeSiteId, cmsSources, frameworkSiteCount, leaveActiveSite, presetSwitcherItems, presets, siteSwitcherItems])
+  }), [activeSiteId, cmsSources, frameworkSiteCount, leaveActiveSite, presetSwitcherItems, presets, selectedCmsId, siteSwitcherItems, tab])
 
   const cachedHistory = useMemo(
     () =>
@@ -1704,6 +1718,7 @@ export default function App() {
         .map((s) => ({ source: s, hint: s.frameworkHint! }))
       return (
         <SiteScreen
+          key={selectedCmsId ?? 'all-cms-sites'}
           sites={frameworkSites}
           readIds={readIds}
           onOpen={openArticle}

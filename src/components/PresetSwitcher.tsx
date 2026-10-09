@@ -49,14 +49,15 @@ export interface PresetSwitcherProps {
   /** 独立站点工作区；与 preset 完全分离，选择时不得调用 onSelect。 */
   siteItems?: SiteSwitcherItem[]
   onSelectSite?: (id: string) => void
-  /** 有已适配站点时传入，点击后进入站点浏览 */
+  /** 在 CMS 标签中浏览所有已适配站点（不改变新闻预设）。 */
   onSites?: () => void
   /** 进入自定义源管理以添加受支持的 CMS 站点 */
   onAddCms?: () => void
   cmsSites?: { id: string; name: string; description?: string }[]
   onSelectCms?: (id: string) => void
-  /** 已适配站点数量 */
-  siteCount?: number
+  /** CMS 站点页为独立阅读空间，打开切换器时优先定位到该类型。 */
+  cmsActive?: boolean
+  activeCmsId?: string | null
   variant?: 'pill' | 'card' | 'tabbar' | 'sidebar'
 }
 
@@ -80,7 +81,8 @@ export function PresetSwitcher({
   onAddCms,
   cmsSites = [],
   onSelectCms,
-  siteCount = 0,
+  cmsActive = false,
+  activeCmsId = null,
   variant = 'pill',
 }: PresetSwitcherProps) {
   const [open, setOpen] = useState(false)
@@ -105,10 +107,10 @@ export function PresetSwitcher({
 
   const builtins = useMemo(() => items.filter((item) => item.builtin), [items])
   const mine = useMemo(() => items.filter((item) => !item.builtin), [items])
-  const showSiteSection = siteItems.length > 0 || Boolean(onSites && siteCount > 0)
+  const showSiteSection = siteItems.length > 0
 
   const openSwitcher = () => {
-    setPresetTab(mine.some((item) => item.active) ? 'custom' : 'builtin')
+    setPresetTab(cmsActive ? 'cms' : mine.some((item) => item.active) ? 'custom' : 'builtin')
     setOpen(true)
   }
 
@@ -258,16 +260,45 @@ export function PresetSwitcher({
                   <div className="space-y-3 rounded-xl border border-haze/80 bg-ink/45 p-4">
                     <div className="flex items-center gap-3">
                       <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-cinnabar/10 text-cinnabar"><Layers3 size={20} /></div>
-                      <div><p className="font-display text-[14px] font-semibold text-paper">我的 CMS 站点 · {cmsSites.length}</p><p className="mt-1 text-[11px] text-paper-faint">每个站点独立打开，互不混入分类栏</p></div>
+                      <div className="min-w-0 flex-1">
+                        <p className="font-display text-[14px] font-semibold text-paper">我的 CMS 站点 · {cmsSites.length}</p>
+                        <p className="mt-1 text-[11px] text-paper-faint">独立阅读空间，不混入资讯分类</p>
+                      </div>
+                      {onSites && cmsSites.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => { setOpen(false); onSites() }}
+                          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-2 text-[11px] text-paper-muted transition-colors hover:bg-paper/5 hover:text-cinnabar"
+                        >
+                          <PanelsTopLeft size={14} strokeWidth={1.7} />
+                          全部站点
+                        </button>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {cmsSites.map((site) => (
-                        <button key={site.id} type="button" onClick={() => { setOpen(false); onSelectCms(site.id) }} className="flex min-w-0 items-center gap-3 rounded-xl border border-haze/75 bg-ink-raised px-3 py-3 text-left transition-colors hover:border-cinnabar/50">
-                          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-cinnabar/10 text-cinnabar"><Globe size={18} /></span>
-                          <span className="min-w-0"><span className="block truncate font-display text-[13px] font-semibold text-paper">{site.name}</span><span className="mt-0.5 block truncate text-[10.5px] text-paper-faint">{site.description || '打开站点'}</span></span>
-                          <ChevronDown size={14} className="ml-auto shrink-0 -rotate-90 text-paper-faint" />
-                        </button>
-                      ))}
+                      {cmsSites.map((site) => {
+                        const active = cmsActive && activeCmsId === site.id
+                        return (
+                          <button
+                            key={site.id}
+                            type="button"
+                            onClick={() => { setOpen(false); onSelectCms(site.id) }}
+                            aria-current={active ? 'page' : undefined}
+                            className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors active:scale-[0.99] ${active ? 'border-cinnabar/45 bg-cinnabar/7' : 'border-haze/75 bg-ink-raised hover:border-cinnabar/50'}`}
+                          >
+                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-cinnabar/10 text-cinnabar">
+                              <Globe size={18} strokeWidth={1.7} />
+                            </span>
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate font-display text-[13px] font-semibold text-paper">{site.name}</span>
+                              <span className="mt-0.5 block truncate text-[10.5px] text-paper-faint">{site.description || '打开站点'}</span>
+                            </span>
+                            {active
+                              ? <Check size={15} className="shrink-0 text-cinnabar" aria-hidden />
+                              : <ChevronDown size={14} className="shrink-0 -rotate-90 text-paper-faint" aria-hidden />}
+                          </button>
+                        )
+                      })}
                     </div>
                     {onAddCms && <button type="button" onClick={() => { setOpen(false); onAddCms() }} className="w-full rounded-xl border border-haze px-4 py-2.5 text-[12px] text-paper-muted">添加更多站点</button>}
                   </div>
@@ -314,39 +345,21 @@ export function PresetSwitcher({
                     <span className="mt-1 block truncate text-[10px] text-paper-faint">进入独立社区工作区</span>
                   </span>
                 </div>
-                {onSites && siteCount > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setOpen(false)
-                      onSites()
-                    }}
-                    className="inline-flex shrink-0 items-center gap-1 text-[10.5px] text-paper-faint transition-colors hover:text-cinnabar"
-                  >
-                    <PanelsTopLeft size={12} strokeWidth={1.7} />
-                    更多站点
-                  </button>
-                )}
+
               </div>
 
-              {siteItems.length > 0 ? (
-                <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
-                  {siteItems.map((item) => (
-                    <CommunityEntryCard
-                      key={item.id}
-                      item={item}
-                      onPick={() => {
-                        if (!item.active) onSelectSite?.(item.id)
-                        setOpen(false)
-                      }}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="rounded-xl border border-dashed border-haze/80 px-3 py-2 text-center text-[10.5px] text-paper-faint">
-                  暂无可用社区
-                </div>
-              )}
+              <div className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                {siteItems.map((item) => (
+                  <CommunityEntryCard
+                    key={item.id}
+                    item={item}
+                    onPick={() => {
+                      if (!item.active) onSelectSite?.(item.id)
+                      setOpen(false)
+                    }}
+                  />
+                ))}
+              </div>
             </section>}
           </div>
         </div>
