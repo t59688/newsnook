@@ -1056,7 +1056,7 @@ export default function App() {
   }, [activeSiteId, presets.builtins, presets.state])
 
   const cmsSources = useMemo(
-    () => (prefs.customSources ?? []).filter((s) => s.frameworkHint && s.kind === 'web-catalog'),
+    () => (prefs.customSources ?? []).filter((s) => s.kind === 'web-catalog'),
     [prefs.customSources],
   )
   const frameworkSiteCount = cmsSources.length
@@ -1662,8 +1662,7 @@ export default function App() {
           onLoadMore={() => void loadMore([focusSource.id])}
           onOpen={openArticle}
           onBack={closeSourceFeed}
-          searchTemplate={focusSource.frameworkHint?.searchTemplate}
-          frameworkCategories={focusSource.frameworkHint?.categories}
+          catalogSource={focusSource.kind === 'web-catalog' ? focusSource : undefined}
         />
       )
     }
@@ -1778,8 +1777,7 @@ export default function App() {
         onBrandTap={onBrandTap}
         onOpenLocalSearch={() => setSettingsRoute({ name: 'local-search' })}
         pullRefreshSeq={todayPullRefreshSeq}
-        searchTemplate={activeFilterSource?.frameworkHint?.searchTemplate}
-        frameworkCategories={activeFilterSource?.frameworkHint?.categories}
+        catalogSource={activeFilterSource?.kind === 'web-catalog' ? activeFilterSource : undefined}
       />
     )
   }

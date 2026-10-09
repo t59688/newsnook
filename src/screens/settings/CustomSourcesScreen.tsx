@@ -31,13 +31,14 @@ import {
   type OpmlParseResult,
 } from '../../lib/opml'
 import { parseSourcePayload } from '../../lib/parseFeed'
-import { extractCatalog } from '../../features/catalogEngine/engine'
 import type { CategoryId, NewsCategory } from '../../sources/categories'
 import {
   allRegisteredCategories,
   type Preferences,
 } from '../../sources/preferences'
 import type { NewsSource } from '../../sources/registry'
+import { MAX_CATALOG_BYTES } from '../../features/siteCatalog/context'
+import { probeCatalog } from '../../features/siteCatalog/probe'
 import { detectFramework } from '../../features/frameworkDetect/detect'
 import type { FrameworkHint } from '../../features/frameworkDetect/types'
 
@@ -50,13 +51,14 @@ interface Props {
       url: string
       siteUrl?: string
       kind?: NewsSource['kind']
+      catalogProfile?: NewsSource['catalogProfile']
       frameworkHint?: FrameworkHint
     },
     targetCategoryId?: CategoryId,
   ) => void
   onUpdateCustomSource: (
     sourceId: string,
-    patch: Partial<Pick<NewsSource, 'name' | 'label' | 'url' | 'siteUrl' | 'kind'>>,
+    patch: Partial<Pick<NewsSource, 'name' | 'label' | 'url' | 'siteUrl' | 'kind' | 'frameworkHint' | 'catalogProfile'>>,
   ) => void
   onDeleteCustomSource: (sourceId: string) => void
   onDeleteCustomSources: (sourceIds: string[]) => void
@@ -86,12 +88,15 @@ export function CustomSourcesScreen({
   const [inputLabel, setInputLabel] = useState('')
   const [inputSiteUrl, setInputSiteUrl] = useState('')
   const [targetCategory, setTargetCategory] = useState<string>('none')
+  const probeController = useRef<AbortController | null>(null)
+  useEffect(() => () => probeController.current?.abort(), [])
   const [probing, setProbing] = useState(false)
   const [probeError, setProbeError] = useState<string | null>(null)
   const [probeDiscoveredFeeds, setProbeDiscoveredFeeds] = useState<{ title: string; url: string }[]>([])
   const [probeCatalogHit, setProbeCatalogHit] = useState<{
     name: string
     extractor?: string
+    catalogProfile?: NewsSource['catalogProfile']
     frameworkHint?: FrameworkHint
   } | null>(null)
 
@@ -169,6 +174,9 @@ export function CustomSourcesScreen({
   const labelInputId = useId()
 
   const resetForm = () => {
+    probeController.current?.abort()
+    probeController.current = null
+    setProbing(false)
     setInputUrl('')
     setInputName('')
     setInputLabel('')
@@ -263,7 +271,7 @@ export function CustomSourcesScreen({
     setProbeDiscoveredFeeds([])
     setProbeCatalogHit(
       source.kind === 'web-catalog'
-        ? { name: source.name, extractor: '目录' }
+        ? { name: source.name, extractor: '目录', frameworkHint: source.frameworkHint, catalogProfile: source.catalogProfile }
         : null,
     )
     setShowAddModal(true)
@@ -274,14 +282,19 @@ export function CustomSourcesScreen({
     const url = rawUrl.trim()
     if (!url) return
 
+    probeController.current?.abort()
+    const controller = new AbortController()
+    probeController.current = controller
+    const timeout = setTimeout(() => controller.abort(new Error('探测超时，请稍后重试')), 25000)
     setProbing(true)
     setProbeError(null)
     setProbeDiscoveredFeeds([])
-    setProbeCatalogHit(null)
+    // Retain the last valid configuration if re-probing fails.
 
     try {
-      const normalizedUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
-      const text = await fetchAbsoluteText(normalizedUrl)
+      let normalizedUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
+      const text = await fetchAbsoluteText(normalizedUrl, { signal: controller.signal, maxBytes: MAX_CATALOG_BYTES, onResponse: (metadata) => { if (metadata.url) normalizedUrl = metadata.url } })
+      if (controller.signal.aborted) return
 
       // 尝试按 XML Feed 解析
       try {
@@ -314,6 +327,7 @@ export function CustomSourcesScreen({
           if (channelLink && !inputSiteUrl) {
             setInputSiteUrl(channelLink)
           }
+          setProbeCatalogHit(null)
           setInputUrl(normalizedUrl)
           return
         }
@@ -321,44 +335,26 @@ export function CustomSourcesScreen({
         // 不是直接的 XML feed，尝试从 HTML 中寻找 link rel="alternate"
       }
 
-      // 通用目录引擎：JSON-LD → 启发式卡片
-      const catalog = extractCatalog(text, normalizedUrl)
-      if (catalog.items.length > 0) {
-        const displayName = (() => {
-          try {
-            return new URL(normalizedUrl).hostname
-          } catch {
-            return '网页目录'
-          }
-        })()
-        const extractorLabel =
-          catalog.extractor === 'json-ld'
-            ? 'JSON-LD'
-            : catalog.extractor === 'heuristic-cards'
-              ? '通用卡片'
-              : '通用'
-
+      const probeSource: NewsSource = { id: editingSourceId ?? 'probe', name: inputName || new URL(normalizedUrl).hostname, label: inputLabel || '目录', group: 'custom', kind: 'web-catalog', url: normalizedUrl, enabled: true }
+      const page = await probeCatalog(probeSource, text, controller.signal)
+      if (controller.signal.aborted || probeController.current !== controller) return
+      if (page.kind === 'catalog' && page.articles.length) {
+        const displayName = probeSource.name
         const hint = detectFramework(text, normalizedUrl)
-        setProbeCatalogHit({ name: displayName, extractor: extractorLabel, frameworkHint: hint ?? undefined })
-        if (!inputName) {
-          setInputName(displayName)
-          setInputLabel(displayName.slice(0, 4))
-        }
-        if (!inputSiteUrl) {
-          try {
-            const parsed = new URL(normalizedUrl)
-            setInputSiteUrl(`${parsed.protocol}//${parsed.host}/`)
-          } catch {
-            // keep empty
-          }
-        }
-        setInputUrl(normalizedUrl)
+        setProbeCatalogHit({ name: displayName, extractor: '目录', frameworkHint: hint ?? undefined, catalogProfile: page.profile })
+        if (!inputName) { setInputName(displayName); setInputLabel(displayName.slice(0, 4)) }
+        if (!inputSiteUrl) setInputSiteUrl(page.profile.siteRoot)
+        setInputUrl(page.url)
         return
+      }
+      if (page.kind === 'blocked' || page.kind === 'dynamic' || page.kind === 'detail') {
+        throw new Error(page.kind === 'blocked' ? '来源站要求验证或限制访问，请稍后重试' : page.kind === 'dynamic' ? '来源站仅返回动态页面，暂未发现可读取的目录' : '此地址是详情页，请使用列表或栏目地址')
       }
 
       // 尝试从网页 HTML 中探测 RSS 地址
       const discovered = discoverFeedsFromHtml(text, normalizedUrl)
       if (discovered.length > 0) {
+        setProbeCatalogHit(null)
         setProbeDiscoveredFeeds(discovered)
         if (discovered[0]) {
           setInputUrl(discovered[0].url)
@@ -374,9 +370,10 @@ export function CustomSourcesScreen({
         )
       }
     } catch (err) {
-      setProbeError(err instanceof Error ? err.message : '网络请求失败，无法连接到该地址')
+      if (probeController.current === controller) setProbeError(err instanceof Error ? err.message : '网络请求失败，无法连接到该地址')
     } finally {
-      setProbing(false)
+      clearTimeout(timeout)
+      if (probeController.current === controller) setProbing(false)
     }
   }
 
@@ -402,7 +399,7 @@ export function CustomSourcesScreen({
         name,
         label,
         siteUrl,
-        ...(probeCatalogHit ? { kind: 'web-catalog' as const } : {}),
+        ...(probeCatalogHit ? { kind: 'web-catalog' as const, frameworkHint: hint, catalogProfile: probeCatalogHit.catalogProfile } : {}),
       })
     } else {
       const targetCatId =
@@ -413,7 +410,7 @@ export function CustomSourcesScreen({
           label,
           url,
           siteUrl,
-          ...(probeCatalogHit ? { kind: 'web-catalog' as const } : {}),
+          ...(probeCatalogHit ? { kind: 'web-catalog' as const, frameworkHint: hint, catalogProfile: probeCatalogHit.catalogProfile } : {}),
           ...(hint ? { frameworkHint: hint } : {}),
         },
         targetCatId,
@@ -857,7 +854,7 @@ export function CustomSourcesScreen({
                     type="url"
                     required
                     value={inputUrl}
-                    onChange={(e) => setInputUrl(e.target.value)}
+                    onChange={(e) => { probeController.current?.abort(); probeController.current = null; setProbing(false); setInputUrl(e.target.value); setProbeCatalogHit(null); setProbeDiscoveredFeeds([]) }}
                     placeholder="https://example.com/feed.xml 或 https://example.com"
                     className="min-w-0 flex-1 rounded-xl border border-haze bg-ink-raised px-3.5 py-2.5 text-[14px] text-paper placeholder-paper-faint/45 transition-colors focus:border-cinnabar focus:outline-none"
                   />
@@ -882,22 +879,20 @@ export function CustomSourcesScreen({
                 {probeCatalogHit && (
                   <div className="mt-2 rounded-xl border border-emerald-600/40 bg-emerald-900/20 p-2.5">
                     <span className="block font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
-                      已识别为网页目录（{probeCatalogHit.extractor ?? '通用'}）。将重排为 App 信息流；点进条目后在
-                      Android 上嗅探播放。
+                      已发现网页目录，将显示为 App 信息流；点进条目后在应用内阅读。
                     </span>
 
-                    {probeCatalogHit.frameworkHint && (
+                    {(probeCatalogHit.catalogProfile || probeCatalogHit.frameworkHint) && (
                       <div className="mt-1.5 font-mono text-[10px] text-emerald-700 dark:text-emerald-400">
-                        已识别为 {probeCatalogHit.frameworkHint.framework.toUpperCase()}
-                        {probeCatalogHit.frameworkHint.themeVariant
+                        {(probeCatalogHit.catalogProfile?.engine ?? probeCatalogHit.frameworkHint?.framework) === 'generic' ? '使用通用目录规则' : `已识别为 ${(probeCatalogHit.catalogProfile?.engine ?? probeCatalogHit.frameworkHint?.framework)?.toUpperCase()} 站点`}
+                        {probeCatalogHit.frameworkHint?.themeVariant
                           ? ` · ${probeCatalogHit.frameworkHint.themeVariant} 主题`
                           : ''}
-                        {' '}站点
-                        {probeCatalogHit.frameworkHint.categories?.length
-                          ? ` · ${probeCatalogHit.frameworkHint.categories.length} 个分类`
+                        {probeCatalogHit.catalogProfile?.categories.length
+                          ? ` · ${probeCatalogHit.catalogProfile.categories.length} 个分类`
                           : ''}
-                        {probeCatalogHit.frameworkHint.searchTemplate ? ' · 支持站内搜索' : ''}
-                        {probeCatalogHit.frameworkHint.sortOptions?.length
+                        {probeCatalogHit.catalogProfile?.search ? ' · 支持站内搜索' : ''}
+                        {probeCatalogHit.catalogProfile?.sorts?.length
                           ? ' · 支持排序'
                           : ''}
                       </div>

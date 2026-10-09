@@ -3,6 +3,7 @@ import { cleanSummaryText } from '../../lib/cleanSummary'
 import type { Article } from '../../lib/types'
 import type { NewsSource } from '../../sources/registry'
 import { extractCatalog } from './engine'
+import type { CatalogItem } from './types'
 
 function hashId(input: string): string {
   return md5Hex(input).slice(0, 12)
@@ -37,11 +38,16 @@ export function catalogHtmlToArticles(
   source: NewsSource,
   html: string,
   fetchedAt: number,
+  pageUrl = source.url,
 ): Article[] {
-  const catalog = extractCatalog(html, source.url)
+  const catalog = extractCatalog(html, pageUrl, { minItems: 1 })
+  return catalogItemsToArticles(source, catalog.items, fetchedAt)
+}
+
+export function catalogItemsToArticles(source: NewsSource, items: CatalogItem[], fetchedAt: number): Article[] {
   const articles: Article[] = []
 
-  for (const item of catalog.items) {
+  for (const item of items) {
     const title = item.title.trim()
     if (!title) continue
 
@@ -61,7 +67,7 @@ export function catalogHtmlToArticles(
       sourceLabel: source.label,
       sourceGroup: source.group,
       originUrl: item.originUrl,
-      contentType: 'video',
+      contentType: item.contentType ?? (/^(maccms|seacms|fyfcms|zanpian|nnyy)$/.test(source.catalogProfile?.engine ?? source.frameworkHint?.framework ?? '') ? 'video' : 'article'),
     })
   }
 

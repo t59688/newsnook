@@ -1,3 +1,4 @@
+import { catalogDocument } from './extractors/domCards'
 import { cleanSummaryText } from '../../lib/cleanSummary'
 import { normalizeCatalogTitle, stripTags } from './normalize'
 
@@ -32,6 +33,18 @@ export function extractWebCatalogDetailMeta(pageHtml: string): {
   title?: string
   synopsis?: string
 } {
+  const document = catalogDocument(pageHtml)
+  let structured: { name?: string; headline?: string; description?: string } | undefined
+  for (const script of document.querySelectorAll('script[type="application/ld+json"]')) {
+    try {
+      const root = JSON.parse(script.textContent || '')
+      const nodes = Array.isArray(root) ? root : [root, ...(Array.isArray(root['@graph']) ? root['@graph'] : [])]
+      structured = nodes.find((node) => /^(?:Article|NewsArticle|BlogPosting|VideoObject|Movie|TVSeries)$/.test(String(node?.['@type'])))
+      if (structured) break
+    } catch { /* Malformed structured metadata must not block reading. */ }
+  }
+  const semanticTitle = structured?.headline || structured?.name || document.querySelector('meta[property="og:title"], meta[name="twitter:title"]')?.getAttribute('content') || document.querySelector('main h1, article h1, [itemprop="headline"]')?.textContent
+  const semanticSummary = structured?.description || document.querySelector('meta[property="og:description"], meta[name="description"]')?.getAttribute('content') || document.querySelector('[itemprop="description"], .vod_content, .detail-content, .slide-info-desc, .description')?.textContent
   const h1Raw = pageHtml.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
   let title = h1Raw
     ? normalizeCatalogTitle(
@@ -44,6 +57,7 @@ export function extractWebCatalogDetailMeta(pageHtml: string): {
 
   const fromTag = titleFromNnyyTag(pageHtml)
   if (fromTag) title = fromTag
+  if (typeof semanticTitle === 'string' && semanticTitle.trim()) title = normalizeCatalogTitle(stripTags(semanticTitle)).slice(0, 200)
 
   if (!title || title.length < 2) {
     title = fromTag
@@ -63,6 +77,8 @@ export function extractWebCatalogDetailMeta(pageHtml: string): {
     if (synopsis && title && synopsis === title) synopsis = undefined
     if (synopsis && synopsis.length > 280) synopsis = `${synopsis.slice(0, 277)}…`
   }
+
+  if (!synopsis && typeof semanticSummary === 'string') synopsis = cleanSummaryText(stripTags(semanticSummary), title).slice(0, 280)
 
   return {
     title: title && title.length >= 2 ? title : undefined,

@@ -1,3 +1,4 @@
+import { normalizeCatalogProfile, normalizeFrameworkHint, preserveFutureCatalogProfile } from '../siteCatalog/profile'
 /**
  * 远端记录 → 本机运行时状态。
  *
@@ -122,9 +123,10 @@ function toCustomSource(entity: MergedEntity): NewsSource | null {
         ? (payload.discovery as NewsSource['discovery'])
         : undefined,
   }
-  if (payload.frameworkHint && typeof payload.frameworkHint === 'object') {
-    source.frameworkHint = payload.frameworkHint as NewsSource['frameworkHint']
-  }
+  source.catalogProfileOpaque = preserveFutureCatalogProfile(payload.catalogProfile ?? payload.catalogProfileOpaque, source.url)
+  source.catalogProfile = normalizeCatalogProfile(payload.catalogProfile, source.url)
+  source.frameworkHint = normalizeFrameworkHint(payload.frameworkHint, source.url)
+
   return source
 }
 

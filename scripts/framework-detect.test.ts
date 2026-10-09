@@ -1,3 +1,4 @@
+import { detectNextPageUrl } from '../src/features/catalogEngine/pagination'
 import assert from 'node:assert/strict'
 
 import type { PaginationPattern } from '../src/features/frameworkDetect/types'
@@ -558,7 +559,7 @@ assert.equal(
   'https://fyf.example.com/index.php?s=/vod-search-wd-test%20keyword-by-score-order-desc.html',
 )
 
-// web-catalog WITHOUT frameworkHint, no page param → client-catalog (unchanged)
+// Unknown CMS catalogs now discover real next links through the shared catalog loader.
 const plainCatalogSource: NewsSource = {
   id: 'custom_test_plain',
   name: 'Plain Catalog',
@@ -569,6 +570,7 @@ const plainCatalogSource: NewsSource = {
   enabled: true,
   isCustom: true,
 }
-assert.equal(pagingStrategyOf(plainCatalogSource), 'client-catalog')
+assert.equal(pagingStrategyOf(plainCatalogSource), 'upstream-offset')
+assert.equal(detectNextPageUrl('<a rel="next" href="/archive/two">继续</a>', plainCatalogSource.url), 'https://example.com/archive/two')
 
 console.log('✓ Pagination integration tests passed')

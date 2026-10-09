@@ -104,6 +104,7 @@ function mediaItemToCatalog(
     image,
     summary: (description || name).slice(0, 220),
     publishedAt,
+    contentType: types.includes('VideoObject') ? 'video' : 'article',
   }
 }
 
@@ -159,7 +160,7 @@ function dedupeItems(items: CatalogItem[]): CatalogItem[] {
   const seen = new Set<string>()
   const result: CatalogItem[] = []
   for (const item of items) {
-    const key = item.originUrl.toLowerCase()
+    const key = item.originUrl
     if (seen.has(key)) continue
     seen.add(key)
     result.push(item)
@@ -168,7 +169,7 @@ function dedupeItems(items: CatalogItem[]): CatalogItem[] {
 }
 
 /** Schema.org JSON-LD：ItemList / VideoObject / Article 等 */
-export function extractJsonLdCatalog(html: string, pageUrl: string): CatalogItem[] {
+export function extractJsonLdCatalog(html: string, pageUrl: string, listsOnly = false): CatalogItem[] {
   const items: CatalogItem[] = []
 
   for (const match of html.matchAll(JSON_LD_RE)) {
@@ -194,13 +195,13 @@ export function extractJsonLdCatalog(html: string, pageUrl: string): CatalogItem
         }
       }
 
-      if (typesIncludeListable(node)) {
+      if (!listsOnly && typesIncludeListable(node)) {
         const item = mediaItemToCatalog(node, pageUrl, `jsonld-${items.length}`)
         if (item) items.push(item)
       }
 
       const mainEntity = asRecord(node.mainEntity)
-      if (mainEntity && typesIncludeListable(mainEntity)) {
+      if (!listsOnly && mainEntity && typesIncludeListable(mainEntity)) {
         const item = mediaItemToCatalog(mainEntity, pageUrl, `jsonld-main-${items.length}`)
         if (item) items.push(item)
       }

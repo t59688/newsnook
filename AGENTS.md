@@ -70,6 +70,7 @@ newsnook/
 | 任务 | 从这里开始 |
 |---|---|
 | 导航 / 返回键 / 设置栈 | `src/App.tsx` |
+| CMS / 网页目录 | `features/siteCatalog/`（service · capabilities · session · profile）→ `catalogEngine/`；身份证据在 `frameworkDetect/`，规则与预算见 `docs/cms-catalog.md`；测试 `test:site-catalog` |
 | 新增或修复内置源 | `src/sources/registry.ts` → `lib/parseFeed.ts` / `lib/resolveBody.ts`；探测笔记 `docs/news-sources.md` |
 | RSS 订阅商店 / 在线发现 | `features/feedDiscovery/onlineSearch.ts` · `siteDiscovery.ts` · `preview.ts` · `screens/settings/FeedStoreScreen.tsx`；只在线检索少量命中地址，不打包或缓存全量 RSS 目录。订阅与缓存阅读继续本地优先；说明见 `docs/rss-subscription-store.md` |
 | 分类 / 场景预设 | `sources/categories.ts` · `presets.ts` · `hooks/usePresets.ts` |

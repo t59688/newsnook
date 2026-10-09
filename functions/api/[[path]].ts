@@ -27,6 +27,7 @@ function corsHeaders(): Headers {
   headers.set('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS')
   headers.set('Access-Control-Allow-Headers', 'Content-Type, User-Agent, Authorization, Accept, Accept-Language')
   headers.set('Access-Control-Max-Age', '86400')
+  headers.set('Access-Control-Expose-Headers', 'X-NewsNook-Upstream-Url')
   return headers
 }
 
@@ -114,6 +115,7 @@ export const onRequest: PagesFunction = async (context) => {
       const respHeaders = corsHeaders()
       const contentType = upstream.headers.get('content-type')
       if (contentType) respHeaders.set('Content-Type', contentType)
+      respHeaders.set('X-NewsNook-Upstream-Url', upstream.url)
       respHeaders.set('Cache-Control', 'no-store')
 
       return new Response(upstream.body, {
@@ -150,6 +152,7 @@ export const onRequest: PagesFunction = async (context) => {
       const upstream = await fetch(target, { headers, redirect: 'follow' })
       const respHeaders = corsHeaders()
       respHeaders.set('Content-Type', upstream.headers.get('content-type') || 'text/html; charset=utf-8')
+      respHeaders.set('X-NewsNook-Upstream-Url', upstream.url)
       respHeaders.set('Cache-Control', 'no-store')
 
       return new Response(upstream.body, {
@@ -172,7 +175,7 @@ export const onRequest: PagesFunction = async (context) => {
           'User-Agent': requestedUa || BROWSER_UA,
           'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
           Accept: '*/*',
-          Referer: 'https://news.google.com/',
+          Referer: new URL(target).origin + '/',
         },
         body,
         redirect: 'follow',
@@ -180,6 +183,7 @@ export const onRequest: PagesFunction = async (context) => {
 
       const respHeaders = corsHeaders()
       respHeaders.set('Content-Type', upstream.headers.get('content-type') || 'text/plain; charset=utf-8')
+      respHeaders.set('X-NewsNook-Upstream-Url', upstream.url)
       respHeaders.set('Cache-Control', 'no-store')
 
       return new Response(upstream.body, {

@@ -410,3 +410,8 @@ claude.com 两个路径带不带斜杠均 200。
 
 验证：`npm run test:ai-firstparty`（注册 / 分类 / 分流 / 分页断言 + 三个解析器 fixture 与兜底路径），
 `npm run test:high-signal`、`npm run test:layout-presets`、`npm run test:category-source-usage`。
+
+
+## 自建目录案例：香菇影视（2026-10-10）
+
+该站使用飞飞 CMS 特征与自定义模板：`Public/js/system.js`、`cms` 全局配置、`ff-search` 与 `data-action` 重写搜索路径共同构成身份和能力证据，不据此断言精确版本。当前目录服务可抽取首页/栏目，栏目页使用实际 `hjs1.html` → `hjs2.html` 链接。改动属于通用飞飞规则及 DOM/表单能力发现，未添加域名特判。该案例不是内置订阅。公开页 smoke 与离线回归的边界见 [CMS 适配说明](./cms-catalog.md)。

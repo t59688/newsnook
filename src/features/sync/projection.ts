@@ -229,6 +229,7 @@ function customSourcePayload(source: NewsSource, enabled: boolean, sortRank: str
     paused: source.paused === true,
     discovery: source.discovery,
     frameworkHint: source.frameworkHint,
+    catalogProfile: source.catalogProfile ?? source.catalogProfileOpaque,
   }
 }
 

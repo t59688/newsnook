@@ -22,7 +22,7 @@ const ZANPIAN_SORT_OPTIONS: FrameworkSortOption[] = [
  *   翻页      path-segment
  */
 export function detectZanpian(html: string, pageUrl: string): FrameworkHint | null {
-  if (!/var\s+zanpian\s*=/.test(html) && !/zanpiancms/i.test(html)) return null
+  if (!/var\s+zanpian\s*=/.test(html) && !/Powered\s+by\s+ZanPianCMS|(?:src|href)=["'][^"']*zanpiancms/i.test(html)) return null
 
   const base = new URL(pageUrl)
   const themeVariant = detectZanpianThemeVariant(html)
