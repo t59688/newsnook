@@ -4,6 +4,7 @@ export const linuxDoEndpoints = {
   origin: ORIGIN,
   sessionCurrent: ORIGIN + '/session/current.json',
   csrf: ORIGIN + '/session/csrf.json',
+  messageBusPoll: (clientId: string) => 'https://ping.ldstatic.com/message-bus/' + encodeURIComponent(clientId) + '/poll?dlp=t',
   latest: (page = 0) => ORIGIN + '/latest.json?page=' + page,
   hot: (page = 0) => ORIGIN + '/hot.json?page=' + page,
   top: (page = 0, period?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'all') => {

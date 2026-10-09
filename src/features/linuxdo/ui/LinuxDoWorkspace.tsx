@@ -24,6 +24,8 @@ import {
 } from '../runtime'
 import { TopicCard } from './shared'
 import { retryAfterVerification } from './feedModel'
+import { useFeedUpdates } from './useFeedUpdates'
+import type { LinuxDoFeedUpdates, LinuxDoIncomingSnapshot } from '../feed/updates'
 import { applyLinuxDoReadProgress, linuxDoTopicHasUnreadIndicator } from '../topic/readState'
 import type { LinuxDoDiscoveryScope } from './discoveryScope'
 import { linuxDoLoadingLabel } from './loadingModel'
@@ -105,6 +107,8 @@ function FeedView({
   categoriesById,
   cacheRef,
   homeRefreshRef,
+  updates,
+  onUpdatesAcknowledged,
 }: {
   mode: LinuxDoFeedMode
   session: LinuxDoSessionSnapshot
@@ -118,6 +122,8 @@ function FeedView({
   categoriesById: Record<number, LinuxDoCategory>
   cacheRef: MutableRefObject<LinuxDoFeedCache>
   homeRefreshRef: MutableRefObject<(() => void) | null>
+  updates: LinuxDoFeedUpdates
+  onUpdatesAcknowledged: (mode: LinuxDoFeedMode, snapshot: LinuxDoIncomingSnapshot) => void
 }) {
   const [items, setItems] = useState<LinuxDoTopicSummary[]>(() => cacheRef.current[mode].items)
   const [loading, setLoading] = useState(() => !cacheRef.current[mode].loaded)
@@ -178,6 +184,8 @@ function FeedView({
     }
     setError(null)
 
+    const incomingSnapshot = reset ? updates.snapshot(requestMode) : undefined
+
     try {
       const page = reset ? 0 : pageRef.current + 1
       const incoming = await feeds.list(requestMode, page)
@@ -201,6 +209,7 @@ function FeedView({
         return nextItems
       })
       if (reset && scrollerRef.current) scrollerRef.current.scrollTop = 0
+      if (incomingSnapshot) onUpdatesAcknowledged(requestMode, incomingSnapshot)
     } catch (nextError) {
       if (requestId !== requestIdRef.current || currentModeRef.current !== requestMode) return
       if (nextError instanceof LinuxDoApiError && nextError.kind === 'auth-required') {
@@ -215,7 +224,7 @@ function FeedView({
         setLoadingMore(false)
       }
     }
-  }, [mode, session.authenticated, cacheRef, onSessionExpired])
+  }, [mode, session.authenticated, cacheRef, onSessionExpired, updates, onUpdatesAcknowledged])
 
   useEffect(() => {
     homeRefreshRef.current = () => {
@@ -425,6 +434,19 @@ function FeedView({
         </div>
       ) : null}
 
+      {updates.count(mode) > 0 ? (
+        <div className="flex shrink-0 justify-center border-b border-haze/50 px-3 py-2" aria-live="polite">
+          <button
+            type="button"
+            disabled={loading || refreshing || loadingMore}
+            onClick={() => homeRefreshRef.current?.()}
+            className="linuxdo-control rounded-xl bg-cinnabar/15 px-4 py-2 text-[12px] font-medium text-cinnabar-soft disabled:opacity-50"
+          >
+            查看 {updates.count(mode)} 个新的或更新过的话题
+          </button>
+        </div>
+      ) : null}
+
       <div
         ref={scrollerRef}
         className="min-h-0 flex-1 overflow-y-auto overscroll-contain page-x pb-4 pt-3"
@@ -563,6 +585,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
   const searchCacheRef = useRef(createLinuxDoSearchCache())
   const searchSessionKeyRef = useRef('guest')
   const [session, setSession] = useState<LinuxDoSessionSnapshot>({ authenticated: false, authMode: 'none' })
+  const { updates: feedUpdates, acknowledge: acknowledgeFeedUpdates } = useFeedUpdates(session)
   const [composerTopic, setComposerTopic] = useState<LinuxDoTopic | undefined>()
   const [composerOpen, setComposerOpen] = useState(false)
   const [composerInitialRaw, setComposerInitialRaw] = useState('')
@@ -841,6 +864,8 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
             onSessionExpired={expireWorkspaceSession}
             categoriesById={workspaceCategories}
             homeRefreshRef={feedHomeRefreshRef}
+            updates={feedUpdates}
+            onUpdatesAcknowledged={acknowledgeFeedUpdates}
           />
         ) : route.kind === 'topic' ? (
           <LinuxDoTopicView key={`${route.topic.id}:${session.authenticated ? session.currentUser?.id ?? 'guest' : 'guest'}:${route.targetPostNumber ?? ''}`} summary={route.topic} session={session} targetPostNumber={route.targetPostNumber} postMutation={topicPostMutation} overlayBackHandlerRef={topicOverlayBackHandlerRef} onReadProgress={applyTopicReadProgress} onSession={applyWorkspaceSession} onBack={() => { if (!goBack()) setRoute({ kind: 'feed', mode: 'latest' }) }} onCompose={(topic, options) => { setComposerTopic(topic); setComposerEditPost(undefined); setComposerInitialRaw(options?.initialRaw || ''); setComposerReplyTo(options?.replyToPostNumber); setComposerOpen(true) }} onBoost={setBoostPost} onOpenUser={(username) => navigate({ kind: 'user', username })} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenTag={(name) => navigate({ kind: 'discover', scope: { kind: 'tag', name } })} onOpenCategory={(category) => navigate({ kind: 'discover', scope: { kind: 'category', category } })} categoriesById={workspaceCategories} onEdit={(topic, post) => {

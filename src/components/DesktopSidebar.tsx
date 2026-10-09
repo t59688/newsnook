@@ -37,6 +37,7 @@ interface Props {
     items: PresetSwitcherItem[]
     onSelect: (id: string) => void
     onManage: () => void
+    onOpenSettings?: () => void
     siteItems?: SiteSwitcherItem[]
     onSelectSite?: (id: string) => void
     onSites?: () => void
@@ -164,6 +165,7 @@ export const DesktopSidebar = memo(function DesktopSidebar({
                   items={presetSwitcher.items}
                   onSelect={presetSwitcher.onSelect}
                   onManage={presetSwitcher.onManage}
+                  onOpenSettings={presetSwitcher.onOpenSettings}
                   siteItems={presetSwitcher.siteItems}
                   onSelectSite={presetSwitcher.onSelectSite}
                   onSites={presetSwitcher.onSites}

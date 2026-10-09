@@ -27,6 +27,8 @@ export function TopicCard({
   const last = topic.posters[topic.posters.length - 1]
   const readState = linuxDoTopicReadState(topic)
   const isUnread = readState !== 'read'
+  // Missing new/unread notifications do not prove that a topic was read.
+  const isRead = !isUnread && Number.isFinite(topic.lastReadPostNumber) && (topic.lastReadPostNumber ?? 0) > 0
   const unreadLabel = readState === 'new'
     ? '新主题'
     : readState === 'unread'
@@ -51,9 +53,9 @@ export function TopicCard({
       onKeyDown={openFromKeyboard}
       className={
         'linuxdo-control group relative w-full rounded-xl sm:rounded-2xl border border-haze/50 bg-ink-raised/85 p-3 sm:p-4 text-left transition-all duration-150 select-none active:scale-[0.988] shadow-[0_1px_3px_rgba(0,0,0,0.03)] ' +
-        (isUnread
-          ? 'hover:border-cinnabar/30'
-          : 'opacity-[0.92] hover:opacity-100')
+        (isRead
+          ? 'opacity-[0.92] hover:opacity-100'
+          : 'hover:border-cinnabar/30')
       }
     >
       <div className="flex items-start gap-2.5 sm:gap-3">
@@ -86,7 +88,7 @@ export function TopicCard({
           <div className="flex items-start gap-1.5">
             <h3 className={
               'line-clamp-2 flex-1 text-[15px] sm:text-[16px] font-semibold leading-[1.38] tracking-[-0.015em] transition-colors ' +
-              (isUnread ? 'text-paper group-hover:text-cinnabar-soft' : 'text-paper-muted/85 group-hover:text-paper')
+              (isRead ? 'text-paper-muted/85 group-hover:text-paper' : 'text-paper group-hover:text-cinnabar-soft')
             }>
               {topic.title}
             </h3>

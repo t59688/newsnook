@@ -1077,6 +1077,13 @@ export default function App() {
       if (activeSiteId) leaveActiveSite()
       setSettingsRoute({ name: 'presets' })
     },
+    onOpenSettings: () => {
+      if (activeSiteId) leaveActiveSite()
+      setFocusSourceId(null)
+      setFocusReturnRoute(null)
+      setSettingsRoute(null)
+      setTab('me')
+    },
     siteItems: siteSwitcherItems,
     onSelectSite: (id: string) => {
       const site = findSite(id)

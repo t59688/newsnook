@@ -89,6 +89,7 @@ Capacitor.isNativePlatform = () => true
 let failUnread = true
 requestNetwork = async ({ url, headers }: any) => {
   const path = new URL(url).pathname
+  if (path.startsWith('/message-bus/')) return { status: 200, data: '[]', transport: 'browser' }
   if (path.startsWith('/t/')) return { status: 404, data: '{"errors":["not found"]}', transport: 'browser' }
   assert.equal(headers['Discourse-Logged-In'], 'true', 'feed reads must use the authenticated browser session')
   assert.equal(headers['User-Api-Key'], undefined, 'the OTP exchange credential must not be used for ordinary feed reads')

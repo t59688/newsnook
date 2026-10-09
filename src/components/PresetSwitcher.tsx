@@ -14,6 +14,7 @@ import {
   Newspaper,
   PanelsTopLeft,
   Plus,
+  Settings,
   Settings2,
   Trophy,
   UserRound,
@@ -43,6 +44,7 @@ export interface PresetSwitcherProps {
   items: PresetSwitcherItem[]
   onSelect: (id: string) => void
   onManage: () => void
+  onOpenSettings?: () => void
   /** 独立站点工作区；与 preset 完全分离，选择时不得调用 onSelect。 */
   siteItems?: SiteSwitcherItem[]
   onSelectSite?: (id: string) => void
@@ -66,6 +68,7 @@ export function PresetSwitcher({
   items,
   onSelect,
   onManage,
+  onOpenSettings,
   siteItems = [],
   onSelectSite,
   onSites,
@@ -144,17 +147,33 @@ export function PresetSwitcher({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onManage()
-              }}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-haze/90 bg-ink px-3 py-1.5 font-mono text-[11px] font-medium text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
-            >
-              <Settings2 size={13} strokeWidth={1.7} />
-              管理预设
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  onManage()
+                }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-haze/90 bg-ink px-3 py-1.5 font-mono text-[11px] font-medium text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
+              >
+                <Settings2 size={13} strokeWidth={1.7} />
+                管理预设
+              </button>
+              {onOpenSettings ? (
+                <button
+                  type="button"
+                  aria-label="设置"
+                  title="设置"
+                  onClick={() => {
+                    setOpen(false)
+                    onOpenSettings()
+                  }}
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-haze/90 bg-ink text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
+                >
+                  <Settings size={16} strokeWidth={1.7} />
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col">
