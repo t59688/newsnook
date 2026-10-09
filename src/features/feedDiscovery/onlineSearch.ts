@@ -1,6 +1,8 @@
 import { fetchAbsoluteText } from '../../lib/http'
 import { validateFeedUrl } from './routeBuilder'
 import { discoverSiteFeeds } from './siteDiscovery'
+import { discoverRssHubRadar } from '../rsshub/radar'
+import { DEFAULT_RSSHUB_INSTANCES, validateRssHubRoutePath, type RssHubInstance } from '../rsshub/instances'
 import type { FeedDiscoveryEntry } from './types'
 
 export function websiteSearchUrl(query: string): string | null {
@@ -11,7 +13,7 @@ export function websiteSearchUrl(query: string): string | null {
 }
 
 /** Query the remote index; retain only these bounded results in the caller's UI state. */
-export async function searchOnlineFeeds(query: string, signal?: AbortSignal): Promise<FeedDiscoveryEntry[]> {
+export async function searchOnlineFeeds(query: string, signal?: AbortSignal, instances: readonly RssHubInstance[] = DEFAULT_RSSHUB_INSTANCES): Promise<FeedDiscoveryEntry[]> {
   const value = query.trim()
   if (!value) return []
   if (value.length > 300) throw new Error('搜索内容过长，请缩短后重试')
@@ -24,14 +26,44 @@ export async function searchOnlineFeeds(query: string, signal?: AbortSignal): Pr
     if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
     const siteUrl = websiteSearchUrl(value)
     if (siteUrl) {
-      let entries: FeedDiscoveryEntry[] = []
-      try { entries = await discoverSiteFeeds(siteUrl, controller.signal) } catch (error) {
-        if (controller.signal.aborted) throw error
-        // A direct Feed URL can still be checked when the website discovery service fails.
+      // A pasted feed link for a configured RSSHub instance already contains a
+      // logical route. Do not download the Radar catalog or probe the service
+      // merely to recognize it; preview will validate the actual feed.
+      const parsed = new URL(siteUrl)
+      const instance = instances.find((item) => item.url === parsed.origin)
+      if (instance) {
+        let route: string
+        try { route = validateRssHubRoutePath(parsed.pathname + parsed.search) } catch {
+          throw new Error('输入的 RSSHub 订阅路径无效')
+        }
+        if (route === '/') throw new Error('请输入完整的 RSSHub 路由，而不是实例主页')
+        return [{
+          providerId: 'rsshub', entryId: 'rsshub:direct:' + route,
+          type: 'rsshub', title: 'RSSHub 订阅 · ' + route.split('/').filter(Boolean).slice(0, 2).join(' / '),
+          categories: [], siteUrl, feedUrl: siteUrl,
+          routeTemplate: route, routePath: route,
+          parameters: {}, missingParameters: [], instanceId: instance.id,
+          statusNote: instance.enabled ? '已识别 RSSHub 路由，订阅前仍需实际预览' : '对应实例当前已停用，请先在实例管理中启用',
+        }]
       }
+      // Remote Feedsearch and RSSHub Radar fail independently. One unavailable
+      // service must not hide candidates discovered by the other.
+      const [direct, radar] = await Promise.allSettled([
+        discoverSiteFeeds(siteUrl, controller.signal),
+        discoverRssHubRadar(siteUrl, instances, controller.signal),
+      ])
       if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
-      // The entered address is also a candidate: preview, never silently subscribe it.
-      return deduplicateEntries([...entries, { providerId: 'direct-discovery', entryId: siteUrl, type: 'direct', title: '检测输入的网址', categories: [], feedUrl: siteUrl, siteUrl }])
+      const entries = direct.status === 'fulfilled' ? direct.value : []
+      const converted = radar.status === 'fulfilled' ? radar.value : []
+      const radarFailed = radar.status === 'rejected'
+      // The entered URL is only a detection candidate: never auto-subscribe HTML.
+      return deduplicateEntries([
+        ...entries.slice(0, 18), ...converted, {
+          providerId: 'direct-discovery', entryId: siteUrl, type: 'direct', title: '检测输入的网址',
+          categories: [], feedUrl: siteUrl, siteUrl,
+          statusNote: radarFailed ? 'RSSHub 规则服务暂不可用，仍可检测原始网址' : undefined,
+        }, ...entries.slice(18),
+      ])
     }
     const endpoint = new URL('https://cloud.feedly.com/v3/search/feeds')
     endpoint.searchParams.set('query', value)
@@ -68,8 +100,9 @@ export async function searchOnlineFeeds(query: string, signal?: AbortSignal): Pr
 function deduplicateEntries(entries: FeedDiscoveryEntry[]): FeedDiscoveryEntry[] {
   const seen = new Set<string>()
   return entries.filter((entry) => {
-    if (!entry.feedUrl || seen.has(entry.feedUrl)) return false
-    seen.add(entry.feedUrl)
+    const key = entry.type === 'rsshub' ? entry.entryId : entry.feedUrl
+    if (!key || seen.has(key)) return false
+    seen.add(key)
     return true
   }).slice(0, 40)
 }

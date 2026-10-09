@@ -91,6 +91,16 @@ export const linuxDoEndpoints = {
   uploads: ORIGIN + '/uploads.json',
   uploadLookupUrls: ORIGIN + '/uploads/lookup-urls.json',
   userBookmarks: (username: string) => ORIGIN + '/u/' + encodeURIComponent(username) + '/bookmarks.json',
+  userDrafts: (offset = 0) => ORIGIN + '/drafts.json?' + new URLSearchParams({ offset: String(offset), limit: '30' }),
+  userPending: (username: string) => ORIGIN + '/posts/' + encodeURIComponent(username) + '/pending.json',
+  userAssigned: (username: string) => ORIGIN + '/topics/messages-assigned/' + encodeURIComponent(username) + '.json?' + new URLSearchParams({ 'exclude_category_ids[]': '-1' }),
+  userVotes: (username: string) => ORIGIN + '/topics/voted-by/' + encodeURIComponent(username) + '.json',
+  userSolved: (username: string, offset = 0) => ORIGIN + '/solution/by_user.json?' + new URLSearchParams({ username, offset: String(offset), limit: '20' }),
+  userReactions: (username: string, before?: number) => {
+    const params = new URLSearchParams({ username })
+    if (before !== undefined) params.set('before_reaction_user_id', String(before))
+    return ORIGIN + '/discourse-reactions/posts/reactions.json?' + params
+  },
   boostCreate: (postId: number) => ORIGIN + '/discourse-boosts/posts/' + postId + '/boosts.json',
   boost: (boostId: number) => ORIGIN + '/discourse-boosts/boosts/' + boostId + '.json',
   boostsGiven: (username: string) => ORIGIN + '/discourse-boosts/users/' + encodeURIComponent(username) + '/boosts-given.json',

@@ -610,6 +610,47 @@ function recordsFromProjection(state: LocalRuntimeState): SyncRecord[] {
   assert.deepEqual(recovered.outbox, [])
 }
 
+// -------------------------------- RSSHub instance preferences + subscription identity
+
+{
+  const local = baseState()
+  const categoryId = local.prefs.categoryOrder[0]
+  const sourceId = 'custom_rsshub_sync'
+  const routeKey = '/bilibili/user/dynamic/1161918898'
+  const source = {
+    id: sourceId, name: 'Bilibili 动态', label: 'Bilibili', group: 'custom' as const,
+    kind: 'feed' as const, isCustom: true, enabled: true, paused: false,
+    url: 'https://rsshub.isrss.com' + routeKey,
+    createdAt: 1000,
+    discovery: {
+      providerId: 'rsshub', entryId: 'rsshub:bili', generator: 'rsshub' as const,
+      instanceId: 'isrss', routeKey,
+      verification: { status: 'verified' as const, checkedAt: 1000 },
+    },
+  }
+  local.prefs.customSources = [source]
+  local.prefs.categorySources = {
+    ...local.prefs.categorySources,
+    [categoryId]: [...(local.prefs.categorySources[categoryId] ?? []), sourceId],
+  }
+  local.prefs.rsshubInstances = local.prefs.rsshubInstances.map((instance) =>
+    instance.id === 'isrss' ? { ...instance, enabled: false } : instance,
+  )
+  local.enabledIds.push(sourceId)
+  const projected = projectLocalState(local)
+  assert.deepEqual(
+    (projected['setting:' + SETTING_KEYS.rsshubInstances]?.payload.value as Array<{ id: string; enabled: boolean }> | undefined)?.find((item) => item.id === 'isrss')?.enabled,
+    false,
+    'public instance toggles must join normal settings sync',
+  )
+  const roundtrip = applyRemoteRecords(baseState(), recordsFromProjection(local))
+  assert.equal(roundtrip.prefs.rsshubInstances.find((item) => item.id === 'isrss')?.enabled, false)
+  assert.equal(roundtrip.prefs.customSources?.[0]?.id, sourceId)
+  assert.equal(roundtrip.prefs.customSources?.[0]?.discovery?.routeKey, routeKey)
+  assert.ok(roundtrip.enabledIds.includes(sourceId))
+  assert.ok(roundtrip.prefs.categorySources[categoryId]?.includes(sourceId), 'category membership survives sync')
+}
+
 // ------------------------------------------------------------------- 杂项
 
 {

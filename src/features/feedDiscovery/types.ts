@@ -1,13 +1,19 @@
 export interface FeedDiscoveryEntry {
   providerId: string
   entryId: string
-  type: 'direct'
+  type: 'direct' | 'rsshub'
   title: string
   description?: string
   categories: string[]
   siteUrl?: string
   feedUrl?: string
   statusNote?: string
+  /** RSSHub Radar templates; missing values must be supplied before any HTTP request. */
+  routeTemplate?: string
+  routePath?: string
+  parameters?: Record<string, string>
+  missingParameters?: string[]
+  instanceId?: string
 }
 
 export interface FeedDiscoveryPreviewArticle {

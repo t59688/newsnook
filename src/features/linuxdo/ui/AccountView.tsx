@@ -14,6 +14,7 @@ import {
 import { loginLinuxDoWithPassword } from '../session/password'
 import type { LinuxDoSessionSnapshot } from '../types'
 import { avatar, readableError } from './utils'
+import type { UserProfileTab } from './UserProfileView'
 
 export function AccountView({
   session,
@@ -26,7 +27,7 @@ export function AccountView({
   session: LinuxDoSessionSnapshot
   onSession: (next: LinuxDoSessionSnapshot) => void
   onBookmarks: () => void
-  onProfile: (username: string) => void
+  onProfile: (username: string, tab?: UserProfileTab) => void
   onTrustLevel: () => void
   onPrivateMessages: () => void
 }) {
@@ -157,7 +158,7 @@ export function AccountView({
         </button>
         <button type="button" onClick={onBookmarks} className="linuxdo-control rounded-[20px] border border-haze/70 bg-ink-raised px-3.5 py-3.5 text-left shadow-sm"><Bookmark size={18} className="mb-2 text-[#f5b326]" /><div className="text-[11.5px] font-semibold text-paper">书签</div><div className="mt-1 text-[9.5px] text-paper-faint">{caps.bookmarks ? '查看收藏的楼层与主题' : '不可用'}</div></button>
         <button type="button" disabled={!session.currentUser?.username} onClick={() => session.currentUser?.username && onProfile(session.currentUser.username)} className="linuxdo-control rounded-[20px] border border-haze/70 bg-ink-raised px-3.5 py-3.5 text-left shadow-sm disabled:opacity-50"><UserRound size={18} className="mb-2 text-cinnabar" /><div className="text-[11.5px] font-semibold text-paper">个人主页</div><div className="mt-1 text-[9.5px] text-paper-faint">主题、活动、Boost 与统计</div></button>
-        <div className="rounded-[20px] border border-haze/70 bg-ink-raised px-3.5 py-3.5 shadow-sm"><FileText size={18} className="mb-2 text-[#7b61ff]" /><div className="text-[11.5px] font-semibold text-paper">草稿</div><div className="mt-1 text-[9.5px] text-paper-faint">{caps.drafts ? '自动保存与恢复已启用' : '不可用'}</div></div>
+        <button type="button" disabled={!session.authenticated || !session.currentUser?.username} onClick={() => session.currentUser?.username && onProfile(session.currentUser.username, 'drafts')} className="linuxdo-control rounded-[20px] border border-haze/70 bg-ink-raised px-3.5 py-3.5 text-left shadow-sm disabled:opacity-50"><FileText size={18} className="mb-2 text-[#7b61ff]" /><div className="text-[11.5px] font-semibold text-paper">草稿</div><div className="mt-1 text-[9.5px] text-paper-faint">查看草稿并继续编辑</div></button>
         <div className="rounded-[20px] border border-haze/70 bg-ink-raised px-3.5 py-3.5 shadow-sm"><History size={18} className="mb-2 text-[#2ab66f]" /><div className="text-[11.5px] font-semibold text-paper">媒体与附件</div><div className="mt-1 text-[9.5px] text-paper-faint">{caps.uploads ? '原生上传与图片预览已启用' : '不可用'}</div></div>
       </div>
       {!caps.boost.available ? <p className="mt-4 rounded-[18px] border border-haze/50 bg-ink-raised px-4 py-3 text-[10.5px] leading-5 text-paper-faint">{caps.boost.reason}</p> : null}

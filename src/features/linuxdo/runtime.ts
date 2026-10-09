@@ -6,6 +6,7 @@ import { LinuxDoFeedService } from './feed/service'
 import { LinuxDoInteractionService } from './interaction/service'
 import { LinuxDoNotificationService } from './notification/service'
 import { LinuxDoPeopleService } from './people/service'
+import { LinuxDoProfileSectionsService } from './people/sections'
 import { LinuxDoSearchService } from './search/service'
 import { LinuxDoTemplateService } from './template/service'
 import { LinuxDoTopicService } from './topic/service'
@@ -22,4 +23,5 @@ export const linuxDoTemplates = new LinuxDoTemplateService(linuxDoApi)
 export const linuxDoDrafts = new LinuxDoDraftService(linuxDoApi)
 export const linuxDoUploads = new LinuxDoUploadService(linuxDoApi)
 export const linuxDoPeople = new LinuxDoPeopleService(linuxDoApi)
+export const linuxDoProfileSections = new LinuxDoProfileSectionsService(linuxDoApi)
 export const linuxDoBookmarks = new LinuxDoBookmarkService(linuxDoApi)

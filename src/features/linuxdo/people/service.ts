@@ -27,6 +27,8 @@ export interface LinuxDoUserProfile extends LinuxDoUser {
   createdAt?: string
   lastSeenAt?: string
   featuredUserBadgeIds: number[]
+  draftCount?: number
+  pendingPostsCount?: number
 }
 
 export interface LinuxDoUserSummaryTopic {
@@ -300,6 +302,8 @@ export class LinuxDoPeopleService {
       website: absoluteUrl(user?.website ?? user?.website_name),
       createdAt: typeof user?.created_at === 'string' ? user.created_at : undefined,
       lastSeenAt: typeof user?.last_seen_at === 'string' ? user.last_seen_at : undefined,
+      draftCount: numberValue(user?.draft_count),
+      pendingPostsCount: numberValue(user?.pending_posts_count),
       featuredUserBadgeIds: Array.isArray(user?.featured_user_badge_ids)
         ? user.featured_user_badge_ids.map(Number).filter((id: number) => Number.isFinite(id) && id > 0)
         : [],

@@ -3,6 +3,10 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
+  ArrowRight,
+  Link2,
+  Globe2,
+  RadioTower,
   Loader2,
   Search,
   Trash2,
@@ -12,7 +16,11 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { SegmentedControl } from '../../components/SegmentedControl'
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { FeedStorePicker } from '../../features/feedDiscovery/FeedStorePicker'
-import { searchOnlineFeeds } from '../../features/feedDiscovery/onlineSearch'
+import { searchOnlineFeeds, websiteSearchUrl } from '../../features/feedDiscovery/onlineSearch'
+import { RssHubInstancesScreen } from '../../features/rsshub/RssHubInstancesScreen'
+import { RssHubSubscriptionRebindScreen } from '../../features/rsshub/RssHubSubscriptionRebindScreen'
+import { isSensitiveRssHubRoute, normalizeRssHubInstances, rssHubFeedUrl, type RssHubInstance } from '../../features/rsshub/instances'
+import { resolveRssHubRadarTarget } from '../../features/rsshub/radar'
 import { previewFeed } from '../../features/feedDiscovery/preview'
 import { findSubscriptionDuplicate } from '../../features/feedDiscovery/subscriptionActions'
 import { clearLegacyDiscoveryCache } from '../../features/feedDiscovery/legacyCache'
@@ -39,6 +47,7 @@ interface Props {
   onSubscribe: (draft: SubscriptionDraft, categoryId: CategoryId | undefined, addToMix: boolean, presetId: string) => { ok: boolean; message?: string }
   onAddBuiltinToCategory: (sourceId: string, categoryId: CategoryId, presetId: string, addToMix?: boolean) => { ok: boolean; message?: string }
   onPause: (sourceId: string, paused: boolean) => { ok: boolean; message?: string }
+  onUpdateRssHubInstances?: (instances: RssHubInstance[]) => void
   onUpdateSubscription: (sourceId: string, url: string, discovery: SourceDiscoveryMetadata) => { ok: boolean; message?: string }
   onDelete: (sourceId: string) => { ok: boolean; message?: string }
   onOpenSource: (sourceId: string) => void
@@ -47,13 +56,34 @@ interface Props {
   initialQuery?: string
 }
 
+type DiscoveryMode = 'keyword' | 'website'
+
+const WEBSITE_EXAMPLES = [
+  { label: 'B 站 UP 主', value: 'https://space.bilibili.com/1161918898' },
+  { label: '豆瓣电影', value: 'https://movie.douban.com/coming' },
+]
+const KEYWORD_EXAMPLES = ['人工智能', '汽车', '科技']
+
 function formatPreviewTime(checkedAt: number) {
   return new Date(checkedAt).toLocaleTimeString()
 }
 
-export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onAddBuiltinToCategory, onPause, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
+function candidateHost(entry: FeedDiscoveryEntry): string {
+  try {
+    return new URL(entry.siteUrl ?? entry.feedUrl ?? '').hostname
+  } catch {
+    return ''
+  }
+}
+
+function isWebsiteUrl(value: string): boolean {
+  try { return Boolean(websiteSearchUrl(value)) } catch { return false }
+}
+
+export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
   const [tab, setTab] = useState<'discover' | 'subscribed'>('discover')
   const [query, setQuery] = useState(initialQuery)
+  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>(() => isWebsiteUrl(initialQuery) ? 'website' : 'keyword')
   const [results, setResults] = useState<FeedDiscoveryEntry[]>([])
   const [searchedQuery, setSearchedQuery] = useState('')
   const [searching, setSearching] = useState(false)
@@ -68,6 +98,20 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
   const [presetId, setPresetId] = useState(currentPresetId)
   const [deleteSource, setDeleteSource] = useState<NewsSource | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
+  const [showInstances, setShowInstances] = useState(false)
+  const [rebindSource, setRebindSource] = useState<NewsSource | null>(null)
+  const [routeInputs, setRouteInputs] = useState<Record<string, string>>({})
+  const [selectedInstanceId, setSelectedInstanceId] = useState('')
+  const instances = normalizeRssHubInstances(prefs.rsshubInstances)
+  const selectedInstance = selectedInstanceId
+    ? instances.find((item) => item.id === selectedInstanceId && item.enabled)
+    : instances.find((item) => item.enabled)
+  const routeResolution = entry?.type === 'rsshub' && entry.routeTemplate
+    ? resolveRssHubRadarTarget(entry.routeTemplate, { ...entry.parameters, ...routeInputs })
+    : null
+  const effectiveFeedUrl = entry?.type === 'rsshub'
+    ? selectedInstance && routeResolution?.path ? rssHubFeedUrl(selectedInstance, routeResolution.path) : undefined
+    : entry?.feedUrl
   const categories = allRegisteredCategories(prefs).filter((item) => !isAggregateCategoryId(item.id))
   useEffect(() => {
     void clearLegacyDiscoveryCache()
@@ -82,9 +126,15 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     searchController.current = null
     setSearching(false)
     setQuery(value)
+    if (tab === 'discover' && isWebsiteUrl(value)) setDiscoveryMode('website')
     setResults([])
     setSearchedQuery('')
     setError(null)
+  }
+  const switchDiscoveryMode = (mode: DiscoveryMode) => {
+    if (mode === discoveryMode) return
+    changeQuery('')
+    setDiscoveryMode(mode)
   }
   const closeEntry = () => {
     previewController.current?.abort()
@@ -95,15 +145,24 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     setError(null)
   }
   useHardwareBackLayer(Boolean(entry), () => { closeEntry(); return true })
+  useHardwareBackLayer(showInstances, () => { setShowInstances(false); return true })
+  useHardwareBackLayer(Boolean(rebindSource), () => { setRebindSource(null); return true })
   const openEntry = (next: FeedDiscoveryEntry) => {
     closeEntry()
     setEntry(next)
+    setRouteInputs({})
+    setSelectedInstanceId(next.instanceId ?? instances.find((item) => item.enabled)?.id ?? '')
     setPresetId(currentPresetId)
     const visible = visibleCategories(prefs).filter((item) => !isAggregateCategoryId(item.id))
     setTarget(visible.find((item) => item.id === currentCategoryId)?.id ?? visible[0]?.id ?? '__mix_only__')
     setAddToMix(true)
   }
   const search = async () => {
+    if (!query.trim()) return
+    if (discoveryMode === 'website' && !isWebsiteUrl(query)) {
+      setError('这里需要网站网址；按名称查找请使用「搜索 RSS」')
+      return
+    }
     searchController.current?.abort()
     const controller = new AbortController()
     searchController.current = controller
@@ -112,7 +171,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     setResults([])
     setSearchedQuery('')
     try {
-      const found = await searchOnlineFeeds(query, controller.signal)
+      const found = await searchOnlineFeeds(query, controller.signal, instances)
       if (searchController.current !== controller || controller.signal.aborted) return
       setResults(found)
       setSearchedQuery(query.trim())
@@ -123,15 +182,41 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     }
   }
   const runPreview = async () => {
-    if (!entry?.feedUrl) return
+    if (!entry || !effectiveFeedUrl) return
     previewController.current?.abort()
     const controller = new AbortController()
     previewController.current = controller
     setPreviewing(true)
+    setPreview(null)
     setError(null)
     try {
-      const next = await previewFeed(entry.feedUrl, { signal: controller.signal })
-      if (previewController.current === controller && !controller.signal.aborted) setPreview(next)
+      const route = routeResolution?.path
+      const first = selectedInstance
+      const eligible = entry.type === 'rsshub' && route && first
+        ? [first, ...instances.filter((item) => item.enabled && item.id !== first.id && item.builtin === first.builtin)]
+            .filter((_item, index) => index === 0 || !isSensitiveRssHubRoute(route))
+            .slice(0, 2)
+        : []
+      if (!eligible.length) {
+        const next = await previewFeed(effectiveFeedUrl, { signal: controller.signal })
+        if (previewController.current === controller && !controller.signal.aborted) setPreview(next)
+        return
+      }
+      let last: FeedDiscoveryPreviewResult | null = null
+      for (const instance of eligible) {
+        if (controller.signal.aborted) return
+        const url = rssHubFeedUrl(instance, route!)
+        const next = await previewFeed(url, { signal: controller.signal, timeoutMs: 9_000 })
+        if (controller.signal.aborted) return
+        last = next
+        if (next.ok) {
+          setSelectedInstanceId(instance.id)
+          break
+        }
+        // Credentials and explicit authorization errors must not travel to another host.
+        if (next.kind === 'aborted') break
+      }
+      if (previewController.current === controller && !controller.signal.aborted && last) setPreview(last)
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '检测失败')
     } finally {
@@ -139,23 +224,44 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     }
   }
   const subscribe = (unverified = false) => {
-    if (!entry?.feedUrl || previewing || (!preview?.ok && !(unverified && preview && !preview.ok && preview.retryable))) return
-    const duplicate = findSubscriptionDuplicate(prefs, { url: entry.feedUrl })
+    if (!entry || !effectiveFeedUrl || previewing || (!preview?.ok && !(unverified && preview && !preview.ok && preview.retryable))) return
+    const discovery: SourceDiscoveryMetadata = entry.type === 'rsshub' && routeResolution?.path
+      ? {
+          providerId: 'rsshub', entryId: entry.entryId, generator: 'rsshub',
+          instanceId: selectedInstance?.id, routeKey: routeResolution.path,
+          verification: { status: preview?.ok ? 'verified' : 'unverified', checkedAt: preview?.ok ? preview.checkedAt : undefined },
+        }
+      : {
+          providerId: entry.providerId, entryId: entry.entryId, generator: 'feed',
+          verification: { status: preview?.ok ? 'verified' : 'unverified', checkedAt: preview?.ok ? preview.checkedAt : undefined },
+        }
+    const duplicate = findSubscriptionDuplicate(prefs, { url: effectiveFeedUrl, discovery })
     if (duplicate?.kind === 'custom' || duplicate?.kind === 'generator-route') { onOpenSource(duplicate.source.id); return }
     if (duplicate && target === '__save_only__') { setError('该来源已内置，可直接查看，无需重复保存。'); return }
     const destination = target === '__save_only__' || target === '__mix_only__' ? undefined : target
     const outcome = duplicate
       ? onAddBuiltinToCategory(duplicate.source.id, destination ?? FOLLOWS_ENABLED_SOURCES, presetId, addToMix)
-      : onSubscribe({ name: preview?.ok ? preview.title || entry.title : entry.title, label: entry.title.slice(0, 12), kind: 'feed', url: entry.feedUrl, siteUrl: entry.siteUrl, discovery: { providerId: entry.providerId, entryId: entry.entryId, generator: 'feed', verification: { status: preview?.ok ? 'verified' : 'unverified', checkedAt: preview?.ok ? preview.checkedAt : undefined } } }, destination, target === '__save_only__' ? false : target === '__mix_only__' || addToMix, presetId)
+      : onSubscribe({
+          name: preview?.ok ? preview.title || entry.title : entry.title,
+          label: entry.title.slice(0, 12), kind: 'feed',
+          url: effectiveFeedUrl, siteUrl: entry.siteUrl, discovery,
+        }, destination, target === '__save_only__' ? false : target === '__mix_only__' || addToMix, presetId)
     if (!outcome.ok) { setError(outcome.message ?? '订阅保存失败'); return }
-    setSavedId(duplicate?.source.id ?? makeCustomSourceId(entry.feedUrl))
+    setSavedId(duplicate?.source.id ?? makeCustomSourceId(effectiveFeedUrl))
     closeEntry()
   }
   const subscribed = (prefs.customSources ?? []).filter((source) => (source.name + ' ' + source.url).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const duplicateLabel = (item: FeedDiscoveryEntry) => {
-    const duplicate = findSubscriptionDuplicate(prefs, { url: item.feedUrl ?? '' })
+    const discovery = item.type === 'rsshub' && item.routePath
+      ? { generator: 'rsshub' as const, providerId: 'rsshub', entryId: item.entryId, routeKey: item.routePath }
+      : undefined
+    const duplicate = findSubscriptionDuplicate(prefs, { url: item.feedUrl ?? '', discovery })
     return duplicate ? duplicate.kind === 'builtin' ? '已内置' : duplicate.source.paused ? '已暂停' : '已订阅' : null
   }
+  const orderedResults = discoveryMode === 'website'
+    ? [...results.filter((item) => item.type === 'direct'), ...results.filter((item) => item.type === 'rsshub')]
+    : results
+  const websiteInputInvalid = discoveryMode === 'website' && query.trim().length > 4 && !isWebsiteUrl(query)
   const canSubscribe = Boolean(preview?.ok) && !previewing
   const canForceAdd = Boolean(preview && !preview.ok && preview.retryable && !previewing)
   const attribution = [
@@ -172,23 +278,54 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
           { label: '已订阅', value: 'subscribed' },
         ]}
         value={tab}
-        onChange={(value) => { setTab(value); setError(null) }}
+        onChange={(value) => { setTab(value); changeQuery(''); setError(null) }}
       />
+
+      {tab === 'discover' ? (
+        <div role="group" aria-label="选择发现方式" className="space-y-2.5">
+          <p className="px-0.5 text-[12.5px] font-medium text-paper">你想如何添加内容？</p>
+          <div className="grid grid-cols-2 gap-2.5">
+            <button type="button" aria-pressed={discoveryMode === 'keyword'}
+              onClick={() => switchDiscoveryMode('keyword')}
+              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'keyword' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
+              <span className={`flex items-center gap-2 text-[13px] font-medium ${discoveryMode === 'keyword' ? 'text-cinnabar-soft' : 'text-paper'}`}>
+                <Search size={16} strokeWidth={1.8} className="shrink-0" />
+                按名称搜索
+              </span>
+              <span className="mt-1.5 block text-[10.5px] leading-snug text-paper-faint">查找现成 RSS 订阅源</span>
+            </button>
+            <button type="button" aria-pressed={discoveryMode === 'website'}
+              onClick={() => switchDiscoveryMode('website')}
+              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'website' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
+              <span className={`flex items-center gap-2 text-[13px] font-medium ${discoveryMode === 'website' ? 'text-cinnabar-soft' : 'text-paper'}`}>
+                <Link2 size={16} strokeWidth={1.8} className="shrink-0" />
+                通过网站订阅
+              </span>
+              <span className="mt-1.5 block text-[10.5px] leading-snug text-paper-faint">发现 RSS / RSSHub</span>
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       <form
         className="space-y-2.5"
         onSubmit={(event) => { event.preventDefault(); if (tab === 'discover') void search() }}
       >
-        <label htmlFor="feed-store-search" className="block font-mono text-[10px] tracking-[0.18em] text-paper-faint">
-          {tab === 'discover' ? '搜索网站、关键词或订阅地址' : '搜索已订阅'}
+        <label htmlFor="feed-store-search" className="block font-mono text-[10px] tracking-[0.12em] text-paper-faint">
+          {tab === 'subscribed' ? '搜索已订阅' : discoveryMode === 'website' ? '粘贴网站或作者主页链接' : '输入名称或关键词'}
         </label>
         <div className="flex min-h-12 items-center gap-1 rounded-2xl border border-haze bg-ink-raised/80 px-2.5 shadow-[var(--shadow-lift)] focus-within:border-cinnabar/45">
-          <Search size={15} strokeWidth={1.7} className="ml-1.5 shrink-0 text-paper-faint" />
+          {tab === 'discover' && discoveryMode === 'website'
+            ? <Link2 size={15} strokeWidth={1.7} className="ml-1.5 shrink-0 text-paper-faint" />
+            : <Search size={15} strokeWidth={1.7} className="ml-1.5 shrink-0 text-paper-faint" />}
           <input
             id="feed-store-search"
             value={query}
             onChange={(event) => changeQuery(event.target.value)}
-            placeholder="例如 OpenAI、少数派、https://example.com"
+            placeholder={tab === 'subscribed' ? '搜索已保存的订阅' : discoveryMode === 'website' ? 'https://space.bilibili.com/…' : '例如 Bilibili、人工智能、汽车'}
+            autoComplete="off"
+            spellCheck={false}
+            inputMode={tab === 'discover' && discoveryMode === 'website' ? 'url' : 'search'}
             className="min-w-0 flex-1 bg-transparent px-2 py-3 text-[13.5px] text-paper outline-none placeholder:text-paper-faint/65"
           />
           {query ? (
@@ -200,20 +337,61 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             <button
               type="button"
               onClick={() => void search()}
-              disabled={searching || !query.trim()}
-              className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full bg-cinnabar px-3.5 text-[12px] font-medium text-white transition-opacity disabled:opacity-35"
+              disabled={searching || !query.trim() || (discoveryMode === 'website' && !isWebsiteUrl(query))}
+              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-cinnabar px-3.5 text-[12px] font-medium text-white transition-opacity disabled:opacity-35"
             >
               {searching ? <Loader2 size={13} className="animate-spin" /> : null}
-              {searching ? '正在在线搜索…' : '在线搜索'}
+              {searching ? '查找中…' : discoveryMode === 'website' ? '查找订阅' : '搜索 RSS'}
             </button>
           ) : null}
         </div>
         {tab === 'discover' ? (
-          <p className="px-0.5 text-[11px] leading-relaxed text-paper-faint">
-            关键词发送到 Feedly；网址由目标网站与 Feedsearch 查找。结果仅在本次页面临时保留。
-          </p>
+          <>
+            <p className="px-0.5 text-[11px] leading-relaxed text-paper-faint">
+              {discoveryMode === 'website'
+                ? '粘贴网站、栏目或 UP 主的主页网址，自动查找原站 RSS 和 RSSHub 转换方式。'
+                : '通过 Feedly 搜索已有 RSS 源；订阅具体网站或 UP 主，请选择「通过网站订阅」。'}
+            </p>
+            {websiteInputInvalid ? (
+              <p role="status" className="px-0.5 text-[11px] leading-relaxed text-cinnabar-soft">
+                这里需要完整的网址，不是网站名称。
+                <button type="button" onClick={() => switchDiscoveryMode('keyword')} className="ml-1 min-h-8 underline underline-offset-2">
+                  改为按名称搜索
+                </button>
+              </p>
+            ) : null}
+            {!query.trim() ? (
+              <div className="flex flex-wrap items-center gap-2 px-0.5">
+                <span className="text-[10.5px] text-paper-faint">试一试</span>
+                {discoveryMode === 'website' ? WEBSITE_EXAMPLES.map((example) => (
+                  <button key={example.value} type="button" onClick={() => changeQuery(example.value)}
+                    className="min-h-9 rounded-full border border-haze bg-ink-raised/40 px-3 text-[11px] text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft">
+                    {example.label}
+                  </button>
+                )) : KEYWORD_EXAMPLES.map((example) => (
+                  <button key={example} type="button" onClick={() => changeQuery(example)}
+                    className="min-h-9 rounded-full border border-haze bg-ink-raised/40 px-3 text-[11px] text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft">
+                    {example}
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </>
         ) : null}
       </form>
+
+      {tab === 'discover' && discoveryMode === 'website' && onUpdateRssHubInstances ? (
+        <div className="flex items-center gap-2.5 rounded-xl border border-haze/70 bg-ink-raised/35 px-3.5 py-2.5">
+          <RadioTower size={15} strokeWidth={1.7} className="shrink-0 text-cinnabar-soft" />
+          <p className="min-w-0 flex-1 text-[11px] text-paper-muted">
+            RSSHub · {instances.filter((item) => item.enabled).length} 个已启用实例
+          </p>
+          <button type="button" onClick={() => setShowInstances(true)}
+            className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] text-cinnabar-soft transition-colors hover:bg-cinnabar/8">
+            管理服务 <ChevronRight size={12} />
+          </button>
+        </div>
+      ) : null}
 
       {error && !entry ? (
         <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-cinnabar/25 bg-cinnabar/8 px-3.5 py-3 text-[12.5px] leading-relaxed text-cinnabar-soft">
@@ -236,53 +414,90 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
       ) : null}
     </div>
 
-    {tab === 'discover' ? (
-      <SettingsSection title={searchedQuery ? '在线结果 · ' + results.length : '在线发现'}>
+    {tab === 'discover' && (searching || Boolean(searchedQuery)) ? (
+      <SettingsSection title={searching ? '正在查找' : '发现结果 · ' + results.length}>
         <div aria-live="polite" className="page-x pb-2">
           {searching && !results.length ? (
-            <div className="flex items-center justify-center gap-2 rounded-2xl border border-haze/70 bg-ink-raised/40 py-14 text-[12.5px] text-paper-faint">
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-haze/70 bg-ink-raised/40 py-10 text-[12.5px] text-paper-faint">
               <Loader2 size={15} className="animate-spin text-cinnabar-soft" />
-              正在查找订阅地址…
+              {discoveryMode === 'website' ? '正在检查网站和 RSSHub 路由…' : '正在搜索 RSS 订阅源…'}
             </div>
-          ) : results.length ? (
-            <div className="overflow-hidden rounded-2xl border border-haze bg-ink-raised/70 shadow-[var(--shadow-lift)]">
-              {results.map((item, index) => {
-                const badge = duplicateLabel(item)
-                return (
-                  <button
-                    key={item.entryId}
-                    type="button"
-                    onClick={() => openEntry(item)}
-                    className={`group flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-paper/4 ${
-                      index > 0 ? 'border-t border-haze/70' : ''
-                    }`}
-                  >
-                    <span className="min-w-0 flex-1">
-                      <span className="flex items-start gap-2">
-                        <span className="min-w-0 flex-1 text-[13.5px] font-medium leading-snug text-paper">{item.title}</span>
-                        {badge ? (
-                          <span className="mt-0.5 shrink-0 rounded-full bg-cinnabar/10 px-2 py-0.5 font-mono text-[9.5px] tracking-[0.06em] text-cinnabar-soft">
-                            {badge}
+          ) : orderedResults.length ? (
+            <>
+              <p className="mb-2.5 px-0.5 text-[11px] text-paper-faint">以下是候选来源，选择一项进行实际预览后再订阅。</p>
+              <div className="overflow-hidden rounded-2xl border border-haze bg-ink-raised/70 shadow-[var(--shadow-lift)]">
+                {orderedResults.map((item, index) => {
+                  const badge = duplicateLabel(item)
+                  const firstOfGroup = discoveryMode === 'website' && (index === 0 || orderedResults[index - 1]?.type !== item.type)
+                  const hostname = candidateHost(item)
+                  return (
+                    <div key={item.entryId}>
+                      {firstOfGroup ? (
+                        <div className="flex items-center justify-between gap-3 border-b border-haze/70 bg-ink/20 px-4 py-2.5">
+                          <span className="text-[11.5px] font-medium text-paper-muted">
+                            {item.type === 'rsshub' ? 'RSSHub 转换' : '原站订阅与网址检测'}
                           </span>
-                        ) : null}
-                      </span>
-                      {item.description ? (
-                        <span className="mt-1.5 line-clamp-2 block text-[12px] leading-relaxed text-paper-muted">{item.description}</span>
+                          <span className="font-mono text-[10.5px] text-paper-faint">
+                            {results.filter((entry) => entry.type === item.type).length} 项
+                          </span>
+                        </div>
                       ) : null}
-                      <span className="mt-2 block break-all font-mono text-[10px] leading-relaxed text-paper-faint">{item.feedUrl}</span>
-                    </span>
-                    <ChevronRight size={15} strokeWidth={1.6} className="mt-1 shrink-0 text-paper-faint/70 transition-colors group-hover:text-cinnabar-soft" />
-                  </button>
-                )
-              })}
-            </div>
+                      <button type="button" onClick={() => openEntry(item)}
+                        className={`group flex min-h-[72px] w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-paper/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cinnabar ${
+                          index > 0 && !firstOfGroup ? 'border-t border-haze/70' : ''
+                        }`}>
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-start gap-2">
+                            <span className="min-w-0 flex-1 text-[13.5px] font-medium leading-snug text-paper">{item.title}</span>
+                            {item.type === 'rsshub' ? (
+                              <span className="mt-0.5 shrink-0 rounded-full border border-cinnabar/25 bg-cinnabar/8 px-2 py-0.5 text-[10px] text-cinnabar-soft">RSSHub</span>
+                            ) : null}
+                            {badge ? <span className="mt-0.5 shrink-0 rounded-full bg-cinnabar/10 px-2 py-0.5 text-[10px] text-cinnabar-soft">{badge}</span> : null}
+                          </span>
+                          {item.description && item.type !== 'rsshub' ? (
+                            <span className="mt-1 line-clamp-1 block text-[11.5px] leading-relaxed text-paper-muted">{item.description}</span>
+                          ) : null}
+                          <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[10.5px] text-paper-faint">
+                            <Globe2 size={12} strokeWidth={1.6} className="shrink-0" />
+                            <span className="truncate">{hostname || (item.routeTemplate ?? '待检测地址')}</span>
+                            {item.type === 'rsshub' && item.missingParameters?.length ? <span className="shrink-0 text-cinnabar-soft">· 需补参数</span> : null}
+                          </span>
+                          {item.providerId === 'direct-discovery' && item.statusNote ? (
+                            <span className="mt-1 block text-[10.5px] text-paper-faint">{item.statusNote}</span>
+                          ) : null}
+                        </span>
+                        <ChevronRight size={15} strokeWidth={1.6} className="mt-1 shrink-0 text-paper-faint/70 transition-colors group-hover:text-cinnabar-soft" />
+                      </button>
+                    </div>
+                  )
+                })}
+              </div>
+              {discoveryMode === 'website' && !results.some((item) => item.type === 'rsshub') ? (
+                <p className="mt-2.5 px-0.5 text-[11px] leading-relaxed text-paper-faint">
+                  暂未匹配 RSSHub 转换规则。仍可点击上方网址检测是否包含原生 RSS。
+                </p>
+              ) : null}
+            </>
           ) : (
-            <div className="rounded-2xl border border-haze/70 bg-ink-raised/35 px-5 py-12 text-center">
-              <p className="text-[13.5px] text-paper-muted">
-                {searchedQuery ? '没有找到订阅地址，请换个关键词或输入网站网址' : '输入网站名称、关键词或网址，联网查找订阅'}
+            <div className="rounded-2xl border border-haze/70 bg-ink-raised/35 px-5 py-8 text-center">
+              <p className="text-[13px] text-paper-muted">
+                {discoveryMode === 'website' ? '未找到匹配的订阅方式，请检查网址是否正确' : '暂未找到现成 RSS，试试其他名称或关键词'}
               </p>
             </div>
           )}
+          {discoveryMode === 'keyword' && !searching ? (
+            <div className="mt-3 flex items-center gap-3 rounded-2xl border border-haze/70 bg-ink-raised/35 px-3.5 py-3">
+              <RadioTower size={16} strokeWidth={1.6} className="shrink-0 text-cinnabar-soft" />
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium text-paper">想订阅某个 UP 主或作者？</p>
+                <p className="mt-0.5 text-[10.5px] text-paper-faint">复制他的主页网址，发现更多 RSSHub 订阅方式。</p>
+              </div>
+              <button type="button" onClick={() => switchDiscoveryMode('website')}
+                className="inline-flex min-h-9 shrink-0 items-center gap-1 text-[11px] text-cinnabar-soft">
+                粘贴网址 <ArrowRight size={13} />
+              </button>
+            </div>
+          ) : null}
           {attribution.length ? (
             <div className="mt-3 space-y-1 px-0.5">
               {attribution.map((item) => (
@@ -294,7 +509,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
           ) : null}
         </div>
       </SettingsSection>
-    ) : (
+    ) : tab === 'discover' ? null : (
       <SettingsSection title={'全部自建订阅 · ' + (prefs.customSources?.length ?? 0)}>
         <p className="page-x pb-3 text-[11.5px] leading-relaxed text-paper-muted">暂停影响所有预设，已缓存内容保留。</p>
         <div className="page-x pb-2">
@@ -314,6 +529,13 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                         {enabledIds.includes(source.id) ? ' · 综合' : ''}
                       </span>
                     </button>
+                    {source.discovery?.generator === 'rsshub' && source.discovery.routeKey ? (
+                      <button type="button" onClick={() => { setError(null); setRebindSource(source) }}
+                        aria-label={'更换 ' + source.name + ' 的 RSSHub 服务'}
+                        className="min-h-9 shrink-0 rounded-full border border-haze px-2.5 text-[10.5px] text-paper-muted transition-colors hover:border-cinnabar/30 hover:text-cinnabar-soft">
+                        服务
+                      </button>
+                    ) : null}
                     {!members.length ? (
                       <button
                         type="button"
@@ -365,8 +587,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
           <div className="page-x space-y-5 pt-4 pb-6">
             <section className="overflow-hidden rounded-2xl border border-haze bg-ink-raised/75 shadow-[var(--shadow-lift)]">
               <div className="px-4 py-4">
-                <p className="font-mono text-[10px] tracking-[0.18em] text-paper-faint">订阅地址</p>
-                <p className="mt-2 break-all font-mono text-[12px] leading-relaxed text-paper-muted">{entry.feedUrl}</p>
+                <p className="font-mono text-[10px] tracking-[0.18em] text-paper-faint">{entry.type === 'rsshub' ? 'RSSHub 转换地址' : '订阅地址'}</p>
+                <p className="mt-2 break-all font-mono text-[12px] leading-relaxed text-paper-muted">{effectiveFeedUrl ?? '请先填写必要的路由参数并选择实例'}</p>
                 {entry.siteUrl ? <p className="mt-2 truncate text-[11.5px] text-paper-faint">{entry.siteUrl}</p> : null}
               </div>
               {entry.description ? (
@@ -376,6 +598,54 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                 </>
               ) : null}
             </section>
+
+            {entry.type === 'rsshub' ? (
+              <section className="space-y-3.5 rounded-2xl border border-haze bg-ink-raised/75 p-4 shadow-[var(--shadow-lift)]">
+                <div className="flex items-start gap-2.5">
+                  <RadioTower size={17} className="mt-0.5 shrink-0 text-cinnabar-soft" />
+                  <div>
+                    <p className="text-[13.5px] font-medium text-paper">RSSHub 路由设置</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-paper-faint">匹配规则不等于可访问。服务由第三方运行，提交前请检测内容。</p>
+                  </div>
+                </div>
+                <p className="break-all rounded-lg bg-ink/30 p-2.5 font-mono text-[10.5px] text-paper-muted">{entry.routeTemplate}</p>
+                {(entry.missingParameters ?? []).map((parameter) => (
+                  <label key={parameter} className="block text-[11.5px] text-paper-muted">
+                    <span className="mb-1.5 block font-mono">必填参数 · {parameter}</span>
+                    <input value={routeInputs[parameter] ?? ''} maxLength={250}
+                      onChange={(event) => {
+                        previewController.current?.abort()
+                        setPreview(null)
+                        setRouteInputs((prev) => ({ ...prev, [parameter]: event.target.value }))
+                      }}
+                      placeholder={'填写 ' + parameter}
+                      className="min-h-11 w-full rounded-xl border border-haze bg-ink/30 px-3.5 text-[13px] text-paper outline-none placeholder:text-paper-faint/70 focus:border-cinnabar/45"
+                    />
+                  </label>
+                ))}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-[10px] tracking-[0.1em] text-paper-faint">使用实例</p>
+                  {onUpdateRssHubInstances ? <button type="button" onClick={() => setShowInstances(true)}
+                    className="inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-[11px] text-cinnabar-soft transition-colors hover:bg-cinnabar/8">
+                    管理服务 <ChevronRight size={12} />
+                  </button> : null}
+                </div>
+                <div>
+                  <FeedStorePicker title="使用 RSSHub 实例" value={selectedInstance?.id ?? ''}
+                    disabled={!instances.some((item) => item.enabled)}
+                    options={instances.filter((item) => item.enabled).map((item) => ({ id: item.id, label: item.name + ' · ' + new URL(item.url).hostname }))}
+                    onChange={(id) => {
+                      previewController.current?.abort()
+                      setPreview(null)
+                      setSelectedInstanceId(id)
+                    }}
+                  />
+                </div>
+                {routeResolution?.missing.length ? (
+                  <p role="status" className="text-[11.5px] text-cinnabar-soft">还需填写：{routeResolution.missing.join('、')}</p>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="space-y-3.5 rounded-2xl border border-haze bg-ink-raised/75 p-4 shadow-[var(--shadow-lift)]">
               <div>
@@ -416,7 +686,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                 </div>
                 <button
                   type="button"
-                  disabled={previewing}
+                  disabled={previewing || !effectiveFeedUrl}
                   onClick={() => void runPreview()}
                   className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-cinnabar/40 bg-cinnabar/10 px-3.5 text-[12px] text-cinnabar-soft transition-colors hover:bg-cinnabar/16 disabled:opacity-40"
                 >
@@ -487,6 +757,19 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             </div>
           </div>
         </SettingsShell>
+      </div>
+    ) : null}
+
+    {rebindSource ? (
+      <div className="absolute inset-0 z-50 bg-ink" style={{ paddingBottom: 'var(--sab)' }}>
+        <RssHubSubscriptionRebindScreen source={rebindSource} instances={instances}
+          onChange={onUpdateSubscription} onBack={() => setRebindSource(null)} />
+      </div>
+    ) : null}
+
+    {showInstances && onUpdateRssHubInstances ? (
+      <div className="absolute inset-0 z-50 bg-ink" style={{ paddingBottom: 'var(--sab)' }}>
+        <RssHubInstancesScreen instances={instances} onChange={onUpdateRssHubInstances} onBack={() => setShowInstances(false)} />
       </div>
     ) : null}
 

@@ -1,5 +1,10 @@
 import {
   Award,
+  Bookmark,
+  CheckCircle2,
+  Pencil,
+  UserPlus,
+  Vote,
   BookOpen,
   CalendarDays,
   ChevronRight,
@@ -31,9 +36,13 @@ import type {
   LinuxDoUserSummaryTopic,
 } from '../people/service'
 import type { LinuxDoCategory, LinuxDoTopicSummary } from '../types'
+import type { LinuxDoSessionSnapshot } from '../types'
+import type { LinuxDoProfileDraft, LinuxDoProfileSection } from '../people/sections'
+import { ProfileSectionView } from './ProfileSectionView'
+import { BookmarksView } from './CommunityViews'
 import { ago, avatar, compact, readableError, tagGlyph } from './utils'
 
-export type UserProfileTab = 'overview' | 'activity' | 'topics' | 'replies' | 'likes' | 'boosts' | 'responses' | 'badges'
+export type UserProfileTab = 'overview' | 'activity' | 'topics' | 'replies' | 'likes' | 'boosts' | 'responses' | 'badges' | 'bookmarks' | LinuxDoProfileSection
 type ActivityTab = Extract<UserProfileTab, 'activity' | 'topics' | 'replies' | 'likes' | 'responses'>
 type BoostMode = 'received' | 'given'
 
@@ -52,9 +61,17 @@ const profileTabs: Array<{ id: UserProfileTab; label: string; icon: typeof UserR
   { id: 'activity', label: '所有', icon: Sparkles },
   { id: 'topics', label: '话题', icon: FileText },
   { id: 'replies', label: '回复', icon: MessageCircle },
+  { id: 'read', label: '已读', icon: BookOpen },
+  { id: 'drafts', label: '草稿', icon: Pencil },
+  { id: 'pending', label: '待处理', icon: Clock3 },
   { id: 'likes', label: '赞', icon: Heart },
+  { id: 'bookmarks', label: '书签', icon: Bookmark },
+  { id: 'assigned', label: '已指定', icon: UserPlus },
   { id: 'boosts', label: 'Boosts', icon: Rocket },
-  { id: 'responses', label: '回应', icon: Sparkles },
+  { id: 'reactions', label: '回应', icon: Sparkles },
+  { id: 'votes', label: '投票', icon: Vote },
+  { id: 'solved', label: '已解决', icon: CheckCircle2 },
+  { id: 'responses', label: '收到回复', icon: MessageCircle },
   { id: 'badges', label: '徽章', icon: Award },
 ]
 
@@ -388,12 +405,16 @@ export function UserProfileView({
   initialBadgeId,
   onOpenTopic,
   onOpenUser,
+  session = { authenticated: false, authMode: 'none' },
+  onResumeDraft,
 }: {
   username: string
   initialTab?: UserProfileTab
   initialBadgeId?: number
   onOpenTopic: (topic: LinuxDoTopicSummary, targetPostNumber?: number) => void
   onOpenUser: (username: string) => void
+  session?: LinuxDoSessionSnapshot
+  onResumeDraft?: (draft: LinuxDoProfileDraft) => Promise<void>
 }) {
   const [profile, setProfile] = useState<LinuxDoUserProfile | null>(null)
   const [summary, setSummary] = useState<LinuxDoUserSummary | null>(null)
@@ -417,6 +438,12 @@ export function UserProfileView({
   const [categoriesById, setCategoriesById] = useState<Record<number, LinuxDoCategory>>({})
   const generationRef = useRef(0)
   const targetBadgeRef = useRef<HTMLElement | null>(null)
+  const viewingSelf = session.authenticated && session.currentUser?.username.toLowerCase() === username.toLowerCase()
+  const visibleTabs = profileTabs.filter(tab =>
+    (!['read', 'drafts', 'pending', 'bookmarks'].includes(tab.id) || viewingSelf)
+    && (tab.id !== 'assigned' || (session.authenticated && session.currentUser?.canAssignGlobally !== false)),
+  )
+  const sectionTab = (['read', 'drafts', 'pending', 'assigned', 'votes', 'solved', 'reactions'] as UserProfileTab[]).includes(activeTab) ? activeTab as LinuxDoProfileSection : undefined
 
   const loadHeader = useCallback(() => {
     const generation = ++generationRef.current
@@ -754,19 +781,22 @@ export function UserProfileView({
       ) : null}
 
       <div className="sticky top-0 z-20 -mx-1 mt-3 border-y border-haze/45 bg-ink/95 px-1 py-2 backdrop-blur-xl">
-        <div className="scrollbar-none flex gap-1 overflow-x-auto">
-          {profileTabs.map((tab) => {
+        <div role="tablist" aria-label="个人主页栏目" className="scrollbar-none flex gap-1 overflow-x-auto">
+          {visibleTabs.map((tab) => {
             const Icon = tab.icon
             const active = tab.id === activeTab
             return (
               <button
                 key={tab.id}
                 type="button"
+                role="tab"
+                aria-selected={active}
                 onClick={() => setActiveTab(tab.id)}
                 className={'linuxdo-control inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-[10.5px] font-medium transition-all ' + (active ? 'bg-cinnabar text-white shadow-sm' : 'text-paper-muted hover:bg-paper/5 hover:text-paper')}
               >
                 <Icon size={12.5} />
                 {tab.label}
+                {tab.id === 'drafts' && profile.draftCount !== undefined ? ' (' + profile.draftCount + ')' : tab.id === 'pending' && profile.pendingPostsCount !== undefined ? ' (' + profile.pendingPostsCount + ')' : ''}
               </button>
             )
           })}
@@ -774,7 +804,7 @@ export function UserProfileView({
       </div>
 
       <section className="mt-3">
-        {activeTab === 'overview' ? (
+        {sectionTab ? <ProfileSectionView key={sectionTab + ':' + username + ':' + (session.currentUser?.id ?? 'guest')} section={sectionTab} username={username} session={session} onOpenTopic={onOpenTopic} onResumeDraft={onResumeDraft} /> : activeTab === 'bookmarks' ? (viewingSelf ? <BookmarksView key={session.currentUser?.id} session={session} onOpenTopic={onOpenTopic} /> : <InlineStatus message="书签仅本人登录后可查看" />) : activeTab === 'overview' ? (
           <div className="space-y-4">
             <div>
               <div className="mb-2 flex items-center justify-between">

@@ -192,6 +192,9 @@ function applySettings(prefs: Preferences, merged: Map<string, MergedEntity>): P
     }
   }
 
+  const rsshubInstances = readSetting(SETTING_KEYS.rsshubInstances)
+  if (rsshubInstances !== undefined) next.rsshubInstances = rsshubInstances as Preferences['rsshubInstances']
+
   const autoRefresh = readSetting(SETTING_KEYS.autoRefresh)
   if (autoRefresh !== undefined) next.autoRefreshOnCategorySwitch = autoRefresh !== false
 
