@@ -41,7 +41,7 @@ export function unwrapWhereSelectors(css: string): string {
  * unconditional fallback so border/divide/space utilities keep working.
  */
 export const TW_VAR_FALLBACK_CSS =
-  '*,:before,:after,::backdrop{--tw-border-style:solid;--tw-divide-y-reverse:0;--tw-space-y-reverse:0;--tw-space-x-reverse:0}'
+  '*,:before,:after,::backdrop{--tw-border-style:solid;--tw-divide-y-reverse:0;--tw-space-y-reverse:0;--tw-space-x-reverse:0;--tw-gradient-position:initial;--tw-gradient-from:#0000;--tw-gradient-via:#0000;--tw-gradient-to:#0000;--tw-gradient-stops:initial;--tw-gradient-via-stops:initial;--tw-gradient-from-position:0%;--tw-gradient-via-position:50%;--tw-gradient-to-position:100%}'
 
 export function applyWebViewCssCompat(css: string): string {
   return `${unwrapWhereSelectors(css)}\n${TW_VAR_FALLBACK_CSS}\n`

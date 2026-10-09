@@ -470,8 +470,7 @@ export function StartupSplash({ mode, leaving, onComplete }: Props) {
         <div className="startup-splash__title">
           有所闻 <span>·</span> 阅读工具
         </div>
-        <div className="startup-splash__subtitle">新闻是新闻 · 工具是工具</div>
-        <div className="startup-splash__tag">只做聚合 · 不做推荐</div>
+        <div className="startup-splash__subtitle">有所闻 有所不闻</div>
       </div>
     </div>
   )

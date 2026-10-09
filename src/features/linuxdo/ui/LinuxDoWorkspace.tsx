@@ -928,7 +928,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
           className="linuxdo-nav-compose"
           aria-label="发布"
         >
-          <span className="grid h-11 w-11 place-items-center rounded-full bg-gradient-to-tr from-[#d32f2f] via-cinnabar to-[#ff6b57] text-white shadow-[0_4px_16px_rgba(235,68,54,0.45)] ring-2 ring-ink transition-transform duration-150 active:scale-90">
+          <span className="grid h-11 w-11 place-items-center rounded-full bg-cinnabar text-white transition-transform duration-150 active:scale-90">
             <Plus size={21} strokeWidth={2.5} />
           </span>
           <span className="mt-0.5">发布</span>
