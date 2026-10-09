@@ -92,13 +92,9 @@
   transform: scale(0.988);
 }
 
-/* 原生悬浮操作岛 */
+/* 贴底操作 Dock：容器负责底部安全区域，内部不再浮动或投影。 */
 .zhihu-action-dock {
-  border: 1px solid color-mix(in srgb, var(--color-paper) 9%, transparent);
-  background: color-mix(in srgb, var(--color-ink) 90%, transparent);
-  -webkit-backdrop-filter: blur(24px) saturate(1.6);
-  backdrop-filter: blur(24px) saturate(1.6);
-  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+  background: transparent;
 }
 
 /* 原生赞同胶囊按钮 */

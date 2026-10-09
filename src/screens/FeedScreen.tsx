@@ -60,6 +60,7 @@ interface Props {
   onRemoveSource?: (sourceId: string) => void
   onRemoveCategory?: (categoryId: CategoryId) => void
   onRenameCategory?: (categoryId: CategoryId, name: string) => void
+  onMoveCategory?: (categoryId: CategoryId, direction: -1 | 1) => void
   /** 预览邻页用：按分类取已缓存的文章，横滑时并排露出 */
   articlesForCategory?: (id: CategoryId) => Article[]
   translationPrefs?: TranslationPrefs
@@ -211,6 +212,7 @@ export const FeedScreen = memo(function FeedScreen({
   onRemoveSource,
   onRemoveCategory,
   onRenameCategory,
+  onMoveCategory,
   articlesForCategory,
   translationPrefs,
   customSources,
@@ -923,6 +925,7 @@ export const FeedScreen = memo(function FeedScreen({
               reduced={reduced}
               onRemoveCategory={onRemoveCategory}
               onRenameCategory={onRenameCategory}
+              onMoveCategory={onMoveCategory}
             />
           </div>
         )}
