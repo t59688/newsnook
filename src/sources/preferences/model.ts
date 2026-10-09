@@ -16,6 +16,7 @@ import { DEFAULT_READ_ALOUD_PREFS } from '../../features/readAloud/config'
 import type { ReadAloudPrefs } from '../../features/readAloud/types'
 import { DEFAULT_PROXY_PREFS } from '../../features/proxy/config'
 import type { ProxyPrefs } from '../../features/proxy/types'
+import { DEFAULT_RSSHUB_INSTANCES, type RssHubInstance } from '../../features/rsshub/instances'
 import {
   CATEGORIES,
   CATEGORY_TAXONOMY_VERSION,
@@ -102,6 +103,8 @@ export interface Preferences {
   translation: TranslationPrefs
   readAloud: ReadAloudPrefs
   proxy: ProxyPrefs
+  /** RSSHub 公共/自定义实例，随偏好、备份与云同步保存。 */
+  rsshubInstances: RssHubInstance[]
   /** 切换/滑动到分类页时是否自动刷新（关闭时保留滚动阅读位置） */
   autoRefreshOnCategorySwitch?: boolean
   /**
@@ -151,6 +154,7 @@ export const DEFAULT_PREFERENCES: Preferences = {
   translation: DEFAULT_TRANSLATION_PREFS,
   readAloud: DEFAULT_READ_ALOUD_PREFS,
   proxy: DEFAULT_PROXY_PREFS,
+  rsshubInstances: [...DEFAULT_RSSHUB_INSTANCES],
   autoRefreshOnCategorySwitch: true,
   recommendEnabled: true,
   einkMode: false,

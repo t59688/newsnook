@@ -12,6 +12,7 @@ import { DEFAULT_CUSTOM_SCHEME, normalizeCustomScheme } from '../../lib/customSc
 import { normalizeTranslationPrefs } from '../../features/translation/config'
 import { normalizeReadAloudPrefs } from '../../features/readAloud/config'
 import { normalizeProxyPrefs } from '../../features/proxy/config'
+import { normalizeRssHubInstances } from '../../features/rsshub/instances'
 import {
   CATEGORIES,
   CATEGORY_TAXONOMY_VERSION,
@@ -58,6 +59,8 @@ function normalizeDiscoveryMetadata(raw: unknown): SourceDiscoveryMetadata | und
   if (input.params && typeof input.params === 'object') {
     Object.entries(input.params).forEach(([key, value]) => {
       if (!key || key.length > 120) return
+      // Authorization must never be duplicated into ordinary synced discovery metadata.
+      if (generator === 'rsshub' && /(?:token|secret|password|passwd|cookie|api.?key|auth|credential)/i.test(key)) return
       if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
         params[key] = value
       }
@@ -246,6 +249,7 @@ export function normalizePreferences(raw: unknown): Preferences {
     translation: normalizeTranslationPrefs(input.translation),
     readAloud: normalizeReadAloudPrefs(input.readAloud),
     proxy: normalizeProxyPrefs(input.proxy),
+    rsshubInstances: normalizeRssHubInstances(input.rsshubInstances),
     autoRefreshOnCategorySwitch:
       typeof input.autoRefreshOnCategorySwitch === 'boolean'
         ? input.autoRefreshOnCategorySwitch

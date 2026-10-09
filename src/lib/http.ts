@@ -14,6 +14,7 @@ import { currentProxyRuntime } from '../features/proxy/runtime'
 import { resolveProxyTransport, type NativeTunnelProxy } from '../features/proxy/transport'
 import type { ProxyPrefs } from '../features/proxy/types'
 import { FEED_ACCEPT } from './feedPayload'
+import { fetchRssHubSourceText } from '../features/rsshub/fetch'
 import { decodeResponseBytes } from './textEncoding'
 
 let activeProxyPrefs: ProxyPrefs = (() => {
@@ -84,6 +85,13 @@ export async function fetchSourceText(
   signal?: AbortSignal,
   options?: FetchSourceOptions,
 ): Promise<string> {
+  // Resolve RSSHub fallback only for ordinary head refresh, not for pagination or
+  // arbitrary caller overrides. Both Android and Web continue through the shared transport.
+  if (source.discovery?.generator === 'rsshub' && source.discovery.routeKey && options?.page == null && !options?.url) {
+    return fetchRssHubSourceText(source, signal, (url, requestSignal) =>
+      fetchAbsoluteText(url, { signal: requestSignal, accept: FEED_ACCEPT }),
+    )
+  }
   const page = options?.page
   const paged = offsetPageRequest(source, page ?? 0)
   const rawUrl = options?.url ?? paged.url

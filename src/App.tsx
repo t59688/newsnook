@@ -1372,6 +1372,7 @@ export default function App() {
             setEnabledIds(nextEnabled)
             return { ok: true }
           }}
+          onUpdateRssHubInstances={(instances) => update((previous) => ({ ...previous, rsshubInstances: instances }))}
           onPause={(sourceId, paused) => {
             const nextPrefs = setCustomSourcePaused(prefs, sourceId, paused)
             try { saveSubscriptionState(sanitizeForPersistence(nextPrefs), enabledIds) } catch { return { ok: false, message: '订阅保存失败，请检查本机存储空间后重试。' } }

@@ -3,6 +3,7 @@ import {
   AlertCircle,
   CheckCircle2,
   ChevronRight,
+  RadioTower,
   Loader2,
   Search,
   Trash2,
@@ -13,6 +14,10 @@ import { SegmentedControl } from '../../components/SegmentedControl'
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { FeedStorePicker } from '../../features/feedDiscovery/FeedStorePicker'
 import { searchOnlineFeeds } from '../../features/feedDiscovery/onlineSearch'
+import { RssHubInstancesScreen } from '../../features/rsshub/RssHubInstancesScreen'
+import { RssHubSubscriptionRebindScreen } from '../../features/rsshub/RssHubSubscriptionRebindScreen'
+import { isSensitiveRssHubRoute, normalizeRssHubInstances, rssHubFeedUrl, type RssHubInstance } from '../../features/rsshub/instances'
+import { resolveRssHubRadarTarget } from '../../features/rsshub/radar'
 import { previewFeed } from '../../features/feedDiscovery/preview'
 import { findSubscriptionDuplicate } from '../../features/feedDiscovery/subscriptionActions'
 import { clearLegacyDiscoveryCache } from '../../features/feedDiscovery/legacyCache'
@@ -39,6 +44,7 @@ interface Props {
   onSubscribe: (draft: SubscriptionDraft, categoryId: CategoryId | undefined, addToMix: boolean, presetId: string) => { ok: boolean; message?: string }
   onAddBuiltinToCategory: (sourceId: string, categoryId: CategoryId, presetId: string, addToMix?: boolean) => { ok: boolean; message?: string }
   onPause: (sourceId: string, paused: boolean) => { ok: boolean; message?: string }
+  onUpdateRssHubInstances?: (instances: RssHubInstance[]) => void
   onUpdateSubscription: (sourceId: string, url: string, discovery: SourceDiscoveryMetadata) => { ok: boolean; message?: string }
   onDelete: (sourceId: string) => { ok: boolean; message?: string }
   onOpenSource: (sourceId: string) => void
@@ -51,7 +57,7 @@ function formatPreviewTime(checkedAt: number) {
   return new Date(checkedAt).toLocaleTimeString()
 }
 
-export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onAddBuiltinToCategory, onPause, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
+export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
   const [tab, setTab] = useState<'discover' | 'subscribed'>('discover')
   const [query, setQuery] = useState(initialQuery)
   const [results, setResults] = useState<FeedDiscoveryEntry[]>([])
@@ -68,6 +74,20 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
   const [presetId, setPresetId] = useState(currentPresetId)
   const [deleteSource, setDeleteSource] = useState<NewsSource | null>(null)
   const [savedId, setSavedId] = useState<string | null>(null)
+  const [showInstances, setShowInstances] = useState(false)
+  const [rebindSource, setRebindSource] = useState<NewsSource | null>(null)
+  const [routeInputs, setRouteInputs] = useState<Record<string, string>>({})
+  const [selectedInstanceId, setSelectedInstanceId] = useState('')
+  const instances = normalizeRssHubInstances(prefs.rsshubInstances)
+  const selectedInstance = selectedInstanceId
+    ? instances.find((item) => item.id === selectedInstanceId && item.enabled)
+    : instances.find((item) => item.enabled)
+  const routeResolution = entry?.type === 'rsshub' && entry.routeTemplate
+    ? resolveRssHubRadarTarget(entry.routeTemplate, { ...entry.parameters, ...routeInputs })
+    : null
+  const effectiveFeedUrl = entry?.type === 'rsshub'
+    ? selectedInstance && routeResolution?.path ? rssHubFeedUrl(selectedInstance, routeResolution.path) : undefined
+    : entry?.feedUrl
   const categories = allRegisteredCategories(prefs).filter((item) => !isAggregateCategoryId(item.id))
   useEffect(() => {
     void clearLegacyDiscoveryCache()
@@ -95,9 +115,13 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     setError(null)
   }
   useHardwareBackLayer(Boolean(entry), () => { closeEntry(); return true })
+  useHardwareBackLayer(showInstances, () => { setShowInstances(false); return true })
+  useHardwareBackLayer(Boolean(rebindSource), () => { setRebindSource(null); return true })
   const openEntry = (next: FeedDiscoveryEntry) => {
     closeEntry()
     setEntry(next)
+    setRouteInputs({})
+    setSelectedInstanceId(next.instanceId ?? instances.find((item) => item.enabled)?.id ?? '')
     setPresetId(currentPresetId)
     const visible = visibleCategories(prefs).filter((item) => !isAggregateCategoryId(item.id))
     setTarget(visible.find((item) => item.id === currentCategoryId)?.id ?? visible[0]?.id ?? '__mix_only__')
@@ -112,7 +136,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     setResults([])
     setSearchedQuery('')
     try {
-      const found = await searchOnlineFeeds(query, controller.signal)
+      const found = await searchOnlineFeeds(query, controller.signal, instances)
       if (searchController.current !== controller || controller.signal.aborted) return
       setResults(found)
       setSearchedQuery(query.trim())
@@ -123,15 +147,41 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     }
   }
   const runPreview = async () => {
-    if (!entry?.feedUrl) return
+    if (!entry || !effectiveFeedUrl) return
     previewController.current?.abort()
     const controller = new AbortController()
     previewController.current = controller
     setPreviewing(true)
+    setPreview(null)
     setError(null)
     try {
-      const next = await previewFeed(entry.feedUrl, { signal: controller.signal })
-      if (previewController.current === controller && !controller.signal.aborted) setPreview(next)
+      const route = routeResolution?.path
+      const first = selectedInstance
+      const eligible = entry.type === 'rsshub' && route && first
+        ? [first, ...instances.filter((item) => item.enabled && item.id !== first.id && item.builtin === first.builtin)]
+            .filter((_item, index) => index === 0 || !isSensitiveRssHubRoute(route))
+            .slice(0, 2)
+        : []
+      if (!eligible.length) {
+        const next = await previewFeed(effectiveFeedUrl, { signal: controller.signal })
+        if (previewController.current === controller && !controller.signal.aborted) setPreview(next)
+        return
+      }
+      let last: FeedDiscoveryPreviewResult | null = null
+      for (const instance of eligible) {
+        if (controller.signal.aborted) return
+        const url = rssHubFeedUrl(instance, route!)
+        const next = await previewFeed(url, { signal: controller.signal, timeoutMs: 9_000 })
+        if (controller.signal.aborted) return
+        last = next
+        if (next.ok) {
+          setSelectedInstanceId(instance.id)
+          break
+        }
+        // Credentials and explicit authorization errors must not travel to another host.
+        if (next.kind === 'aborted') break
+      }
+      if (previewController.current === controller && !controller.signal.aborted && last) setPreview(last)
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '检测失败')
     } finally {
@@ -139,21 +189,38 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     }
   }
   const subscribe = (unverified = false) => {
-    if (!entry?.feedUrl || previewing || (!preview?.ok && !(unverified && preview && !preview.ok && preview.retryable))) return
-    const duplicate = findSubscriptionDuplicate(prefs, { url: entry.feedUrl })
+    if (!entry || !effectiveFeedUrl || previewing || (!preview?.ok && !(unverified && preview && !preview.ok && preview.retryable))) return
+    const discovery: SourceDiscoveryMetadata = entry.type === 'rsshub' && routeResolution?.path
+      ? {
+          providerId: 'rsshub', entryId: entry.entryId, generator: 'rsshub',
+          instanceId: selectedInstance?.id, routeKey: routeResolution.path,
+          verification: { status: preview?.ok ? 'verified' : 'unverified', checkedAt: preview?.ok ? preview.checkedAt : undefined },
+        }
+      : {
+          providerId: entry.providerId, entryId: entry.entryId, generator: 'feed',
+          verification: { status: preview?.ok ? 'verified' : 'unverified', checkedAt: preview?.ok ? preview.checkedAt : undefined },
+        }
+    const duplicate = findSubscriptionDuplicate(prefs, { url: effectiveFeedUrl, discovery })
     if (duplicate?.kind === 'custom' || duplicate?.kind === 'generator-route') { onOpenSource(duplicate.source.id); return }
     if (duplicate && target === '__save_only__') { setError('该来源已内置，可直接查看，无需重复保存。'); return }
     const destination = target === '__save_only__' || target === '__mix_only__' ? undefined : target
     const outcome = duplicate
       ? onAddBuiltinToCategory(duplicate.source.id, destination ?? FOLLOWS_ENABLED_SOURCES, presetId, addToMix)
-      : onSubscribe({ name: preview?.ok ? preview.title || entry.title : entry.title, label: entry.title.slice(0, 12), kind: 'feed', url: entry.feedUrl, siteUrl: entry.siteUrl, discovery: { providerId: entry.providerId, entryId: entry.entryId, generator: 'feed', verification: { status: preview?.ok ? 'verified' : 'unverified', checkedAt: preview?.ok ? preview.checkedAt : undefined } } }, destination, target === '__save_only__' ? false : target === '__mix_only__' || addToMix, presetId)
+      : onSubscribe({
+          name: preview?.ok ? preview.title || entry.title : entry.title,
+          label: entry.title.slice(0, 12), kind: 'feed',
+          url: effectiveFeedUrl, siteUrl: entry.siteUrl, discovery,
+        }, destination, target === '__save_only__' ? false : target === '__mix_only__' || addToMix, presetId)
     if (!outcome.ok) { setError(outcome.message ?? '订阅保存失败'); return }
-    setSavedId(duplicate?.source.id ?? makeCustomSourceId(entry.feedUrl))
+    setSavedId(duplicate?.source.id ?? makeCustomSourceId(effectiveFeedUrl))
     closeEntry()
   }
   const subscribed = (prefs.customSources ?? []).filter((source) => (source.name + ' ' + source.url).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))
   const duplicateLabel = (item: FeedDiscoveryEntry) => {
-    const duplicate = findSubscriptionDuplicate(prefs, { url: item.feedUrl ?? '' })
+    const discovery = item.type === 'rsshub' && item.routePath
+      ? { generator: 'rsshub' as const, providerId: 'rsshub', entryId: item.entryId, routeKey: item.routePath }
+      : undefined
+    const duplicate = findSubscriptionDuplicate(prefs, { url: item.feedUrl ?? '', discovery })
     return duplicate ? duplicate.kind === 'builtin' ? '已内置' : duplicate.source.paused ? '已暂停' : '已订阅' : null
   }
   const canSubscribe = Boolean(preview?.ok) && !previewing
@@ -210,10 +277,24 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
         </div>
         {tab === 'discover' ? (
           <p className="px-0.5 text-[11px] leading-relaxed text-paper-faint">
-            关键词发送到 Feedly；网址由目标网站与 Feedsearch 查找。结果仅在本次页面临时保留。
+            关键词由 Feedly 在线搜索；网址优先发现原站 RSS，再查找 RSSHub 转换规则。规则按需加载，不在应用安装时下载目录。
           </p>
         ) : null}
       </form>
+
+      {tab === 'discover' && onUpdateRssHubInstances ? (
+        <section className="flex items-center gap-3 rounded-2xl border border-haze bg-ink-raised/60 px-3.5 py-3">
+          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-cinnabar/10 text-cinnabar-soft"><RadioTower size={17} strokeWidth={1.6} /></span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[12.5px] font-medium text-paper">RSSHub 网站订阅</p>
+            <p className="mt-0.5 text-[10.5px] leading-snug text-paper-faint">{instances.filter((item) => item.enabled).length} 个可用候选服务 · 请求由第三方提供</p>
+          </div>
+          <button type="button" onClick={() => setShowInstances(true)}
+            className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full border border-haze px-3 text-[11.5px] text-paper-muted transition-colors hover:border-cinnabar/40 hover:text-cinnabar-soft">
+            管理实例 <ChevronRight size={12} />
+          </button>
+        </section>
+      ) : null}
 
       {error && !entry ? (
         <div role="alert" className="flex items-start gap-2.5 rounded-2xl border border-cinnabar/25 bg-cinnabar/8 px-3.5 py-3 text-[12.5px] leading-relaxed text-cinnabar-soft">
@@ -260,6 +341,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                     <span className="min-w-0 flex-1">
                       <span className="flex items-start gap-2">
                         <span className="min-w-0 flex-1 text-[13.5px] font-medium leading-snug text-paper">{item.title}</span>
+                        {item.type === 'rsshub' ? <span className="mt-0.5 shrink-0 rounded-full border border-cinnabar/30 bg-cinnabar/8 px-2 py-0.5 font-mono text-[9.5px] tracking-[0.04em] text-cinnabar-soft">RSSHub</span> : null}
                         {badge ? (
                           <span className="mt-0.5 shrink-0 rounded-full bg-cinnabar/10 px-2 py-0.5 font-mono text-[9.5px] tracking-[0.06em] text-cinnabar-soft">
                             {badge}
@@ -269,7 +351,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                       {item.description ? (
                         <span className="mt-1.5 line-clamp-2 block text-[12px] leading-relaxed text-paper-muted">{item.description}</span>
                       ) : null}
-                      <span className="mt-2 block break-all font-mono text-[10px] leading-relaxed text-paper-faint">{item.feedUrl}</span>
+                      <span className="mt-2 block break-all font-mono text-[10px] leading-relaxed text-paper-faint">{item.feedUrl ?? item.routeTemplate}</span>
+                      {item.statusNote ? <span className="mt-1 block text-[10.5px] text-paper-faint">{item.statusNote}</span> : null}
                     </span>
                     <ChevronRight size={15} strokeWidth={1.6} className="mt-1 shrink-0 text-paper-faint/70 transition-colors group-hover:text-cinnabar-soft" />
                   </button>
@@ -314,6 +397,13 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                         {enabledIds.includes(source.id) ? ' · 综合' : ''}
                       </span>
                     </button>
+                    {source.discovery?.generator === 'rsshub' && source.discovery.routeKey ? (
+                      <button type="button" onClick={() => { setError(null); setRebindSource(source) }}
+                        aria-label={'更换 ' + source.name + ' 的 RSSHub 服务'}
+                        className="min-h-9 shrink-0 rounded-full border border-haze px-2.5 text-[10.5px] text-paper-muted transition-colors hover:border-cinnabar/30 hover:text-cinnabar-soft">
+                        服务
+                      </button>
+                    ) : null}
                     {!members.length ? (
                       <button
                         type="button"
@@ -365,8 +455,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
           <div className="page-x space-y-5 pt-4 pb-6">
             <section className="overflow-hidden rounded-2xl border border-haze bg-ink-raised/75 shadow-[var(--shadow-lift)]">
               <div className="px-4 py-4">
-                <p className="font-mono text-[10px] tracking-[0.18em] text-paper-faint">订阅地址</p>
-                <p className="mt-2 break-all font-mono text-[12px] leading-relaxed text-paper-muted">{entry.feedUrl}</p>
+                <p className="font-mono text-[10px] tracking-[0.18em] text-paper-faint">{entry.type === 'rsshub' ? 'RSSHub 转换地址' : '订阅地址'}</p>
+                <p className="mt-2 break-all font-mono text-[12px] leading-relaxed text-paper-muted">{effectiveFeedUrl ?? '请先填写必要的路由参数并选择实例'}</p>
                 {entry.siteUrl ? <p className="mt-2 truncate text-[11.5px] text-paper-faint">{entry.siteUrl}</p> : null}
               </div>
               {entry.description ? (
@@ -376,6 +466,54 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                 </>
               ) : null}
             </section>
+
+            {entry.type === 'rsshub' ? (
+              <section className="space-y-3.5 rounded-2xl border border-haze bg-ink-raised/75 p-4 shadow-[var(--shadow-lift)]">
+                <div className="flex items-start gap-2.5">
+                  <RadioTower size={17} className="mt-0.5 shrink-0 text-cinnabar-soft" />
+                  <div>
+                    <p className="text-[13.5px] font-medium text-paper">RSSHub 路由设置</p>
+                    <p className="mt-1 text-[11px] leading-relaxed text-paper-faint">匹配规则不等于可访问。服务由第三方运行，提交前请检测内容。</p>
+                  </div>
+                </div>
+                <p className="break-all rounded-lg bg-ink/30 p-2.5 font-mono text-[10.5px] text-paper-muted">{entry.routeTemplate}</p>
+                {(entry.missingParameters ?? []).map((parameter) => (
+                  <label key={parameter} className="block text-[11.5px] text-paper-muted">
+                    <span className="mb-1.5 block font-mono">必填参数 · {parameter}</span>
+                    <input value={routeInputs[parameter] ?? ''} maxLength={250}
+                      onChange={(event) => {
+                        previewController.current?.abort()
+                        setPreview(null)
+                        setRouteInputs((prev) => ({ ...prev, [parameter]: event.target.value }))
+                      }}
+                      placeholder={'填写 ' + parameter}
+                      className="min-h-11 w-full rounded-xl border border-haze bg-ink/30 px-3.5 text-[13px] text-paper outline-none placeholder:text-paper-faint/70 focus:border-cinnabar/45"
+                    />
+                  </label>
+                ))}
+                <div className="flex items-center justify-between gap-3">
+                  <p className="font-mono text-[10px] tracking-[0.1em] text-paper-faint">使用实例</p>
+                  {onUpdateRssHubInstances ? <button type="button" onClick={() => setShowInstances(true)}
+                    className="inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-[11px] text-cinnabar-soft transition-colors hover:bg-cinnabar/8">
+                    管理服务 <ChevronRight size={12} />
+                  </button> : null}
+                </div>
+                <div>
+                  <FeedStorePicker title="使用 RSSHub 实例" value={selectedInstance?.id ?? ''}
+                    disabled={!instances.some((item) => item.enabled)}
+                    options={instances.filter((item) => item.enabled).map((item) => ({ id: item.id, label: item.name + ' · ' + new URL(item.url).hostname }))}
+                    onChange={(id) => {
+                      previewController.current?.abort()
+                      setPreview(null)
+                      setSelectedInstanceId(id)
+                    }}
+                  />
+                </div>
+                {routeResolution?.missing.length ? (
+                  <p role="status" className="text-[11.5px] text-cinnabar-soft">还需填写：{routeResolution.missing.join('、')}</p>
+                ) : null}
+              </section>
+            ) : null}
 
             <section className="space-y-3.5 rounded-2xl border border-haze bg-ink-raised/75 p-4 shadow-[var(--shadow-lift)]">
               <div>
@@ -416,7 +554,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                 </div>
                 <button
                   type="button"
-                  disabled={previewing}
+                  disabled={previewing || !effectiveFeedUrl}
                   onClick={() => void runPreview()}
                   className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full border border-cinnabar/40 bg-cinnabar/10 px-3.5 text-[12px] text-cinnabar-soft transition-colors hover:bg-cinnabar/16 disabled:opacity-40"
                 >
@@ -487,6 +625,19 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             </div>
           </div>
         </SettingsShell>
+      </div>
+    ) : null}
+
+    {rebindSource ? (
+      <div className="absolute inset-0 z-50 bg-ink" style={{ paddingBottom: 'var(--sab)' }}>
+        <RssHubSubscriptionRebindScreen source={rebindSource} instances={instances}
+          onChange={onUpdateSubscription} onBack={() => setRebindSource(null)} />
+      </div>
+    ) : null}
+
+    {showInstances && onUpdateRssHubInstances ? (
+      <div className="absolute inset-0 z-50 bg-ink" style={{ paddingBottom: 'var(--sab)' }}>
+        <RssHubInstancesScreen instances={instances} onChange={onUpdateRssHubInstances} onBack={() => setShowInstances(false)} />
       </div>
     ) : null}
 

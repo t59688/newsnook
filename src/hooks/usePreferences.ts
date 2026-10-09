@@ -12,6 +12,7 @@ import {
 } from '../features/translation/native'
 import { isLocalTranslationProviderId } from '../features/translation/types'
 import { setRuntimeProxyPrefs } from '../lib/http'
+import { setRuntimeRssHubInstances } from '../features/rsshub/fetch'
 import { setRuntimeWifiOnlyAutoLoadMedia } from '../lib/mediaLoadRuntime'
 import { loadPreferences, savePreferences } from '../lib/storage'
 import { applyEinkMode } from '../lib/eink'
@@ -99,6 +100,7 @@ export function usePreferences(): PreferencesApi {
     void persistRuntimeSecrets(prefs)
     applyTypography(prefs)
     setRuntimeProxyPrefs(prefs.proxy)
+    setRuntimeRssHubInstances(prefs.rsshubInstances)
     setRuntimeWifiOnlyAutoLoadMedia(Boolean(prefs.wifiOnlyAutoLoadMedia))
   }, [prefs])
 
