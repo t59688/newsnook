@@ -11,7 +11,10 @@ import { BookmarksView, NotificationsView, SearchView } from './CommunityViews'
 import { DiscoverView } from './DiscoverView'
 import { createLinuxDoDiscoveryCache } from './discoveryCache'
 import { createLinuxDoSearchCache } from './searchCache'
-import { UserProfileView } from './UserProfileView'
+import { UserProfileView, type UserProfileTab } from './UserProfileView'
+import type { LinuxDoProfileDraft } from '../people/sections'
+import { decodePost } from '../api/decode'
+import { linuxDoEndpoints } from '../api/endpoints'
 import { AccountView } from './AccountView'
 import { TrustLevelView } from '../connect/TrustLevelView'
 import { verifyLinuxDoBrowserSession } from '../session/native'
@@ -21,6 +24,7 @@ import {
   linuxDoFeeds as feeds,
   linuxDoNotifications as notificationsApi,
   linuxDoTopics as topicsApi,
+  linuxDoDrafts as draftsApi,
 } from '../runtime'
 import { TopicCard } from './shared'
 import { retryAfterVerification } from './feedModel'
@@ -40,7 +44,7 @@ type Route =
   | { kind: 'discover'; scope?: LinuxDoDiscoveryScope }
   | { kind: 'notifications' }
   | { kind: 'messages' }
-  | { kind: 'user'; username: string; tab?: 'badges'; badgeId?: number }
+  | { kind: 'user'; username: string; tab?: UserProfileTab; badgeId?: number }
   | { kind: 'bookmarks' }
   | { kind: 'trust' }
   | { kind: 'account' }
@@ -591,6 +595,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
   const [composerInitialRaw, setComposerInitialRaw] = useState('')
   const [composerReplyTo, setComposerReplyTo] = useState<number | undefined>()
   const [composerEditPost, setComposerEditPost] = useState<LinuxDoPost | undefined>()
+  const [composerDraft, setComposerDraft] = useState<LinuxDoProfileDraft | undefined>()
   const [topicPostMutation, setTopicPostMutation] = useState<LinuxDoPost | undefined>()
   const [boostPost, setBoostPost] = useState<LinuxDoPost | null>(null)
   const [workspaceError, setWorkspaceError] = useState('')
@@ -740,6 +745,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
 
   const closeComposer = useCallback(() => {
     setComposerOpen(false)
+    setComposerDraft(undefined)
     setComposerInitialRaw('')
     setComposerReplyTo(undefined)
     setComposerEditPost(undefined)
@@ -884,13 +890,32 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         ) : route.kind === 'messages' ? (
           <PrivateMessagesView onVerify={verify} onLogin={() => navigate({ kind: 'account' })} key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} cacheRef={privateMessagesCacheRef} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onUnreadChange={applyNotificationUnread} onError={setWorkspaceError} />
         ) : route.kind === 'user' ? (
-          <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} />
+          <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} session={session} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} onResumeDraft={async (draft) => {
+            if (draft.key.startsWith('new_private_message')) throw new Error('新私信草稿暂不支持在 App 中编辑')
+            const owner = api.sessionSnapshot().currentUser?.id
+            if (!session.authenticated || owner !== session.currentUser?.id) throw new Error('请重新登录后打开草稿')
+            const snapshot = await draftsApi.get(draft.key)
+            const data = snapshot.data
+            if (!data) throw new Error('草稿已被移除或无法读取，请刷新列表')
+            if (!['createTopic', 'reply', 'edit'].includes(data.action)) throw new Error('此类型草稿暂不支持在 App 中编辑')
+            if (data.action === 'reply' && !draft.topicId) throw new Error('草稿缺少回复主题，无法恢复')
+            if (data.action === 'edit' && !data.postId) throw new Error('草稿缺少编辑帖子，无法恢复')
+            const topic = draft.topicId ? await topicsApi.get(draft.topicSlug || 'topic', draft.topicId) : undefined
+            const post = data.action === 'edit' && data.postId ? decodePost(await api.getJson(linuxDoEndpoints.post(data.postId), { auth: 'required' })) : undefined
+            if (owner !== api.sessionSnapshot().currentUser?.id) throw new Error('账号已切换，请重新打开草稿')
+            setComposerTopic(topic)
+            setComposerEditPost(post)
+            setComposerInitialRaw(data.reply)
+            setComposerReplyTo(data.reply_to_post_number)
+            setComposerDraft({ ...draft, sequence: snapshot.sequence, data })
+            setComposerOpen(true)
+          }} />
         ) : route.kind === 'bookmarks' ? (
           <BookmarksView session={session} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} />
         ) : route.kind === 'trust' ? (
           <TrustLevelView session={session} />
         ) : (
-          <AccountView onPrivateMessages={() => navigate({ kind: 'messages' })} session={session} onSession={applyWorkspaceSession} onBookmarks={() => navigate({ kind: 'bookmarks' })} onProfile={(username) => navigate({ kind: 'user', username })} onTrustLevel={() => navigate({ kind: 'trust' })} />
+          <AccountView onPrivateMessages={() => navigate({ kind: 'messages' })} session={session} onSession={applyWorkspaceSession} onBookmarks={() => navigate({ kind: 'bookmarks' })} onProfile={(username, tab) => navigate({ kind: 'user', username, tab })} onTrustLevel={() => navigate({ kind: 'trust' })} />
         )}
       </div>
 
@@ -960,7 +985,8 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         </button>
       </nav> : null}
 
-      <LinuxDoComposer open={composerOpen} topic={composerTopic} session={session} initialRaw={composerInitialRaw} replyToPostNumber={composerReplyTo} editPost={composerEditPost} requestCloseRef={composerRequestCloseRef} onClose={closeComposer} onSent={(created, kind) => {
+      <LinuxDoComposer open={composerOpen} topic={composerTopic} session={session} initialRaw={composerInitialRaw} replyToPostNumber={composerReplyTo} editPost={composerEditPost} resumedDraft={composerDraft} requestCloseRef={composerRequestCloseRef} onClose={closeComposer} onSent={(created, kind) => {
+        setComposerDraft(undefined)
         if (kind === 'reply') {
           setTopicPostMutation(created)
         } else if (created.topicId) {
@@ -969,7 +995,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
           feedCacheRef.current.latest = emptyFeedCacheEntry()
           setRoute({ kind: 'feed', mode: 'latest' })
         }
-      }} onEdited={(updated) => { setTopicPostMutation(updated); setComposerOpen(false); setComposerEditPost(undefined) }} />
+      }} onEdited={(updated) => { setTopicPostMutation(updated); setComposerOpen(false); setComposerEditPost(undefined); setComposerDraft(undefined) }} />
 
       {boostPost ? (
         <LinuxDoBoostComposer

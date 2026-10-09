@@ -10,6 +10,7 @@ export interface LinuxDoUser {
   unreadNotifications?: number
   allUnreadNotificationsCount?: number
   canUseTemplates?: boolean
+  canAssignGlobally?: boolean
 }
 
 export interface LinuxDoCategory {

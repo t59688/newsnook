@@ -45,6 +45,7 @@ import { applyLinuxDoTopicReadProgress, linuxDoOpeningUnreadFloor } from '../top
 import { LINUXDO_UPLOAD_BATCH_LIMIT } from '../upload/service'
 import { adjacentLinuxDoPostIds, linuxDoServerResumePosition, linuxDoTopicPositionOf, type LinuxDoTopicPosition } from '../topic/readingPosition'
 import { useTopicPosition } from './useTopicPosition'
+import type { LinuxDoProfileDraft } from '../people/sections'
 
 async function openExternal(url: string): Promise<void> {
   try {
@@ -207,6 +208,7 @@ export function LinuxDoComposer({
   editPost,
   onEdited,
   requestCloseRef,
+  resumedDraft,
 }: {
   open: boolean
   topic?: LinuxDoTopic
@@ -218,6 +220,7 @@ export function LinuxDoComposer({
   editPost?: LinuxDoPost
   onEdited?: (post: LinuxDoPost) => void
   requestCloseRef?: MutableRefObject<(() => void) | null>
+  resumedDraft?: LinuxDoProfileDraft
 }) {
   const [title, setTitle] = useState('')
   const [raw, setRaw] = useState('')
@@ -276,10 +279,17 @@ export function LinuxDoComposer({
       return
     }
     const action = editPost ? 'edit' : topic ? 'reply' : 'createTopic'
-    const key = linuxDoDrafts.keyFor({ action, topicId: topic?.id, postId: editPost?.id })
+    const key = resumedDraft?.key ?? linuxDoDrafts.keyFor({ action, topicId: topic?.id, postId: editPost?.id })
     setDraftKey(key)
     if (initialRaw) setRaw((previous) => previous || initialRaw)
-    if (session.authenticated) {
+    if (resumedDraft?.data) {
+      setDraftSequence(resumedDraft.sequence)
+      draftSequenceRef.current = resumedDraft.sequence
+      setRaw(resumedDraft.data.reply)
+      setTitle(resumedDraft.data.title || '')
+      setCategoryId(resumedDraft.data.categoryId)
+      setSelectedTags(decodeTagNames(resumedDraft.data.tags || []))
+    } else if (session.authenticated) {
       void linuxDoDrafts.get(key).then((snapshot) => {
         setDraftSequence(snapshot.sequence)
         draftSequenceRef.current = snapshot.sequence
@@ -297,7 +307,7 @@ export function LinuxDoComposer({
         setTags(nextTags)
       }).catch(() => undefined)
     }
-  }, [open, topic, session.authenticated, initialRaw, editPost])
+  }, [open, topic, session.authenticated, initialRaw, editPost, resumedDraft])
 
   useEffect(() => {
     if (!open || !session.authenticated || !draftKey || (!raw.trim() && !title.trim())) return

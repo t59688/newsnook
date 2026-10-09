@@ -651,6 +651,18 @@ Android 社区工作区的「最新」「新」「未读」列表收到对应频
 
 点击提醒会回到顶部，重新拉取当前频道第一页并重置旧分页。刷新成功后清除本次已处理的提醒；刷新失败可再次点击，刷新期间新收到的更新继续保留。前台通常每 15 秒检查一次，切到后台暂停，服务器限流或网络失败时延后重试。「热门」「排行榜」不使用最新频道的更新计数。
 
+## Linux.do 个人主页
+
+在社区工作区的「我的 → 个人主页」查看话题、回复、赞、Boosts、回应、投票、已解决、徽章与概览；查看本人时还可进入已读、草稿、待处理和书签。手机上横向滑动栏目条可查看后面的栏目。
+
+- **草稿**：读取 Linux.do 服务端草稿，显示正文预览；点「继续编辑」恢复标题、分类、标签和回复目标，继续使用同一草稿键保存。「我的 → 草稿」也可直接进入。私信等当前编辑器不支持的草稿会提示原因，不转换成普通话题。
+- **待处理**：显示等待上游审核的话题或回复；尚未发布的新话题没有可打开的主题地址。
+- **回应**：显示自己发出的表情回应，使用 Reactions 插件接口；「收到回复」保留原来的回复活动列表。
+- **已指定 / 投票 / 已解决**：读取对应 Discourse 插件列表；已指定按账号权限显示，投票指话题投票，已解决指自己被采纳的答案。点回应或答案可在 App 内定位对应楼层。
+- 新栏目支持刷新和服务端分页；加载失败可重试，分页失败保留已加载内容。本人栏目不向其他用户展示，退出或切换账号会清除该列表中的私有内容。这些列表不进入 NewsNook 公共缓存或云同步。
+
+实现依据为 Discourse 的 [个人页原生路由](https://github.com/discourse/discourse/tree/main/frontend/discourse/app/routes/user-activity)及官方 [Assign](https://github.com/discourse/discourse/tree/main/plugins/discourse-assign)、[Reactions](https://github.com/discourse/discourse/tree/main/plugins/discourse-reactions)、[Topic Voting](https://github.com/discourse/discourse/tree/main/plugins/discourse-topic-voting)、[Solved](https://github.com/discourse/discourse/tree/main/plugins/discourse-solved) 插件。实际可见内容与权限以 Linux.do 返回结果为准。
+
 ## Linux.do 个人私信
 
 Android 中登录 Linux.do 后，可从社区工作区的「我的 → 个人私信」或「通知 → 私信」进入。
