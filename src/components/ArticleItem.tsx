@@ -486,12 +486,11 @@ export const LeadStory = memo(function LeadStory({
           data-reveal={revealed ? undefined : true}
           type="button"
           onClick={() => onOpen(article)}
-          className={`lead-hero group text-left ${framed ? 'is-framed' : ''} ${variant === 'auto' ? 'lg:hidden' : ''}`}
+          className={`lead-hero h-[13.75rem] sm:h-[15rem] group text-left ${framed ? 'is-framed' : ''} ${variant === 'auto' ? 'lg:hidden' : ''}`}
         >
           <InkImage
             src={cover || article.image}
             eager
-            collapseOnError
             className={`h-[13.75rem] w-full sm:h-[15rem] ${
               read ? 'opacity-[0.78] grayscale-[0.12] saturate-[0.9]' : 'opacity-100'
             }`}

@@ -22,6 +22,7 @@ import {
   openInstallSettings,
   resolveOppositeFlavor,
   resolvePackageFlavor,
+  resolveSupportedAbis,
   setManualMessage,
   subscribeAppUpdateUi,
 } from './service'
@@ -450,7 +451,8 @@ export function useAppUpdate({ settingsOpen }: Options) {
     const target = resolveOppositeFlavor(resolvePackageFlavor())
     setFlavorBusy(true)
     setFlavorHint('正在查找安装包…')
-    const result = await fetchReleaseApkForFlavor(__APP_VERSION__, target)
+    const supportedAbis = await resolveSupportedAbis(target)
+    const result = await fetchReleaseApkForFlavor(__APP_VERSION__, target, supportedAbis)
     setFlavorBusy(false)
     if (result.status === 'no-asset') {
       setFlavorHint('当前版本暂无对应安装包')

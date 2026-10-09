@@ -18,6 +18,7 @@ import {
   ZhihuErrorBanner,
   ZhihuLoadingState,
 } from './ZhihuUi'
+import { formatZhihuHotMetric } from './ZhihuUiUtils'
 
 interface Props {
   mode: ZhihuFeedMode
@@ -63,20 +64,20 @@ function ZhihuFeedPeek({
 }) {
   if (items.length === 0) {
     return (
-      <div className="space-y-3 px-3 sm:px-5" aria-hidden>
+      <div className="space-y-2.5 px-3 sm:px-5" aria-hidden>
         {Array.from({ length: 7 }, (_, index) => (
           <div
             key={index}
-            className="overflow-hidden rounded-2xl border border-haze/55 bg-ink-raised/36 p-3.5 sm:p-4"
+            className="overflow-hidden rounded-2xl border border-haze/45 bg-ink-raised/30 p-3.5 sm:p-4"
           >
             <div className="flex gap-3.5">
               <div className="min-w-0 flex-1 space-y-2.5">
-                <div className="h-5 w-[86%] rounded-md bg-haze/55" />
-                <div className="h-3.5 w-full rounded bg-haze/40" />
-                <div className="h-3.5 w-[74%] rounded bg-haze/35" />
-                <div className="h-3 w-16 rounded bg-haze/30" />
+                <div className="h-5 w-[86%] rounded-md bg-haze/50" />
+                <div className="h-3.5 w-full rounded bg-haze/35" />
+                <div className="h-3.5 w-[74%] rounded bg-haze/30" />
+                <div className="h-3 w-16 rounded bg-haze/25" />
               </div>
-              {index % 2 === 0 && <div className="aspect-[4/3] w-[31%] max-w-28 shrink-0 rounded-xl bg-haze/45" />}
+              {index % 2 === 0 && <div className="aspect-[4/3] w-[28%] max-w-24 shrink-0 rounded-xl bg-haze/40 sm:max-w-32" />}
             </div>
           </div>
         ))}
@@ -90,13 +91,15 @@ function ZhihuFeedPeek({
   }
 
   return (
-    <div className="space-y-3 px-3 sm:px-5" aria-hidden>
-      {items.slice(0, 60).map((item) => (
+    <div className="space-y-2.5 px-3 sm:px-5" aria-hidden>
+      {items.slice(0, 60).map((item, index) => (
         <ZhihuContentRow
           key={`${mode}:${item.ref.kind}:${item.ref.id}`}
           item={item}
           onOpen={() => undefined}
           compact
+          hotRank={mode === 'hot' ? index + 1 : undefined}
+          hotMetric={mode === 'hot' ? formatZhihuHotMetric(item.recommendationReason, item.voteupCount) ?? undefined : undefined}
           showReason={false}
         />
       ))}
@@ -296,18 +299,18 @@ export function ZhihuFeedScreen({
     <div className="relative mx-auto w-full max-w-3xl">
       <PullIndicator indicatorRef={indicatorRef} phase={phase} />
 
-      <div className="sticky top-0 z-30 border-b border-haze/45 bg-ink/94 px-3 backdrop-blur-xl sm:px-5">
+      <div className="sticky top-0 z-30 border-b border-paper/[0.06] bg-ink/90 px-3 backdrop-blur-2xl sm:px-5">
         <div className="flex items-center gap-2">
           <div className="relative grid min-w-0 flex-1 grid-cols-3">
             <span
               aria-hidden
-              className="pointer-events-none absolute bottom-0 left-0 flex h-0.5 w-1/3 justify-center"
+              className="pointer-events-none absolute bottom-0 left-0 flex h-[3px] w-1/3 justify-center"
               style={{
                 transform: `translate3d(calc(${activeIndex * 100}% + ${indicatorDragPct}%), 0, 0)`,
                 transition: swipeTransition,
               }}
             >
-              <span className="h-0.5 w-7 rounded-full bg-cinnabar" />
+              <span className="h-[3px] w-6 rounded-full bg-[#0066FF] shadow-[0_2px_8px_rgba(0,102,255,0.45)]" />
             </span>
             {modes.map((item) => {
               const active = mode === item.id
@@ -319,15 +322,18 @@ export function ZhihuFeedScreen({
                   title={item.hint}
                   aria-pressed={active}
                   onClick={() => item.enabled && onModeChange(item.id)}
-                  className={`relative z-10 min-h-12 px-2 text-[13px] transition-colors duration-200 ${
+                  className={`relative z-10 flex min-h-12 items-center justify-center gap-1.5 px-2 transition-all duration-150 active:scale-95 ${
                     active
-                      ? 'font-medium text-paper'
+                      ? 'font-bold text-paper text-[15.5px]'
                       : item.enabled
-                        ? 'text-paper-faint hover:text-paper-muted'
-                        : 'cursor-not-allowed text-paper-faint/30'
+                        ? 'font-medium text-paper-muted/75 text-[14px] hover:text-paper'
+                        : 'cursor-not-allowed text-paper-faint/30 text-[13.5px]'
                   }`}
                 >
-                  {item.label}
+                  <span>{item.label}</span>
+                  {item.id === 'hot' && (
+                    <span className="size-1.5 rounded-full bg-[#FF3838] ring-2 ring-[#FF3838]/25 shadow-[0_0_6px_rgba(255,56,56,0.6)]" title="实时热榜" aria-hidden />
+                  )}
                 </button>
               )
             })}
@@ -338,9 +344,9 @@ export function ZhihuFeedScreen({
             disabled={loading}
             aria-label="刷新信息流"
             title="刷新"
-            className="hidden size-9 shrink-0 items-center justify-center rounded-lg text-paper-faint transition-colors hover:bg-paper/5 hover:text-paper disabled:opacity-35 sm:flex"
+            className="hidden size-9 shrink-0 items-center justify-center rounded-xl text-paper-faint transition-colors hover:bg-paper/5 hover:text-paper active:scale-90 disabled:opacity-35 sm:flex"
           >
-            <RefreshCw size={15} strokeWidth={1.6} className={loading ? 'animate-spin text-cinnabar-soft' : ''} />
+            <RefreshCw size={15} strokeWidth={1.8} className={loading ? 'animate-spin text-[#0066FF]' : ''} />
           </button>
         </div>
       </div>
@@ -387,10 +393,14 @@ export function ZhihuFeedScreen({
                 />
               </div>
             ) : (
-              <div className="space-y-3 px-3 sm:px-5">
-                {items.map((item) => {
+              <div className="space-y-2.5 px-3 sm:px-5">
+                {items.map((item, index) => {
                   const key = `${item.ref.kind}:${item.ref.id}`
                   const feedbackEnabled = mode === 'recommended'
+                  const hotRank = mode === 'hot' ? index + 1 : undefined
+                  const hotMetric = mode === 'hot'
+                    ? formatZhihuHotMetric(item.recommendationReason, item.voteupCount) ?? undefined
+                    : undefined
                   return (
                     <div
                       key={key}
@@ -412,6 +422,8 @@ export function ZhihuFeedScreen({
                           onOpen(next)
                         }}
                         compact
+                        hotRank={hotRank}
+                        hotMetric={hotMetric}
                         showReason={false}
                       />
                       {feedbackEnabled && (

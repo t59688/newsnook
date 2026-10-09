@@ -1,0 +1,164 @@
+/* 阅读页正文排版 */
+.reader-prose {
+  font-family: var(--reader-font-family);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  contain: style;
+}
+
+.reader-prose p,
+.reader-prose blockquote,
+.reader-prose pre,
+.reader-prose figure,
+.reader-prose .reader-table-scroll {
+  contain: layout style;
+}
+
+.reader-prose nobr {
+  white-space: normal;
+}
+
+/* 默认段落：西文与通用段落顶格排版，不首行缩进（西文排版靠段间距区分） */
+.reader-prose p {
+  margin: 0 0 var(--reader-paragraph-gap);
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line-height);
+  color: var(--tone-body-text);
+  text-indent: 0;
+}
+
+/*
+ * 仅在满足以下条件时启用中文首行缩进（--reader-text-indent）：
+ * 1. 不是全英文文章（非 [data-article-lang="en"]）且不是明确的非 CJK 段落（非 [data-cjk="false"]）
+ * 2. 或段落明确标记为 CJK 内容（[data-cjk="true"] 或 .is-cjk）
+ */
+.reader-prose:not([data-article-lang='en']) p:not([data-cjk='false']):not(.is-non-cjk),
+.reader-prose p[data-cjk='true'],
+.reader-prose p.is-cjk {
+  text-indent: var(--reader-text-indent);
+}
+
+/* Defensive fallback for cached articles created before empty-block cleanup. */
+.reader-prose p:empty,
+.reader-prose ul:empty,
+.reader-prose ol:empty {
+  display: none;
+  margin: 0;
+}
+
+/* 引用、列表、说明文字始终顶格，不缩进 */
+.reader-prose blockquote p,
+.reader-prose li p,
+.reader-prose figcaption {
+  text-indent: 0 !important;
+}
+
+.reader-prose h1,
+.reader-prose h2,
+.reader-prose h3 {
+  font-family: var(--reader-font-family);
+  font-weight: 400;
+  font-size: calc(var(--reader-font-size) * 1.3);
+  line-height: 1.4;
+  margin: 1.6em 0 0.6em;
+  color: var(--color-paper);
+}
+
+.reader-prose [data-reader-role='related'] {
+  margin-top: 2rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--color-haze);
+}
+
+.reader-prose [data-reader-role='related'] h2 {
+  margin: 0 0 0.85em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--color-paper-muted);
+}
+
+/* 相关推荐：样式挂在 data-reader-role，避免正文消毒剥掉 class 后退化成文字链接 */
+.reader-prose [data-reader-role='related'] .reader-related-grid,
+.reader-prose [data-reader-role='related-grid'] {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+}
+
+.reader-prose [data-reader-role='related'] a.reader-related-card,
+.reader-prose a[data-reader-role='related-item'] {
+  display: block;
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--color-haze) 50%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in oklab, var(--color-paper) 5%, transparent);
+  color: var(--color-paper);
+  text-decoration: none;
+  border-bottom: none;
+  overflow-wrap: normal;
+  word-break: normal;
+  transition:
+    border-color 0.2s ease,
+    background-color 0.2s ease;
+}
+
+.reader-prose [data-reader-role='related'] a.reader-related-card:hover,
+.reader-prose a[data-reader-role='related-item']:hover {
+  border-color: color-mix(in oklab, var(--color-cinnabar) 30%, transparent);
+  background: color-mix(in oklab, var(--color-paper) 10%, transparent);
+  color: var(--color-paper);
+}
+
+.reader-prose [data-reader-role='related'] .reader-related-card__media,
+.reader-prose [data-reader-role='related-media'] {
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  background: var(--color-ink);
+  width: 100%;
+}
+
+.reader-prose [data-reader-role='related'] .reader-related-card__media--empty,
+.reader-prose [data-reader-role='related-media'][data-empty='true'] {
+  background: color-mix(in oklab, var(--color-haze) 35%, var(--color-ink));
+}
+
+.reader-prose [data-reader-role='related'] .reader-related-card__media img,
+.reader-prose [data-reader-role='related-media'] img {
+  display: block;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  border-radius: 0;
+  object-fit: cover;
+  cursor: default;
+}
+
+.reader-prose [data-reader-role='related'] .reader-related-card__body,
+.reader-prose [data-reader-role='related-body'] {
+  padding: 0.625rem;
+}
+
+.reader-prose [data-reader-role='related'] .reader-related-card__title,
+.reader-prose [data-reader-role='related-title'] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: var(--color-paper);
+}
+
+/* 阅读页标题与正文内标题统一跟随用户选择的阅读字体，字号层级保持独立。 */
+.reader-title {
+  font-family: var(--reader-font-family);
+  font-size: calc(var(--reader-font-size) * 1.74);
+  line-height: 1.28;
+}
+

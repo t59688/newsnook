@@ -38,7 +38,7 @@ export function LinuxDoAvatar({
   const initial = (name || '?').trim().slice(0, 1).toUpperCase() || '?'
 
   return (
-    <span className="flex h-full w-full items-center justify-center overflow-hidden select-none">
+    <span className="flex h-full w-full items-center justify-center overflow-hidden rounded-full select-none">
       {url && !failed ? (
         <img
           src={url}
@@ -55,7 +55,7 @@ export function LinuxDoAvatar({
 }
 
 export function avatar(url?: string, name?: string): ReactNode {
-  return <LinuxDoAvatar url={url} name={name} />
+  return <LinuxDoAvatar key={url || name} url={url} name={name} />
 }
 
 export function tagGlyph(name: string): string {

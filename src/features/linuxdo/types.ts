@@ -41,6 +41,8 @@ export interface LinuxDoTopicSummary {
   slug: string
   title: string
   fancyTitle?: string
+  lastPosterUsername?: string
+  bumpedAt?: string
   postsCount: number
   replyCount: number
   views: number
@@ -90,6 +92,11 @@ export interface LinuxDoBoost {
   canFlag?: boolean
 }
 
+export interface LinuxDoPostDevice {
+  model: string
+  source: 'ios-app'
+}
+
 export interface LinuxDoPost {
   id: number
   postNumber: number
@@ -102,6 +109,7 @@ export interface LinuxDoPost {
   read?: boolean
   cooked: string
   raw?: string
+  device?: LinuxDoPostDevice
   replyToPostNumber?: number
   replyToUser?: LinuxDoReplyTarget
   reactions?: LinuxDoReaction[]
@@ -146,6 +154,8 @@ export interface LinuxDoTopic {
 }
 
 export interface LinuxDoNotification {
+  actingUserName?: string
+  actingUserAvatarTemplate?: string
   id: number
   notificationType: number
   read: boolean

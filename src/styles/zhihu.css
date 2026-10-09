@@ -1,0 +1,357 @@
+/* 知乎信息流与 NewsNook 新闻列表保持相同的可扫描密度。显式写 WebKit clamp，
+ * 不依赖 Tailwind line-clamp 在旧 Android WebView 中的生成结果。 */
+.zhihu-content-row-title,
+.zhihu-content-row-excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.zhihu-content-row-title { -webkit-line-clamp: 3; }
+.zhihu-content-row-excerpt { -webkit-line-clamp: 3; }
+.zhihu-content-row-title.is-compact,
+.zhihu-content-row-excerpt.is-compact { -webkit-line-clamp: 2; }
+
+/* 知乎社区专属视觉质感与微交互 */
+:root {
+  --zhihu-blue: #0066ff;
+  --zhihu-blue-hover: #005ce6;
+  --zhihu-blue-subtle: color-mix(in srgb, #0066ff 12%, transparent);
+  --zhihu-blue-border: color-mix(in srgb, #0066ff 28%, transparent);
+  --zhihu-blue-glow: 0 2px 10px rgba(0, 102, 255, 0.35);
+  --zhihu-hot-1: #ff3838;
+  --zhihu-hot-2: #ff7700;
+  --zhihu-hot-3: #f5a623;
+}
+
+.text-zhihu-blue {
+  color: #0066ff;
+}
+@media (prefers-color-scheme: dark) {
+  .text-zhihu-blue {
+    color: #3b82f6;
+  }
+}
+
+.bg-zhihu-blue-subtle {
+  background-color: var(--zhihu-blue-subtle);
+}
+
+.border-zhihu-blue-subtle {
+  border-color: var(--zhihu-blue-border);
+}
+
+/* 原生级 Tab 滑块指示胶囊 */
+.zhihu-tab-indicator {
+  position: absolute;
+  bottom: 1px;
+  height: 3px;
+  border-radius: 9999px;
+  background: var(--zhihu-blue);
+  box-shadow: 0 1px 6px rgba(0, 102, 255, 0.45);
+  transition: transform 240ms var(--ease-ink), width 240ms var(--ease-ink);
+}
+
+/* 原生级药丸搜索栏 */
+.zhihu-search-capsule {
+  display: flex;
+  align-items: center;
+  border-radius: 9999px;
+  background: color-mix(in srgb, var(--color-paper) 4.5%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-paper) 8%, transparent);
+  transition: all 180ms var(--ease-ink);
+}
+.zhihu-search-capsule:hover {
+  background: color-mix(in srgb, var(--color-paper) 7%, transparent);
+  border-color: color-mix(in srgb, var(--zhihu-blue) 40%, transparent);
+}
+.zhihu-search-capsule:active {
+  transform: scale(0.985);
+}
+
+/* 原生微质感内容卡片 */
+.zhihu-content-card {
+  position: relative;
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-paper) 6.5%, transparent);
+  background: color-mix(in srgb, var(--color-ink-raised) 70%, transparent);
+  padding: 0.875rem 1rem;
+  text-align: left;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: transform 160ms var(--ease-ink), background-color 160ms var(--ease-ink), border-color 160ms var(--ease-ink), box-shadow 160ms var(--ease-ink);
+  -webkit-tap-highlight-color: transparent;
+}
+.zhihu-content-card:hover {
+  border-color: color-mix(in srgb, var(--color-paper) 12%, transparent);
+  background: color-mix(in srgb, var(--color-ink-raised) 92%, transparent);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+}
+.zhihu-content-card:active {
+  transform: scale(0.988);
+}
+
+/* 原生悬浮操作岛 */
+.zhihu-action-dock {
+  border: 1px solid color-mix(in srgb, var(--color-paper) 9%, transparent);
+  background: color-mix(in srgb, var(--color-ink) 90%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.6);
+  backdrop-filter: blur(24px) saturate(1.6);
+  box-shadow: 0 16px 40px -10px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.04) inset;
+}
+
+/* 原生赞同胶囊按钮 */
+.zhihu-vote-pill {
+  transition: all 160ms var(--ease-ink);
+}
+.zhihu-vote-pill:active {
+  transform: scale(0.94);
+}
+.zhihu-vote-pill.is-active {
+  background: var(--zhihu-blue);
+  color: #ffffff;
+  box-shadow: 0 3px 12px rgba(0, 102, 255, 0.38);
+}
+
+/* 楼中楼评论树状微引线 */
+.zhihu-reply-bracket {
+  position: relative;
+}
+.zhihu-reply-bracket::before {
+  content: '';
+  position: absolute;
+  left: 0.85rem;
+  top: 2.2rem;
+  bottom: 0.75rem;
+  width: 1.5px;
+  background-color: color-mix(in srgb, var(--color-haze) 70%, transparent);
+  border-radius: 1px;
+}
+
+/* 知乎工作区正文复用 NewsNook 阅读器排版，只补知乎独有的站外引用卡片。 */
+.reader-prose.zhihu-prose a[data-reader-role='zhihu-link-card'],
+.reader-prose.zhihu-prose [data-reader-role='zhihu-video-page'] {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1rem 0 1.25rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid color-mix(in oklab, var(--color-haze) 70%, transparent);
+  border-radius: 0.9rem;
+  background: color-mix(in oklab, var(--color-paper) 5%, transparent);
+  color: var(--color-paper);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-haze) 70%, transparent);
+}
+
+.reader-prose.zhihu-prose a[data-reader-role='zhihu-link-card']:hover,
+.reader-prose.zhihu-prose [data-reader-role='zhihu-video-page']:hover {
+  border-color: color-mix(in oklab, var(--color-cinnabar) 38%, transparent);
+  background: color-mix(in oklab, var(--color-paper) 8%, transparent);
+}
+
+/* 播放器接管后，宿主只承担稳定 DOM 边界，不再保留链接卡片的 flex/padding 外观。 */
+.reader-prose.zhihu-prose [data-reader-role='zhihu-video-page'][data-reader-inline-video-mounted='true'] {
+  display: block;
+  margin: 1rem 0 1.25rem;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-video-page'][data-reader-inline-video-mounted='true'] > .reader-inline-video-page {
+  width: 100%;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-link-kind'] {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 2.5rem;
+  height: 2.25rem;
+  padding: 0 0.55rem;
+  border-radius: 0.65rem;
+  background: color-mix(in oklab, var(--color-cinnabar) 14%, transparent);
+  color: var(--color-cinnabar-soft);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-link-body'] {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-link-title'] {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: var(--color-paper);
+  font-size: 13.5px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-link-host'] {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-paper-faint);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+/* 知乎段评/段落 reaction。只有服务端 segment_infos 明确标注的字符范围才会
+ * 被注入为可点击 span；视觉上保持阅读连续性，仅用很轻的底色/下划线提示可互动。 */
+.reader-prose.zhihu-prose [data-reader-role='zhihu-segment'] {
+  cursor: pointer;
+  border-radius: 0.18em;
+  background: color-mix(in oklab, var(--color-cinnabar) 7%, transparent);
+  box-shadow: inset 0 -1px color-mix(in oklab, var(--color-cinnabar-soft) 34%, transparent);
+  -webkit-tap-highlight-color: color-mix(in oklab, var(--color-cinnabar) 16%, transparent);
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-segment']:active,
+.reader-prose.zhihu-prose [data-reader-role='zhihu-segment']:hover {
+  background: color-mix(in oklab, var(--color-cinnabar) 12%, transparent);
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-segment'][data-zhihu-segment-liked='true'] {
+  background: color-mix(in oklab, var(--color-cinnabar) 14%, transparent);
+  box-shadow: inset 0 -1px color-mix(in oklab, var(--color-cinnabar-soft) 56%, transparent);
+}
+
+.zhihu-comment-body p {
+  margin: 0 0 0.12em;
+  color: inherit;
+  line-height: inherit;
+}
+.zhihu-comment-body p:last-child { margin-bottom: 0; }
+.zhihu-comment-body a {
+  color: var(--color-cinnabar-soft);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-cinnabar-soft) 30%, transparent);
+}
+.zhihu-comment-body img {
+  display: block;
+  max-width: min(100%, 22rem);
+  height: auto;
+  margin: 0.55em 0;
+  border-radius: 0.65rem;
+}
+.reader-prose.zhihu-prose [data-reader-role='zhihu-link-image'] {
+  width: 4.4rem;
+  height: 3.25rem;
+  flex: 0 0 auto;
+  margin: 0;
+  border-radius: 0.65rem;
+  object-fit: cover;
+}
+
+/* 知乎正文图片：慢网下先显示稳定占位，完成后由 Reader 渐显；失败也不留下空洞。 */
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'] {
+  position: relative;
+  display: block;
+  min-height: 140px;
+  width: 100%;
+  margin: 0.6em 0 1.2em;
+  overflow: hidden;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-paper) 7%, transparent);
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'] > img {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0;
+  border-radius: 10px;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'] > img.async-img:not(.async-img-done) {
+  opacity: 0;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-loading'],
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-failed'] {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--color-paper-faint);
+  text-align: center;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-failed'] {
+  display: none;
+  color: var(--color-cinnabar-soft);
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'].is-failed {
+  cursor: pointer;
+  border: 1px dashed color-mix(in oklab, var(--color-cinnabar) 30%, var(--color-haze));
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'].is-decorative {
+  display: none;
+}
+
+.reader-prose.zhihu-prose img.async-img-done ~ [data-reader-role='zhihu-image-loading'],
+.reader-prose.zhihu-prose img.async-img-done ~ [data-reader-role='zhihu-image-failed'] {
+  display: none;
+}
+
+.reader-prose.zhihu-prose img.async-img-failed ~ [data-reader-role='zhihu-image-loading'] {
+  display: none;
+}
+
+.reader-prose.zhihu-prose img.async-img-failed ~ [data-reader-role='zhihu-image-failed'] {
+  display: flex;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'].is-badge {
+  display: inline-block;
+  min-height: 0;
+  width: auto;
+  margin: 0 0.2em;
+  overflow: visible;
+  background: none;
+  vertical-align: -0.15em;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'].is-badge > img {
+  position: static;
+  display: inline-block;
+  width: auto;
+  max-width: 1.75em;
+  max-height: 1.75em;
+  border-radius: 4px;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-image-host'].is-badge > [data-reader-role^='zhihu-image-'] {
+  display: none;
+}
+
+.reader-prose.zhihu-prose [data-reader-role='zhihu-link-image'] {
+  min-height: 0 !important;
+  background: color-mix(in srgb, var(--color-paper) 7%, transparent);
+}
+

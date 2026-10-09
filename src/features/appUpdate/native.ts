@@ -10,6 +10,7 @@ export type AppUpdateDownloadStatus =
 export type AppUpdateFailureKind = 'download' | 'install'
 
 type AppUpdatePlugin = {
+  getSupportedAbis(): Promise<{ abis: string[] }>
   canInstallPackages(): Promise<{ value: boolean }>
   openInstallSettings(): Promise<void>
   startDownload(options: {
@@ -17,6 +18,8 @@ type AppUpdatePlugin = {
     fileName: string
     sha256?: string
     size?: number
+    versionCode?: number
+    deltas?: import('./types').UpdateDelta[]
   }): Promise<{ downloadId: number }>
   getDownloadStatus(options: {
     downloadId: number
@@ -25,6 +28,10 @@ type AppUpdatePlugin = {
   addListener(
     eventName: 'downloadComplete',
     listenerFunc: (payload: { downloadId: number }) => void,
+  ): Promise<PluginListenerHandle>
+  addListener(
+    eventName: 'downloadRedirected',
+    listenerFunc: (payload: { fromDownloadId: number; toDownloadId: number }) => void,
   ): Promise<PluginListenerHandle>
   addListener(
     eventName: 'downloadFailed',

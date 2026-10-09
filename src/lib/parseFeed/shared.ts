@@ -67,9 +67,31 @@ export function stripTags(html: string): string {
     .trim()
 }
 
-export function firstImageIn(html: string): string | undefined {
-  const match = html.match(/<img[^>]+src=["']([^"']+)["']/i)
-  return match?.[1]
+function imageUrl(value: unknown, baseUrl?: string): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) return undefined
+  try {
+    const raw = value.trim().replace(/&amp;/gi, '&')
+    const url = new URL(raw.startsWith('//') ? `https:${raw}` : raw, baseUrl)
+    if (!/^https?:$/.test(url.protocol)) return undefined
+    if (/\.(?:pdf|zip|docx?|xlsx?|mp[34]|m4[av]|webm|ogg|wav)(?:$|[?#])/i.test(url.href)) return undefined
+    return url.href
+  } catch { return undefined }
+}
+
+export function firstImageIn(html: string, baseUrl?: string): string | undefined {
+  for (const tag of html.match(/<img\b[^>]*>/gi) ?? []) {
+    const attributes = new Map<string, string>()
+    for (const match of tag.matchAll(/\s([\w-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/g)) {
+      attributes.set(match[1].toLowerCase(), match[2] ?? match[3] ?? match[4])
+    }
+    for (const name of ['data-src', 'data-original', 'data-lazy-src', 'src', 'data-srcset', 'srcset']) {
+      const raw = attributes.get(name)
+      const candidate = name.endsWith('srcset') ? raw?.split(',')[0]?.trim().split(/\s+/)[0] : raw
+      const url = imageUrl(candidate, baseUrl)
+      if (url) return url
+    }
+  }
+  return undefined
 }
 
 export function attr(value: unknown, name: string): string | undefined {
@@ -215,42 +237,41 @@ export function videoMediaFromNode(
   }
 }
 
-export function imageOf(node: Unknown, html: string): string | undefined {
-  const candidates: Array<string | undefined> = []
-  for (const rec of enclosureRecords(node)) {
-    const url = httpUrl(rec['@_url'])
-    const type = typeof rec['@_type'] === 'string' ? rec['@_type'] : ''
-    if (
-      url &&
-      !isAudioMediaUrl(url, type) &&
-      !isDirectVideoMediaUrl(url, type) &&
-      !isLikelyEmbeddedVideoPageUrl(url)
-    ) {
-      candidates.push(url)
+export function imageOf(node: Unknown, html: string, baseUrl?: string): string | undefined {
+  const candidates: unknown[] = []
+  // Media RSS puts thumbnails either on the item or inside media:group/content.
+  const collectMedia = (record: Unknown) => {
+    candidates.push(...toArray(record.thumbnail).map((entry) => asRecord(entry)?.['@_url']))
+    for (const raw of toArray(record.content)) {
+      const content = asRecord(raw)
+      if (!content) continue
+      candidates.push(attr(content.thumbnail, '@_url'))
+      const type = text(content['@_type'])
+      const medium = text(content['@_medium'])
+      if ((!type || /^image\//i.test(type)) && (!medium || medium === 'image')) candidates.push(content['@_url'])
     }
   }
-  candidates.push(
-    attr(node.thumbnail, '@_url'),
-    attr(node.content, '@_url'),
-    attr(node.image, '@_url'),
-    attr(node.image, '@_href'),
-    text(asRecord(node.image)?.url),
-  )
+  collectMedia(node)
+  for (const raw of toArray(node.group)) {
+    const group = asRecord(raw)
+    if (group) collectMedia(group)
+  }
+  candidates.push(attr(node.image, '@_url'), attr(node.image, '@_href'), text(asRecord(node.image)?.url))
+  for (const rec of enclosureRecords(node)) {
+    const type = text(rec['@_type'])
+    if (!type || /^image\//i.test(type)) candidates.push(rec['@_url'])
+  }
   for (const raw of toArray(node.attachments)) {
     const rec = asRecord(raw)
     if (!rec) continue
-    const url = httpUrl(text(rec.url))
     const type = text(rec.mime_type) || text(rec.mimeType)
-    if (
-      url &&
-      !isAudioMediaUrl(url, type) &&
-      (/^image\//i.test(type) || /\.(?:png|jpe?g|gif|webp)(?:$|[?#])/i.test(url))
-    ) {
-      candidates.push(url)
-    }
+    if (!type || /^image\//i.test(type)) candidates.push(rec.url)
   }
-  const direct = candidates.find((value) => httpUrl(value))
-  return direct ?? firstImageIn(html)
+  for (const candidate of candidates) {
+    const url = imageUrl(candidate, baseUrl)
+    if (url && !isAudioMediaUrl(url) && !isDirectVideoMediaUrl(url) && !isLikelyEmbeddedVideoPageUrl(url)) return url
+  }
+  return firstImageIn(html, baseUrl)
 }
 
 export function buildArticle(

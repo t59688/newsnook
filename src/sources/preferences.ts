@@ -37,6 +37,7 @@ export {
   addCustomCategory,
   allRegisteredCategories,
   allRegisteredSources,
+  automaticSourceIds,
   categorySourceIds,
   defaultFeedCategoryId,
   deleteCustomCategory,

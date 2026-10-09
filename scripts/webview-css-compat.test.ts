@@ -32,5 +32,6 @@ assert.ok(applied.includes('.divide-y > :not(:last-child){'))
 assert.ok(!applied.includes(':where('))
 assert.ok(applied.includes(TW_VAR_FALLBACK_CSS))
 assert.ok(applied.includes('--tw-border-style:solid'))
+assert.ok(applied.includes('--tw-gradient-from-position:0%'))
 
 console.log('webview-css-compat: ok')

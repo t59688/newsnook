@@ -225,6 +225,8 @@ function customSourcePayload(source: NewsSource, enabled: boolean, sortRank: str
     siteUrl: source.siteUrl,
     normalizedUrl: normalizeSubscriptionUrl(source.url),
     createdAt: source.createdAt,
+    paused: source.paused === true,
+    discovery: source.discovery,
     frameworkHint: source.frameworkHint,
   }
 }

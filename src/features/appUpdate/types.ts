@@ -1,4 +1,5 @@
 export type PackageFlavor = 'cloud' | 'local'
+export type AndroidAbi = 'arm64-v8a' | 'armeabi-v7a' | 'x86' | 'x86_64'
 
 /**
  * 更新订阅通道只属于发布基础设施。
@@ -18,6 +19,16 @@ export type AppUpdatePrefs = {
   tracks: Record<UpdateTrack, UpdateTrackPrefs>
 }
 
+/** GDIFF 以源 APK 的精确 SHA-256 寻址，与业务变体和包体大小无关。 */
+export type UpdateDelta = {
+  algorithm: 'gdiff-gzip-v1'
+  fromSha256: string
+  fileName: string
+  url: string
+  sha256: string
+  size: number
+}
+
 export type LatestReleaseInfo = {
   version: string
   tagName: string
@@ -26,7 +37,10 @@ export type LatestReleaseInfo = {
   apkFileName: string
   sha256?: string
   size?: number
+  deltas?: UpdateDelta[]
   flavor: PackageFlavor
+  /** local APK 命中的设备 ABI；undefined 表示 cloud 或 universal fallback。 */
+  abi?: AndroidAbi
   /** APK 实际来自哪个发布通道。 */
   track: UpdateTrack
   /** 用户订阅的更新通道；必须与 APK 实际发布通道一致。 */

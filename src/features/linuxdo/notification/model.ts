@@ -238,3 +238,11 @@ export function resolveLinuxDoNotificationTarget(
 
   return { kind: 'detail' }
 }
+
+/** Actor fields differ from the topic title and notification label. */
+export function linuxDoNotificationActor(notification: LinuxDoNotification): { username?: string; name?: string } {
+  return {
+    username: stringData(notification, 'display_username', 'username', 'original_username'),
+    name: notification.actingUserName || stringData(notification, 'display_name'),
+  }
+}

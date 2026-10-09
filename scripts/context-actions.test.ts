@@ -1,3 +1,4 @@
+import { readAppStyles } from './helpers/readAppStyles'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
@@ -77,7 +78,7 @@ assert.deepEqual(
 
 const categoryRailSource = readFileSync(new URL('../src/components/CategoryRail.tsx', import.meta.url), 'utf8')
 const sourceFilterSource = readFileSync(new URL('../src/components/SourceFilterChips.tsx', import.meta.url), 'utf8')
-const indexCss = readFileSync(new URL('../src/index.css', import.meta.url), 'utf8')
+const indexCss = readAppStyles()
 
 assert.match(categoryRailSource, /custom-long-press-target/, '分类长按目标必须禁止系统文本选择')
 assert.match(sourceFilterSource, /custom-long-press-target/, '信源长按目标必须禁止系统文本选择')

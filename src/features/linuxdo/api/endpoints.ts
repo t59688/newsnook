@@ -4,6 +4,7 @@ export const linuxDoEndpoints = {
   origin: ORIGIN,
   sessionCurrent: ORIGIN + '/session/current.json',
   csrf: ORIGIN + '/session/csrf.json',
+  messageBusPoll: (clientId: string) => 'https://ping.ldstatic.com/message-bus/' + encodeURIComponent(clientId) + '/poll?dlp=t',
   latest: (page = 0) => ORIGIN + '/latest.json?page=' + page,
   hot: (page = 0) => ORIGIN + '/hot.json?page=' + page,
   top: (page = 0, period?: 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'yearly' | 'all') => {
@@ -11,7 +12,8 @@ export const linuxDoEndpoints = {
     if (period) params.set('period', period)
     return ORIGIN + '/top.json?' + params.toString()
   },
-  newTopics: (page = 0) => ORIGIN + '/new.json?page=' + page,
+  // Keep the standalone new tab distinct from Discourse's unified new + unread view.
+  newTopics: (page = 0) => ORIGIN + '/new.json?page=' + page + '&subset=topics',
   unread: (page = 0) => ORIGIN + '/unread.json?page=' + page,
   posted: (page = 0) => ORIGIN + '/posted.json?page=' + page,
   read: (page = 0) => ORIGIN + '/read.json?page=' + page,
@@ -50,6 +52,7 @@ export const linuxDoEndpoints = {
   posts: (topicId: number, ids: number[]) =>
     ORIGIN + '/t/' + topicId + '/posts.json?' + ids.map((id) => 'post_ids[]=' + encodeURIComponent(String(id))).join('&'),
   search: (q: string, page = 1) => ORIGIN + '/search.json?q=' + encodeURIComponent(q) + '&page=' + page,
+  searchUsers: (term: string) => ORIGIN + '/u/search/users.json?' + new URLSearchParams({ term: term.replace(/^@/, ''), limit: '20' }),
   user: (username: string) => ORIGIN + '/u/' + encodeURIComponent(username) + '.json',
   userSummary: (username: string) => ORIGIN + '/u/' + encodeURIComponent(username) + '/summary.json',
   userBadges: (username: string) => ORIGIN + '/user-badges/' + encodeURIComponent(username) + '.json',
@@ -63,9 +66,13 @@ export const linuxDoEndpoints = {
     if (filter) params.set('filter', filter)
     return ORIGIN + '/notifications.json?' + params.toString()
   },
-  privateMessages: (username: string, page = 0) => {
+  privateMessageMenu: (username: string) => ORIGIN + '/u/' + encodeURIComponent(username) + '/user-menu-private-messages.json',
+  privateMessages: (username: string, page = 0, filter: 'inbox' | 'new' | 'unread' | 'sent' | 'archive' = 'inbox', groupName?: string) => {
     const params = page > 0 ? '?page=' + encodeURIComponent(String(page)) : ''
-    return ORIGIN + '/topics/private-messages/' + encodeURIComponent(username) + '.json' + params
+    const suffix = filter === 'inbox' ? '' : '-' + filter
+    const user = encodeURIComponent(username)
+    if (groupName) return ORIGIN + '/topics/private-messages-group/' + user + '/' + encodeURIComponent(groupName) + (filter === 'inbox' ? '' : '/' + filter) + '.json' + params
+    return ORIGIN + '/topics/private-messages' + suffix + '/' + user + '.json' + params
   },
   markNotificationsRead: ORIGIN + '/notifications/mark-read',
   topicTimings: ORIGIN + '/topics/timings',

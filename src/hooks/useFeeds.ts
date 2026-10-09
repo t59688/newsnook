@@ -286,6 +286,7 @@ export function useFeeds(
   onCacheChange?: () => void,
   extraSources?: NewsSource[],
   refreshContextKey?: string,
+  automaticFetchIds: string[] = enabledIds,
 ): FeedsResult {
   const initialRef = useRef<InitialFeeds | null>(null)
   if (!initialRef.current) initialRef.current = readInitialFeeds(enabledIds, extraSources)
@@ -307,6 +308,8 @@ export function useFeeds(
   enabledIdsRef.current = enabledIds
   const extraSourcesRef = useRef(extraSources)
   extraSourcesRef.current = extraSources
+  const automaticFetchIdsRef = useRef(automaticFetchIds)
+  automaticFetchIdsRef.current = automaticFetchIds
   const getSource = useCallback((id: string) => findSource(id, extraSourcesRef.current), [])
   /** client-catalog：完整解析结果仅驻内存，列表窗口从此切片 */
   const catalogRef = useRef<Map<string, Article[]>>(new Map())
@@ -345,6 +348,7 @@ export function useFeeds(
 
   // 分类切换时按需从本地缓存补齐，不在首屏同步扫全部源
   const enabledKey = enabledIds.join('|')
+  const automaticFetchKey = automaticFetchIds.join('|')
   useEffect(() => {
     const merged = mergeCachedSources(
       bucketsRef.current,
@@ -488,6 +492,14 @@ export function useFeeds(
     })
     setPagingTick((tick) => tick + 1)
   }, [])
+
+  useLayoutEffect(() => {
+    // 分类/预设/暂停导致自动网络作用域变化时，旧请求的迟到响应不得落回新作用域。
+    cancelActiveRefresh()
+    prefetchControllerRef.current?.abort()
+    prefetchControllerRef.current = null
+    stopLoadMore()
+  }, [automaticFetchKey, cancelActiveRefresh, stopLoadMore])
 
   /** Pull-to-refresh updates the head and preserves previously loaded history. */
   const refresh = useCallback(async (sourceIds?: string[]) => {
@@ -668,7 +680,7 @@ export function useFeeds(
       if (refreshInFlightRef.current || loadMoreInFlightRef.current) return
       const targets = [...new Set(sourceIds)].filter((id) => {
         const source = getSource(id)
-        if (!source || !sourceSupportsPaging(source)) return false
+        if (!source || source.paused || !sourceSupportsPaging(source)) return false
         return pagingRef.current[id]?.phase !== 'exhausted'
       })
       if (!targets.length) return
@@ -922,7 +934,7 @@ export function useFeeds(
         if (anyAdded) onCacheChange?.()
       }
     },
-    [applyHeadPage, commitBucket, ensureClientCatalog, markBucketReady, onCacheChange, updatePaging],
+    [applyHeadPage, commitBucket, ensureClientCatalog, getSource, markBucketReady, onCacheChange, updatePaging],
   )
 
   useEffect(() => {
@@ -934,8 +946,8 @@ export function useFeeds(
   }, [])
 
   useEffect(() => {
-    void prefetchMissing(enabledIdsRef.current)
-  }, [enabledKey, prefetchMissing])
+    void prefetchMissing(automaticFetchIdsRef.current)
+  }, [automaticFetchKey, prefetchMissing])
 
   const articles = useMemo(() => {
     const list: Article[] = []

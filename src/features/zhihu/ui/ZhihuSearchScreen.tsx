@@ -63,14 +63,15 @@ function FilterChip({ icon, label, onClick }: { icon: ReactNode; label: string; 
     <button
       type="button"
       onClick={onClick}
-      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-haze/80 bg-ink-raised/60 px-3 text-[11px] text-paper-muted transition-colors hover:border-paper-faint/50 hover:bg-ink-raised hover:text-paper"
+      className="flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-haze/60 bg-ink-raised/50 px-3.5 text-[11.5px] font-medium text-paper-muted transition-colors hover:border-sky-500/40 hover:bg-ink-raised hover:text-sky-500 active:scale-95"
     >
       <span className="text-paper-faint">{icon}</span>
       <span>{label}</span>
-      <ChevronDown size={12} strokeWidth={1.6} className="text-paper-faint" />
+      <ChevronDown size={12} strokeWidth={1.8} className="text-paper-faint" />
     </button>
   )
 }
+
 
 export function ZhihuSearchScreen({
   initialQuery,
@@ -211,12 +212,12 @@ export function ZhihuSearchScreen({
   return (
     <div className="mx-auto w-full max-w-3xl px-4 pb-28 pt-4 sm:px-6">
       <form onSubmit={submit} className="flex items-center gap-2">
-        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-haze bg-ink-raised/60 px-3.5 transition-colors focus-within:border-cinnabar/45 focus-within:bg-ink-raised">
-          <Search size={15} strokeWidth={1.7} className="shrink-0 text-paper-muted" />
+        <label className="flex min-h-11 min-w-0 flex-1 items-center gap-2.5 rounded-full border border-haze/60 bg-ink-raised/50 px-4 transition-[border-color,background-color] focus-within:border-sky-500/50 focus-within:bg-ink-raised/80">
+          <Search size={15} strokeWidth={2} className="shrink-0 text-sky-500" />
           <input
             value={input}
             onChange={(event) => setInput(event.target.value)}
-            placeholder="搜索知乎"
+            placeholder="搜索知乎内容、问题、答主…"
             autoFocus={!initialQuery}
             className="min-w-0 flex-1 bg-transparent text-[13.5px] text-paper outline-none placeholder:text-paper-faint/70"
           />
@@ -225,7 +226,7 @@ export function ZhihuSearchScreen({
               type="button"
               onClick={() => setInput('')}
               aria-label="清空搜索"
-              className="flex size-7 shrink-0 items-center justify-center rounded-lg text-paper-faint hover:bg-paper/5 hover:text-paper"
+              className="flex size-7 shrink-0 items-center justify-center rounded-full text-paper-faint hover:bg-paper/5 hover:text-paper"
             >
               <X size={14} />
             </button>
@@ -235,9 +236,9 @@ export function ZhihuSearchScreen({
           type="submit"
           aria-label="搜索"
           title="搜索"
-          className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-cinnabar/45 bg-cinnabar/12 text-cinnabar-soft transition-colors hover:bg-cinnabar/20"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-[#0066FF] text-white shadow-sm transition-[background-color,transform] hover:bg-[#005ce6] active:scale-95"
         >
-          <Search size={17} strokeWidth={1.8} />
+          <Search size={17} strokeWidth={2} />
         </button>
       </form>
 

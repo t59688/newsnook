@@ -3,8 +3,8 @@ import { resetBodyScrollLock } from './bodyScrollLock'
 /**
  * 撤销手势识别阶段临时创建的合成层。
  *
- * Android WebView 在原生滚动已经接管后，如果滚动节点或其祖先仍保留一个
- * `translate3d(0, 0, 0)`，偶尔会把后续触摸留在失效的合成滚动层中。
+ * 手势把滚动交还浏览器后，不再保留仅用于拖动的 transform/transition。
+ * 这里只清理样式；不复位处理器的触点状态，也不能证明原生滚动状态已恢复。
  */
 export function clearGestureCompositorStyles(element: HTMLElement): void {
   element.style.transform = ''
@@ -27,10 +27,10 @@ export function recoverScrollSurface(element: HTMLElement | null | undefined): v
 }
 
 /**
- * 在离开图片/视频等强手势场景后唤醒页面滚动。
+ * 在离开图片/视频等强手势场景后还原页面的临时手势样式。
  *
- * 清理列表/阅读器上的 transform 合成层残留（Android WebView 触摸序列被打断后
- * 的经典卡死）。关闭整页阅读器时请额外调用 `resetBodyScrollLock()`。
+ * 清理列表/阅读器上的 transform 等残留。触点中断仍由各手势处理器负责；
+ * 关闭整页阅读器时请额外调用 `resetBodyScrollLock()`。
  */
 export function recoverAppScrollSurfaces(): void {
   document.documentElement.classList.remove('is-video-fullscreen')

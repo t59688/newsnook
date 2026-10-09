@@ -18,6 +18,7 @@ const { PresetSwitcher } = await import('../src/components/PresetSwitcher')
 
 const root = createRoot(document.getElementById('root')!)
 let manageCalls = 0
+let settingsCalls = 0
 let selected = ''
 let siteSelected = ''
 
@@ -30,7 +31,7 @@ const sites = [
   { id: 'linuxdo', name: 'Linux.do', description: '技术交流与开源分享', active: false },
 ]
 
-async function render(items = builtins) {
+async function render(items = builtins, siteItems = sites) {
   await act(async () => {
     root.render(
       <PresetSwitcher
@@ -38,7 +39,8 @@ async function render(items = builtins) {
         items={items}
         onSelect={(id) => { selected = id }}
         onManage={() => { manageCalls += 1 }}
-        siteItems={sites}
+        onOpenSettings={() => { settingsCalls += 1 }}
+        siteItems={siteItems}
         onSelectSite={(id) => { siteSelected = id }}
         variant="pill"
       />,
@@ -55,6 +57,7 @@ function buttonWithText(text: string): HTMLButtonElement {
 }
 
 async function click(button: HTMLButtonElement) {
+  assert.ok(button, 'requested button must exist')
   await act(async () => {
     button.click()
   })
@@ -87,6 +90,12 @@ try {
   assert.ok(document.querySelectorAll('[role="tab"]').length === 2, 'upper section must have exactly two preset tabs')
   assert.ok(document.querySelectorAll('svg').length >= 8, 'major switcher controls/cards must use icons')
 
+  await click(document.querySelector('button[aria-label="设置"]') as HTMLButtonElement)
+  assert.equal(settingsCalls, 1, 'settings shortcut should open the settings overview')
+  assert.equal(document.querySelector('[role="dialog"]'), null, 'settings shortcut should dismiss the switcher')
+  assert.equal(manageCalls, 0, 'settings shortcut must remain separate from preset management')
+  await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
+
   await click(buttonWithText('自定义'))
   assert.ok(document.body.textContent?.includes('还没有自定义预设'))
   assert.ok(document.body.textContent?.includes('新建预设'))
@@ -103,6 +112,12 @@ try {
   await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
   await click(buttonWithText('知乎'))
   assert.equal(siteSelected, 'zhihu', 'community entry must switch site workspace, not preset')
+
+  await render(builtins, [])
+  await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
+  assert.ok(!document.body.textContent?.includes('社区入口'), 'empty web site list must hide the community section')
+  assert.ok(!document.body.textContent?.includes('知乎'), 'web switcher must not expose the Zhihu workspace entry')
+  assert.ok(!document.body.textContent?.includes('Linux.do'), 'web switcher must not expose the Linux.do workspace entry')
 
   const customItems = [
     ...builtins.map((item) => ({ ...item, active: false })),

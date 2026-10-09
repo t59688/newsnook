@@ -141,8 +141,10 @@ cases.push(['a CSRF rotation after browser recovery still gets one bounded token
 
 cases.push(['diagnostics distinguish a real first-party retry from a synthetic browser request', async () => {
   const { topics } = setup()
+  recover = async () => ({ ready: true, username: 'test-reader', userId: 9, csrf: 'token' })
   handle = async request => request.method === 'GET' ? json({ csrf: 'token' }) : { ...challenge(), transport: 'browser-firstparty' }
   await assert.rejects(topics.reportTimings(1, 5000, { 1: 5000 }), (error: any) => error.diagnostics?.transport === 'browser-firstparty')
+  assert.equal(calls.filter(request => request.method === 'POST').length, 1, 'an already first-party challenge must not replay the same write')
 }])
 
 cases.push(['a confirmed logged-out browser is reported as login-required, not another Cloudflare challenge', async () => {

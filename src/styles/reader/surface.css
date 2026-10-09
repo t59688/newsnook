@@ -1,0 +1,14 @@
+/* The shadow is only painted while the reader is revealing the page beneath it. */
+.reader-swipe-surface {
+  touch-action: pan-y;
+  overscroll-behavior-x: none;
+}
+
+.reader-font-pinch-surface {
+  touch-action: pan-y;
+}
+
+.reader-swipe-surface[data-swipe-back-active='true'] {
+  box-shadow: -18px 0 38px rgb(0 0 0 / 38%);
+}
+

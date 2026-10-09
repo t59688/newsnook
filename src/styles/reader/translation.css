@@ -1,0 +1,86 @@
+/* 对比翻译：译文紧跟原段落，但保持独立的视觉节奏。 */
+.reader-translation {
+  display: block;
+  margin-top: 0.55em;
+  padding-top: 0.45em;
+  border-top: 1px solid color-mix(in oklab, var(--color-cinnabar) 16%, transparent);
+  font-family: var(--reader-font-family);
+  font-size: calc(var(--reader-font-size) * 0.94);
+  font-style: normal;
+  font-weight: 400;
+  line-height: calc(var(--reader-line-height) * 0.94);
+  color: var(--color-paper-muted);
+  text-indent: 0;
+}
+
+.reader-title-translation {
+  margin: 0.55em 0 0;
+  font-family: var(--reader-font-family);
+  font-size: calc(var(--reader-font-size) * 1.08);
+  line-height: 1.55;
+  color: var(--color-paper-muted);
+}
+
+/* 翻译请求期间，在尚未完成翻译的段落最后一个字符后显示内联转圈，翻译完成后自动消失。
+ * 纯图片 / 媒体块不会进入翻译队列，勿显示转圈，避免「图后空转」。 */
+.reader-prose.translation-pending
+  p:not([data-translated='true']):not(:has(.reader-translation)):not(
+    :has(img, picture, video, iframe, figure, audio, object, embed)
+  )::after,
+.reader-prose.translation-pending
+  li:not(:has(p, li)):not([data-translated='true']):not(:has(.reader-translation)):not(
+    :has(img, picture, video, iframe, figure, audio, object, embed)
+  )::after,
+.reader-prose.translation-pending
+  blockquote:not([data-translated='true']):not(:has(p, li, .reader-translation)):not(
+    :has(img, picture, video, iframe, figure, audio, object, embed)
+  )::after,
+.reader-prose.translation-pending h1:not([data-translated='true']):not(:has(.reader-translation))::after,
+.reader-prose.translation-pending h2:not([data-translated='true']):not(:has(.reader-translation))::after,
+.reader-prose.translation-pending h3:not([data-translated='true']):not(:has(.reader-translation))::after {
+  content: '';
+  display: inline-block;
+  width: 0.72em;
+  height: 0.72em;
+  margin-inline-start: 0.42em;
+  border: 1.5px solid color-mix(in oklab, var(--color-cinnabar) 32%, transparent);
+  border-top-color: var(--color-cinnabar-soft);
+  border-radius: 999px;
+  vertical-align: 0.02em;
+  animation: translation-spin 720ms linear infinite;
+}
+
+/* 请求失败或超时：未成功的段落末尾保留明确但克制的失败标记，具体原因由标题区 alert 给出。 */
+.reader-prose.translation-failed
+  p:not([data-translated='true']):not(:has(.reader-translation)):not(
+    :has(img, picture, video, iframe, figure, audio, object, embed)
+  )::after,
+.reader-prose.translation-failed
+  li:not(:has(p, li)):not([data-translated='true']):not(:has(.reader-translation)):not(
+    :has(img, picture, video, iframe, figure, audio, object, embed)
+  )::after,
+.reader-prose.translation-failed
+  blockquote:not([data-translated='true']):not(:has(p, li, .reader-translation)):not(
+    :has(img, picture, video, iframe, figure, audio, object, embed)
+  )::after,
+.reader-prose.translation-failed h1:not([data-translated='true']):not(:has(.reader-translation))::after,
+.reader-prose.translation-failed h2:not([data-translated='true']):not(:has(.reader-translation))::after,
+.reader-prose.translation-failed h3:not([data-translated='true']):not(:has(.reader-translation))::after {
+  content: '译文失败';
+  display: inline-block;
+  margin-inline-start: 0.5em;
+  font-family: var(--font-mono);
+  font-size: 0.62em;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: var(--color-cinnabar-soft);
+  text-indent: 0;
+  vertical-align: 0.12em;
+}
+
+@keyframes translation-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+

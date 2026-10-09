@@ -22,7 +22,7 @@ export interface LinuxDoBrowserPreparation {
 
 interface LinuxDoSessionPlugin {
   prepareBrowserSession(): Promise<LinuxDoBrowserPreparation>
-  authenticate(options?: { url?: string }): Promise<LinuxDoSessionSnapshot>
+  authenticate(options?: { url?: string; readSyncChallenge?: boolean }): Promise<LinuxDoSessionSnapshot>
   authenticateUserApiKey(): Promise<LinuxDoSessionSnapshot>
   cancelUserApiKeyAuth(): Promise<void>
   clearUserApiKey(): Promise<void>
@@ -52,12 +52,12 @@ export async function cancelLinuxDoAuthentication(): Promise<void> {
   await NativeLinuxDoSession.cancelUserApiKeyAuth()
 }
 
-export async function verifyLinuxDoBrowserSession(url = 'https://linux.do/'): Promise<LinuxDoSessionSnapshot> {
+export async function verifyLinuxDoBrowserSession(url = 'https://linux.do/', options?: { readSyncChallenge?: boolean }): Promise<LinuxDoSessionSnapshot> {
   if (!Capacitor.isNativePlatform()) {
     window.open(url, '_blank', 'noopener,noreferrer')
     throw new Error('浏览器端无法安全复用 Linux.do 登录会话；请在 NewsNook App 中使用')
   }
-  return NativeLinuxDoSession.authenticate({ url })
+  return NativeLinuxDoSession.authenticate({ url, ...options })
 }
 
 export async function readLinuxDoSession(): Promise<LinuxDoSessionSnapshot> {

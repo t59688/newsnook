@@ -13,6 +13,7 @@ import {
   LayoutGrid,
   LayoutTemplate,
   Rss,
+  Store,
   ServerCog,
   Search,
   Type,
@@ -44,6 +45,7 @@ interface Props {
   onOpenHistory: () => void
   onOpenLocalSearch: () => void
   onOpenCustomSources: () => void
+  onOpenFeedStore: () => void
   onOpenCategories: () => void
   onOpenPresets: () => void
   onOpenTypographySettings: () => void
@@ -118,6 +120,7 @@ export function MeScreen({
   onOpenHistory,
   onOpenLocalSearch,
   onOpenCustomSources,
+  onOpenFeedStore,
   onOpenCategories,
   onOpenPresets,
   onOpenTypographySettings,
@@ -207,6 +210,12 @@ export function MeScreen({
           data-tour="me-settings"
           className="divide-y divide-haze border-y border-haze md:grid md:grid-cols-2 md:gap-px md:divide-y-0 md:bg-haze"
         >
+          <SettingsRow
+            icon={Store}
+            title="RSS 订阅商店"
+            caption="在线搜索网站与订阅地址、管理已订阅"
+            onClick={onOpenFeedStore}
+          />
           <SettingsRow
             icon={Rss}
             title="自定义订阅与 OPML"

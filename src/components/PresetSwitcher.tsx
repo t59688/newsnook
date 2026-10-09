@@ -14,6 +14,7 @@ import {
   Newspaper,
   PanelsTopLeft,
   Plus,
+  Settings,
   Settings2,
   Trophy,
   UserRound,
@@ -43,6 +44,7 @@ export interface PresetSwitcherProps {
   items: PresetSwitcherItem[]
   onSelect: (id: string) => void
   onManage: () => void
+  onOpenSettings?: () => void
   /** 独立站点工作区；与 preset 完全分离，选择时不得调用 onSelect。 */
   siteItems?: SiteSwitcherItem[]
   onSelectSite?: (id: string) => void
@@ -66,6 +68,7 @@ export function PresetSwitcher({
   items,
   onSelect,
   onManage,
+  onOpenSettings,
   siteItems = [],
   onSelectSite,
   onSites,
@@ -94,6 +97,7 @@ export function PresetSwitcher({
 
   const builtins = useMemo(() => items.filter((item) => item.builtin), [items])
   const mine = useMemo(() => items.filter((item) => !item.builtin), [items])
+  const showSiteSection = siteItems.length > 0 || Boolean(onSites && siteCount > 0)
 
   const openSwitcher = () => {
     setPresetTab(mine.some((item) => item.active) ? 'custom' : 'builtin')
@@ -143,17 +147,33 @@ export function PresetSwitcher({
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                setOpen(false)
-                onManage()
-              }}
-              className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-haze/90 bg-ink px-3 py-1.5 font-mono text-[11px] font-medium text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
-            >
-              <Settings2 size={13} strokeWidth={1.7} />
-              管理预设
-            </button>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setOpen(false)
+                  onManage()
+                }}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-haze/90 bg-ink px-3 py-1.5 font-mono text-[11px] font-medium text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
+              >
+                <Settings2 size={13} strokeWidth={1.7} />
+                管理预设
+              </button>
+              {onOpenSettings ? (
+                <button
+                  type="button"
+                  aria-label="设置"
+                  title="设置"
+                  onClick={() => {
+                    setOpen(false)
+                    onOpenSettings()
+                  }}
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-haze/90 bg-ink text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
+                >
+                  <Settings size={16} strokeWidth={1.7} />
+                </button>
+              ) : null}
+            </div>
           </div>
 
           <div className="flex min-h-0 flex-1 flex-col">
@@ -238,8 +258,8 @@ export function PresetSwitcher({
               )}
             </div>
 
-            {/* 下半区：独立社区入口。始终与布局预设分层，避免把站点工作区伪装成 preset。 */}
-            <section className="shrink-0 border-t border-haze/65 bg-ink/35 px-3.5 pt-2.5 sm:px-5">
+            {/* 下半区：独立社区入口。Web 无可用站点时整段隐藏，避免展示不可用入口。 */}
+            {showSiteSection && <section className="shrink-0 border-t border-haze/65 bg-ink/35 px-3.5 pt-2.5 sm:px-5">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="flex min-w-0 items-center gap-2">
                   <span className="flex size-7 shrink-0 items-center justify-center rounded-lg bg-cinnabar/12 text-cinnabar">
@@ -283,7 +303,7 @@ export function PresetSwitcher({
                   暂无可用社区
                 </div>
               )}
-            </section>
+            </section>}
           </div>
         </div>
       </div>,

@@ -1,0 +1,71 @@
+/* Wide tables keep their real column geometry and scroll only inside this rail. */
+.reader-table-scroll {
+  width: 100%;
+  max-width: 100%;
+  margin: 1.15em 0 1.45em;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-cinnabar) 45%, transparent) transparent;
+  touch-action: pan-x pan-y;
+}
+
+.reader-table-scroll table {
+  width: max-content;
+  min-width: 100%;
+  max-width: none;
+  border-collapse: collapse;
+  font-size: calc(var(--reader-font-size) * 0.88);
+  line-height: 1.55;
+  color: var(--tone-body-text);
+}
+
+.reader-table-scroll th,
+.reader-table-scroll td {
+  max-width: min(72vw, 28rem);
+  padding: 0.65em 0.8em;
+  border-bottom: 1px solid var(--color-haze);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: break-word;
+}
+
+.reader-table-scroll th {
+  color: var(--color-paper);
+  font-weight: 600;
+  background: color-mix(in oklab, var(--color-paper) 5%, transparent);
+}
+
+/* Preserve code formatting while containing horizontal movement to the block. */
+.reader-prose pre {
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 1.15em 0 1.45em;
+  padding: 1em 1.05em;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  border: 1px solid var(--color-haze);
+  border-radius: 10px;
+  background: var(--color-ink-raised);
+  color: var(--color-paper-muted);
+  font-family: var(--font-mono);
+  font-size: calc(var(--reader-font-size) * 0.78);
+  line-height: 1.7;
+  white-space: pre;
+  overflow-wrap: normal;
+  word-break: normal;
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--color-cinnabar) 45%, transparent) transparent;
+  touch-action: pan-x pan-y;
+}
+
+.reader-prose pre code {
+  white-space: inherit;
+  overflow-wrap: inherit;
+  word-break: inherit;
+}
+
+.reader-prose :not(pre) > code {
+  overflow-wrap: anywhere;
+}
+

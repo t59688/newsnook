@@ -1,0 +1,418 @@
+/*
+ * Chrome / Android WebView 69–87 不支持 CSS aspect-ratio。播放器不能只依赖
+ * Tailwind 的 aspect-video，否则 portal 成功挂载后仍可能塌成 0 高度。
+ * 经典 padding-top 方案作为基线；支持 aspect-ratio 的现代内核再关闭伪元素。
+ */
+.reader-video-aspect {
+  position: relative;
+  width: 100%;
+}
+
+.reader-video-aspect::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 56.25%;
+}
+
+@supports (aspect-ratio: 16 / 9) {
+  .reader-video-aspect {
+    aspect-ratio: 16 / 9;
+  }
+
+  .reader-video-aspect::before {
+    display: none;
+  }
+}
+
+/* 视频稿在嗅探完成前也保留真实播放器的空间，避免正文突然上移。 */
+.reader-video-sniff-placeholder,
+.reader-prose [data-media-pending] {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 210px;
+  aspect-ratio: 16 / 9;
+  margin: 0.8em 0 1.2em;
+  overflow: hidden;
+  border-radius: 14px;
+  background: #0c0d10;
+  color: rgb(255 255 255 / 78%);
+}
+
+.reader-video-sniff-poster {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  object-fit: cover;
+  filter: brightness(0.72);
+}
+
+/* ── 嗅探中：角落浮动药丸 ── */
+.reader-video-sniff-pill {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px 4px 8px;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 52%);
+  backdrop-filter: blur(6px);
+  color: rgb(255 255 255 / 80%);
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  line-height: 1;
+}
+
+.reader-video-sniff-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #e8b98a;
+  animation: reader-video-sniff-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes reader-video-sniff-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(0.75); }
+}
+
+/* ── 失败态：居中简洁提示 ── */
+.reader-video-sniff-failed-stack {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.reader-video-sniff-failed-text {
+  margin: 0;
+  color: rgb(255 255 255 / 55%);
+  font-size: 0.82rem;
+}
+
+.reader-video-sniff-retry {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid rgb(232 185 138 / 42%);
+  border-radius: 999px;
+  background: rgb(232 185 138 / 8%);
+  color: #e8b98a;
+  font-size: 0.72rem;
+}
+
+.reader-video-sniff-retry:active {
+  background: rgb(232 185 138 / 18%);
+}
+
+/* has-poster 时失败态也加一层轻纱保证文字可读 */
+.reader-video-sniff-placeholder.has-poster.is-failed::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgb(0 0 0 / 50%);
+}
+
+/* 原站受信视频 embed：Web 无原生嗅探时直接保留官方播放器，统一响应式占位。 */
+.reader-prose iframe[src*='youtube.com/embed'],
+.reader-prose iframe[src*='youtube-nocookie.com/embed'],
+.reader-prose iframe[data-reader-role='trusted-video-embed'] {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  height: auto;
+  min-height: 200px;
+  margin: 0.8em 0 1.2em;
+  border: 0;
+  background: #000;
+}
+
+/*
+ * YouTube 在 WebView 内部绘制完成前常会留下一块纯黑画布。Reader 先移走 src，
+ * 由 React 播放器显示缩略图与进度，再在 iframe load 后淡入官方控件。
+ */
+.reader-prose iframe[data-youtube-src] {
+  display: none;
+}
+
+.reader-inline-youtube {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.8em 0 1.2em;
+  font-style: normal;
+}
+
+.reader-youtube-player {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  min-height: 200px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--color-paper) 14%, transparent);
+  border-radius: 12px;
+  background:
+    radial-gradient(circle at 50% 40%, rgb(var(--tone-paper-rgb) / 10%), transparent 48%),
+    #08090b;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 18%);
+  text-indent: 0;
+}
+
+.reader-prose .reader-youtube-player-frame {
+  position: absolute;
+  z-index: 2;
+  inset: 0;
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  opacity: 0;
+  background: #000;
+  transition: opacity 320ms var(--ease-ink);
+}
+
+.reader-prose .reader-youtube-player-frame.is-ready {
+  opacity: 1;
+}
+
+.reader-youtube-loading {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  color: #f5f0e6;
+}
+
+.reader-prose .reader-youtube-thumbnail {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 0;
+  object-fit: cover;
+  cursor: default;
+  filter: saturate(0.72) contrast(1.04) brightness(0.68);
+  transform: scale(1.015);
+}
+
+.reader-youtube-scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgb(5 7 9 / 20%), rgb(5 7 9 / 8%) 45%, rgb(5 7 9 / 72%)),
+    radial-gradient(circle at center, transparent 0 22%, rgb(5 7 9 / 24%) 70%);
+}
+
+.reader-youtube-action {
+  appearance: none;
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 9px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: center;
+}
+
+button.reader-youtube-action {
+  cursor: pointer;
+}
+
+.reader-youtube-play {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  border: 1px solid rgb(255 255 255 / 42%);
+  border-radius: 999px;
+  background: rgb(14 15 18 / 78%);
+  color: #f7f1e6;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 32%);
+  backdrop-filter: blur(8px);
+}
+
+.reader-youtube-play.is-loading {
+  border-color: color-mix(in srgb, var(--color-cinnabar-soft) 68%, white 20%);
+  color: var(--color-cinnabar-soft);
+}
+
+.reader-youtube-play.is-loading svg {
+  animation: translation-spin 780ms linear infinite;
+}
+
+.reader-youtube-status {
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgb(8 9 11 / 68%);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.25;
+  letter-spacing: 0.08em;
+  color: rgb(247 241 230 / 92%);
+  backdrop-filter: blur(8px);
+}
+
+.reader-youtube-brand {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: rgb(255 255 255 / 76%);
+}
+
+.reader-youtube-brand-mark {
+  display: grid;
+  width: 18px;
+  height: 12px;
+  place-items: center;
+  border-radius: 3px;
+  background: #e62117;
+  font-size: 7px;
+  line-height: 1;
+  color: white;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reader-prose .reader-youtube-player-frame {
+    transition: none;
+  }
+}
+
+.reader-inline-video {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.8em 0 1.2em;
+}
+
+.reader-inline-video > * {
+  font-style: normal;
+}
+
+.reader-prose canvas,
+.reader-prose svg:not(.lucide) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  margin: 0.8em 0 1.2em;
+}
+
+.reader-inline-audio {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0.8em 0 1.2em;
+}
+
+.reader-audio-deferred {
+  min-height: 56px;
+  aspect-ratio: auto;
+}
+
+.reader-audio-player {
+  display: grid;
+  gap: 0.55em;
+  width: 100%;
+  margin: 0.8em 0 1.2em;
+  padding: 0.9em 1em 1em;
+  border: 1px solid color-mix(in srgb, var(--color-paper) 14%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-paper) 7%, transparent);
+  text-indent: 0;
+}
+
+.reader-audio-player-meta {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 0.55em;
+}
+
+.reader-audio-player-kicker {
+  flex: none;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-paper-muted);
+}
+
+.reader-audio-player-title {
+  min-width: 0;
+  overflow: hidden;
+  font-size: calc(var(--reader-font-size) * 0.82);
+  line-height: 1.35;
+  color: var(--color-paper);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reader-prose audio,
+.reader-audio-player-media {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: 40px;
+  margin: 0;
+}
+
+.reader-audio-rates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+}
+
+.reader-audio-rates button {
+  min-height: 28px;
+  padding: 0 0.7em;
+  border: 1px solid color-mix(in srgb, var(--color-paper) 16%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-paper-muted);
+  font-size: 12px;
+}
+
+.reader-audio-rates button.is-active {
+  border-color: color-mix(in oklab, var(--color-cinnabar) 45%, transparent);
+  background: color-mix(in oklab, var(--color-cinnabar) 16%, transparent);
+  color: var(--color-paper);
+}
+
+.reader-audio-player-error {
+  display: flex;
+  align-items: center;
+  gap: 0.4em;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--color-cinnabar-soft, var(--color-paper-muted));
+}
+

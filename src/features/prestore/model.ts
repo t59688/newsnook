@@ -18,6 +18,8 @@ export interface PrestorePlan {
   presetId: string
   key: string
   sources: PrestoreSourceTarget[]
+  /** Paused members keep their existing offline windows without network work. */
+  retainedSources?: PrestoreSourceTarget[]
 }
 
 /**
@@ -44,6 +46,7 @@ export function buildPrestorePlan(
 ): PrestorePlan {
   const seen = new Set<string>()
   const sources: PrestoreSourceTarget[] = []
+  const retainedSources: PrestoreSourceTarget[] = []
 
   const categories = visibleCategories(prefs)
   const aggregateCategory = categories.find((category) => category.id === FOLLOWS_ENABLED_SOURCES)
@@ -53,6 +56,10 @@ export function buildPrestorePlan(
     const source = findSource(sourceId, prefs.customSources)
     if (!source) return
     seen.add(sourceId)
+    if (source.paused === true) {
+      retainedSources.push({ categoryId, categoryLabel, source })
+      return
+    }
     sources.push({ categoryId, categoryLabel, source })
   }
 
@@ -77,6 +84,7 @@ export function buildPrestorePlan(
       .map((item) => `${item.categoryId}/${item.source.id}@${item.source.kind}:${item.source.url}`)
       .join('|')}`,
     sources,
+    retainedSources,
   }
 }
 
@@ -123,7 +131,7 @@ export function seedPrestoreWindows<Entry>(
   const articles: Record<string, Entry> = {}
   if (!previous) return { sources, articles }
 
-  for (const item of plan.sources) {
+  for (const item of [...plan.sources, ...(plan.retainedSources ?? [])]) {
     const ids = previous.sources[item.source.id]?.articleIds ?? []
     const kept: string[] = []
     for (const id of ids) {

@@ -70,8 +70,9 @@ export class LinuxDoDiscoveryService {
     return tags
   }
 
-  async searchTags(query: string, options: LinuxDoTagSearchOptions = {}): Promise<LinuxDoTag[]> {
-    const payload = await this.api.getJson<any>(linuxDoEndpoints.tagSearch(query, options), { auth: 'optional' })
+  async searchTags(query: string, options: LinuxDoTagSearchOptions = {}, signal?: AbortSignal): Promise<LinuxDoTag[]> {
+    const payload = await this.api.getJson<any>(linuxDoEndpoints.tagSearch(query, options), { auth: 'optional', signal })
+    if (!Array.isArray(payload?.results)) throw new Error('Linux.do 返回了无法识别的标签数据')
     const results = this.decodeTags(payload?.results).map((tag) => this.enrichFromCatalog(tag))
     if (!query.trim() && options.prioritizeRecentTags) return results
     return sortLinuxDoTags(results)

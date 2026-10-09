@@ -73,6 +73,7 @@ public class LinuxDoSessionPlugin extends Plugin {
     private static final String CONNECT_ORIGIN = "https://connect.linux.do";
     private static final int CONNECT_MAX_REDIRECTS = 8;
     private static final String LOGIN_URL = "https://linux.do/login";
+    private static final String READ_SYNC_CHALLENGE_URL = ORIGIN + "/topics/timings";
     private static final String SESSION_URL = "https://linux.do/session/current.json";
     private static final String OTP_CSRF_URL = ORIGIN + "/session/csrf.json?newsnook_otp_csrf=1";
     private static final long OTP_EXCHANGE_TIMEOUT_MILLIS = 2L * 60L * 1000L;
@@ -404,7 +405,8 @@ public class LinuxDoSessionPlugin extends Plugin {
             return;
         }
 
-        String initialUrl = call.getString("url", LOGIN_URL);
+        boolean readSyncChallenge = Boolean.TRUE.equals(call.getBoolean("readSyncChallenge", false));
+        String initialUrl = readSyncChallenge ? READ_SYNC_CHALLENGE_URL : call.getString("url", LOGIN_URL);
         if (!isAllowedUrl(initialUrl)) {
             call.reject("只允许打开 linux.do 第一方 HTTPS 页面", "LINUXDO_SESSION_URL");
             return;
@@ -412,7 +414,7 @@ public class LinuxDoSessionPlugin extends Plugin {
 
         pendingCall = call;
         finishing = false;
-        getActivity().runOnUiThread(() -> openDialog(initialUrl));
+        getActivity().runOnUiThread(() -> openDialog(initialUrl, readSyncChallenge));
     }
 
     @PluginMethod
@@ -439,6 +441,11 @@ public class LinuxDoSessionPlugin extends Plugin {
         String body = call.getString("body", "");
         JSObject requestHeaders = call.getObject("headers", new JSObject());
         boolean browserOnly = Boolean.TRUE.equals(call.getBoolean("browserOnly", false));
+
+        if (LinuxDoMessageBusPolicy.allows(url, method)) {
+            getActivity().runOnUiThread(() -> performMessageBusRequest(call, url, requestHeaders, body));
+            return;
+        }
 
         if (!isApiAllowedUrl(url)) {
             call.reject("只允许请求 linux.do 主站 HTTPS API", "LINUXDO_REQUEST_URL");
@@ -573,6 +580,87 @@ public class LinuxDoSessionPlugin extends Plugin {
         } catch (Exception ignored) {
             return false;
         }
+    }
+
+    private String messageBusCookie = "";
+    private String messageBusSharedKey = "";
+    private long messageBusKeyExpiresAt = 0L;
+
+    private void performMessageBusRequest(PluginCall call, String url, JSObject headers, String body) {
+        String cookie = LinuxDoMessageBusPolicy.sessionIdentity(empty(CookieManager.getInstance().getCookie(ORIGIN)));
+        boolean authenticated = "true".equals(headerIgnoreCase(headers, "Discourse-Logged-In"));
+        if (!authenticated) {
+            messageBusCookie = "";
+            messageBusSharedKey = "";
+            sendMessageBusPoll(call, url, body, "", cookie);
+            return;
+        }
+        if (cookie.equals(messageBusCookie) && !messageBusSharedKey.isEmpty()
+            && System.currentTimeMillis() < messageBusKeyExpiresAt) {
+            sendMessageBusPoll(call, url, body, messageBusSharedKey, cookie);
+            return;
+        }
+        // Read the server-minted key in the authenticated first-party context.
+        // Keep it native: Capacitor request arguments may be written to logcat.
+        JSObject pageHeaders = new JSObject();
+        pageHeaders.put("Accept", "text/html");
+        pageHeaders.put("Cache-Control", "no-cache");
+        performBrowserRequest(ORIGIN + "/", "GET", pageHeaders, "", new BrowserFetchCallback() {
+            @Override
+            public void onSuccess(BrowserFetchResponse page) {
+                String key = page.status == 200 ? LinuxDoMessageBusPolicy.sharedSessionKey(page.data) : "";
+                if (key.isEmpty()) {
+                    call.reject("无法建立 Linux.do 话题更新会话，请重新验证登录", "LINUXDO_MESSAGE_BUS_SESSION");
+                    return;
+                }
+                if (!cookie.equals(LinuxDoMessageBusPolicy.sessionIdentity(empty(CookieManager.getInstance().getCookie(ORIGIN))))) {
+                    call.reject("Linux.do 登录会话已改变，已停止话题更新请求", "LINUXDO_MESSAGE_BUS_SESSION");
+                    return;
+                }
+                messageBusCookie = cookie;
+                messageBusSharedKey = key;
+                messageBusKeyExpiresAt = System.currentTimeMillis() + 10 * 60_000L;
+                sendMessageBusPoll(call, url, body, key, cookie);
+            }
+
+            @Override
+            public void onFailure(String message) {
+                call.reject(message, "LINUXDO_MESSAGE_BUS_SESSION");
+            }
+        });
+    }
+
+    private void sendMessageBusPoll(PluginCall call, String url, String body, String sharedKey, String sessionCookie) {
+        // Never forward linux.do Cookie, CSRF or User-Api-Key to the polling host.
+        Request.Builder builder = new Request.Builder().url(url)
+            .header("Origin", ORIGIN).header("Referer", ORIGIN + "/")
+            .header("Accept", "application/json").header("Dont-Chunk", "true")
+            .header("X-SILENCE-LOGGER", "true").header("User-Agent", currentUserAgent())
+            .post(RequestBody.create(body, MediaType.parse("application/x-www-form-urlencoded; charset=UTF-8")));
+        if (!sharedKey.isEmpty()) builder.header("X-Shared-Session-Key", sharedKey);
+        identityClient.newCall(builder.build()).enqueue(new Callback() {
+            @Override
+            public void onFailure(Call ignored, IOException error) {
+                call.reject("Linux.do 话题更新网络请求失败", "LINUXDO_MESSAGE_BUS_NETWORK");
+            }
+
+            @Override
+            public void onResponse(Call ignored, Response response) throws IOException {
+                try (ResponseBody responseBody = response.body()) {
+                    String data = responseBody != null ? responseBody.string() : "";
+                    JSObject responseHeaders = safeResponseHeaders(response);
+                    int status = response.code();
+                    getActivity().runOnUiThread(() -> {
+                        if (!sessionCookie.equals(LinuxDoMessageBusPolicy.sessionIdentity(empty(CookieManager.getInstance().getCookie(ORIGIN))))) {
+                            call.reject("Linux.do 登录会话已改变，已丢弃话题更新响应", "LINUXDO_MESSAGE_BUS_SESSION");
+                            return;
+                        }
+                        if (status == 401 || status == 403) messageBusKeyExpiresAt = 0L;
+                        resolveRequest(call, status, data, responseHeaders);
+                    });
+                }
+            }
+        });
     }
 
     private void performNativeRequest(
@@ -1238,7 +1326,7 @@ public class LinuxDoSessionPlugin extends Plugin {
         }
     }
 
-    private void openDialog(String initialUrl) {
+    private void openDialog(String initialUrl, boolean readSyncChallenge) {
         boolean otpExchange = pendingUserApiCall != null && pendingOtpCredential != null;
         if ((pendingCall == null && !otpExchange) || getActivity().isFinishing()) {
             rejectPending("LINUXDO_SESSION_UNAVAILABLE", "当前 Activity 无法打开 Linux.do 验证页");
@@ -1270,7 +1358,7 @@ public class LinuxDoSessionPlugin extends Plugin {
         root.addView(chrome, chromeParams);
 
         TextView title = new TextView(getActivity());
-        title.setText(otpExchange ? "Linux.do · 正在建立安全会话" : "Linux.do · 登录与安全验证");
+        title.setText(otpExchange ? "Linux.do · 正在建立安全会话" : readSyncChallenge ? "Linux.do · 阅读同步验证" : "Linux.do · 登录与安全验证");
         title.setTextSize(15f);
         title.setTextColor(Color.rgb(238, 239, 242));
         title.setGravity(Gravity.CENTER);
@@ -1303,6 +1391,8 @@ public class LinuxDoSessionPlugin extends Plugin {
         hint.setText(
             otpExchange
                 ? "正在把浏览器授权兑换为 App 会话；如出现 Cloudflare 验证，请在此页完成。"
+                : readSyncChallenge
+                ? "正在打开阅读记录提交的安全验证；此请求不含阅读数据。完成验证后点“完成”，应用会重试原记录。"
                 : "请在 Linux.do 官方页面完成账号密码、人机或二次验证，登录后点“完成”。"
         );
         hint.setTextSize(11.5f);
@@ -1400,7 +1490,10 @@ public class LinuxDoSessionPlugin extends Plugin {
         nextDialog.show();
         if (window != null) window.setLayout(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT);
         ViewCompat.requestApplyInsets(root);
-        webView.loadUrl(initialUrl);
+        // Navigate with an empty POST so Cloudflare can render a challenged POST
+        // visibly. The real timing batch stays in React until it gets an ACK.
+        if (readSyncChallenge) webView.postUrl(initialUrl, new byte[0]);
+        else webView.loadUrl(initialUrl);
         if (otpExchange) {
             PluginCall otpCall = pendingUserApiCall;
             webView.postDelayed(() -> {
@@ -1452,7 +1545,7 @@ public class LinuxDoSessionPlugin extends Plugin {
         // which leaves the exchange waiting forever. Use the explicit JSON route for
         // the interactive bridge; this also survives a Cloudflare challenge redirect
         // because the .json suffix keeps the response format deterministic.
-        getActivity().runOnUiThread(() -> openDialog(OTP_CSRF_URL));
+        getActivity().runOnUiThread(() -> openDialog(OTP_CSRF_URL, false));
     }
 
     private void handleOtpPageFinished(WebView view, String value) {

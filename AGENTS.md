@@ -71,6 +71,7 @@ newsnook/
 |---|---|
 | 导航 / 返回键 / 设置栈 | `src/App.tsx` |
 | 新增或修复内置源 | `src/sources/registry.ts` → `lib/parseFeed.ts` / `lib/resolveBody.ts`；探测笔记 `docs/news-sources.md` |
+| RSS 订阅商店 / 在线发现 | `features/feedDiscovery/onlineSearch.ts` · `siteDiscovery.ts` · `preview.ts` · `screens/settings/FeedStoreScreen.tsx`；只在线检索少量命中地址，不打包或缓存全量 RSS 目录。订阅与缓存阅读继续本地优先；说明见 `docs/rss-subscription-store.md` |
 | 分类 / 场景预设 | `sources/categories.ts` · `presets.ts` · `hooks/usePresets.ts` |
 | 列表拉取与缓存 | `hooks/useFeeds.ts` · `lib/http.ts` · `lib/storage.ts` |
 | 配置备份与恢复 | `lib/backup.ts` · `components/BackupPanel.tsx`（入口在 `screens/settings/StorageScreen.tsx`）；与云同步并存，本地文件备份不依赖账号 |
@@ -87,8 +88,8 @@ newsnook/
 | 代理 / 网络 | `features/proxy/` · `lib/http.ts` · `vite.config.ts` · `functions/` |
 | 跟贴 | `features/comments/` |
 | 分享短链 / App 唤起深链 | `lib/shareToken.ts`（token 编解码） · `lib/shareLink.ts` · `lib/appDeepLink.ts` · `functions/lib/shareCard.ts`（爬虫 OG 卡片） · `wrangler.jsonc`（`run_worker_first`） |
-| 墨水屏 | `lib/eink.ts` · `hooks/usePagedReader.ts` · `index.css` 中 `[data-eink]` |
-| 主题 / 排版 | `lib/theme.ts`（明暗 + 风格方案注册表） · `lib/customScheme.ts`（自定义配色推导） · `sources/preferences.ts` · `index.css`（`data-scheme` 方案块） |
+| 墨水屏 | `lib/eink.ts` · `hooks/usePagedReader.ts` · `styles/accessibility.css` 中 `[data-eink]`（站点补充规则在对应样式模块） |
+| 主题 / 排版 | `lib/theme.ts`（明暗 + 风格方案注册表） · `lib/customScheme.ts`（自定义配色推导） · `sources/preferences.ts` · `styles/theme.css`（`data-scheme` 方案块） · `styles/reader/`（阅读排版）；`index.css` 仅维护导入顺序 |
 | 应用更新 | `features/appUpdate/` |
 | 日志 / 调试输出 | `lib/logger.ts`（`log.*` 命名空间；禁止 `src/` 直接 `console.*`） |
 | Android 构建 / 签名 | `docs/android-build.md` · `scripts/android-*.mjs` |

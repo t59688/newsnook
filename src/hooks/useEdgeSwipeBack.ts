@@ -420,7 +420,7 @@ export function useEdgeSwipeBack({
 
     const resetInterruptedGesture = () => {
       // 切后台/系统弹窗时不要等待动画完成：相关定时器可能被冻结，必须立刻
-      // 释放 active/committing，否则恢复后 window.touchmove 会继续拦截纵滑。
+      // 释放 active/committing，避免恢复后继续使用旧触点序列。
       committing = false
       resetPointer()
       clearVisual()
@@ -430,7 +430,10 @@ export function useEdgeSwipeBack({
     }
 
     element.addEventListener('touchstart', onTouchStart, { passive: true })
-    window.addEventListener('touchmove', onTouchMove, { passive: false })
+    // Touch events retain their start target even when the finger leaves the
+    // reader. A window-level move listener can intercept unrelated surfaces
+    // when a lost terminal event is followed by a reused touch identifier.
+    element.addEventListener('touchmove', onTouchMove, { passive: false })
     window.addEventListener('touchend', onTouchEnd)
     window.addEventListener('touchcancel', onTouchCancel)
     element.addEventListener('pointerdown', onPointerDown)
@@ -443,7 +446,7 @@ export function useEdgeSwipeBack({
 
     return () => {
       element.removeEventListener('touchstart', onTouchStart)
-      window.removeEventListener('touchmove', onTouchMove)
+      element.removeEventListener('touchmove', onTouchMove)
       window.removeEventListener('touchend', onTouchEnd)
       window.removeEventListener('touchcancel', onTouchCancel)
       element.removeEventListener('pointerdown', onPointerDown)

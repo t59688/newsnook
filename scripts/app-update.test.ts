@@ -16,6 +16,7 @@ import {
   releaseTagUrl,
   truncateReleaseNotes,
 } from '../src/features/appUpdate/github'
+import { normalizeSupportedAbis, selectPreferredAbi } from '../src/features/appUpdate/abi'
 import {
   manifestUrl,
   parseUpdateManifest,
@@ -34,6 +35,7 @@ import {
   SNOOZE_MS,
   RESUME_CHECK_INTERVAL_MS,
 } from '../src/features/appUpdate/gate'
+import { deltaFileName, selectHistory } from './android-delta-release.mjs'
 import {
   androidVersionCodeForRelease,
   parseReleaseVersion,
@@ -96,6 +98,16 @@ assert.equal(
   'newsnook-1.8.7-beta.2-cloud-release.apk',
 )
 assert.equal(buildApkFileName('1.8.7', 'local'), 'newsnook-1.8.7-local-release.apk')
+assert.equal(
+  buildApkFileName('1.8.7', 'local', 'arm64-v8a'),
+  'newsnook-1.8.7-local-arm64-v8a-release.apk',
+)
+assert.deepEqual(normalizeSupportedAbis(['arm64-v8a', 'unknown', 'x86_64', 'arm64-v8a']), [
+  'arm64-v8a',
+  'x86_64',
+])
+assert.equal(selectPreferredAbi(['x86_64', 'arm64-v8a'], ['arm64-v8a', 'x86_64']), 'x86_64')
+assert.equal(selectPreferredAbi(['armeabi-v7a'], ['arm64-v8a']), undefined)
 
 const assets = [
   {
@@ -199,6 +211,11 @@ assert.match(updateDialogSource, /不再提醒此版本/)
 assert.match(updateHookSource, /dialogOrigin !== 'manual'/)
 assert.match(updateHookSource, /origin: 'auto'/)
 assert.match(updateHookSource, /origin: 'manual'/)
+assert.match(updateHookSource, /resolveSupportedAbis\(target\)/)
+assert.match(updateHookSource, /fetchReleaseApkForFlavor\(__APP_VERSION__, target, supportedAbis\)/)
+const notifierSource = readFileSync(new URL('../android/app/src/main/java/com/aizeek/newsnook/AppUpdateDownloadNotifier.java', import.meta.url), 'utf8')
+assert.match(notifierSource, /void assembling\(\)/)
+assert.match(notifierSource, /正在校验并合成安装包/)
 
 console.log('✓ asset / gate ok')
 
@@ -211,6 +228,26 @@ assert.equal(
 assert.equal(manifestUrl('beta'), 'https://news-update.aizeek.com/newsnook/beta/latest.json')
 
 const cdnHash = 'b'.repeat(64)
+const sourceHash = 'a'.repeat(64)
+const patchHash = 'c'.repeat(64)
+const patchName = deltaFileName(sourceHash, cdnHash)
+const stableDelta = {
+  algorithm: 'gdiff-gzip-v1',
+  fromSha256: sourceHash,
+  fileName: patchName,
+  url: `https://news-update.aizeek.com/newsnook/stable/deltas/${patchName}`,
+  sha256: patchHash,
+  size: 58,
+}
+assert.equal(patchName, `delta-${sourceHash}-${cdnHash}.gdiff.gz`)
+assert.deepEqual(selectHistory([
+  { tag_name: 'v1.8.7-beta.1', prerelease: true },
+  { tag_name: 'v1.8.7-beta.3', prerelease: true },
+  { tag_name: 'v1.8.7-beta.2', prerelease: true },
+  { tag_name: 'v1.8.7', prerelease: false },
+], '1.8.7-beta.4', 'beta', 2).map((x) => x.tag_name), [
+  'v1.8.7-beta.3', 'v1.8.7-beta.2',
+])
 const stableManifest = parseUpdateManifest(
   {
     schemaVersion: 2,
@@ -226,12 +263,29 @@ const stableManifest = parseUpdateManifest(
         url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-cloud-release.apk',
         sha256: cdnHash,
         size: 123,
+        deltas: [stableDelta],
       },
       local: {
         fileName: 'newsnook-1.8.7-local-release.apk',
         url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-release.apk',
         sha256: cdnHash,
         size: 456,
+        deltas: [stableDelta],
+        abis: {
+          'arm64-v8a': {
+            fileName: 'newsnook-1.8.7-local-arm64-v8a-release.apk',
+            url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-arm64-v8a-release.apk',
+            sha256: cdnHash,
+            size: 222,
+            deltas: [stableDelta],
+          },
+          x86_64: {
+            fileName: 'newsnook-1.8.7-local-x86_64-release.apk',
+            url: 'https://news-update.aizeek.com/newsnook/stable/newsnook-1.8.7-local-x86_64-release.apk',
+            sha256: cdnHash,
+            size: 111,
+          },
+        },
       },
     },
   },
@@ -239,13 +293,39 @@ const stableManifest = parseUpdateManifest(
 )
 assert.ok(stableManifest)
 if (stableManifest) {
+  assert.equal(releaseFromUpdateManifest(stableManifest, 'cloud').deltas?.[0]?.sha256, patchHash)
+  assert.equal(releaseFromUpdateManifest(stableManifest, 'local', ['arm64-v8a']).deltas?.[0]?.sha256, patchHash)
   const release = releaseFromUpdateManifest(stableManifest, 'local')
   assert.equal(release.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  const arm64Release = releaseFromUpdateManifest(stableManifest, 'local', ['arm64-v8a'])
+  assert.equal(arm64Release.apkFileName, 'newsnook-1.8.7-local-arm64-v8a-release.apk')
+  assert.equal(arm64Release.abi, 'arm64-v8a')
+  const preferredX64 = releaseFromUpdateManifest(stableManifest, 'local', ['x86_64', 'arm64-v8a'])
+  assert.equal(preferredX64.apkFileName, 'newsnook-1.8.7-local-x86_64-release.apk')
+  const fallbackUniversal = releaseFromUpdateManifest(stableManifest, 'local', ['x86'])
+  assert.equal(fallbackUniversal.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  assert.equal(fallbackUniversal.abi, undefined)
   assert.equal(release.flavor, 'local')
   assert.equal(release.track, 'stable')
   assert.equal(release.subscriptionTrack, 'stable')
   assert.equal(updateCheckFromManifest(stableManifest, '1.8.6', 'cloud').status, 'available')
   assert.equal(updateCheckFromManifest(stableManifest, '1.8.7-beta.4', 'cloud').status, 'available')
+  const malformed = (deltas: unknown) => parseUpdateManifest({
+    ...stableManifest,
+    packages: {
+      ...stableManifest.packages,
+      cloud: { ...stableManifest.packages.cloud, deltas },
+    },
+  }, 'stable')
+  assert.equal(malformed([{ ...stableDelta, url: `https://example.com/${patchName}` }]), null)
+  assert.equal(malformed([{ ...stableDelta, url: stableDelta.url.replace('/stable/', '/beta/') }]), null)
+  assert.equal(malformed([{ ...stableDelta, fileName: '../escape.gdiff.gz' }]), null)
+  assert.equal(malformed([{ ...stableDelta, algorithm: 'unsupported' }]), null)
+  assert.equal(malformed([{ ...stableDelta, fromSha256: cdnHash }]), null)
+  assert.equal(malformed([{ ...stableDelta, sha256: 'invalid' }]), null)
+  assert.equal(malformed([stableDelta, stableDelta]), null)
+  assert.equal(malformed(new Array(17).fill(stableDelta)), null)
+  assert.equal(malformed(undefined)?.packages.cloud.deltas, undefined)
 }
 
 const betaManifest = parseUpdateManifest(
@@ -323,6 +403,51 @@ assert.equal(noLocal.status, 'no-asset')
 if (noLocal.status === 'no-asset') {
   assert.equal(noLocal.flavor, 'local')
   assert.equal(noLocal.track, 'stable')
+}
+
+const localPayload = {
+  ...stablePayload,
+  assets: [
+    ...stablePayload.assets,
+    {
+      name: 'newsnook-1.8.7-local-release.apk',
+      browser_download_url: 'https://example.com/local-universal.apk',
+    },
+    {
+      name: 'newsnook-1.8.7-local-arm64-v8a-release.apk',
+      browser_download_url: 'https://example.com/local-arm64.apk',
+    },
+  ],
+}
+const localArm64 = releaseApkFromTagPayload(localPayload, '1.8.7', 'local', ['arm64-v8a'])
+assert.equal(localArm64.status, 'ok')
+if (localArm64.status === 'ok') {
+  assert.equal(localArm64.release.apkFileName, 'newsnook-1.8.7-local-arm64-v8a-release.apk')
+  assert.equal(localArm64.release.abi, 'arm64-v8a')
+}
+const localFallback = releaseApkFromTagPayload(localPayload, '1.8.7', 'local', ['x86_64'])
+assert.equal(localFallback.status, 'ok')
+if (localFallback.status === 'ok') {
+  assert.equal(localFallback.release.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  assert.equal(localFallback.release.abi, undefined)
+}
+const localBrokenAbiAsset = releaseApkFromTagPayload(
+  {
+    ...localPayload,
+    assets: localPayload.assets.map((asset) =>
+      asset.name === 'newsnook-1.8.7-local-arm64-v8a-release.apk'
+        ? { ...asset, browser_download_url: '' }
+        : asset,
+    ),
+  },
+  '1.8.7',
+  'local',
+  ['arm64-v8a'],
+)
+assert.equal(localBrokenAbiAsset.status, 'ok')
+if (localBrokenAbiAsset.status === 'ok') {
+  assert.equal(localBrokenAbiAsset.release.apkFileName, 'newsnook-1.8.7-local-release.apk')
+  assert.equal(localBrokenAbiAsset.release.abi, undefined)
 }
 
 const cloud = releaseApkFromTagPayload(stablePayload, '1.8.7', 'cloud')
@@ -562,3 +687,36 @@ assert.deepEqual(
 )
 
 console.log('✓ strict channel isolation / prefs migration ok')
+
+console.log('--- app-update download notification ---')
+
+const appUpdatePluginSource = readFileSync(
+  new URL('../android/app/src/main/java/com/aizeek/newsnook/AppUpdatePlugin.java', import.meta.url),
+  'utf8',
+)
+const appUpdateNotifierSource = readFileSync(
+  new URL(
+    '../android/app/src/main/java/com/aizeek/newsnook/AppUpdateDownloadNotifier.java',
+    import.meta.url,
+  ),
+  'utf8',
+)
+const androidManifestSource = readFileSync(
+  new URL('../android/app/src/main/AndroidManifest.xml', import.meta.url),
+  'utf8',
+)
+
+assert.match(appUpdatePluginSource, /VISIBILITY_HIDDEN/)
+assert.match(appUpdatePluginSource, /AppUpdateDownloadNotifier/)
+assert.match(appUpdatePluginSource, /startProgressPolling/)
+assert.match(appUpdatePluginSource, /ensureNotifier\(\)\.complete\(/)
+assert.match(appUpdatePluginSource, /VISIBILITY_VISIBLE_NOTIFY_COMPLETED/)
+
+assert.match(appUpdateNotifierSource, /TITLE_DOWNLOADING = "有所闻 · 正在下载更新"/)
+assert.match(appUpdateNotifierSource, /TITLE_READY = "有所闻 · 更新已就绪"/)
+assert.match(appUpdateNotifierSource, /setProgress/)
+assert.match(appUpdateNotifierSource, /formatBytes/)
+
+assert.match(androidManifestSource, /android\.permission\.DOWNLOAD_WITHOUT_NOTIFICATION/)
+
+console.log('✓ download notification contract ok')

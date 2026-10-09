@@ -60,6 +60,11 @@ const prefs: Preferences = {
     tech: ['sspai', 'ithome'],
     ai: ['sspai', 'openai-news'],
   },
+  // Taxonomy v3 no longer registers the old tech/ai IDs; use explicit user categories.
+  customCategories: [
+    { id: 'tech', label: '技术', short: '技术', caption: '', sourceIds: ['sspai', 'ithome'], isCustom: true },
+    { id: 'ai', label: 'AI', short: 'AI', caption: '', sourceIds: ['sspai', 'openai-news'], isCustom: true },
+  ],
 }
 const plan = buildPrestorePlan('test-preset', prefs, [])
 assert.deepEqual(
@@ -78,6 +83,10 @@ const mixPrefs: Preferences = {
     tech: ['sspai'],
     ai: ['openai-news'],
   },
+  customCategories: [
+    { id: 'tech', label: '技术', short: '技术', caption: '', sourceIds: ['sspai'], isCustom: true },
+    { id: 'ai', label: 'AI', short: 'AI', caption: '', sourceIds: ['openai-news'], isCustom: true },
+  ],
 }
 const mixPlan = buildPrestorePlan(
   'mix-preset',

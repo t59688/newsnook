@@ -8,6 +8,7 @@ import type {
   LinuxDoUser,
 } from '../types'
 import { sanitizeLinuxDoCooked } from '../content/sanitize'
+import { normalizeDeviceModel } from '../topic/postDevice'
 
 type Json = Record<string, any>
 
@@ -31,7 +32,7 @@ export function decodeTagNames(value: unknown): string[] {
   return Array.from(new Set(names))
 }
 
-function avatar(template: unknown): string | undefined {
+export function decodeLinuxDoAvatar(template: unknown): string | undefined {
   if (typeof template !== 'string' || !template.trim()) return undefined
   const raw = template.trim().replace('{size}', '96')
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw
@@ -48,7 +49,7 @@ export function decodeCurrentUser(input: unknown): LinuxDoUser | undefined {
     id: user.id,
     username: user.username,
     name: typeof user.name === 'string' ? user.name : undefined,
-    avatarTemplate: avatar(user.avatar_template),
+    avatarTemplate: decodeLinuxDoAvatar(user.avatar_template),
     trustLevel: typeof user.trust_level === 'number' ? user.trust_level : undefined,
     unreadNotifications: typeof user.unread_notifications === 'number' ? user.unread_notifications : undefined,
     allUnreadNotificationsCount: typeof user.all_unread_notifications_count === 'number' ? user.all_unread_notifications_count : undefined,
@@ -67,6 +68,8 @@ export function decodeTopics(input: unknown): LinuxDoTopicSummary[] {
     slug: String(topic.slug ?? ''),
     title: String(topic.title ?? ''),
     fancyTitle: typeof topic.fancy_title === 'string' ? topic.fancy_title : undefined,
+    lastPosterUsername: typeof topic.last_poster_username === 'string' ? topic.last_poster_username : undefined,
+    bumpedAt: typeof topic.bumped_at === 'string' ? topic.bumped_at : undefined,
     postsCount: Number(topic.posts_count ?? 0),
     replyCount: Number(topic.reply_count ?? Math.max(0, Number(topic.posts_count ?? 1) - 1)),
     views: Number(topic.views ?? 0),
@@ -77,7 +80,7 @@ export function decodeTopics(input: unknown): LinuxDoTopicSummary[] {
     tags: decodeTagNames(topic.tags),
     posters: Array.isArray(topic.posters) ? topic.posters.map((p: Json) => {
       const u = users.get(Number(p.user_id))
-      return { userId: p.user_id, username: u?.username, avatarTemplate: avatar(u?.avatar_template), description: p.description }
+      return { userId: p.user_id, username: u?.username, avatarTemplate: decodeLinuxDoAvatar(u?.avatar_template), description: p.description }
     }) : [],
     unseen: Boolean(topic.unseen),
     unread: typeof topic.unread_posts === 'number'
@@ -114,7 +117,7 @@ export function decodeBoost(input: unknown): LinuxDoBoost | undefined {
       id: typeof user.id === 'number' ? user.id : undefined,
       username: user.username,
       name: typeof user.name === 'string' ? user.name : undefined,
-      avatarTemplate: avatar(user.avatar_template),
+      avatarTemplate: decodeLinuxDoAvatar(user.avatar_template),
     },
   }
 }
@@ -127,18 +130,19 @@ export function decodePost(post: Json): LinuxDoPost {
     postNumber: Number(post.post_number ?? 0),
     username: String(post.username ?? ''),
     name: typeof post.name === 'string' ? post.name : undefined,
-    avatarTemplate: avatar(post.avatar_template),
+    avatarTemplate: decodeLinuxDoAvatar(post.avatar_template),
     createdAt: String(post.created_at ?? ''),
     updatedAt: typeof post.updated_at === 'string' ? post.updated_at : undefined,
     read: typeof post.read === 'boolean' ? post.read : undefined,
     cooked: sanitizeLinuxDoCooked(String(post.cooked ?? '')),
     raw: typeof post.raw === 'string' ? post.raw : undefined,
+    device: post.via_ios_app === true ? { model: normalizeDeviceModel(post.ios_device_name) ?? 'iOS 客户端', source: 'ios-app' } : undefined,
     replyToPostNumber: typeof post.reply_to_post_number === 'number' ? post.reply_to_post_number : undefined,
     replyToUser: replyToUser && typeof replyToUser.username === 'string' ? {
       id: typeof replyToUser.id === 'number' ? replyToUser.id : undefined,
       username: replyToUser.username,
       name: typeof replyToUser.name === 'string' ? replyToUser.name : undefined,
-      avatarTemplate: avatar(replyToUser.avatar_template),
+      avatarTemplate: decodeLinuxDoAvatar(replyToUser.avatar_template),
     } : undefined,
     reactions: Array.isArray(post.reactions)
       ? post.reactions.map((reaction: Json) => ({
@@ -251,6 +255,8 @@ export function decodeNotifications(input: unknown): LinuxDoNotification[] {
     if (!id) return []
     return [{
       id,
+      actingUserAvatarTemplate: decodeLinuxDoAvatar(n.acting_user_avatar_template),
+      actingUserName: typeof n.acting_user_name === 'string' ? n.acting_user_name : undefined,
       notificationType: Number(n.notification_type ?? 0),
       read: n.read === true,
       createdAt: String(n.created_at ?? ''),

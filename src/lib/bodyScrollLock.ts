@@ -8,6 +8,7 @@
  */
 let lockCount = 0
 let savedOverflow = ''
+let lockGeneration = 0
 
 export function lockBodyScroll(): () => void {
   if (lockCount === 0) {
@@ -15,10 +16,11 @@ export function lockBodyScroll(): () => void {
     document.body.style.overflow = 'hidden'
   }
   lockCount += 1
+  const generation = lockGeneration
 
   let released = false
   return () => {
-    if (released) return
+    if (released || generation !== lockGeneration) return
     released = true
     lockCount = Math.max(0, lockCount - 1)
     if (lockCount === 0) {
@@ -29,7 +31,10 @@ export function lockBodyScroll(): () => void {
 
 /** For tests and emergency recovery after navigation. */
 export function resetBodyScrollLock(): void {
+  // Navigation invalidates old release callbacks before new overlays acquire locks.
+  lockGeneration += 1
   lockCount = 0
+  savedOverflow = ''
   document.body.style.overflow = ''
 }
 

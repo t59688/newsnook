@@ -20,3 +20,17 @@ export function zhihuEntityLabel(kind: ZhihuEntityKind): string {
     default: return '知乎'
   }
 }
+
+/** 格式化知乎热榜热度指数或推荐热度标签 */
+export function formatZhihuHotMetric(reason?: string, voteupCount?: number): string | null {
+  if (reason) {
+    const hotMatch = reason.match(/([\d,.]+\s*[万亿]?\s*热度)/)
+    if (hotMatch) return hotMatch[1].replace(/\s+/g, '')
+    if (reason.includes('热度') || reason.includes('讨论') || reason.includes('榜')) return reason
+  }
+  if (typeof voteupCount === 'number' && voteupCount > 0) {
+    return `${formatZhihuCount(voteupCount)} 赞同`
+  }
+  return null
+}
+

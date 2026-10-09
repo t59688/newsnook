@@ -1,3 +1,4 @@
+import { readAppStyles } from './helpers/readAppStyles'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { parseHTML } from 'linkedom'
@@ -13,7 +14,7 @@ Object.assign(globalThis, {
 })
 
 const { detectBrowserChallenge } = await import('../src/lib/browserChallenge')
-const { decodeBoost, decodeCategories, decodeCurrentUser, decodeNotifications, decodeTagNames, decodeTopic, decodeTopics } = await import('../src/features/linuxdo/api/decode')
+const { decodeBoost, decodeCategories, decodeCurrentUser, decodeNotifications, decodePost, decodeTagNames, decodeTopic, decodeTopics } = await import('../src/features/linuxdo/api/decode')
 const { linuxDoCapabilities } = await import('../src/features/linuxdo/capabilities')
 const { linuxDoEndpoints } = await import('../src/features/linuxdo/api/endpoints')
 const { sanitizeLinuxDoCooked } = await import('../src/features/linuxdo/content/sanitize')
@@ -31,7 +32,7 @@ const { LinuxDoNotificationService } = await import('../src/features/linuxdo/not
 const { LinuxDoTopicService } = await import('../src/features/linuxdo/topic/service')
 const { LinuxDoReadTracker } = await import('../src/features/linuxdo/topic/readTracker')
 const { parseLinuxDoConnectTrustPage } = await import('../src/features/linuxdo/connect/parser')
-const { applyLinuxDoReadProgress, linuxDoTopicReadState } = await import('../src/features/linuxdo/topic/readState')
+const { applyLinuxDoReadProgress, linuxDoOpeningUnreadFloor, linuxDoTopicReadState } = await import('../src/features/linuxdo/topic/readState')
 const notificationModel = await import('../src/features/linuxdo/notification/model')
 const feedModel = await import('../src/features/linuxdo/ui/feedModel').catch(() => null)
 const discoveryScope = await import('../src/features/linuxdo/ui/discoveryScope').catch(() => null)
@@ -40,6 +41,16 @@ const loadingModel = await import('../src/features/linuxdo/ui/loadingModel').cat
 const engagementModel = await import('../src/features/linuxdo/ui/engagementModel').catch(() => null)
 const composerModel = await import('../src/features/linuxdo/editor/model').catch(() => null)
 const composerPreview = await import('../src/features/linuxdo/editor/preview').catch(() => null)
+
+assert.deepEqual(decodePost({ via_ios_app: true, ios_device_name: ' iPhone 17 ' }).device, { model: 'iPhone 17', source: 'ios-app' })
+assert.equal(decodePost({ via_ios_app: false, ios_device_name: 'iPhone 17' }).device, undefined, 'a model without its source flag must not imply a device origin')
+assert.deepEqual(decodePost({ via_ios_app: true }).device, { model: 'iOS 客户端', source: 'ios-app' })
+assert.deepEqual(decodePost({ via_ios_app: true, ios_device_name: {} }).device, { model: 'iOS 客户端', source: 'ios-app' })
+assert.equal(decodePost({ via_ios_app: 'true', ios_device_name: 'iPhone 17' }).device, undefined)
+assert.deepEqual(decodePost({ via_ios_app: true, ios_device_name: '\u202eiPhone 17\u0000' }).device, { model: 'iPhone 17', source: 'ios-app' })
+assert.equal(decodePost({ via_ios_app: true, ios_device_name: 'unknown' }).device?.model, 'iOS 客户端')
+assert.equal(decodePost({ via_ios_app: true, ios_device_name: 'A'.repeat(1000) }).device?.model.length, 80)
+console.log('PASS Linux.do device metadata respects the server source flag and tolerates missing models')
 
 assert.ok(composerModel, 'linuxdo composer text model should exist')
 assert.deepEqual(
@@ -370,6 +381,7 @@ assert.equal(feed[0]?.highestPostNumber, 4)
 assert.equal(feed[0]?.notificationLevel, 2)
 assert.equal(feed[0]?.isSeen, true)
 assert.equal(linuxDoTopicReadState(feed[0]!), 'unread')
+assert.equal(linuxDoOpeningUnreadFloor(feed[0]!), 1, 'opening unread floor must preserve the list-row cursor before the topic fetch can advance it')
 const partiallyReadFeedTopic = applyLinuxDoReadProgress(feed[0]!, 3)
 assert.equal(partiallyReadFeedTopic.unread, 1)
 assert.equal(linuxDoTopicReadState(partiallyReadFeedTopic), 'unread')
@@ -387,6 +399,8 @@ const freshRegularTopic = {
   isSeen: false,
 }
 assert.equal(linuxDoTopicReadState(freshRegularTopic), 'new')
+assert.equal(linuxDoOpeningUnreadFloor(freshRegularTopic), 0, 'a brand-new topic treats every post as unread at open')
+assert.equal(linuxDoOpeningUnreadFloor({ ...feed[0]!, lastReadPostNumber: undefined, unread: 2, newPosts: 2, highestPostNumber: 4 }), 2, 'missing cursors fall back to highest minus the server unread count')
 assert.equal(linuxDoTopicReadState(applyLinuxDoReadProgress(freshRegularTopic, 1)), 'read', 'a regular new topic stops being NEW after its first accepted read timing')
 assert.equal(linuxDoTopicReadState({ ...freshRegularTopic, notificationLevel: 0 }), 'read', 'muted topics must not receive a new/unread indicator')
 assert.deepEqual(feed[0]?.tags, ['linux', 'newsnook', 'android'])
@@ -734,6 +748,45 @@ assert.equal(linuxDoEndpoints.posted(1), 'https://linux.do/posted.json?page=1')
 assert.equal(linuxDoEndpoints.read(4), 'https://linux.do/read.json?page=4')
 assert.equal(linuxDoEndpoints.bookmarkedTopics(2), 'https://linux.do/bookmarks.json?page=2')
 
+// Discourse TopicQuery#list_new returns new + unread without subset=topics
+// when unified_new_enabled? is true. Own unread topics lead that combined list.
+for (const unifiedNewEnabled of [true, false]) {
+  const unreadTopics = [
+    { id: 910, title: 'Own old topic with unread replies', posters: [{ user_id: 1 }], last_read_post_number: 1, highest_post_number: 3 },
+    { id: 911, title: 'Other tracked topic with unread replies', posters: [{ user_id: 2 }], last_read_post_number: 2, highest_post_number: 4 },
+  ]
+  const newPages = [
+    [{ id: 920, title: 'Unopened new topic', posters: [{ user_id: 2 }], last_read_post_number: null }],
+    [{ id: 921, title: 'Next unopened new topic', posters: [{ user_id: 2 }], last_read_post_number: null }],
+  ]
+  const personalizedFeed = new LinuxDoFeedService({
+    getJson: async (url: string, options?: { auth?: string }) => {
+      assert.equal(options?.auth, 'required')
+      const request = new URL(url)
+      const page = Number(request.searchParams.get('page'))
+      const topics = request.pathname === '/unread.json'
+        ? unreadTopics
+        : unifiedNewEnabled && request.searchParams.get('subset') !== 'topics'
+          ? [...unreadTopics, ...newPages[page]!]
+          : newPages[page]!
+      return {
+        users: [{ id: 1, username: 'self' }, { id: 2, username: 'other' }],
+        topic_list: { topics, more_topics_url: page === 0 ? '/new.json?page=1' : null },
+      }
+    },
+  } as any)
+  const newPage0 = await personalizedFeed.list('new')
+  assert.deepEqual(newPage0.items.map((topic) => topic.id), [920],
+    `new must exclude previously read topics even with unified new ${unifiedNewEnabled}`)
+  assert.equal(newPage0.hasMore, true)
+  assert.deepEqual((await personalizedFeed.list('new', 1)).items.map((topic) => topic.id), [921],
+    'pagination must retain the new-only subset')
+  const unreadPage = await personalizedFeed.list('unread')
+  assert.deepEqual(unreadPage.items.map((topic) => topic.id), [910, 911],
+    'unread must preserve upstream own-topic priority and include other tracked topics')
+  assert.deepEqual(unreadPage.items.map((topic) => topic.posters[0]?.username), ['self', 'other'])
+}
+
 const feedCalls: Array<{ url: string; auth?: string }> = []
 const feedService = new LinuxDoFeedService({
   getJson: async (url: string, options?: { auth?: string }) => {
@@ -768,7 +821,7 @@ assert.equal((await feedService.list('read', 1)).hasMore, false)
 assert.equal((await feedService.list('bookmarks', 1)).hasMore, false)
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/hot.json?page=0' && call.auth === 'optional'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/top.json?page=0' && call.auth === 'optional'))
-assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/new.json?page=1' && call.auth === 'required'))
+assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/new.json?page=1&subset=topics' && call.auth === 'required'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/unread.json?page=1' && call.auth === 'required'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/posted.json?page=1' && call.auth === 'required'))
 assert.ok(feedCalls.some((call) => call.url === 'https://linux.do/read.json?page=1' && call.auth === 'required'))
@@ -1218,7 +1271,7 @@ assert.equal(search.posts[0]?.topicId, 44)
 assert.equal(search.posts[0]?.topicSlug, 'search-hit')
 assert.match(search.posts[0]?.cooked ?? '', /matched/)
 const searchCache = createLinuxDoSearchCache()
-assert.deepEqual({ query: searchCache.query, activeTab: searchCache.activeTab, page: searchCache.page, hasMore: searchCache.hasMore, scrollTop: searchCache.scrollTop }, { query: '', activeTab: 'topics', page: 1, hasMore: false, scrollTop: 0 })
+assert.deepEqual({ query: searchCache.query, activeTab: searchCache.activeTab, page: searchCache.page, hasMore: searchCache.hasMore, scrollTop: searchCache.scrollTop }, { query: '', activeTab: 'posts', page: 1, hasMore: false, scrollTop: 0 })
 
 const notificationWrites: Array<{ url: string; form: Record<string, unknown> }> = []
 const serverUnreadNotificationIds = new Set([12, 13, 14, 15, 16, 17, 18])
@@ -1425,8 +1478,8 @@ assert.match(workspaceSource, /onScopeChange=\{replaceDiscoverScope\}/)
 assert.match(workspaceSource, /cacheRef=\{discoverCacheRef\}/)
 assert.match(workspaceSource, /searchCacheRef = useRef\(createLinuxDoSearchCache\(\)\)/)
 assert.match(workspaceSource, /<SearchView cacheRef=\{searchCacheRef\}/)
-assert.match(communityViewsSource, /cacheRef\.current\.scrollTop = event\.currentTarget\.scrollTop/)
-assert.match(communityViewsSource, /autoFocus=\{!lastQuery\}/)
+assert.match(readFileSync('src/features/linuxdo/ui/SearchView.tsx', 'utf8'), /cacheRef\.current\.scrollTop = event\.currentTarget\.scrollTop/)
+assert.match(readFileSync('src/features/linuxdo/ui/SearchView.tsx', 'utf8'), /autoFocus=\{!lastQuery\}/)
 assert.match(workspaceSource, /navigate\(\{ kind: 'topic', topic \}\)/)
 assert.match(workspaceSource, /onCreated=\{\(post, boost\) =>/)
 assert.match(workspaceSource, /boosts: \[\.\.\.\(post\.boosts \?\? \[\]\), boost\]/)
@@ -1482,7 +1535,7 @@ assert.match(accountViewSource, /onTrustLevel/)
 assert.match(workspaceSource, /kind: 'trust'/)
 assert.match(workspaceSource, /<TrustLevelView session=\{session\}/)
 assert.doesNotMatch(accountViewSource, /Browser\.open\(\{ url: 'https:\/\/linux\.do\/login'/)
-const cssSource = readFileSync('src/index.css', 'utf8')
+const cssSource = readAppStyles()
 const paragraphCssFixture = parseHTML(
   '<html><body><div class="reader-prose"><p>啊哈哈，这个就好呀！<br>一个L站顶几十个的rss</p></div></body></html>',
 ).document.querySelector('p')
@@ -1603,7 +1656,7 @@ const userWithProtoAvatar = decodeCurrentUser({
 assert.equal(userWithProtoAvatar?.avatarTemplate, 'https://cdn.linux.do/user_avatar/proto_user/96/1.png')
 
 const utilsSource = readFileSync(new URL('../src/features/linuxdo/ui/utils.tsx', import.meta.url), 'utf8')
-assert.match(utilsSource, /flex h-full w-full items-center justify-center overflow-hidden select-none/)
+assert.match(utilsSource, /flex h-full w-full items-center justify-center overflow-hidden rounded-full select-none/)
 assert.match(accountViewSource, /UserRound size=\{26\}/)
 assert.match(accountViewSource, /flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-full/)
 const sharedViewsSource = readFileSync(new URL('../src/features/linuxdo/ui/shared.tsx', import.meta.url), 'utf8')

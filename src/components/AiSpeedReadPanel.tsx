@@ -18,6 +18,7 @@ import { Capacitor } from '@capacitor/core'
 
 import { exportMarkdownFile } from '../lib/articleMarkdown'
 import { displayArticleTitle } from '../lib/displayArticleTitle'
+import { lockBodyScroll } from '../lib/bodyScrollLock'
 import { saveImageBlob, shareImageBlob } from '../lib/imageActions'
 import { markdownToSafeHtml } from '../lib/markdown'
 import { copyShareText } from '../lib/shareArticle'
@@ -343,11 +344,7 @@ export function AiSpeedReadPanel({
 
   useEffect(() => {
     if (!open) return
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
+    return lockBodyScroll()
   }, [open])
 
   useEffect(() => {

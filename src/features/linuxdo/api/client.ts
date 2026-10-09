@@ -135,6 +135,7 @@ export class LinuxDoApiClient {
         return
       } catch (error) {
         if (error instanceof LinuxDoApiError && error.kind === 'browser-verification'
+          && error.diagnostics?.transport !== 'browser-firstparty'
           && !recoveredBrowser && Capacitor.isNativePlatform() && this.session.authMode === 'browser-session') {
           recoveredBrowser = true
           const prepared = await prepareLinuxDoBrowserSession().catch(() => ({ ready: false } as const))

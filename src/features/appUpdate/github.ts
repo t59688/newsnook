@@ -1,5 +1,6 @@
 import { CapacitorHttp } from '@capacitor/core'
 
+import { selectPreferredAbi } from './abi'
 import {
   fetchUpdateManifest,
   releaseFromUpdateManifest,
@@ -12,6 +13,7 @@ import {
   releaseTrackForVersion,
 } from './semver'
 import type {
+  AndroidAbi,
   FetchReleaseApkResult,
   PackageFlavor,
   ReleaseNotesResult,
@@ -19,8 +21,12 @@ import type {
   UpdateTrack,
 } from './types'
 
-export function buildApkFileName(version: string, flavor: PackageFlavor): string {
-  return `newsnook-${version}-${flavor}-release.apk`
+export function buildApkFileName(
+  version: string,
+  flavor: PackageFlavor,
+  abi?: AndroidAbi,
+): string {
+  return `newsnook-${version}-${flavor}${abi ? `-${abi}` : ''}-release.apk`
 }
 
 type GitHubAsset = {
@@ -55,8 +61,9 @@ export function pickReleaseAsset(
   assets: GitHubAsset[],
   version: string,
   flavor: PackageFlavor,
+  abi?: AndroidAbi,
 ): PickedReleaseAsset | null {
-  const fileName = buildApkFileName(version, flavor)
+  const fileName = buildApkFileName(version, flavor, abi)
   const hit = assets.find((a) => a.name === fileName)
   if (!hit?.browser_download_url) return null
 
@@ -164,6 +171,7 @@ async function fetchLatestReleaseFromGitHub(
   localVersion: string,
   flavor: PackageFlavor,
   track: UpdateTrack,
+  supportedAbis: readonly AndroidAbi[] = [],
 ): Promise<UpdateCheckResult> {
   try {
     const url = track === 'stable' ? RELEASES_LATEST : RELEASES_LIST
@@ -195,7 +203,20 @@ async function fetchLatestReleaseFromGitHub(
       }
     }
 
-    const picked = pickReleaseAsset(release.assets, release.version, flavor)
+    let abi: AndroidAbi | undefined
+    if (flavor === 'local') {
+      const available = supportedAbis.filter((candidate) =>
+        release.assets.some(
+          (asset) => asset.name === buildApkFileName(release.version, 'local', candidate),
+        ),
+      )
+      abi = selectPreferredAbi(supportedAbis, available)
+    }
+    const picked =
+      pickReleaseAsset(release.assets, release.version, flavor, abi) ??
+      pickReleaseAsset(release.assets, release.version, flavor)
+    const pickedAbi =
+      abi && picked?.fileName === buildApkFileName(release.version, flavor, abi) ? abi : undefined
     if (!picked) {
       return {
         status: 'no-asset',
@@ -218,6 +239,7 @@ async function fetchLatestReleaseFromGitHub(
         ...(picked.sha256 ? { sha256: picked.sha256 } : {}),
         ...(picked.size ? { size: picked.size } : {}),
         flavor,
+        ...(pickedAbi ? { abi: pickedAbi } : {}),
         track,
         subscriptionTrack: track,
       },
@@ -235,12 +257,13 @@ export async function fetchLatestRelease(
   localVersion: string,
   flavor: PackageFlavor,
   track: UpdateTrack,
+  supportedAbis: readonly AndroidAbi[] = [],
 ): Promise<UpdateCheckResult> {
   const cdn = await fetchUpdateManifest(track)
   if (cdn.status === 'ok') {
-    return updateCheckFromManifest(cdn.manifest, localVersion, flavor)
+    return updateCheckFromManifest(cdn.manifest, localVersion, flavor, supportedAbis)
   }
-  return fetchLatestReleaseFromGitHub(localVersion, flavor, track)
+  return fetchLatestReleaseFromGitHub(localVersion, flavor, track, supportedAbis)
 }
 
 /** 从 tag Release JSON 解析指定安装包（不发起网络请求）。 */
@@ -248,6 +271,7 @@ export function releaseApkFromTagPayload(
   data: GitHubRelease,
   version: string,
   flavor: PackageFlavor,
+  supportedAbis: readonly AndroidAbi[] = [],
 ): FetchReleaseApkResult {
   const normalized = normalizeTagVersion(version)
   const track = releaseTrackForVersion(normalized)
@@ -269,7 +293,17 @@ export function releaseApkFromTagPayload(
     }))
     .filter((a) => a.name && a.browser_download_url)
 
-  const picked = pickReleaseAsset(assets, normalized, flavor)
+  let abi: AndroidAbi | undefined
+  if (flavor === 'local') {
+    const available = supportedAbis.filter((candidate) =>
+      assets.some((asset) => asset.name === buildApkFileName(normalized, 'local', candidate)),
+    )
+    abi = selectPreferredAbi(supportedAbis, available)
+  }
+  const picked =
+    pickReleaseAsset(assets, normalized, flavor, abi) ??
+    pickReleaseAsset(assets, normalized, flavor)
+  const pickedAbi = abi && picked?.fileName === buildApkFileName(normalized, flavor, abi) ? abi : undefined
   if (!picked) return { status: 'no-asset', version: normalized, flavor, track }
 
   return {
@@ -283,6 +317,7 @@ export function releaseApkFromTagPayload(
       ...(picked.sha256 ? { sha256: picked.sha256 } : {}),
       ...(picked.size ? { size: picked.size } : {}),
       flavor,
+      ...(pickedAbi ? { abi: pickedAbi } : {}),
       track,
       subscriptionTrack: track,
     },
@@ -292,6 +327,7 @@ export function releaseApkFromTagPayload(
 async function fetchReleaseApkForFlavorFromGitHub(
   version: string,
   flavor: PackageFlavor,
+  supportedAbis: readonly AndroidAbi[] = [],
 ): Promise<FetchReleaseApkResult> {
   try {
     const response = await CapacitorHttp.get({
@@ -305,7 +341,7 @@ async function fetchReleaseApkForFlavorFromGitHub(
       return { status: 'error', message: `GitHub HTTP ${response.status}` }
     }
     const data = typeof response.data === 'string' ? JSON.parse(response.data) : response.data
-    return releaseApkFromTagPayload(data ?? {}, version, flavor)
+    return releaseApkFromTagPayload(data ?? {}, version, flavor, supportedAbis)
   } catch (error) {
     return {
       status: 'error',
@@ -318,6 +354,7 @@ async function fetchReleaseApkForFlavorFromGitHub(
 export async function fetchReleaseApkForFlavor(
   version: string,
   flavor: PackageFlavor,
+  supportedAbis: readonly AndroidAbi[] = [],
 ): Promise<FetchReleaseApkResult> {
   const normalized = normalizeTagVersion(version)
   const track = releaseTrackForVersion(normalized)
@@ -325,8 +362,11 @@ export async function fetchReleaseApkForFlavor(
 
   const cdn = await fetchUpdateManifest(track)
   if (cdn.status === 'ok' && cdn.manifest.version === normalized) {
-    return { status: 'ok', release: releaseFromUpdateManifest(cdn.manifest, flavor) }
+    return {
+      status: 'ok',
+      release: releaseFromUpdateManifest(cdn.manifest, flavor, supportedAbis),
+    }
   }
 
-  return fetchReleaseApkForFlavorFromGitHub(normalized, flavor)
+  return fetchReleaseApkForFlavorFromGitHub(normalized, flavor, supportedAbis)
 }

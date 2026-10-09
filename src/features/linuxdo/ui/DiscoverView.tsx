@@ -22,6 +22,7 @@ import type {
   LinuxDoTopicSummary,
 } from '../types'
 import { TopicCard } from './shared'
+import { RefreshSurface } from './RefreshSurface'
 import { discoveryScopeKey, loadDiscoveryScope, mergeDiscoveryTopics, type LinuxDoDiscoveryScope } from './discoveryScope'
 import type { LinuxDoDiscoverTab, LinuxDoDiscoveryCache } from './discoveryCache'
 import { compact, readableError } from './utils'
@@ -151,6 +152,9 @@ export function DiscoverView({
   const [tags, setTags] = useState<LinuxDoTag[]>(() => cacheRef.current.tags)
   const [items, setItems] = useState<LinuxDoTopicSummary[]>(() => initialScopeCache?.items ?? [])
   const [loading, setLoading] = useState(() => !cacheRef.current.taxonomyLoaded)
+  const [taxonomyRefreshing, setTaxonomyRefreshing] = useState(false)
+  const taxonomyBusyRef = useRef(false)
+  const mountedRef = useRef(true)
   const [itemsLoading, setItemsLoading] = useState(() => Boolean(activeScope && !initialScopeCache))
   const [itemsRefreshing, setItemsRefreshing] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -182,36 +186,15 @@ export function DiscoverView({
     onScopeChange(scope)
   }, [cacheRef, onScopeChange])
 
-  const loadCategories = useCallback(async () => {
+  const refreshTaxonomy = useCallback(async () => {
+    if (taxonomyBusyRef.current) return
+    taxonomyBusyRef.current = true
+    setTaxonomyRefreshing(true)
     setCategoriesError('')
-    try {
-      const next = await discovery.categories()
-      cacheRef.current.categories = next
-      setCategories(next)
-    } catch (error) {
-      setCategoriesError(readableError(error))
-    }
-  }, [cacheRef])
-
-  const loadTags = useCallback(async () => {
     setTagsError('')
     try {
-      const next = await discovery.tags()
-      cacheRef.current.tags = next
-      setTags(next)
-    } catch (error) {
-      setTagsError(readableError(error))
-    }
-  }, [cacheRef])
-
-  useEffect(() => {
-    if (cacheRef.current.taxonomyLoaded) {
-      setLoading(false)
-      return
-    }
-    let active = true
-    void Promise.allSettled([discovery.categories(), discovery.tags()]).then(([categoryResult, tagResult]) => {
-      if (!active) return
+      const [categoryResult, tagResult] = await Promise.allSettled([discovery.categories(), discovery.tags()])
+      if (!mountedRef.current) return
       if (categoryResult.status === 'fulfilled') {
         cacheRef.current.categories = categoryResult.value
         setCategories(categoryResult.value)
@@ -220,12 +203,26 @@ export function DiscoverView({
         cacheRef.current.tags = tagResult.value
         setTags(tagResult.value)
       } else setTagsError(readableError(tagResult.reason))
-      cacheRef.current.taxonomyLoaded = true
-    }).finally(() => {
-      if (active) setLoading(false)
-    })
-    return () => { active = false }
+      // A failed load is recoverable, including when the screen is revisited.
+      cacheRef.current.taxonomyLoaded = categoryResult.status === 'fulfilled' && tagResult.status === 'fulfilled'
+    } finally {
+      taxonomyBusyRef.current = false
+      if (mountedRef.current) {
+        setLoading(false)
+        setTaxonomyRefreshing(false)
+      }
+    }
   }, [cacheRef])
+
+  useEffect(() => {
+    mountedRef.current = true
+    if (!cacheRef.current.taxonomyLoaded) void refreshTaxonomy()
+    else setLoading(false)
+    return () => {
+      mountedRef.current = false
+      scopeRequestIdRef.current += 1
+    }
+  }, [cacheRef, refreshTaxonomy])
 
   useEffect(() => {
     cacheRef.current.hub.activeTab = activeTab
@@ -370,19 +367,6 @@ export function DiscoverView({
     return tagSearchResults
   }, [sortedTags, normalizedTagQuery, tagSearchResults])
 
-  if (loading) {
-    return (
-      <div className="space-y-4 page-x pt-5" role="status" aria-label="正在加载分类与标签">
-        <div className="linuxdo-skeleton h-36 rounded-[26px] border border-haze/50" />
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-          {Array.from({ length: 6 }, (_, index) => (
-            <div key={index} className="linuxdo-skeleton h-24 rounded-2xl border border-haze/50" />
-          ))}
-        </div>
-      </div>
-    )
-  }
-
   // --- 模态 B：专属讨论流 (Scoped Feed Mode) ---
   if (activeScope) {
     const isCategory = activeScope.kind === 'category'
@@ -451,8 +435,9 @@ export function DiscoverView({
         </header>
 
         {/* 独立滚动区域 */}
-        <div
-          ref={scopedScrollerRef}
+        <RefreshSurface
+          onRefresh={reloadActiveScope}
+          scrollerRef={scopedScrollerRef}
           className="min-h-0 flex-1 overflow-y-auto overscroll-contain page-x pb-6 pt-3"
           onScroll={(event) => {
             const node = event.currentTarget
@@ -556,18 +541,25 @@ export function DiscoverView({
             </button>
           </div>
         ) : null}
-      </div>
+      </RefreshSurface>
     </div>
   )
 }
 
   // --- 模态 A：探索大厅 (Hub Mode) ---
   return (
-    <div
-      ref={hubScrollerRef}
+    <RefreshSurface
+      onRefresh={refreshTaxonomy}
+      scrollerRef={hubScrollerRef}
       className="min-h-0 flex-1 overflow-y-auto overscroll-contain page-x pb-6 pt-4"
       onScroll={(event) => { cacheRef.current.hub.scrollTop = event.currentTarget.scrollTop }}
     >
+      {loading ? <div className="linuxdo-skeleton mb-4 h-40 rounded-2xl" role="status" aria-label="正在加载分类与标签" /> : null}
+      {categoriesError || tagsError ? (
+        <button type="button" onClick={() => void refreshTaxonomy()} className="linuxdo-control mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[11px] text-cinnabar-soft">
+          {[categoriesError, tagsError].filter(Boolean).join(' · ')} · 点击重试
+        </button>
+      ) : null}
       {/* 顶部社区氛围横幅 */}
       <section className="linuxdo-discover-hero rounded-[26px] p-5">
         <div className="flex items-start justify-between gap-4">
@@ -583,9 +575,9 @@ export function DiscoverView({
               从真实版块与社区标签中探索优质话题，直连一手经验。
             </p>
           </div>
-          <div className="grid h-13 w-13 shrink-0 place-items-center rounded-2xl bg-cinnabar/10 text-cinnabar">
-            <Compass size={26} />
-          </div>
+          <button type="button" aria-label="刷新发现" disabled={taxonomyRefreshing} onClick={() => void refreshTaxonomy()} className="linuxdo-control grid h-11 w-11 shrink-0 place-items-center rounded-full bg-cinnabar/10 text-cinnabar disabled:opacity-40">
+            <RotateCw size={18} className={taxonomyRefreshing ? 'animate-spin' : ''} />
+          </button>
         </div>
 
         {/* 社区数据微胶囊 */}
@@ -725,7 +717,7 @@ export function DiscoverView({
             <span className="text-[10.5px] text-paper-faint font-mono">共 {categories.length} 个分类</span>
           </div>
           {categoriesError ? (
-            <button type="button" onClick={() => void loadCategories()} className="linuxdo-control mb-3 flex w-full items-center justify-between rounded-2xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3.5 py-3 text-left text-[11px] text-cinnabar-soft">
+            <button type="button" onClick={() => void refreshTaxonomy()} className="linuxdo-control mb-3 flex w-full items-center justify-between rounded-2xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3.5 py-3 text-left text-[11px] text-cinnabar-soft">
               <span className="min-w-0 flex-1 truncate">分类加载失败：{categoriesError}</span><span className="ml-3 shrink-0 font-semibold">重试</span>
             </button>
           ) : null}
@@ -795,7 +787,7 @@ export function DiscoverView({
           ) : (
             <>
               {tagsError ? (
-                <button type="button" onClick={() => void loadTags()} className="linuxdo-control flex w-full items-center justify-between rounded-2xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3.5 py-3 text-left text-[11px] text-cinnabar-soft">
+                <button type="button" onClick={() => void refreshTaxonomy()} className="linuxdo-control flex w-full items-center justify-between rounded-2xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3.5 py-3 text-left text-[11px] text-cinnabar-soft">
                   <span className="min-w-0 flex-1 truncate">标签目录加载失败：{tagsError}</span><span className="ml-3 shrink-0 font-semibold">重试</span>
                 </button>
               ) : null}
@@ -842,6 +834,6 @@ export function DiscoverView({
           )}
         </div>
       ) : null}
-    </div>
+    </RefreshSurface>
   )
 }

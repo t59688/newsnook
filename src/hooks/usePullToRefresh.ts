@@ -32,6 +32,7 @@ interface Gesture {
   startY: number
   startDistance: number
   lock: 'none' | 'vertical'
+  scrollPath: Element[]
 }
 
 function currentTranslateY(element: HTMLElement): number {
@@ -184,8 +185,23 @@ export function usePullToRefresh({
       }
     }
 
+    // A zero on the listener alone is insufficient: native scrolling can belong
+    // to a descendant or a clipping ancestor. Keep the touched path, not unrelated rails.
+    const isAtTop = (scrollPath: Element[]) => {
+      if (scrollPath.some((node) => node.scrollTop > 0)) return false
+      if (surface === element) return true
+      const contentTop = surface.getBoundingClientRect().top - currentTranslateY(surface)
+      const viewportTop = element.getBoundingClientRect().top + element.clientTop
+      return contentTop >= viewportTop - 0.5
+    }
+
     const finish = async () => {
+      const eligible = gesture && isAtTop(gesture.scrollPath)
       clearGesture()
+      if (!eligible) {
+        settle(true)
+        return
+      }
       if (phaseRef.current !== 'ready') {
         settle()
         return
@@ -193,11 +209,16 @@ export function usePullToRefresh({
       await runRefreshing()
     }
 
-    const canStart = () =>
-      phaseRef.current !== 'refreshing' && element.scrollTop <= 0
-
-    const begin = (x: number, y: number) => {
-      if (!canStart()) return
+    const begin = (x: number, y: number, target: EventTarget | null) => {
+      if (phaseRef.current === 'refreshing') return
+      const scrollPath: Element[] = []
+      for (let node: Element | null = target instanceof Element ? target : element; node; node = node.parentElement) {
+        scrollPath.push(node)
+      }
+      if (!scrollPath.includes(element) || !isAtTop(scrollPath)) {
+        settle(true)
+        return
+      }
       const visualDistance = Math.max(0, currentTranslateY(surface))
       clearTimer()
       // 零位时不要预先写 translate3d(0,0,0)：方向尚未确定，原生滚动
@@ -211,6 +232,7 @@ export function usePullToRefresh({
         startX: x,
         startY: y,
         startDistance: visualDistance,
+        scrollPath,
         lock: visualDistance > 0 ? 'vertical' : 'none',
       }
       if (visualDistance > 0) {
@@ -221,9 +243,9 @@ export function usePullToRefresh({
 
     const move = (x: number, y: number, prevent: () => void) => {
       if (!gesture || phaseRef.current === 'refreshing') return
-      if (element.scrollTop > 0) {
-        clearGesture()
-        clearGestureCompositorStyles(surface)
+      if (!isAtTop(gesture.scrollPath)) {
+        // Drop the whole sequence, including a queued paint and a previous ready phase.
+        settle(true)
         return
       }
 
@@ -273,10 +295,11 @@ export function usePullToRefresh({
         return
       }
       const touch = event.touches[0]
-      begin(touch.clientX, touch.clientY)
+      begin(touch.clientX, touch.clientY, event.target)
     }
     const onTouchMove = (event: TouchEvent) => {
-      if (event.touches.length !== 1) {
+      if (event.touches.length !== 1 || !event.cancelable) {
+        // Once the browser owns scrolling we cannot take it back, even after a reversal.
         if (gesture) settle(true)
         return
       }
@@ -292,7 +315,7 @@ export function usePullToRefresh({
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType === 'touch' || !event.isPrimary) return
-      begin(event.clientX, event.clientY)
+      begin(event.clientX, event.clientY, event.target)
       if (gesture) activePointer = event.pointerId
     }
     const onPointerMove = (event: PointerEvent) => {

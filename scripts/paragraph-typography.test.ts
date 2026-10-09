@@ -1,5 +1,5 @@
+import { readAppStyles } from './helpers/readAppStyles'
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
 
 import { normalizeParagraphTypography, sanitizeArticleHtml } from '../src/lib/sanitize'
 
@@ -52,7 +52,7 @@ assert.match(cleanedMixed, /<p data-cjk="false">"Simplicity is the ultimate soph
 assert.match(cleanedMixed, /<p data-cjk="true">上面这句名言很好地阐述了这一观点。<\/p>/)
 
 // 6. 阅读字体设置必须覆盖阅读页与信息流标题，避免标题绕过用户字体偏好。
-const readerCss = readFileSync('src/index.css', 'utf8')
+const readerCss = readAppStyles()
 assert.match(
   readerCss,
   /\.reader-title\s*\{[^}]*font-family:\s*var\(--reader-font-family\)[^}]*\}/s,

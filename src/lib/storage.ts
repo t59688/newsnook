@@ -209,6 +209,26 @@ export function bytesOfKeys(keys: string[]): number {
   }, 0)
 }
 
+/** Persist a store subscription before reporting success; roll back a partial local write. */
+export function saveSubscriptionState(prefs: unknown, enabledIds: string[], presets?: unknown): void {
+  const values: Array<readonly [string, string]> = [['preferences', JSON.stringify(prefs)], ['enabled', JSON.stringify(enabledIds)]]
+  if (presets !== undefined) values.push(['presets', JSON.stringify(presets)])
+  const previous = values.map(([key]) => localStorage.getItem(PREFIX + key))
+  try {
+    values.forEach(([key, value]) => localStorage.setItem(PREFIX + key, value))
+  } catch (error) {
+    values.forEach(([key], index) => {
+      try {
+        const value = previous[index]
+        if (value === null) localStorage.removeItem(PREFIX + key)
+        else localStorage.setItem(PREFIX + key, value)
+      } catch { /* Preserve the original storage error. */ }
+    })
+    throw error
+  }
+  values.forEach(([key, value]) => { void mirrorToNative(PREFIX + key, value) })
+}
+
 export function loadEnabledSources(): string[] | undefined {
   const stored = read<string[] | null>('enabled', null)
   return stored ?? undefined

@@ -1,0 +1,126 @@
+/* Linux.do product shell. It deliberately consumes NewsNook's semantic theme
+ * tokens so every scheme, custom palette and light/dark mode keeps working. */
+.linuxdo-workspace {
+  background-color: var(--color-ink);
+  background-image:
+    radial-gradient(ellipse 60% 40% at 50% -5%, color-mix(in srgb, var(--color-cinnabar) 7%, transparent), transparent 32rem),
+    radial-gradient(ellipse 40% 30% at 90% 15%, color-mix(in srgb, var(--color-cinnabar) 3%, transparent), transparent 24rem);
+  color: var(--color-paper);
+}
+
+.linuxdo-workspace .linuxdo-brand-header {
+  background: color-mix(in srgb, var(--color-ink) 92%, transparent);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--color-paper) 5%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.4);
+  backdrop-filter: blur(24px) saturate(1.4);
+}
+
+.linuxdo-workspace .linuxdo-icon-button {
+  border: 1px solid color-mix(in srgb, var(--color-haze) 75%, transparent);
+  background: color-mix(in srgb, var(--color-ink-raised) 75%, transparent);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 4%);
+  transition: transform 140ms var(--ease-ink), background 140ms var(--ease-ink), color 140ms var(--ease-ink), border-color 140ms var(--ease-ink);
+}
+
+.linuxdo-workspace .linuxdo-icon-button:hover {
+  border-color: color-mix(in srgb, var(--color-paper) 20%, transparent);
+  background: color-mix(in srgb, var(--color-paper) 6%, transparent);
+}
+
+.linuxdo-workspace .linuxdo-icon-button.is-active {
+  border-color: color-mix(in srgb, var(--color-cinnabar) 85%, transparent);
+  background: var(--color-cinnabar);
+  color: white;
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--color-cinnabar) 35%, transparent);
+}
+
+.linuxdo-workspace .linuxdo-icon-button:active {
+  transform: scale(0.92);
+}
+
+@media (max-width: 399px) {
+  .linuxdo-workspace .linuxdo-preset-slot > button {
+    max-width: 5.75rem;
+    padding-inline: 0.4rem;
+  }
+}
+
+/* 原生沉浸式贴底 TabBar 规范：
+ * 移动端采用全宽边缘贴底设计，上边框精细 hairline，毛玻璃深度融合，
+ * 安全区自然吸收，彻底消除套壳 Web 浮岛带来的视觉断层与空间浪费。 */
+.linuxdo-workspace .linuxdo-bottom-nav {
+  border-top: 1px solid color-mix(in srgb, var(--color-haze) 50%, transparent);
+  background: color-mix(in srgb, var(--color-ink) 90%, transparent);
+  -webkit-backdrop-filter: blur(24px) saturate(1.5);
+  backdrop-filter: blur(24px) saturate(1.5);
+  box-shadow: 0 -4px 20px rgb(0 0 0 / 6%);
+}
+
+.linuxdo-nav-item,
+.linuxdo-nav-compose {
+  position: relative;
+  display: flex;
+  min-height: 48px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 12px;
+  color: var(--color-paper-muted);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+  transition: color 150ms var(--ease-ink), transform 150ms var(--ease-ink);
+}
+
+.linuxdo-nav-item.is-active {
+  color: var(--color-cinnabar);
+  font-weight: 600;
+}
+
+.linuxdo-nav-item:active {
+  transform: scale(0.93);
+}
+
+.linuxdo-nav-compose {
+  margin-top: -14px;
+}
+
+.linuxdo-nav-compose:active {
+  transform: scale(0.92);
+}
+
+.linuxdo-nav-compose > span:first-child {
+  background-color: var(--color-cinnabar);
+  background-image: linear-gradient(135deg, rgba(0, 0, 0, 0.16), transparent 50%, rgba(255, 255, 255, 0.22));
+  box-shadow:
+    0 0 0 2px var(--color-ink),
+    0 4px 16px color-mix(in srgb, var(--color-cinnabar) 40%, transparent),
+    0 1px 3px rgb(0 0 0 / 20%);
+}
+
+html[data-eink='1'] .linuxdo-nav-compose > span:first-child {
+  background-color: var(--color-ink) !important;
+  background-image: none !important;
+  color: var(--color-paper) !important;
+  box-shadow: 0 0 0 1.5px var(--color-paper) !important;
+}
+
+.linuxdo-workspace button:focus-visible,
+.linuxdo-workspace a:focus-visible,
+.linuxdo-workspace select:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--color-cinnabar) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.linuxdo-workspace input:focus-visible:not([class*="outline-none"]),
+.linuxdo-workspace textarea:focus-visible:not([class*="outline-none"]) {
+  outline: 2px solid color-mix(in srgb, var(--color-cinnabar) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.linuxdo-workspace input[class*="outline-none"],
+.linuxdo-workspace textarea[class*="outline-none"] {
+  outline: none !important;
+}
+

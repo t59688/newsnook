@@ -1,9 +1,10 @@
 import { Capacitor } from '@capacitor/core'
 
 import { isLocalTranslationAvailable } from '../translation/native'
+import { normalizeSupportedAbis } from './abi'
 import { shouldAutoPrompt, shouldFetchForAutoCheck } from './gate'
 import { fetchLatestRelease } from './github'
-import { compareSemver, isNewerVersion } from './semver'
+import { androidVersionCode, compareSemver, isNewerVersion } from './semver'
 import { AppUpdateNative } from './native'
 import {
   getUpdateTrackPrefs,
@@ -12,6 +13,7 @@ import {
   touchLastCheck,
 } from './prefs'
 import type {
+  AndroidAbi,
   LatestReleaseInfo,
   PackageFlavor,
   UpdateCheckResult,
@@ -85,6 +87,9 @@ async function ensureNativeListeners(): Promise<void> {
     if (activeDownloadId === downloadId) activeDownloadId = null
     setUi({ downloading: false, lastManualMessage: undefined })
   })
+  await AppUpdateNative.addListener('downloadRedirected', ({ fromDownloadId, toDownloadId }) => {
+    if (activeDownloadId === fromDownloadId) activeDownloadId = toDownloadId
+  })
   await AppUpdateNative.addListener('downloadFailed', ({ downloadId, message, kind }) => {
     if (activeDownloadId === downloadId) activeDownloadId = null
     const fallback =
@@ -150,12 +155,25 @@ export function selectEligibleUpdateResult(
   }
 }
 
+export async function resolveSupportedAbis(
+  flavor: PackageFlavor,
+): Promise<AndroidAbi[]> {
+  if (flavor !== 'local') return []
+  try {
+    return normalizeSupportedAbis((await AppUpdateNative.getSupportedAbis()).abis)
+  } catch {
+    // 旧原生壳或异常设备安全回退 universal local APK。
+    return []
+  }
+}
+
 async function fetchEligibleUpdate(
   localVersion: string,
   flavor: PackageFlavor,
   subscriptionTrack: UpdateTrack,
 ): Promise<UpdateCheckResult> {
-  const result = await fetchLatestRelease(localVersion, flavor, subscriptionTrack)
+  const supportedAbis = await resolveSupportedAbis(flavor)
+  const result = await fetchLatestRelease(localVersion, flavor, subscriptionTrack, supportedAbis)
   return selectEligibleUpdateResult(localVersion, subscriptionTrack, [result])
 }
 
@@ -227,6 +245,8 @@ export async function beginUpdate(release: LatestReleaseInfo): Promise<BeginUpda
       fileName: release.apkFileName,
       sha256: release.sha256,
       size: release.size,
+      versionCode: androidVersionCode(release.version) ?? undefined,
+      ...(release.sha256 && release.deltas?.length ? { deltas: release.deltas } : {}),
     })
     activeDownloadId = downloadId
     setUi({ downloading: true, lastManualMessage: undefined })

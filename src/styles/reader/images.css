@@ -1,0 +1,46 @@
+.reader-prose img {
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 0.6em 0 1.2em;
+  cursor: zoom-in;
+}
+
+/* 推迟加载：空 src 的 img 不能铺满占位，否则 WebView 点到空图不冒泡 */
+.reader-prose .reader-deferred-host > img {
+  display: none;
+  pointer-events: none;
+  width: 0;
+  max-width: 0;
+  height: 0;
+  margin: 0;
+}
+
+/*
+ * 作者头像 / 蓝 V / 表情等徽章：保持行内小尺寸。
+ * 消毒会剥掉源站 style，依赖 data-reader-role 或加载后的 naturalWidth 分类。
+ */
+.reader-prose img.reader-img-badge,
+.reader-prose img[data-reader-role='badge'] {
+  display: inline-block;
+  width: auto;
+  max-width: 1.75em;
+  max-height: 1.75em;
+  margin: 0 0.2em;
+  vertical-align: -0.15em;
+  border-radius: 4px;
+  cursor: default;
+  min-height: 0;
+}
+
+.reader-prose video:not(.ink-video-player-media) {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  border-radius: 12px;
+  margin: 0.8em 0 1.2em;
+  background: #000;
+}
+

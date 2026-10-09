@@ -1,0 +1,37 @@
+/*
+ * UI 控件不是正文内容，任何文本选择都不应跨入按钮/Tab/菜单项。
+ * Android WebView 在正文长按选择时可能把邻近按钮文案一起纳入选择范围，
+ * 因此在语义控件根节点及其子节点统一禁止文本选择。输入框、textarea、
+ * contenteditable 不在此规则内，仍可正常选字、复制和编辑。
+ */
+button,
+button *,
+[role='button'],
+[role='button'] *,
+[role='tab'],
+[role='tab'] *,
+[role='menuitem'],
+[role='menuitem'] *,
+[role='option'],
+[role='option'] *,
+[role='switch'],
+[role='switch'] *,
+[role='checkbox'],
+[role='checkbox'] *,
+[role='radio'],
+[role='radio'] * {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/*
+ * 自定义长按操作区域还需要额外关闭系统长按 callout；只设置 user-select
+ * 不足以阻止部分 Android WebView 弹出系统复制/搜索菜单。
+ */
+.custom-long-press-target,
+.custom-long-press-target * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
