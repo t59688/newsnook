@@ -173,7 +173,9 @@ export const SiteScreen = memo(function SiteScreen({
               返回
             </button>
           )}
-          {sites.map((s, idx) => (
+          {sites.length === 1 ? (
+            <span className="min-w-0 truncate font-display text-[16px] font-semibold text-paper">{activeSite?.source.label || activeSite?.source.name}</span>
+          ) : sites.map((s, idx) => (
             <button
               key={s.source.id}
               type="button"

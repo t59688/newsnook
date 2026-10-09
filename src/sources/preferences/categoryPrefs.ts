@@ -266,19 +266,21 @@ function currentOrder(prefs: Preferences): CategoryId[] {
   return orderedCategories(prefs).map((category) => category.id)
 }
 
+/**
+ * 首页快捷前移/后移只能跨越当前可见的普通分类。
+ * 系统派生的「推荐」「收藏」固定位置，不属于 Preferences.categoryOrder；
+ * 跳过隐藏分类，确保一次操作对应首页轨道上一次真实的相邻交换。
+ */
 export function moveCategory(
   prefs: Preferences,
   categoryId: CategoryId,
   direction: -1 | 1,
 ): Preferences {
-  const order = currentOrder(prefs)
-  const index = order.indexOf(categoryId)
-  const target = index + direction
-  if (index < 0 || target < 0 || target >= order.length) return prefs
-
-  const next = [...order]
-  ;[next[index], next[target]] = [next[target], next[index]]
-  return { ...prefs, categoryOrder: next }
+  const visible = visibleCategories(prefs).map((category) => category.id)
+  const index = visible.indexOf(categoryId)
+  const targetId = visible[index + direction]
+  if (index < 0 || !targetId) return prefs
+  return reorderCategories(prefs, categoryId, targetId)
 }
 
 /** 拖拽排序：把 fromId 抽出来插入到 toId 的位置 */

@@ -9,11 +9,7 @@ import {
   Sun,
 } from 'lucide-react'
 
-import {
-  PresetSwitcher,
-  type PresetSwitcherItem,
-  type SiteSwitcherItem,
-} from './PresetSwitcher'
+import { PresetSwitcher, type PresetSwitcherProps } from './PresetSwitcher'
 import { BrandLogo } from './BrandLogo'
 import { chineseDate } from '../lib/time'
 import type { CategoryId, NewsCategory } from '../sources/categories'
@@ -32,17 +28,7 @@ interface Props {
   resolvedTheme: 'light' | 'dark'
   onToggleTheme: () => void
   hasUpdate?: boolean
-  presetSwitcher?: {
-    activeName: string
-    items: PresetSwitcherItem[]
-    onSelect: (id: string) => void
-    onManage: () => void
-    onOpenSettings?: () => void
-    siteItems?: SiteSwitcherItem[]
-    onSelectSite?: (id: string) => void
-    onSites?: () => void
-    siteCount?: number
-  }
+  presetSwitcher?: Omit<PresetSwitcherProps, 'variant'>
   onNavigateHome: () => void
   onNavigateLater: () => void
   onNavigateHistory: () => void
@@ -159,18 +145,7 @@ export const DesktopSidebar = memo(function DesktopSidebar({
 
             {presetSwitcher && (
               <li>
-                <PresetSwitcher
-                  variant="sidebar"
-                  activeName={presetSwitcher.activeName}
-                  items={presetSwitcher.items}
-                  onSelect={presetSwitcher.onSelect}
-                  onManage={presetSwitcher.onManage}
-                  onOpenSettings={presetSwitcher.onOpenSettings}
-                  siteItems={presetSwitcher.siteItems}
-                  onSelectSite={presetSwitcher.onSelectSite}
-                  onSites={presetSwitcher.onSites}
-                  siteCount={presetSwitcher.siteCount}
-                />
+                <PresetSwitcher variant="sidebar" {...presetSwitcher} />
               </li>
             )}
 

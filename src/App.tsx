@@ -139,6 +139,7 @@ import {
   resetTypography,
   setAutoRefreshOnCategorySwitch,
   setCategoryOrder,
+  moveCategory,
   setEinkMode,
   setHomeFeedLayout,
   setPrestoreEnabled,
@@ -847,6 +848,11 @@ export default function App() {
     [update],
   )
 
+  const handleMoveCategory = useCallback(
+    (id: CategoryId, direction: -1 | 1) => update((prev) => moveCategory(prev, id, direction)),
+    [update],
+  )
+
   const handleRenameCategory = useCallback(
     (id: CategoryId, name: string) => {
       update((prev) => renameCategory(prev, id, name))
@@ -1049,10 +1055,12 @@ export default function App() {
     ]
   }, [activeSiteId, presets.builtins, presets.state])
 
-  const frameworkSiteCount = useMemo(
-    () => (prefs.customSources ?? []).filter((s) => s.frameworkHint && s.kind === 'web-catalog').length,
+  const cmsSources = useMemo(
+    () => (prefs.customSources ?? []).filter((s) => s.frameworkHint && s.kind === 'web-catalog'),
     [prefs.customSources],
   )
+  const frameworkSiteCount = cmsSources.length
+  const [selectedCmsId, setSelectedCmsId] = useState<string | null>(null)
 
   const siteSwitcherItems = useMemo(
     () => Capacitor.isNativePlatform()
@@ -1067,11 +1075,21 @@ export default function App() {
   )
 
   const presetSwitcherConfig = useMemo(() => ({
-    activeName: findSite(activeSiteId)?.name ?? presets.activePreset?.name ?? '场景预设',
+    activeName: findSite(activeSiteId)?.name
+      ?? (tab === 'sites'
+        ? (cmsSources.find((source) => source.id === selectedCmsId)?.label
+          || cmsSources.find((source) => source.id === selectedCmsId)?.name
+          || 'CMS 站点')
+        : null)
+      ?? presets.activePreset?.name ?? '场景预设',
     items: presetSwitcherItems,
     onSelect: (id: string) => {
       if (activeSiteId) leaveActiveSite()
       if (id !== presets.state.activePresetId) presets.applyPreset(id)
+      // 从独立 CMS 站点切回资讯布局时，必须真的返回首页而非只改预设状态。
+      setSelectedCmsId(null)
+      setSettingsRoute(null)
+      setTab('today')
     },
     onManage: () => {
       if (activeSiteId) leaveActiveSite()
@@ -1096,10 +1114,26 @@ export default function App() {
     },
     onSites: frameworkSiteCount > 0 ? () => {
       if (activeSiteId) leaveActiveSite()
+      setSettingsRoute(null)
+      setSelectedCmsId(null)
       setTab('sites')
     } : undefined,
-    siteCount: frameworkSiteCount,
-  }), [activeSiteId, frameworkSiteCount, leaveActiveSite, presetSwitcherItems, presets, siteSwitcherItems])
+    cmsActive: tab === 'sites',
+    activeCmsId: tab === 'sites' ? selectedCmsId : null,
+    cmsSites: cmsSources.map((source) => ({ id: source.id, name: source.label || source.name, description: source.url })),
+    onSelectCms: (id: string) => {
+      if (!cmsSources.some((source) => source.id === id)) return
+      if (activeSiteId) leaveActiveSite()
+      setSettingsRoute(null)
+      setSelectedCmsId(id)
+      setTab('sites')
+    },
+    onAddCms: () => {
+      if (activeSiteId) leaveActiveSite()
+      setTab('me')
+      setSettingsRoute({ name: 'custom-sources' })
+    },
+  }), [activeSiteId, cmsSources, frameworkSiteCount, leaveActiveSite, presetSwitcherItems, presets, selectedCmsId, siteSwitcherItems, tab])
 
   const cachedHistory = useMemo(
     () =>
@@ -1679,15 +1713,16 @@ export default function App() {
     }
 
     if (tab === 'sites') {
-      const frameworkSites = (prefs.customSources ?? [])
-        .filter((s) => s.frameworkHint && s.kind === 'web-catalog')
+      const frameworkSites = cmsSources
+        .filter((s) => !selectedCmsId || s.id === selectedCmsId)
         .map((s) => ({ source: s, hint: s.frameworkHint! }))
       return (
         <SiteScreen
+          key={selectedCmsId ?? 'all-cms-sites'}
           sites={frameworkSites}
           readIds={readIds}
           onOpen={openArticle}
-          onBack={() => setTab('today')}
+          onBack={() => { setSelectedCmsId(null); setTab('today') }}
         />
       )
     }
@@ -1733,6 +1768,7 @@ export default function App() {
         }
         onRemoveCategory={handleRemoveCategory}
         onRenameCategory={handleRenameCategory}
+        onMoveCategory={handleMoveCategory}
         articlesForCategory={articlesForCategory}
         translationPrefs={prefs.translation}
         customSources={prefs.customSources}

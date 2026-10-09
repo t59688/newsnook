@@ -87,7 +87,10 @@ try {
   assert.equal(linuxDoLogo.getAttribute('data-community-logo-body-size'), '24')
   assert.equal(zhihuLogo.getAttribute('width'), linuxDoLogo.getAttribute('width'))
   assert.equal(zhihuLogo.getAttribute('height'), linuxDoLogo.getAttribute('height'))
-  assert.ok(document.querySelectorAll('[role="tab"]').length === 2, 'upper section must have exactly two preset tabs')
+  assert.ok(document.querySelectorAll('[role="tab"]').length === 3, 'switcher must offer built-in, custom and CMS tabs')
+  await click(buttonWithText('CMS 站点'))
+  assert.ok(document.body.textContent?.includes('让熟悉的网站成为你的阅读空间'), 'empty CMS tab must explain the supported workflow')
+  await click(buttonWithText('内置预设'))
   assert.ok(document.querySelectorAll('svg').length >= 8, 'major switcher controls/cards must use icons')
 
   await click(document.querySelector('button[aria-label="设置"]') as HTMLButtonElement)

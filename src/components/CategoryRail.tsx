@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { CircleMinus, PencilLine } from 'lucide-react'
+import { ArrowLeft, ArrowRight, CircleMinus, PencilLine } from 'lucide-react'
 
 import { useLongPressAction } from '../hooks/useLongPressAction'
 import type { Point } from '../lib/contextActions'
@@ -23,6 +23,7 @@ interface Props {
   reduced?: boolean
   onRemoveCategory?: (id: CategoryId) => void
   onRenameCategory?: (id: CategoryId, name: string) => void
+  onMoveCategory?: (id: CategoryId, direction: -1 | 1) => void
 }
 
 const BASE_INDICATOR_WIDTH = 14 // 14px 对应原来的 w-3.5
@@ -40,6 +41,7 @@ export function CategoryRail({
   reduced = false,
   onRemoveCategory,
   onRenameCategory,
+  onMoveCategory,
 }: Props) {
   const scrollerRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<CategoryId, HTMLButtonElement>>(new Map())
@@ -68,8 +70,21 @@ export function CategoryRail({
     : undefined
   const isDynamicCategory = (id: CategoryId) =>
     id === FAVORITES_CATEGORY_ID || id === RECOMMEND_CATEGORY_ID
+  // 推荐、收藏是系统固定入口；与隐藏分类都不应参与快捷排序的相邻索引。
+  const movableCategories = categories.filter((category) => !isDynamicCategory(category.id))
+  const actionIndex = actionCategory && !isDynamicCategory(actionCategory.id)
+    ? movableCategories.findIndex((category) => category.id === actionCategory.id)
+    : -1
   const actionItems: ContextActionItem[] = actionCategory
     ? [
+        ...(onMoveCategory && actionIndex > 0 ? [{
+          id: 'move-left', label: '向前移动', icon: ArrowLeft,
+          onSelect: () => onMoveCategory(actionCategory.id, -1),
+        }] : []),
+        ...(onMoveCategory && actionIndex >= 0 && actionIndex < movableCategories.length - 1 ? [{
+          id: 'move-right', label: '向后移动', icon: ArrowRight,
+          onSelect: () => onMoveCategory(actionCategory.id, 1),
+        }] : []),
         ...(!isDynamicCategory(actionCategory.id) && onRenameCategory
           ? [
               {
@@ -235,9 +250,11 @@ export function CategoryRail({
       >
         {categories.map((category, index) => {
           const isActiveTab = category.id === activeId
-          const canManage =
-            (!isDynamicCategory(category.id) && Boolean(onRenameCategory)) ||
-            (!isDynamicCategory(category.id) && Boolean(onRemoveCategory))
+          const canManage = !isDynamicCategory(category.id) && (
+            Boolean(onRenameCategory) ||
+            Boolean(onRemoveCategory) ||
+            (Boolean(onMoveCategory) && movableCategories.length > 1)
+          )
           // 计算字体的渐变权重 (0 ~ 1)
           let weight = 0
           if (isDragging || transitionMs > 0) {

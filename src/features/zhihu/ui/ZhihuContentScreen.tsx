@@ -154,8 +154,8 @@ export function ZhihuAnswerActionBar({
 
   return (
     <nav
-      className="pointer-events-none fixed inset-x-0 z-40 flex justify-center px-3 sm:px-4"
-      style={{ bottom: 'calc(var(--sab) + 0.65rem)' }}
+      className="fixed inset-x-0 bottom-0 z-40 flex justify-center border-t border-haze/70 bg-ink-raised/98 px-2 sm:px-4"
+      style={{ paddingBottom: 'var(--sab, 0px)' }}
       aria-label="回答操作"
     >
       <div className="relative w-full max-w-lg">
@@ -165,7 +165,7 @@ export function ZhihuAnswerActionBar({
           </div>
         )}
 
-        <div className="zhihu-action-dock pointer-events-auto flex h-13 min-w-0 items-center gap-1 rounded-2xl p-1.5">
+        <div className="zhihu-action-dock pointer-events-auto flex h-14 min-w-0 items-center gap-1 px-1.5">
           <button
             type="button"
             disabled={voteDisabled}
@@ -874,7 +874,7 @@ export function ZhihuContentScreen({ refValue, preview, contentService, feedServ
     : null
 
   return (
-    <article className={`mx-auto w-full max-w-3xl px-4 pt-5 sm:px-6 ${refValue.kind === 'answer' ? 'pb-28' : 'pb-24'}`}>
+    <article className={`mx-auto w-full max-w-3xl px-4 pt-5 sm:px-6 ${refValue.kind === 'answer' ? 'pb-[calc(6rem+var(--sab,0px))]' : 'pb-24'}`}>
       {answerPreviewPortal}
       {hudLabel && (
         <div

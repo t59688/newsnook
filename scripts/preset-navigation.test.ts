@@ -46,7 +46,7 @@ assert.match(
 )
 assert.match(
   appSource,
-  /useFeeds\(fetchIds,\s*notifyCacheChange,\s*prefs\.customSources,\s*activePresetId\)/,
+  /useFeeds\(fetchIds,\s*notifyCacheChange,\s*prefs\.customSources,\s*activePresetId,\s*automaticFetchIds\)/,
   '活动预设 id 必须传入 useFeeds，让 feed 生命周期能识别预设切换',
 )
 
