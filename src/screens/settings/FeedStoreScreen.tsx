@@ -287,7 +287,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
           <div className="grid grid-cols-2 gap-2.5">
             <button type="button" aria-pressed={discoveryMode === 'keyword'}
               onClick={() => switchDiscoveryMode('keyword')}
-              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'keyword' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-haze-strong'}`}>
+              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'keyword' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
               <span className={`flex items-center gap-2 text-[13px] font-medium ${discoveryMode === 'keyword' ? 'text-cinnabar-soft' : 'text-paper'}`}>
                 <Search size={16} strokeWidth={1.8} className="shrink-0" />
                 按名称搜索
@@ -296,7 +296,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             </button>
             <button type="button" aria-pressed={discoveryMode === 'website'}
               onClick={() => switchDiscoveryMode('website')}
-              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'website' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-haze-strong'}`}>
+              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'website' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
               <span className={`flex items-center gap-2 text-[13px] font-medium ${discoveryMode === 'website' ? 'text-cinnabar-soft' : 'text-paper'}`}>
                 <Link2 size={16} strokeWidth={1.8} className="shrink-0" />
                 通过网站订阅
