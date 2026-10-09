@@ -1022,7 +1022,16 @@ export function ZhihuContentScreen({ refValue, preview, contentService, feedServ
                 ref={proseRef}
                 className="reader-prose zhihu-prose text-paper"
                 data-article-lang="zh"
+                style={refValue.kind === 'answer' ? { touchAction: 'manipulation' } : undefined}
                 onClick={handleBodyClick}
+                onDoubleClick={(event) => {
+                  if (refValue.kind !== 'answer' || guestLimited || commentsOpen || selectedSegment || lightbox || speedReadOpen) return
+                  const target = event.target instanceof Element ? event.target : null
+                  if (!target || target.closest('a, button, img, video, audio, iframe, input, textarea, [contenteditable], [data-segment-id]')) return
+                  if (window.getSelection()?.toString().trim()) return
+                  event.preventDefault()
+                  setCommentsOpen(true)
+                }}
                 dangerouslySetInnerHTML={normalizedHtmlMarkup}
               />
               <InlineArticleVideos

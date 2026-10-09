@@ -5,7 +5,8 @@ export const ANSWER_SWIPE_DIRECTION_LOCK_PX = 12
 export const ANSWER_SWIPE_DIRECTION_BIAS = 1.15
 export const ANSWER_SWIPE_COMMIT_RATIO = 0.22
 export const ANSWER_SWIPE_MIN_COMMIT_PX = 120
-export const ANSWER_SWIPE_MIN_GESTURE_MS = 240
+export const ANSWER_SWIPE_MIN_GESTURE_MS = 90
+export const ANSWER_SWIPE_FAST_COMMIT_RATIO = 0.38
 export const ANSWER_SWIPE_WHEEL_SEQUENCE_GAP_MS = 180
 
 const EDGE_EPSILON_PX = 1
@@ -44,7 +45,9 @@ export function shouldCommitAnswerSwipe(
 ): boolean {
   return canGo
     && elapsedMs >= ANSWER_SWIPE_MIN_GESTURE_MS
-    && Math.abs(distance) >= answerSwipeCommitDistance(viewportHeight)
+    && Math.abs(distance) >= (elapsedMs < 240
+      ? Math.max(answerSwipeCommitDistance(viewportHeight), viewportHeight * ANSWER_SWIPE_FAST_COMMIT_RATIO)
+      : answerSwipeCommitDistance(viewportHeight))
 }
 
 export function canStartAnswerWheelSequence(
