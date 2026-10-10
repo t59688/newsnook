@@ -15,25 +15,36 @@ export class LinuxDoNotificationService {
     offset = 0,
     limit = 60,
     options: { signal?: AbortSignal; filter?: 'read' | 'unread' } = {},
-  ): Promise<{ items: LinuxDoNotification[]; nextOffset?: number; totalRows?: number }> {
+  ): Promise<{ items: LinuxDoNotification[]; nextOffset?: number; totalRows?: number; scannedRows: number }> {
     const payload = await this.api.getJson<any>(
       linuxDoEndpoints.notifications(offset, limit, options.filter),
       { auth: 'required', signal: options.signal },
     )
+    const items = decodeNotifications(payload)
+    const rawTotal = payload?.total_rows_notifications
+    const totalRowsValue = rawTotal === null || rawTotal === undefined ? Number.NaN : Number(rawTotal)
+    const totalRows = Number.isSafeInteger(totalRowsValue) && totalRowsValue >= 0 ? totalRowsValue : undefined
+    const scannedRows = totalRows === undefined ? offset + limit : Math.min(totalRows, offset + limit)
+    // Discourse always emits load_more_notifications, including on the last page.
+    // Only request pages that advance the server offset and fit the real total.
     const loadMore = typeof payload?.load_more_notifications === 'string' ? payload.load_more_notifications : ''
     let nextOffset: number | undefined
     if (loadMore) {
       try {
         const parsed = new URL(loadMore, linuxDoEndpoints.origin)
         const value = Number(parsed.searchParams.get('offset'))
-        if (Number.isFinite(value) && value >= 0) nextOffset = value
+        if (
+          parsed.origin === linuxDoEndpoints.origin &&
+          parsed.pathname === '/notifications' &&
+          Number.isSafeInteger(value) &&
+          value > offset &&
+          (totalRows === undefined ? items.length > 0 : value < totalRows)
+        ) nextOffset = value
       } catch {
         nextOffset = undefined
       }
     }
-    const totalRowsValue = Number(payload?.total_rows_notifications)
-    const totalRows = Number.isFinite(totalRowsValue) && totalRowsValue >= 0 ? totalRowsValue : undefined
-    return { items: decodeNotifications(payload), nextOffset, totalRows }
+    return { items, nextOffset, totalRows, scannedRows }
   }
 
   async recentPrivateMessages(username: string, signal?: AbortSignal): Promise<LinuxDoPrivateMessageItem[]> {
