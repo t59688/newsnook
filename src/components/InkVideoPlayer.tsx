@@ -669,6 +669,9 @@ function InkVideoPlayerReady({
     let directRetryAttempted = false
     let progressiveRecoveryInFlight = false
     let recoveryRequestInFlight = false
+    let hlsRecoveries = 0
+    let hlsRecoveryTimer: ReturnType<typeof setTimeout> | null = null
+    const MAX_HLS_RECOVERIES = 3
     let progressiveRecoveryTimer: ReturnType<typeof window.setTimeout> | undefined
     const effectiveHeaders: Record<string, string> = { ...headers }
     if (sourcePage && !Object.keys(effectiveHeaders).some((key) => key.toLowerCase() === 'referer')) {
@@ -698,6 +701,15 @@ function InkVideoPlayerReady({
       })
     }
     refreshNativeOriginsRef.current = refreshNativeOrigins
+    // Keep long-lived playback credentials available without touching the decoder.
+    // Re-register the same native session periodically while the document is active.
+    const renewPlaybackLease = () => {
+      if (cancelled || document.hidden || !nativePrepared) return
+      registeredOriginsKey = ''
+      refreshNativeOrigins()
+    }
+    const renewalTimer = window.setInterval(renewPlaybackLease, 4 * 60 * 1000)
+    document.addEventListener('visibilitychange', renewPlaybackLease)
     const restoreCheckpoint = () => {
       if (!pendingResume || cancelled || recoveryRequestInFlight || video.readyState < 1) return
       const checkpoint = pendingResume
@@ -994,15 +1006,21 @@ function InkVideoPlayerReady({
           hls.on(HlsClass.Events.MANIFEST_PARSED, markReady)
           hls.on(HlsClass.Events.ERROR, (_event, data) => {
             if (!data.fatal || cancelled) return
-            if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) {
-              hls.startLoad()
+            if (hlsRecoveries >= MAX_HLS_RECOVERIES) {
+              failPlayback('视频流重试失败，请检查网络或更换视频源')
+              hls.stopLoad()
               return
             }
-            if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) {
-              hls.recoverMediaError()
-              return
-            }
-            failPlayback('视频流加载失败')
+            if (hlsRecoveryTimer != null) return
+            const attempt = ++hlsRecoveries
+            const delayMs = Math.min(8000, 500 * 2 ** (attempt - 1))
+            hlsRecoveryTimer = setTimeout(() => {
+              hlsRecoveryTimer = null
+              if (cancelled) return
+              if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) hls.startLoad()
+              else if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError()
+              else failPlayback('视频流加载失败')
+            }, delayMs)
           })
         } else {
           failPlayback('当前环境不支持 HLS 播放')
@@ -1024,9 +1042,12 @@ function InkVideoPlayerReady({
     return () => {
       reloadCheckpointRef.current = pendingResume ?? playbackCheckpoint(video, intendedPlaying)
       cancelled = true
+      window.clearInterval(renewalTimer)
+      document.removeEventListener('visibilitychange', renewPlaybackLease)
       if (!preparations.size) void releaseNativeMediaPlayback(nativeSessionId)
       if (refreshNativeOriginsRef.current === refreshNativeOrigins) refreshNativeOriginsRef.current = null
       settleProgressiveRecovery()
+      if (hlsRecoveryTimer != null) clearTimeout(hlsRecoveryTimer)
       clearHideTimer()
       video.removeEventListener('loadstart', onLoadStart)
       video.removeEventListener('canplay', markReady)
@@ -1669,6 +1690,7 @@ function InkVideoPlayerReady({
   }
 
   const onGesturePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (compactRef.current) return
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -1830,7 +1852,14 @@ function InkVideoPlayerReady({
             data-video-gesture-surface=""
             className="absolute inset-0 z-[1] touch-none select-none"
           onPointerDown={onGesturePointerDown}
-          onClick={compact ? () => revealControls() : undefined}
+          onClick={compact ? () => {
+            if (showChromeRef.current) {
+              clearHideTimer()
+              setControlsVisible(false)
+            } else {
+              revealControls()
+            }
+          } : undefined}
             onPointerMove={onGesturePointerMove}
             onPointerUp={onGesturePointerUp}
             onPointerCancel={onGesturePointerCancel}

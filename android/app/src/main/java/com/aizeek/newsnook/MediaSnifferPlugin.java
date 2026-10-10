@@ -700,6 +700,10 @@ public class MediaSnifferPlugin extends Plugin {
             expiresAt,
             sessionId
         );
+        // Renewal replaces the same origin lease. Other playback sessions are untouched.
+        if (sessionId != null) PLAYBACK_CONTEXTS.entrySet().removeIf(entry ->
+            sessionId.equals(entry.getValue().sessionId)
+                && url.equals(entry.getValue().originalUrl));
         PLAYBACK_CONTEXTS.put(UUID.randomUUID().toString(), context);
         purgePlaybackContexts();
     }
@@ -784,7 +788,13 @@ public class MediaSnifferPlugin extends Plugin {
                 best = candidate;
             }
         }
-        return best == null ? null : best.forRequest(url);
+        if (best == null) return null;
+        // An active decoder may stay open for hours. Refresh its lease on each
+        // actual segment/seek request; released sessions cannot be revived.
+        if (best.sessionId != null) {
+            best.expiresAt = now + PLAYBACK_CONTEXT_TTL_MS;
+        }
+        return best.forRequest(url);
     }
 
     private static void purgePlaybackContexts() {
@@ -811,7 +821,7 @@ public class MediaSnifferPlugin extends Plugin {
         final Map<String, String> jsHeaders;
         final String sourcePage;
         final OkHttpClient client;
-        final long expiresAt;
+        volatile long expiresAt;
         final String sessionId;
 
         PlaybackContext(

@@ -5,14 +5,16 @@ import { VideoSessionManagerContext } from './context'
 import { createVideoSessionManager } from './session'
 import { VideoSessionHost } from './VideoSessionHost'
 import { setNativeLiveSurfaceSuppressed } from '../mediaSniffer/native'
+import { createLiveSuppressionCoordinator } from './nativeSurfaceCoordinator'
 
 export function FloatingVideoProvider({ children }: { children: ReactNode }) {
   const [manager] = useState(createVideoSessionManager)
+  const [suppression] = useState(() => createLiveSuppressionCoordinator(setNativeLiveSurfaceSuppressed))
   const sessions = useSyncExternalStore(manager.subscribe, manager.getSnapshot, manager.getSnapshot)
   const nativeSuppressed = sessions.some(session => session.mode !== 'inline' || session.immersive)
   useEffect(() => {
-    void setNativeLiveSurfaceSuppressed(nativeSuppressed)
-  }, [nativeSuppressed])
+    suppression.set(nativeSuppressed)
+  }, [nativeSuppressed, suppression])
   useEffect(() => {
     const onVisibility = () => { if (document.hidden) void manager.suspend() }
     document.addEventListener('visibilitychange', onVisibility)
@@ -33,9 +35,9 @@ export function FloatingVideoProvider({ children }: { children: ReactNode }) {
       // Child slot layout cleanups run first. Remaining detached runtimes are
       // paused here; their own React unmount cleans engines and native state.
       manager.pauseAll()
-      void setNativeLiveSurfaceSuppressed(false)
+      suppression.set(false)
     }
-  }, [manager])
+  }, [manager, suppression])
   return <VideoSessionManagerContext.Provider value={manager}>
     {children}
     {sessions.map(session => <VideoSessionHost key={session.id} manager={manager} session={session} />)}

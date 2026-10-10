@@ -29,6 +29,23 @@ public class PlaybackSessionTest {
         assertNull(MediaSnifferPlugin.findPlaybackContext(url, "second"));
     }
 
+    @Test public void activeSegmentRenewsPlaybackLeaseWithoutChangingOtherSession() {
+        String url = "https://cdn.example/playlist.m3u8";
+        MediaSnifferPlugin.registerPlaybackContext(url, "hls", true, false,
+            Collections.singletonMap("Referer", "https://first.example/"), null, new OkHttpClient(), "first");
+        MediaSnifferPlugin.registerPlaybackContext(url, "hls", true, false,
+            Collections.singletonMap("Referer", "https://second.example/"), null, new OkHttpClient(), "second");
+        MediaSnifferPlugin.PlaybackContext first = MediaSnifferPlugin.findPlaybackContext(url, "first");
+        MediaSnifferPlugin.PlaybackContext second = MediaSnifferPlugin.findPlaybackContext(url, "second");
+        assertNotNull(first);
+        assertNotNull(second);
+        assertNotNull(MediaSnifferPlugin.findPlaybackContext("https://cdn.example/segment.ts", "first"));
+        assertNotNull(MediaSnifferPlugin.findPlaybackContext(url, "second"));
+        MediaSnifferPlugin.releasePlaybackSession("first");
+        assertNull(MediaSnifferPlugin.findPlaybackContext(url, "first"));
+        assertNotNull(MediaSnifferPlugin.findPlaybackContext(url, "second"));
+    }
+
     @Test public void nonInterceptingSessionCannotClearAnotherSession() {
         String url = "https://cdn.example/play.m3u8";
         MediaSnifferPlugin.registerPlaybackContext(url, "hls", true, false, Collections.emptyMap(), null, new OkHttpClient(), "first");

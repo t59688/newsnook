@@ -19,6 +19,7 @@ import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
@@ -29,6 +30,10 @@ final class LocalStreamProxy implements Closeable {
 
     private static final LocalStreamProxy INSTANCE = new LocalStreamProxy();
     private static final int BUFFER_SIZE = 16 * 1024;
+    private static final int MAX_REQUEST_LINE = 8192;
+    private static final int MAX_REQUEST_HEADERS = 64;
+    private static final int MAX_ACTIVE_STREAMS = 8;
+    private final AtomicInteger activeStreams = new AtomicInteger();
 
     private final Object lock = new Object();
     private ServerSocket serverSocket;
@@ -47,7 +52,7 @@ final class LocalStreamProxy implements Closeable {
             serverSocket.setReuseAddress(true);
             port = serverSocket.getLocalPort();
             acceptExecutor = Executors.newSingleThreadExecutor(named("newsnook-stream-proxy"));
-            requestExecutor = Executors.newCachedThreadPool(named("newsnook-stream-proxy-worker"));
+            requestExecutor = Executors.newFixedThreadPool(MAX_ACTIVE_STREAMS, named("newsnook-stream-proxy-worker"));
             acceptExecutor.execute(this::acceptLoop);
             return port;
         }
@@ -87,14 +92,26 @@ final class LocalStreamProxy implements Closeable {
                     closeQuietly(socket);
                     continue;
                 }
-                workers.execute(() -> {
-                    try {
-                        handle(socket);
-                    } catch (Throwable ignored) {
-                        // Errors (e.g. NoSuchMethodError on old API) must not kill the process.
-                        closeQuietly(socket);
-                    }
-                });
+                if (activeStreams.incrementAndGet() > MAX_ACTIVE_STREAMS) {
+                    activeStreams.decrementAndGet();
+                    closeQuietly(socket);
+                    continue;
+                }
+                try {
+                    workers.execute(() -> {
+                        try {
+                            handle(socket);
+                        } catch (Throwable ignored) {
+                            // Errors (e.g. NoSuchMethodError on old API) must not kill the process.
+                            closeQuietly(socket);
+                        } finally {
+                            activeStreams.decrementAndGet();
+                        }
+                    });
+                } catch (java.util.concurrent.RejectedExecutionException ignored) {
+                    activeStreams.decrementAndGet();
+                    closeQuietly(socket);
+                }
             } catch (SocketException closed) {
                 return;
             } catch (IOException ignored) {
@@ -219,9 +236,11 @@ final class LocalStreamProxy implements Closeable {
             queryText = target.substring(queryIndex + 1);
         }
         Map<String, String> headers = new LinkedHashMap<>();
+        int headerCount = 0;
         while (true) {
             String line = readLine(input);
             if (line == null || line.isEmpty()) break;
+            if (++headerCount > MAX_REQUEST_HEADERS) return null;
             int separator = line.indexOf(':');
             if (separator <= 0) continue;
             String name = line.substring(0, separator).trim();
@@ -246,6 +265,7 @@ final class LocalStreamProxy implements Closeable {
                 }
                 break;
             }
+            if (builder.length() >= MAX_REQUEST_LINE) throw new IOException("HTTP request line too long");
             builder.append((char) current);
             previous = current;
         }
