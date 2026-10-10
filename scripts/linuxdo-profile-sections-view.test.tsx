@@ -56,7 +56,7 @@ await click('加载更多')
 assert.ok(host.textContent?.includes('Answer 1'))
 assert.ok(host.querySelector('[role="alert"]')?.textContent?.includes('第二页断网'))
 rejectPage = false
-await click('重试栏目')
+await click('重试')
 assert.ok(host.textContent?.includes('Next answer'))
 assert.equal(host.querySelectorAll('article').length, 21)
 

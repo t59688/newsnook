@@ -863,6 +863,7 @@ export function UserProfileView({
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             <button
               type="button"
+              aria-label="打开个人私信"
               onClick={accountControls.onPrivateMessages}
               className="linuxdo-control group flex items-center gap-2.5 rounded-2xl border border-haze/60 bg-ink-raised/65 p-3 text-left transition-all hover:border-cinnabar/30 hover:bg-ink-raised/90 active:scale-[0.98] shadow-sm"
             >

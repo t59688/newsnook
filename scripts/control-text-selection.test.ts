@@ -8,11 +8,15 @@ const speedRead = readFileSync(new URL('../src/components/AiSpeedReadPanel.tsx',
 const categoryRail = readFileSync(new URL('../src/components/CategoryRail.tsx', import.meta.url), 'utf8')
 const sourceFilters = readFileSync(new URL('../src/components/SourceFilterChips.tsx', import.meta.url), 'utf8')
 
+// Match the semantic-controls rule itself, not an earlier `button,` selector
+// followed by unrelated CSS/comments that may mention editable inputs.
 const controlSelectionBlock = css.match(
-  /button,[\s\S]*?\[role='radio'\] \*[\s\S]*?\{[\s\S]*?-webkit-user-select:\s*none;[\s\S]*?user-select:\s*none;[\s\S]*?\}/,
+  /^button,\s*\r?\nbutton \*,[\s\S]*?^\}/m,
 )?.[0] ?? ''
 
 assert.ok(controlSelectionBlock, 'semantic UI controls must globally opt out of text selection')
+assert.match(controlSelectionBlock, /-webkit-user-select:\s*none;/)
+assert.match(controlSelectionBlock, /\buser-select:\s*none;/)
 for (const selector of [
   'button',
   "[role='button']",
