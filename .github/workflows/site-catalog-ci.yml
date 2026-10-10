@@ -26,5 +26,30 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm run build:contracts
       - run: npm run test:site-catalog
       - run: npm run test:framework-detect
+  investigate-upstream:
+    if: github.event.pull_request.number == 76
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Inspect homepage responses from an independent network
+        shell: python
+        run: |
+          import urllib.request, urllib.error, concurrent.futures, re, json
+          def inspect(host):
+              url = 'https://' + host + '/'
+              headers = {'User-Agent': 'Mozilla/5.0 (Linux; Android 16) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Mobile Safari/537.36', 'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8', 'Accept-Language': 'zh-CN,zh;q=0.9,en;q=0.8'}
+              try:
+                  try:
+                      response = urllib.request.urlopen(urllib.request.Request(url, headers=headers), timeout=25)
+                  except urllib.error.HTTPError as error:
+                      response = error
+                  html = response.read(2 * 1024 * 1024).decode('utf-8', errors='replace')
+                  title = re.search(r'<title[^>]*>(.*?)</title>', html, re.I | re.S)
+                  print(json.dumps({'url': url, 'finalUrl': response.url, 'status': response.status, 'bytes': len(html.encode()), 'title': title.group(1)[:160] if title else None, 'generator': re.findall(r'<meta[^>]*generator[^>]*>', html, re.I)[:3], 'scripts': re.findall(r'<script[^>]+src=[\"\x27]([^\"\x27]+)', html, re.I)[:10], 'links': re.findall(r'<a[^>]+href=[\"\x27]([^\"\x27]+)', html, re.I)[:20]}, ensure_ascii=False))
+              except Exception as error:
+                  print(json.dumps({'url': url, 'error': str(error)}, ensure_ascii=False))
+          with concurrent.futures.ThreadPoolExecutor() as executor:
+              list(executor.map(inspect, ['www.qiyunzl.cn', 'qiyunzl.cn']))
