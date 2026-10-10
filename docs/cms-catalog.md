@@ -62,3 +62,13 @@ Web 开发/生产代理可通过 `X-NewsNook-Upstream-Url` 返回实际上游地
 `npm run test:site-catalog` 包含抽取、引擎/能力、会话、配置/同步、详情、响应预算、身份矩阵、官方模板结构、站点 UI、主信息流/预存/迁移、原生 POST 与共享 registry 依赖边界测试。相关原有测试仍保留。
 
 可选实站检查：`npx tsx scripts/site-catalog-smoke.ts [网址]`，默认香菇影视；不属于离线回归，不在测试中依赖变动的网络内容。2026-10-10 验证该站身份为飞飞 CMS，首页 54 条与 9 个栏目；实际 GET 搜索 6 条；动作栏目 42 条，沿实际 hjs1 → hjs2 链接翻页并获得新条目。此结论不推断精确 CMS 版本。
+
+### qiyunzl.cn 探测记录（2026-10-10）
+
+`https://www.qiyunzl.cn/` 与 `https://qiyunzl.cn/` 在手机应用上被报告返回 404，但同一手机浏览器可以正常打开。404 来自 HTTP 层的非成功响应处理，在 HTML 身份与目录解析之前；仅靠调整 CMS 抽取规则不能修复这种响应。
+
+本次执行环境分别使用 Android Chrome 与桌面 Chrome UA 请求两个域名，均取得 HTTP 411 和“恭喜，站点创建成功！”默认页；添加普通浏览器 Accept、Accept-Language 或 Referer 后结果未变。将取得的页面交给当前目录解析器，两者均为 `generic / unsupported`，条目与分类为零，没有真实 CMS 或目录证据。
+
+GitHub Actions 的独立网络也返回相同 HTTP 411 与默认页标题，没有 generator、外部脚本或目录链接，见[临时诊断运行](https://github.com/t59688/newsnook/actions/runs/38050703945/job/114209068236)。取证完成后已移除临时实站请求，常规 CMS CI 不依赖目标网站。
+
+PR #76 修正了原生探测与目录读取 UA 不一致、GET 重定向改写协议及 CI 缺少共享契约构建的问题。这些修复有回归验证，但尚不能证明该站实际兼容，也不能据此确定手机的 404 是 UA、代理、DNS、会话还是站点访问策略造成的。下一步需要手机浏览器正常打开后的最终 URL 与真实页面 HTML，以及相同网络下应用的响应；在此之前不声明该站已完成适配。
