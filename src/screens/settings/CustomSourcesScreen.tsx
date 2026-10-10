@@ -40,6 +40,7 @@ import type { NewsSource } from '../../sources/registry'
 import { MAX_CATALOG_BYTES } from '../../features/siteCatalog/context'
 import { getSiteCleanDomain } from '../../features/siteCatalog/uiUtils'
 import { probeCatalog } from '../../features/siteCatalog/probe'
+import { fetchProbeEntryPage } from '../../features/siteCatalog/probeUrl'
 import { detectFramework } from '../../features/frameworkDetect/detect'
 import type { FrameworkHint } from '../../features/frameworkDetect/types'
 
@@ -293,8 +294,16 @@ export function CustomSourcesScreen({
     // Retain the last valid configuration if re-probing fails.
 
     try {
-      let normalizedUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
-      const text = await fetchAbsoluteText(normalizedUrl, { signal: controller.signal, maxBytes: MAX_CATALOG_BYTES, onResponse: (metadata) => { if (metadata.url) normalizedUrl = metadata.url } })
+      const probeUrl = url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`
+      const { html: text, url: normalizedUrl } = await fetchProbeEntryPage(
+        probeUrl,
+        (candidate, onResponse) => fetchAbsoluteText(candidate, {
+          signal: controller.signal,
+          maxBytes: MAX_CATALOG_BYTES,
+          onResponse,
+        }),
+        controller.signal,
+      )
       if (controller.signal.aborted) return
 
       // 尝试按 XML Feed 解析
