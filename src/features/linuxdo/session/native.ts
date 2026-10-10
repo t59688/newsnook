@@ -23,6 +23,7 @@ export interface LinuxDoBrowserPreparation {
 interface LinuxDoSessionPlugin {
   prepareBrowserSession(): Promise<LinuxDoBrowserPreparation>
   authenticate(options?: { url?: string; readSyncChallenge?: boolean }): Promise<LinuxDoSessionSnapshot>
+  verifyChallenge(options: { url: string }): Promise<{ completed: boolean }>
   authenticateUserApiKey(): Promise<LinuxDoSessionSnapshot>
   cancelUserApiKeyAuth(): Promise<void>
   clearUserApiKey(): Promise<void>
@@ -58,6 +59,15 @@ export async function verifyLinuxDoBrowserSession(url = 'https://linux.do/', opt
     throw new Error('浏览器端无法安全复用 Linux.do 登录会话；请在 NewsNook App 中使用')
   }
   return NativeLinuxDoSession.authenticate({ url, ...options })
+}
+
+/** User-completed first-party Cloudflare challenge, not an account login. */
+export async function verifyLinuxDoChallenge(url = 'https://linux.do/'): Promise<boolean> {
+  if (!Capacitor.isNativePlatform()) {
+    throw new Error('请在 NewsNook Android App 中完成 Linux.do 安全验证')
+  }
+  const result = await NativeLinuxDoSession.verifyChallenge({ url })
+  return result.completed === true
 }
 
 export async function readLinuxDoSession(): Promise<LinuxDoSessionSnapshot> {

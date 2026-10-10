@@ -17,7 +17,7 @@ import { decodePost } from '../api/decode'
 import { linuxDoEndpoints } from '../api/endpoints'
 import { AccountView } from './AccountView'
 import { TrustLevelView } from '../connect/TrustLevelView'
-import { verifyLinuxDoBrowserSession } from '../session/native'
+import { verifyLinuxDoChallenge } from '../session/native'
 import {
   linuxDoApi as api,
   linuxDoDiscovery as discovery,
@@ -296,6 +296,7 @@ function FeedView({
   const needsLogin = error instanceof LinuxDoApiError && error.kind === 'auth-required'
 
   const verifyAndReload = async () => {
+    if (verifying) return
     setVerifying(true)
     try {
       await retryAfterVerification(onVerify, () => load(true))
@@ -489,10 +490,19 @@ function FeedView({
         ) : (
           <div className="space-y-2 sm:space-y-2.5">
             {error && items.length > 0 ? (
-              <button type="button" onClick={() => void load(false)} className="linuxdo-control flex w-full items-center justify-between rounded-xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3 py-2.5 text-left text-[10.5px] text-cinnabar-soft">
-                <span className="min-w-0 flex-1 truncate">{readableError(error)}</span>
-                <span className="ml-3 shrink-0 font-semibold">重试</span>
-              </button>
+              <div data-linuxdo-feed-error className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3 py-2 text-[11px] text-cinnabar-soft" role="alert">
+                <span className="min-w-0 flex-1 leading-5">{readableError(error)}</span>
+                <button
+                  type="button"
+                  disabled={verifying || refreshing || loading}
+                  onClick={() => void (needsVerification ? verifyAndReload() : load(false))}
+                  className="linuxdo-control inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-cinnabar/10 px-3 font-semibold text-cinnabar transition-colors hover:bg-cinnabar/20 disabled:opacity-50"
+                  aria-label={needsVerification ? '打开安全验证' : '重试加载'}
+                >
+                  {verifying ? <Loader2 size={13} className="animate-spin" /> : null}
+                  {verifying ? '验证中' : needsVerification ? '去验证' : '重试'}
+                </button>
+              </div>
             ) : null}
             {items.map((topic, index) => (
               <div key={topic.id} className="linuxdo-card-in" style={{ animationDelay: `${Math.min(index, 8) * 28}ms` }}>
@@ -767,10 +777,9 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
 
   const verify = async (): Promise<boolean> => {
     try {
-      const next = await verifyLinuxDoBrowserSession('https://linux.do/')
-      api.setSession(next)
-      applyWorkspaceSession(next)
-      return true
+      // Cloudflare clearance and account login are distinct states. A challenge
+      // must not replace the current account or erase cached personalized feeds.
+      return await verifyLinuxDoChallenge()
     } catch (nextError) {
       const message = readableError(nextError)
       if (!message.includes('取消')) setWorkspaceError(message)
