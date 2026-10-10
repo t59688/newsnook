@@ -33,7 +33,7 @@ export function selectRssHubProbeInstances(
   const preferred = eligible.find((item) => item.id === preferredId)
   // Only a user explicitly selecting a custom instance may transmit requests to
   // that trust group; a website URL / logical route always discovers with public defaults.
-  const group = preferred?.builtin === false ? eligible.filter((item) => !item.builtin) :
+  const group = preferred && !preferred.builtin ? eligible.filter((item) => !item.builtin) :
     eligible.filter((item) => item.builtin)
   const sensitive = isSensitiveRssHubRoute(routePath)
   if (sensitive) return preferred ? [preferred] : []
