@@ -42,6 +42,8 @@ jobs:
       - run: node scripts/android-apk-pages.test.mjs
       - run: npm run lint
       - run: npm run build
+      - name: Sync Capacitor Android project
+        run: npx cap sync android
       - name: Verify Android playback and lifecycle
         working-directory: android
         run: bash gradlew :app:testCloudDebugUnitTest :app:compileLocalDebugJavaWithJavac --max-workers=2
