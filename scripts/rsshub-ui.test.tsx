@@ -74,7 +74,7 @@ try {
   await act(async () => { root.render(<FeedStoreScreen {...props} />) })
   assert.equal(radarCalls, 0, 'opening store must not eagerly download Radar catalog')
   assert.equal([...document.querySelectorAll('button[aria-pressed]')].find((item) => item.textContent?.includes('通过网站订阅'))?.getAttribute('aria-pressed'), 'true')
-  assert.ok(document.body.textContent?.includes('RSSHub · 4 个已启用实例'))
+  assert.ok(document.body.textContent?.includes('RSSHub · 7 个已启用实例'))
   assert.ok((document.querySelector('#feed-store-search') as HTMLInputElement).placeholder.includes('https://'), 'URL mode shows a website-specific placeholder')
   await click(findButton('查找订阅'))
   assert.equal(radarCalls, 1)
