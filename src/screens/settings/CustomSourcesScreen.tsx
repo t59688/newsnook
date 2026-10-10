@@ -41,7 +41,7 @@ import { MAX_CATALOG_BYTES } from '../../features/siteCatalog/context'
 import { getSiteCleanDomain } from '../../features/siteCatalog/uiUtils'
 import { probeCatalog } from '../../features/siteCatalog/probe'
 import { fetchProbeEntryPage } from '../../features/siteCatalog/probeUrl'
-import { catalogUserAgent } from '../../features/siteCatalog/requestIdentity'
+import { catalogRequestOptions } from '../../features/siteCatalog/requestIdentity'
 import { detectFramework } from '../../features/frameworkDetect/detect'
 import type { FrameworkHint } from '../../features/frameworkDetect/types'
 
@@ -301,7 +301,7 @@ export function CustomSourcesScreen({
         (candidate, onResponse) => fetchAbsoluteText(candidate, {
           signal: controller.signal,
           maxBytes: MAX_CATALOG_BYTES,
-          userAgent: catalogUserAgent(),
+          ...catalogRequestOptions(),
           onResponse,
         }),
         controller.signal,

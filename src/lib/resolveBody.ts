@@ -12,6 +12,7 @@ import { discoverMediaDescriptor, mediaDescriptorHtml } from '../features/mediaS
 import { appendRelatedCatalogHtml, extractRelatedCatalog } from '../features/catalogEngine/related'
 import { extractWebCatalogDetailMeta } from '../features/catalogEngine/detailMeta'
 import { normalizeCatalogTitle } from '../features/catalogEngine/normalize'
+import { catalogRequestOptions } from '../features/siteCatalog/requestIdentity'
 import { nnyyListingUrlForDetail } from '../features/frameworkDetect/adapters/nnyy'
 import { findSource, userAgentFor, type NewsSource } from '../sources/registry'
 import { cleanSummaryText } from './cleanSummary'
@@ -88,8 +89,14 @@ export function pageUserAgentForArticle(
   article: Article,
   extraSources?: NewsSource[],
 ): string | undefined {
+  return pageRequestOptionsForArticle(article, extraSources).userAgent
+}
+
+function pageRequestOptionsForArticle(article: Article, extraSources?: NewsSource[]) {
   const source = findSource(article.sourceId, extraSources)
-  return source ? userAgentFor(source) : undefined
+  return source?.kind === 'web-catalog'
+    ? catalogRequestOptions(source.userAgent)
+    : { userAgent: source ? userAgentFor(source) : undefined }
 }
 
 function relatedExcludeUrls(source: NewsSource | undefined): string[] {
@@ -119,7 +126,7 @@ async function withRelatedFromPage(
     if (listingUrl) {
       const listingHtml = await fetchAbsoluteText(listingUrl, {
         signal,
-        userAgent: pageUserAgentForArticle(article, extraSources),
+        ...pageRequestOptionsForArticle(article, extraSources),
       }).catch(() => undefined)
       if (listingHtml) {
         items = extractRelatedCatalog(listingHtml, listingUrl, {
@@ -260,7 +267,7 @@ export async function resolveArticleBody(
       if (onMediaResolved) {
         void fetchAbsoluteText(article.originUrl, {
           signal,
-          userAgent: pageUserAgentForArticle(article, extraSources),
+          ...pageRequestOptionsForArticle(article, extraSources),
         })
           .then(async (pageHtml) => {
             onMediaResolved(
@@ -279,7 +286,7 @@ export async function resolveArticleBody(
       }
       const pageHtml = await fetchAbsoluteText(article.originUrl, {
         signal,
-        userAgent: pageUserAgentForArticle(article, extraSources),
+        ...pageRequestOptionsForArticle(article, extraSources),
       }).catch(() => undefined)
       return await withRelatedFromPage(
         base,
@@ -302,7 +309,7 @@ export async function resolveArticleBody(
       const base = buildVideoBody(article)
       void fetchAbsoluteText(article.originUrl, {
         signal,
-        userAgent: pageUserAgentForArticle(article, extraSources),
+        ...pageRequestOptionsForArticle(article, extraSources),
       })
         .then(async (pageHtml) => {
           const withRelated = await withRelatedFromPage(
@@ -338,7 +345,7 @@ export async function resolveArticleBody(
 
     const pageHtml = await fetchAbsoluteText(article.originUrl, {
       signal,
-      userAgent: pageUserAgentForArticle(article, extraSources),
+      ...pageRequestOptionsForArticle(article, extraSources),
     }).catch(() => undefined)
     const descriptor = await discoverMediaDescriptor({
       pageUrl: article.originUrl,
@@ -444,11 +451,13 @@ export async function resolveArticleBody(
 
   const tried = new Set<string>()
   let lastError: unknown
-  const pageUa = pageUserAgentForArticle(article, extraSources)
+  const pageOptions = pageRequestOptionsForArticle(article, extraSources)
+  const pageUa = pageOptions.userAgent
 
   const tryExtract = async (pageUrl: string, userAgent = pageUa): Promise<ResolvedBody> => {
     const pageHtml = await fetchAbsoluteText(pageUrl, {
       signal,
+      ...pageOptions,
       userAgent,
     })
     if (!pageHtml.trim() || pageHtml.length < 200) {

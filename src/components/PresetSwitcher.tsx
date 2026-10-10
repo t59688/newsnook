@@ -721,7 +721,7 @@ const PresetGridCard = memo(function PresetGridCard({
           </span>
 
           <span
-            className={`min-w-0 flex-1 truncate font-display text-[13.5px] font-semibold leading-none transition-colors ${
+            className={`min-w-0 flex-1 truncate pb-[2px] font-display text-[13.5px] font-semibold leading-[1.4] transition-colors ${
               item.active ? 'text-cinnabar' : 'text-paper group-hover:text-cinnabar'
             }`}
           >

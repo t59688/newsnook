@@ -192,6 +192,8 @@ function encodeFormBody(form?: Record<string, string | number> | FormFields): st
 }
 
 export interface PageResponseOptions {
+  /** CMS pages use the existing OkHttp bridge even without a user tunnel. */
+  nativeTransport?: 'okhttp'
   maxBytes?: number
   onResponse?: (metadata: { url?: string }) => void
 }
@@ -392,11 +394,13 @@ async function nativePost(
   }
   const body = bodyType === 'json' ? JSON.stringify(json ?? {}) : encodeFormBody(form)
 
-  const response = tunnel
+  const useOkHttp = !!tunnel || pageOptions?.nativeTransport === 'okhttp'
+  const response = useOkHttp
     ? await abortable(
         nativeProxiedRequest({
           url,
           method: 'POST',
+          webViewCookies: pageOptions?.nativeTransport === 'okhttp',
           followRedirects: false,
           headers,
           data: body,
@@ -433,7 +437,7 @@ async function nativePost(
     throw new Error(`HTTP ${response.status}`)
   }
 
-  const data = tunnel
+  const data = useOkHttp
     ? decodeBase64ToArrayBuffer((response as { data: string }).data)
     : (response as { data: unknown }).data
 
@@ -460,6 +464,7 @@ async function nativeGetFollowingRedirects(
   redirectsLeft = MAX_REDIRECTS,
 ): Promise<string> {
   let current = url
+  const useOkHttp = !!tunnel || pageOptions?.nativeTransport === 'okhttp'
 
   for (let hop = 0; hop <= redirectsLeft; hop += 1) {
     if (signal?.aborted) throw abortReason(signal)
@@ -472,11 +477,12 @@ async function nativeGetFollowingRedirects(
       ...(extraHeaders ?? {}),
     }
 
-    const response = tunnel
+    const response = useOkHttp
       ? await abortable(
           nativeProxiedRequest({
             url: current,
             method: 'GET',
+            webViewCookies: pageOptions?.nativeTransport === 'okhttp',
             headers,
             proxy: tunnel,
             readTimeout: 25000,
@@ -510,7 +516,7 @@ async function nativeGetFollowingRedirects(
       throw new Error(`HTTP ${response.status}`)
     }
 
-    const data = tunnel
+    const data = useOkHttp
       ? decodeBase64ToArrayBuffer((response as { data: string }).data)
       : (response as { data: unknown }).data
 

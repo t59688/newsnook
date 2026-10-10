@@ -15,7 +15,7 @@ export function LaterScreen({ later, onOpen, onRemoveLater, onBack }: Props) {
   return (
     <SettingsShell
       title="稍后读"
-      caption={later.length ? `共 ${later.length} 篇` : '阅读器顶栏点收藏加入'}
+      caption={later.length ? `共 ${later.length} 篇` : '阅读页顶栏点收藏加入'}
       onBack={onBack}
     >
       {later.length === 0 ? (
@@ -25,7 +25,7 @@ export function LaterScreen({ later, onOpen, onRemoveLater, onBack }: Props) {
           </div>
           <p className="mt-4 font-display text-[16px] text-paper">暂无稍后读内容</p>
           <p className="mt-2 max-w-xs text-[12px] leading-relaxed text-paper-faint">
-            打开文章后，点阅读器顶栏「收藏」即可加入。
+            打开文章后，点阅读页顶栏「收藏」即可加入。
           </p>
         </div>
       ) : (

@@ -27,6 +27,17 @@ assert.equal(extractCatalog(split, source.url, { minItems: 1 }).items[0]?.title,
 assert.equal(extractCatalog('<nav><a href="/categories/a">栏目甲</a><a href="/categories/b">栏目乙</a><a href="/categories/c">栏目丙</a></nav>', source.url).items.length, 0, 'navigation is not catalog content')
 console.log('site catalog extraction: ok')
 
+const backgroundVideos = (offset: number) => '<div class="layout-box"><ul class="clearfix randomized">' + Array.from({ length: 3 }, (_, i) => `<li><a class="video-pic loading" data-original="/covers/${offset+i}.jpg" href="/data/film-${offset+i}.html"><span class="player"></span><span class="note">第12集</span></a><div class="title"><h5><a href="/data/film-${offset+i}.html">Film ${offset+i}</a></h5></div></li>`).join('') + '</ul></div>'
+const backgroundArticles = catalogHtmlToArticles(source, backgroundVideos(0) + backgroundVideos(10), 0)
+assert.equal(backgroundArticles.length, 6, 'background poster video lists merge across homepage sections despite randomized layout classes')
+assert.ok(backgroundArticles.every((item) => item.contentType === 'video'), 'poster/player structure is video evidence even without a CMS identity')
+assert.equal(backgroundArticles[0].image, 'https://example.test/covers/0.jpg', 'lazy background posters live on the link, not an img')
+const videoSearch = '<main>' + [0, 1].map((i) => `<div class="details-info-min"><div><a class="video-pic" href="/data/search-${i}.html" title="Search film ${i}" data-original="/covers/${i}.jpg"></a></div><div class="details-info"><ul><li><a href="/data/search-${i}.html" title="Search film ${i}">Search film ${i}</a></li><li>主演：<a href="/ss/actor.html" title="Actor">Actor</a></li></ul></div></div>`).join('') + '</main>'
+const searchArticles = catalogHtmlToArticles(source, videoSearch, 0, 'https://example.test/ss/?wd=test')
+assert.equal(searchArticles.length, 2, 'expanded video search cards retain posters and exclude actor links')
+assert.ok(searchArticles.every((item) => item.contentType === 'video' && item.image))
+assert.equal(catalogHtmlToArticles(source, `<main><div class="details-info-min">${one}</div></main>`, 0).length, 1, 'a non-video wrapper must preserve ordinary article cards')
+
 const panel = (offset: number) => '<section><div class="panel-main"><ul class="thumbnail-group">'+Array.from({length:3},(_,i)=>`<li><a href="/video/${offset+i}"><img data-original="/cover.jpg"></a><h5><a href="/video/${offset+i}">影片 ${offset+i}</a></h5></li>`).join('')+'</ul></div><div class="panel-aside"><ul><li><h3><a href="/video/rank">排行榜噪音</a></h3></li></ul></div></section>'
 assert.equal(extractCatalog(panel(10)+panel(20), source.url).items.length, 6, 'repeated content panels are combined without sidebar rankings')
 

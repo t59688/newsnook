@@ -2,7 +2,7 @@ import { fetchAbsoluteText, fetchAbsoluteFormPost } from '../../lib/http'
 import { catalogItemsToArticles } from '../catalogEngine/toArticles'
 import { extractCatalog } from '../catalogEngine/engine'
 import type { NewsSource } from '../../sources/registry'
-import { catalogUserAgent } from './requestIdentity'
+import { catalogRequestOptions } from './requestIdentity'
 import { discoverCatalogPagination, discoverCatalogProfile } from './capabilities'
 import { catalogProfileFor } from './profile'
 import { detectEngineIdentity } from './detection'
@@ -52,7 +52,7 @@ export async function loadCatalogPage(source: NewsSource, request: CatalogReques
   else signal?.addEventListener('abort', abort, { once: true })
   const timer = setTimeout(() => controller.abort(new Error('站点读取超时，请稍后重试')), 25000)
   let finalUrl = request.url
-  const options = { signal: controller.signal, userAgent: catalogUserAgent(source.userAgent), maxBytes: MAX_CATALOG_BYTES, onResponse: (metadata: { url?: string }) => { if (metadata.url) finalUrl = metadata.url } }
+  const options = { signal: controller.signal, ...catalogRequestOptions(source.userAgent), maxBytes: MAX_CATALOG_BYTES, onResponse: (metadata: { url?: string }) => { if (metadata.url) finalUrl = metadata.url } }
   let html: string
   try {
     html = request.method === 'POST' ? await fetchAbsoluteFormPost(request.url, request.fields ?? request.form ?? {}, options) : await fetchAbsoluteText(request.url, options)

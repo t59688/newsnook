@@ -677,6 +677,39 @@ function InkVideoPlayerReady({
     let recoveryRequestInFlight = false
     let hlsRecovery: ReturnType<typeof createHlsRecovery> | null = null
     let progressiveRecoveryTimer: ReturnType<typeof window.setTimeout> | undefined
+    let bufferedStallTimer: ReturnType<typeof window.setTimeout> | undefined
+    let playbackFailed = false
+    const clearBufferedStall = () => {
+      if (bufferedStallTimer !== undefined) window.clearTimeout(bufferedStallTimer)
+      bufferedStallTimer = undefined
+    }
+    // A video can stop advancing while readyState still reports HAVE_ENOUGH_DATA.
+    // Watch actual playback progress, not only the browser's waiting event.
+    // Only recover when data is already buffered ahead; slow network is not a decoder failure.
+    const watchBufferedStall = () => {
+      if (!isHls || bufferedStallTimer !== undefined || cancelled || playbackFailed
+        || video.paused || video.ended || document.visibilityState === 'hidden') return
+      const position = video.currentTime
+      bufferedStallTimer = window.setTimeout(() => {
+        bufferedStallTimer = undefined
+        if (cancelled || playbackFailed || video.paused || video.ended || document.visibilityState === 'hidden') return
+        if (video.seeking || resettingSource || pendingResume || video.currentTime > position + 0.1) {
+          watchBufferedStall()
+          return
+        }
+        let ahead = 0
+        for (let i = 0; i < video.buffered.length; i++) {
+          if (video.buffered.start(i) <= video.currentTime + 0.1 && video.buffered.end(i) > video.currentTime) {
+            ahead = video.buffered.end(i) - video.currentTime
+          }
+        }
+        if (ahead >= 3) {
+          log.reader.warn('Buffered video decoder stalled', { readyState: video.readyState, bufferedAhead: ahead })
+          hlsRecovery?.fatal('media')
+        }
+        watchBufferedStall()
+      }, 10000)
+    }
     const effectiveHeaders: Record<string, string> = { ...headers }
     if (sourcePage && !Object.keys(effectiveHeaders).some((key) => key.toLowerCase() === 'referer')) {
       try {
@@ -718,7 +751,12 @@ function InkVideoPlayerReady({
       }).finally(() => { renewalInFlight = false })
     }
     const renewalTimer = window.setInterval(renewPlaybackLease, 4 * 60 * 1000)
-    document.addEventListener('visibilitychange', renewPlaybackLease)
+    const onPlaybackVisibilityChange = () => {
+      renewPlaybackLease()
+      if (document.visibilityState === 'hidden') clearBufferedStall()
+      else watchBufferedStall()
+    }
+    document.addEventListener('visibilitychange', onPlaybackVisibilityChange)
     const restoreCheckpoint = () => {
       if (!pendingResume || cancelled || recoveryRequestInFlight || video.readyState < 1) return
       const checkpoint = pendingResume
@@ -743,6 +781,9 @@ function InkVideoPlayerReady({
     }
     const failPlayback = (message: string) => {
       if (cancelled) return
+      playbackFailed = true
+      clearBufferedStall()
+      log.reader.warn('Video playback failed', { format: isHls ? 'hls' : isDash ? 'dash' : 'progressive', mediaErrorCode: video.error?.code, message })
       hlsRecovery?.destroy()
       hlsRef.current?.stopLoad()
       setFatal(message)
@@ -878,8 +919,10 @@ function InkVideoPlayerReady({
       intendedPlaying = true
       setPlaying(true)
       setHint(null)
+      watchBufferedStall()
     }
     const onPause = () => {
+      clearBufferedStall()
       hlsRecovery?.interruptProgress()
       // A pause before the asynchronous source reset is user intent. A pause
       // caused by load()/an actual media error must not erase the saved intent.
@@ -927,17 +970,20 @@ function InkVideoPlayerReady({
       setWaiting(true)
       setSeeking(false)
     }
-    const onWaiting = () => { hlsRecovery?.interruptProgress(); setWaiting(true) }
-    const onSeeking = () => { hlsRecovery?.interruptProgress(); setSeeking(true) }
+    const onWaiting = () => { hlsRecovery?.interruptProgress(); setWaiting(true); watchBufferedStall() }
+    const onSeeking = () => { clearBufferedStall(); hlsRecovery?.interruptProgress(); setSeeking(true) }
     const onSeeked = () => {
       setSeeking(false)
       setWaiting(false)
+      watchBufferedStall()
     }
     const onPlaying = () => {
+      clearBufferedStall()
       resettingSource = false
       settleProgressiveRecovery()
       setWaiting(false)
       setSeeking(false)
+      watchBufferedStall()
     }
 
     video.addEventListener('loadstart', onLoadStart)
@@ -1007,8 +1053,27 @@ function InkVideoPlayerReady({
         if (useNativeHls) {
           video.src = url
         } else if (HlsClass?.isSupported()) {
+          const hlsOrigins = new Map<string, Promise<void>>()
+          for (const origin of currentPlaybackOrigins()) hlsOrigins.set(origin, Promise.resolve())
           const hls = new HlsClass(hlsPlaybackConfig({
             native: Capacitor.isNativePlatform(), sessionId: nativeSessionId, bypass, requestContext,
+            prepareRequest: async requestUrl => {
+              if (cancelled) throw new Error('Playback session closed')
+              const origin = new URL(requestUrl).origin
+              let registration = hlsOrigins.get(origin)
+              if (!registration) {
+                registration = preparePlayback({
+                  url, sourcePage, format: 'hls', headers: effectiveHeaders,
+                  origins: [...currentPlaybackOrigins(), origin],
+                }).then(() => undefined).catch(error => {
+                  hlsOrigins.delete(origin)
+                  throw error
+                })
+                hlsOrigins.set(origin, registration)
+              }
+              await registration
+              if (cancelled) throw new Error('Playback session closed')
+            },
           }))
           hlsRef.current = hls
           hlsRecovery = createHlsRecovery({
@@ -1020,7 +1085,12 @@ function InkVideoPlayerReady({
                 setWaiting(true)
                 hls.loadSource(url)
               } else if (kind === 'network') hls.startLoad()
-              else hls.recoverMediaError()
+              else {
+                pendingResume ??= playbackCheckpoint(video, intendedPlaying)
+                resettingSource = true
+                setWaiting(true)
+                hls.recoverMediaError()
+              }
             },
             fail: reason => {
               if (cancelled) return
@@ -1032,6 +1102,7 @@ function InkVideoPlayerReady({
           hls.on(HlsClass.Events.MANIFEST_PARSED, markReady)
           hls.on(HlsClass.Events.ERROR, (_event, data) => {
             if (!data.fatal || cancelled) return
+            log.reader.warn('HLS recovery requested', { type: data.type, details: data.details, status: data.response?.code })
             const manifestFailure = data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_ERROR
               || data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_TIMEOUT
             hlsRecovery?.fatal(data.type === HlsClass.ErrorTypes.NETWORK_ERROR
@@ -1059,11 +1130,12 @@ function InkVideoPlayerReady({
       reloadCheckpointRef.current = pendingResume ?? playbackCheckpoint(video, intendedPlaying)
       cancelled = true
       window.clearInterval(renewalTimer)
-      document.removeEventListener('visibilitychange', renewPlaybackLease)
+      document.removeEventListener('visibilitychange', onPlaybackVisibilityChange)
       if (!preparations.size) void releaseNativeMediaPlayback(nativeSessionId)
       if (refreshNativeOriginsRef.current === refreshNativeOrigins) refreshNativeOriginsRef.current = null
       settleProgressiveRecovery()
       hlsRecovery?.destroy()
+      clearBufferedStall()
       clearHideTimer()
       video.removeEventListener('loadstart', onLoadStart)
       video.removeEventListener('canplay', markReady)

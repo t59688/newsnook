@@ -1,6 +1,7 @@
 package com.aizeek.newsnook;
 
 import android.util.Base64;
+import android.webkit.CookieManager;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -60,6 +61,7 @@ public class ProxiedHttpPlugin extends Plugin {
         int connectTimeout = call.getInt("connectTimeout", 15000);
         int readTimeout = call.getInt("readTimeout", 25000);
         boolean followRedirects = Boolean.TRUE.equals(call.getBoolean("followRedirects", false));
+        boolean webViewCookies = Boolean.TRUE.equals(call.getBoolean("webViewCookies", false));
 
         OkHttpClient.Builder clientBuilder = sharedClient.newBuilder()
             .connectTimeout(connectTimeout, TimeUnit.MILLISECONDS)
@@ -118,6 +120,12 @@ public class ProxiedHttpPlugin extends Plugin {
                 }
             }
         }
+        // CMS pages retain CapacitorHttp's WebView cookie behavior. Other callers
+        // keep their isolated account jars and must explicitly opt in.
+        if (webViewCookies && requestBuilder.build().header("Cookie") == null) {
+            String cookies = CookieManager.getInstance().getCookie(url);
+            if (cookies != null && !cookies.isEmpty()) requestBuilder.header("Cookie", cookies);
+        }
 
         if ("POST".equals(method) || "PUT".equals(method) || "PATCH".equals(method)) {
             String contentType = headersObj != null ? headersObj.getString("Content-Type") : null;
@@ -159,6 +167,7 @@ public class ProxiedHttpPlugin extends Plugin {
             JSArray setCookies = new JSArray();
             for (String setCookie : response.headers("Set-Cookie")) {
                 setCookies.put(setCookie);
+                if (webViewCookies) CookieManager.getInstance().setCookie(response.request().url().toString(), setCookie);
             }
             result.put("setCookies", setCookies);
 

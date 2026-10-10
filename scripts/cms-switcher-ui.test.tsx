@@ -85,6 +85,29 @@ try {
   assert.equal(selectedPreset, '')
   assert.equal(document.querySelector('[role="dialog"]'), null)
 
+  // Domain suffixes are part of the site identity, not expendable decoration.
+  // Both the home picker and the site sheet share CmsGridCard.
+  const domainSites = [
+    { id: 'cms-1', name: 'nnyy.in', url: 'https://nnyy.in', framework: 'nnyy' },
+    { id: 'cms-2', name: 'huarenok.com', url: 'https://huarenok.com' },
+    { id: 'cms-3', name: 'www.xiangguys.com', url: 'https://www.xiangguys.com' },
+    { id: 'cms-4', name: '一个需要完整显示的自定义中文网站名称', url: 'https://example.org' },
+  ]
+  await render(domainSites)
+  await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
+  await click(document.querySelector('[role="tab"]:last-child') as HTMLButtonElement)
+  for (const name of ['nnyy.in', 'huarenok.com', 'xiangguys.com', '一个需要完整显示的自定义中文网站名称']) {
+    const card = [...document.querySelectorAll<HTMLButtonElement>('button')].find((item) => item.title === name)
+    assert.ok(card, `CMS picker must preserve full site name: ${name}`)
+    const heading = [...card.querySelectorAll('span.font-display')].find((item) => item.textContent === name)
+    assert.ok(heading, `CMS card heading must display ${name}`)
+    assert.equal(heading.classList.contains('truncate'), false, 'site headings must wrap instead of clipping')
+    assert.ok(heading.classList.contains('leading-[1.4]'), 'site titles need enough line height for Latin descenders such as g/y')
+    assert.ok(heading.classList.contains('pb-[2px]'), 'site titles need bottom breathing room so descenders remain visible')
+  }
+  await click(button('nnyy.in'))
+  assert.equal(selectedCms, 'cms-1')
+
   await render(cms, true, 'cms-a')
   await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
   assert.ok(document.querySelector('button[aria-current="page"]')?.textContent?.includes('站点甲'))
@@ -94,6 +117,9 @@ try {
   await render(cms, true, 'cms-a')
   await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
   await click(button('内置预设'))
+  const presetHeading = [...document.querySelectorAll('span')].find((node) => node.textContent === '全球视野')
+  assert.ok(presetHeading?.classList.contains('leading-[1.4]'), 'preset titles use the same safe line height')
+  assert.ok(presetHeading?.classList.contains('pb-[2px]'), 'preset titles preserve descending glyph space')
   await click(button('全球视野'))
   assert.equal(selectedPreset, 'world', '从 CMS 回到普通资讯布局要走预设选择回调')
 

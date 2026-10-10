@@ -20,3 +20,8 @@ export function catalogUserAgent(configuredUserAgent?: string): string {
   }
   return BROWSER_UA
 }
+
+/** Keep probing, catalog navigation and detail requests on one native client. */
+export function catalogRequestOptions(configuredUserAgent?: string) {
+  return { userAgent: catalogUserAgent(configuredUserAgent), nativeTransport: 'okhttp' as const }
+}
