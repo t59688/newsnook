@@ -20,7 +20,13 @@ export function VideoSessionHost({ manager, session }: { manager: VideoSessionMa
   const domFullscreen = Boolean(immersive && document.fullscreenElement && host.contains(document.fullscreenElement))
   const close = useCallback(() => manager.close(session.id), [manager, session.id])
   const float = useCallback(() => manager.float(session.id), [manager, session.id])
-  const restore = useCallback(() => manager.restore(session.id), [manager, session.id])
+  const restore = useCallback(() => {
+    const slot = manager.getSnapshot().find(item => item.id === session.id)?.slot
+    manager.restore(session.id)
+    if (slot?.isConnected) {
+      requestAnimationFrame(() => slot.scrollIntoView?.({ behavior: 'smooth', block: 'center' }))
+    }
+  }, [manager, session.id])
   const presentation = useMemo(() => ({
     mode: session.mode, detached: !session.slot, float,
     openPage: () => manager.openPage(session.id),

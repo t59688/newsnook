@@ -23,7 +23,6 @@ import type { VideoSessionManager } from '../features/floatingVideo/session'
 import { subscribeBatteryStatus, type BatteryStatus } from '../lib/batteryStatus'
 import {
   browserMediaProxyUrl,
-  createHotlinkHlsLoader,
   needsMediaHotlinkBypass,
 } from '../lib/mediaFetch'
 import { setNativeFullScreen } from '../lib/nativeChrome'
@@ -56,6 +55,7 @@ import {
   nativeStreamProxyUrl,
   prepareNativeMediaPlayback,
   releaseNativeMediaPlayback,
+  renewNativeMediaPlayback,
 } from '../features/mediaSniffer/native'
 import type { MediaResourceDescriptor } from '../features/mediaSniffer/types'
 import {
@@ -89,6 +89,8 @@ import {
   type PlaybackCheckpoint,
 } from './inkVideoPlayer/lifecycle'
 import { log } from '../lib/logger'
+import { createHlsRecovery } from './inkVideoPlayer/hlsRecovery'
+import { hlsPlaybackConfig } from './inkVideoPlayer/hlsPlaybackConfig'
 import { CastOverlay } from './inkVideoPlayer/CastOverlay'
 import { GestureHudOverlay } from './inkVideoPlayer/GestureHudOverlay'
 import {
@@ -495,6 +497,7 @@ function InkVideoPlayerReady({
   const currentPlaybackOrigins = useEffectEvent(() => JSON.parse(extraOriginsKey) as string[])
   const refreshNativeOriginsRef = useRef<(() => void) | null>(null)
   const reloadCheckpointRef = useRef<PlaybackCheckpoint | null>(null)
+  const [reloadRevision, setReloadRevision] = useState(0)
   const reportPlaybackError = useEffectEvent(() => onPlaybackError?.())
 
   const brightnessControl = useMemo(() => createBrightnessControl(setScrim), [])
@@ -655,7 +658,10 @@ function InkVideoPlayerReady({
       void request.then(() => {
         preparations.delete(request)
         if (cancelled) void releaseNativeMediaPlayback(nativeSessionId)
-      }, () => { preparations.delete(request) })
+      }, () => {
+        preparations.delete(request)
+        if (cancelled) void releaseNativeMediaPlayback(nativeSessionId)
+      })
       return request
     }
     let pendingResume = reloadCheckpointRef.current
@@ -669,6 +675,7 @@ function InkVideoPlayerReady({
     let directRetryAttempted = false
     let progressiveRecoveryInFlight = false
     let recoveryRequestInFlight = false
+    let hlsRecovery: ReturnType<typeof createHlsRecovery> | null = null
     let progressiveRecoveryTimer: ReturnType<typeof window.setTimeout> | undefined
     const effectiveHeaders: Record<string, string> = { ...headers }
     if (sourcePage && !Object.keys(effectiveHeaders).some((key) => key.toLowerCase() === 'referer')) {
@@ -698,6 +705,20 @@ function InkVideoPlayerReady({
       })
     }
     refreshNativeOriginsRef.current = refreshNativeOrigins
+    // Keep long-lived playback credentials available without touching the decoder.
+    // Renew the existing native lease without re-registering captured credentials.
+    let renewalInFlight = false
+    const renewPlaybackLease = () => {
+      if (cancelled || document.hidden || !nativePrepared || renewalInFlight || !Capacitor.isNativePlatform()) return
+      renewalInFlight = true
+      void renewNativeMediaPlayback(nativeSessionId).then(() => {
+        if (cancelled) void releaseNativeMediaPlayback(nativeSessionId)
+      }).catch(() => {
+        if (!cancelled) log.sniffer.warn('Unable to renew playback session lease')
+      }).finally(() => { renewalInFlight = false })
+    }
+    const renewalTimer = window.setInterval(renewPlaybackLease, 4 * 60 * 1000)
+    document.addEventListener('visibilitychange', renewPlaybackLease)
     const restoreCheckpoint = () => {
       if (!pendingResume || cancelled || recoveryRequestInFlight || video.readyState < 1) return
       const checkpoint = pendingResume
@@ -722,6 +743,8 @@ function InkVideoPlayerReady({
     }
     const failPlayback = (message: string) => {
       if (cancelled) return
+      hlsRecovery?.destroy()
+      hlsRef.current?.stopLoad()
       setFatal(message)
       reportPlaybackError()
     }
@@ -857,6 +880,7 @@ function InkVideoPlayerReady({
       setHint(null)
     }
     const onPause = () => {
+      hlsRecovery?.interruptProgress()
       // A pause before the asynchronous source reset is user intent. A pause
       // caused by load()/an actual media error must not erase the saved intent.
       if (!resettingSource && !video.error) {
@@ -869,6 +893,7 @@ function InkVideoPlayerReady({
     }
     const onTime = () => {
       if (!scrubbingRef.current) setCurrent(pendingResume?.position ?? video.currentTime)
+      if (!video.paused && !video.seeking && !resettingSource && !pendingResume) hlsRecovery?.progress(video.currentTime)
     }
     const onMeta = () => {
       if (Number.isFinite(video.duration)) setDuration(video.duration)
@@ -902,8 +927,8 @@ function InkVideoPlayerReady({
       setWaiting(true)
       setSeeking(false)
     }
-    const onWaiting = () => setWaiting(true)
-    const onSeeking = () => setSeeking(true)
+    const onWaiting = () => { hlsRecovery?.interruptProgress(); setWaiting(true) }
+    const onSeeking = () => { hlsRecovery?.interruptProgress(); setSeeking(true) }
     const onSeeked = () => {
       setSeeking(false)
       setWaiting(false)
@@ -982,27 +1007,36 @@ function InkVideoPlayerReady({
         if (useNativeHls) {
           video.src = url
         } else if (HlsClass?.isSupported()) {
-          const hls = new HlsClass({
-            enableWorker: true,
-            lowLatencyMode: false,
-            ...(Capacitor.isNativePlatform() ? { xhrSetup: (xhr: XMLHttpRequest) => xhr.setRequestHeader('X-NewsNook-Playback-Session', nativeSessionId) } : {}),
-            ...(bypass ? { loader: createHotlinkHlsLoader(requestContext) } : {}),
-          })
+          const hls = new HlsClass(hlsPlaybackConfig({
+            native: Capacitor.isNativePlatform(), sessionId: nativeSessionId, bypass, requestContext,
+          }))
           hlsRef.current = hls
+          hlsRecovery = createHlsRecovery({
+            recover: kind => {
+              if (cancelled) return
+              if (kind === 'manifest') {
+                pendingResume ??= playbackCheckpoint(video, intendedPlaying)
+                resettingSource = true
+                setWaiting(true)
+                hls.loadSource(url)
+              } else if (kind === 'network') hls.startLoad()
+              else hls.recoverMediaError()
+            },
+            fail: reason => {
+              if (cancelled) return
+              failPlayback(reason === 'unsupported' ? '视频流加载失败' : '视频流重试失败，请检查网络或更换视频源')
+            },
+          })
           hls.loadSource(url)
           hls.attachMedia(video)
           hls.on(HlsClass.Events.MANIFEST_PARSED, markReady)
           hls.on(HlsClass.Events.ERROR, (_event, data) => {
             if (!data.fatal || cancelled) return
-            if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) {
-              hls.startLoad()
-              return
-            }
-            if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) {
-              hls.recoverMediaError()
-              return
-            }
-            failPlayback('视频流加载失败')
+            const manifestFailure = data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_ERROR
+              || data.details === HlsClass.ErrorDetails.MANIFEST_LOAD_TIMEOUT
+            hlsRecovery?.fatal(data.type === HlsClass.ErrorTypes.NETWORK_ERROR
+              ? manifestFailure ? 'manifest' : 'network'
+              : data.type === HlsClass.ErrorTypes.MEDIA_ERROR ? 'media' : null)
           })
         } else {
           failPlayback('当前环境不支持 HLS 播放')
@@ -1024,9 +1058,12 @@ function InkVideoPlayerReady({
     return () => {
       reloadCheckpointRef.current = pendingResume ?? playbackCheckpoint(video, intendedPlaying)
       cancelled = true
+      window.clearInterval(renewalTimer)
+      document.removeEventListener('visibilitychange', renewPlaybackLease)
       if (!preparations.size) void releaseNativeMediaPlayback(nativeSessionId)
       if (refreshNativeOriginsRef.current === refreshNativeOrigins) refreshNativeOriginsRef.current = null
       settleProgressiveRecovery()
+      hlsRecovery?.destroy()
       clearHideTimer()
       video.removeEventListener('loadstart', onLoadStart)
       video.removeEventListener('canplay', markReady)
@@ -1054,7 +1091,7 @@ function InkVideoPlayerReady({
       video.removeAttribute('src')
       video.load()
     }
-  }, [clearHideTimer, format, playbackContext, sourcePage, src, syncBoostIndicator])
+  }, [clearHideTimer, format, playbackContext, reloadRevision, sourcePage, src, syncBoostIndicator])
 
   useEffect(() => { refreshNativeOriginsRef.current?.() }, [extraOriginsKey])
 
@@ -1669,6 +1706,7 @@ function InkVideoPlayerReady({
   }
 
   const onGesturePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (compactRef.current) return
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
@@ -1830,7 +1868,14 @@ function InkVideoPlayerReady({
             data-video-gesture-surface=""
             className="absolute inset-0 z-[1] touch-none select-none"
           onPointerDown={onGesturePointerDown}
-          onClick={compact ? () => revealControls() : undefined}
+          onClick={compact ? () => {
+            if (showChromeRef.current) {
+              clearHideTimer()
+              setControlsVisible(false)
+            } else {
+              revealControls()
+            }
+          } : undefined}
             onPointerMove={onGesturePointerMove}
             onPointerUp={onGesturePointerUp}
             onPointerCancel={onGesturePointerCancel}
@@ -1944,6 +1989,17 @@ function InkVideoPlayerReady({
           <div className="absolute inset-0 z-[4] flex flex-col items-center justify-center gap-2 bg-black/70 px-4 text-center">
             <AlertCircle className="h-6 w-6 text-cinnabar-soft" strokeWidth={1.6} />
             <div className="text-[13px] text-paper">{fatal}</div>
+            <button
+              type="button"
+              aria-label="重试当前视频"
+              className="rounded-full border border-paper/30 px-3 py-1.5 text-[12px] text-paper"
+              onClick={(event) => {
+                event.stopPropagation()
+                setReloadRevision(value => value + 1)
+              }}
+            >
+              重试播放
+            </button>
             {presentation?.detached && <div className="text-[11px] text-paper/65">地址可能已失效，请返回来源页重新探测</div>}
             {onRefreshSource && (
               <button

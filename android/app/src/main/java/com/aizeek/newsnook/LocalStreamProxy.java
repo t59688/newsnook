@@ -16,9 +16,13 @@ import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ThreadFactory;
+import okhttp3.Call;
 import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
@@ -29,6 +33,11 @@ final class LocalStreamProxy implements Closeable {
 
     private static final LocalStreamProxy INSTANCE = new LocalStreamProxy();
     private static final int BUFFER_SIZE = 16 * 1024;
+    private static final int MAX_REQUEST_LINE = 8192;
+    private static final int MAX_REQUEST_HEADERS = 64;
+    private static final int MAX_ACTIVE_STREAMS = 8;
+    private final Set<Socket> activeSockets = new HashSet<>();
+    private final Map<Socket, Call> activeCalls = new HashMap<>();
 
     private final Object lock = new Object();
     private ServerSocket serverSocket;
@@ -47,8 +56,10 @@ final class LocalStreamProxy implements Closeable {
             serverSocket.setReuseAddress(true);
             port = serverSocket.getLocalPort();
             acceptExecutor = Executors.newSingleThreadExecutor(named("newsnook-stream-proxy"));
-            requestExecutor = Executors.newCachedThreadPool(named("newsnook-stream-proxy-worker"));
-            acceptExecutor.execute(this::acceptLoop);
+            requestExecutor = Executors.newFixedThreadPool(MAX_ACTIVE_STREAMS, named("newsnook-stream-proxy-worker"));
+            ServerSocket listener = serverSocket;
+            ExecutorService workers = requestExecutor;
+            acceptExecutor.execute(() -> acceptLoop(listener, workers));
             return port;
         }
     }
@@ -69,36 +80,38 @@ final class LocalStreamProxy implements Closeable {
         return url.toString();
     }
 
-    private void acceptLoop() {
+    private void acceptLoop(ServerSocket listener, ExecutorService workers) {
         while (true) {
-            ServerSocket current;
-            synchronized (lock) {
-                current = serverSocket;
-            }
-            if (current == null || current.isClosed()) return;
+            if (listener.isClosed()) return;
             try {
-                Socket socket = current.accept();
-                socket.setSoTimeout(30000);
-                ExecutorService workers;
+                Socket socket = listener.accept();
+                try { socket.setSoTimeout(30000); }
+                catch (IOException error) { closeQuietly(socket); throw error; }
                 synchronized (lock) {
-                    workers = requestExecutor;
-                }
-                if (workers == null || workers.isShutdown()) {
-                    closeQuietly(socket);
-                    continue;
-                }
-                workers.execute(() -> {
-                    try {
-                        handle(socket);
-                    } catch (Throwable ignored) {
-                        // Errors (e.g. NoSuchMethodError on old API) must not kill the process.
+                    if (serverSocket != listener || workers.isShutdown() || activeSockets.size() >= MAX_ACTIVE_STREAMS) {
                         closeQuietly(socket);
+                        continue;
                     }
-                });
-            } catch (SocketException closed) {
-                return;
-            } catch (IOException ignored) {
-                // Keep serving later requests; one socket failure must not kill the proxy.
+                    activeSockets.add(socket);
+                }
+                try {
+                    workers.execute(() -> {
+                        try {
+                            handle(socket);
+                        } catch (RuntimeException error) {
+                            android.util.Log.w("NewsNookStreamProxy", "Playback proxy request failed");
+                        } finally {
+                            closeQuietly(socket);
+                            synchronized (lock) { activeSockets.remove(socket); activeCalls.remove(socket); }
+                        }
+                    });
+                } catch (java.util.concurrent.RejectedExecutionException ignored) {
+                    synchronized (lock) { activeSockets.remove(socket); }
+                    closeQuietly(socket);
+                }
+            } catch (IOException error) {
+                if (listener.isClosed()) return;
+                android.util.Log.w("NewsNookStreamProxy", "Playback proxy accept failed", error);
             }
         }
     }
@@ -109,7 +122,12 @@ final class LocalStreamProxy implements Closeable {
             BufferedInputStream input = new BufferedInputStream(socket.getInputStream());
             BufferedOutputStream output = new BufferedOutputStream(socket.getOutputStream())
         ) {
-            HttpRequest request = readRequest(input);
+            HttpRequest request;
+            try { request = readRequest(input); }
+            catch (IOException | IllegalArgumentException invalid) {
+                writeError(output, 400, "Bad Request");
+                return;
+            }
             if (request == null) {
                 writeError(output, 400, "Bad Request");
                 return;
@@ -134,22 +152,39 @@ final class LocalStreamProxy implements Closeable {
                 return;
             }
 
-            Request.Builder upstream = new Request.Builder().url(targetUrl);
+            Request.Builder upstream;
+            try { upstream = new Request.Builder().url(targetUrl); }
+            catch (IllegalArgumentException invalid) { writeError(output, 400, "Invalid url"); return; }
             for (Map.Entry<String, String> entry : context.headers.entrySet()) {
                 if (entry.getKey() == null || entry.getValue() == null || entry.getValue().isEmpty()) continue;
+                if ("x-newsnook-playback-session".equalsIgnoreCase(entry.getKey())) continue;
                 upstream.header(entry.getKey(), entry.getValue());
             }
             String range = header(request.headers, "range");
             if (range != null && !range.isEmpty()) upstream.header("Range", range);
 
-            try (Response response = context.client.newCall(upstream.build()).execute()) {
+            Call call = context.client.newCall(upstream.build());
+            synchronized (lock) {
+                if (!activeSockets.contains(socket)) { call.cancel(); return; }
+                activeCalls.put(socket, call);
+            }
+            Response received;
+            try { received = call.execute(); }
+            catch (IOException error) {
+                if (!call.isCanceled()) {
+                    android.util.Log.w("NewsNookStreamProxy", "Playback upstream request failed");
+                    writeError(output, 502, "Upstream Request Failed");
+                }
+                return;
+            }
+            try (Response response = received) {
                 ResponseBody body = response.body();
                 if (body == null) {
                     writeError(output, 502, "Empty Upstream Response");
                     return;
                 }
                 writeSuccess(output, response, body);
-            }
+            } finally { synchronized (lock) { activeCalls.remove(socket); } }
         } catch (IOException ignored) {
             // Client disconnected or upstream failed; nothing else to do here.
         }
@@ -208,7 +243,7 @@ final class LocalStreamProxy implements Closeable {
         String requestLine = readLine(input);
         if (requestLine == null || requestLine.isEmpty()) return null;
         String[] parts = requestLine.split(" ");
-        if (parts.length < 2) return null;
+        if (parts.length != 3 || !parts[2].startsWith("HTTP/1.")) return null;
         String method = parts[0];
         String target = parts[1];
         String path = target;
@@ -219,11 +254,14 @@ final class LocalStreamProxy implements Closeable {
             queryText = target.substring(queryIndex + 1);
         }
         Map<String, String> headers = new LinkedHashMap<>();
+        int headerCount = 0;
         while (true) {
             String line = readLine(input);
-            if (line == null || line.isEmpty()) break;
+            if (line == null) return null;
+            if (line.isEmpty()) break;
+            if (++headerCount > MAX_REQUEST_HEADERS) return null;
             int separator = line.indexOf(':');
-            if (separator <= 0) continue;
+            if (separator <= 0) return null;
             String name = line.substring(0, separator).trim();
             String value = line.substring(separator + 1).trim();
             if (!name.isEmpty() && !value.isEmpty()) headers.put(name, value);
@@ -246,6 +284,7 @@ final class LocalStreamProxy implements Closeable {
                 }
                 break;
             }
+            if (builder.length() >= MAX_REQUEST_LINE) throw new IOException("HTTP request line too long");
             builder.append((char) current);
             previous = current;
         }
@@ -312,10 +351,11 @@ final class LocalStreamProxy implements Closeable {
     }
 
     private static void closeQuietly(Closeable closeable) {
+        if (closeable == null) return;
         try {
             closeable.close();
-        } catch (IOException ignored) {
-            // Ignore close failures during shutdown.
+        } catch (IOException error) {
+            android.util.Log.w("NewsNookStreamProxy", "Playback proxy close failed");
         }
     }
 
@@ -325,6 +365,10 @@ final class LocalStreamProxy implements Closeable {
             closeQuietly(serverSocket);
             serverSocket = null;
             port = -1;
+            for (Call call : activeCalls.values()) call.cancel();
+            for (Socket socket : activeSockets) closeQuietly(socket);
+            activeCalls.clear();
+            activeSockets.clear();
             if (acceptExecutor != null) acceptExecutor.shutdownNow();
             if (requestExecutor != null) requestExecutor.shutdownNow();
             acceptExecutor = null;

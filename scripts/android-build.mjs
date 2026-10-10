@@ -11,6 +11,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 
 import { javaExecutable, loadAndroidEnv } from './android-env.mjs'
+import { verifyApkPageAlignment } from './android-apk-pages.mjs'
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const androidRoot = join(projectRoot, 'android')
@@ -182,6 +183,7 @@ function copyAndVerifyApk(source, destination, label) {
     throw new Error(`Gradle completed but the expected artifact is missing: ${source}`)
   }
   copyFileSync(source, destination)
+  verifyApkPageAlignment(destination, env, apksignerJar)
   verify(
     javaExecutable(env.JAVA_HOME),
     ['-jar', apksignerJar, 'verify', '--verbose', '--print-certs', destination],

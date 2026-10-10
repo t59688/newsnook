@@ -87,6 +87,25 @@ try {
   assert.equal(loads, count, 'presentation must not reload media')
   assert.equal(hardwareBackLayerCount(), 0, 'a floating window must not consume page back')
   const floating = document.querySelector<HTMLElement>('[data-floating-video-window]')!
+  assert.ok(floating.querySelector('.floating-video-tip'), 'first floating playback offers a guide')
+  await click('恢复播放页')
+  assert.equal(floating.querySelector('.floating-video-tip'), null, 'hiding the window must dismiss its guide')
+  await click('悬浮播放')
+  assert.equal(floating.querySelector('.floating-video-tip'), null, 'returning to floating mode must not pin a cancelled guide')
+  const compactSurface = floating.querySelector<HTMLElement>('[data-video-gesture-surface]')!
+  const compactChrome = floating.querySelector<HTMLElement>('.ink-video-bottom-chrome')!
+  await act(async () => {
+    const event = new window.Event('pointerup', { bubbles: true })
+    Object.assign(event, { pointerId: 7, clientX: 120, clientY: 40 })
+    compactSurface.dispatchEvent(event)
+    compactSurface.dispatchEvent(new window.Event('click', { bubbles: true }))
+  })
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 385)) })
+  assert.ok(!compactChrome.className.includes('opacity-100'), 'compact tap may hide controls but old click timer must not reverse it')
+  await act(async () => { compactSurface.dispatchEvent(new window.Event('click', { bubbles: true })) })
+  assert.ok(compactChrome.className.includes('opacity-100'), 'compact tap shows controls')
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 385)) })
+  assert.ok(compactChrome.className.includes('opacity-100'), 'compact controls must not vanish after legacy double-tap timeout')
   const drag = floating.querySelector<HTMLElement>('[aria-label="移动悬浮窗口"]')!
   const left = Number.parseFloat(floating.style.left)
   await act(async () => { const event = new window.Event('keydown', { bubbles: true }); Object.assign(event, { key: 'ArrowLeft' }); drag.dispatchEvent(event); await new Promise(resolve => setTimeout(resolve, 5)) })

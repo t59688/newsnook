@@ -60,6 +60,7 @@ type UpstreamResult = {
   finalUrl?: string
   status: number
   contentType: string | null
+  rangeHeaders: Record<string, string>
   buffer: Buffer
 }
 
@@ -115,6 +116,10 @@ function fetchInsecure(
             status,
             finalUrl: target,
             contentType: typeof contentType === 'string' ? contentType : null,
+            rangeHeaders: Object.fromEntries(['content-range', 'accept-ranges'].flatMap(name => {
+              const value = res.headers[name]
+              return typeof value === 'string' ? [[name, value]] : []
+            })),
             buffer: Buffer.concat(chunks),
           })
         })
@@ -152,6 +157,10 @@ async function fetchViaProxyUri(
       status: upstream.status,
       finalUrl: upstream.url,
       contentType: upstream.headers.get('content-type'),
+      rangeHeaders: Object.fromEntries(['content-range', 'accept-ranges'].flatMap(name => {
+        const value = upstream.headers.get(name)
+        return value ? [[name, value]] : []
+      })),
       buffer: Buffer.from(await upstream.arrayBuffer()),
     }
   } finally {
@@ -180,6 +189,10 @@ async function fetchUpstream(target: string, request: UpstreamRequest): Promise<
       status: upstream.status,
       finalUrl: fetchUrl === target ? upstream.url : undefined,
       contentType: upstream.headers.get('content-type'),
+      rangeHeaders: Object.fromEntries(['content-range', 'accept-ranges'].flatMap(name => {
+        const value = upstream.headers.get(name)
+        return value ? [[name, value]] : []
+      })),
       buffer: Buffer.from(await upstream.arrayBuffer()),
     }
   } catch (error) {
@@ -461,6 +474,8 @@ function upstreamProxy(): Plugin {
                     : `${targetUrl.origin}/`
           }
 
+          const range = isMedia ? req.headers.range : undefined
+          if (range) headers.Range = range
           const upstream = await fetchUpstream(targetUrl.href, { headers })
           if (upstream.finalUrl) res.setHeader('X-NewsNook-Upstream-Url', upstream.finalUrl)
           res.statusCode = upstream.status
@@ -468,7 +483,11 @@ function upstreamProxy(): Plugin {
             upstream.contentType ||
             (isImage ? 'image/jpeg' : isMedia ? 'application/octet-stream' : 'text/html; charset=utf-8')
           res.setHeader('Content-Type', contentType)
-          res.setHeader('Cache-Control', isImage || isMedia ? 'public, max-age=3600' : 'no-store')
+          res.setHeader('Cache-Control', (isImage || isMedia) && !range && upstream.status !== 206 ? 'public, max-age=3600' : 'no-store')
+          if (isMedia) {
+            for (const [name, value] of Object.entries(upstream.rangeHeaders)) res.setHeader(name, value)
+            res.setHeader('Access-Control-Expose-Headers', 'X-NewsNook-Upstream-Url, Content-Range, Accept-Ranges')
+          }
           res.setHeader('Access-Control-Allow-Origin', '*')
           res.end(upstream.buffer)
         } catch (error) {

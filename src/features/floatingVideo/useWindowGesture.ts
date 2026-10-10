@@ -20,7 +20,8 @@ export function readWindowBounds(): WindowBounds {
 }
 
 export function useWindowGesture(rootRef: RefObject<HTMLDivElement | null>, slotRef: RefObject<HTMLDivElement | null>, hidden: boolean) {
-  const [rect, setRect] = useState(() => initialWindow(readWindowBounds(), 16 / 9))
+  const [initialBounds] = useState(readWindowBounds)
+  const [rect, setRect] = useState(() => initialWindow(initialBounds, 16 / 9))
   const rectRef = useRef(rect)
   // Viewport constraints affect presentation, not the user's preferred placement.
   // In particular, rotating into fullscreen must not overwrite the floating rect.
@@ -28,13 +29,13 @@ export function useWindowGesture(rootRef: RefObject<HTMLDivElement | null>, slot
   const hiddenRef = useRef(hidden)
   hiddenRef.current = hidden
   const ratioRef = useRef(16 / 9)
-  const boundsRef = useRef(readWindowBounds())
+  const boundsRef = useRef(initialBounds)
   const frame = useRef<ReturnType<typeof requestAnimationFrame> | null>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())
   const interaction = useRef<{ id: number; x: number; y: number; rect: WindowRect; resize: boolean } | null>(null)
   const pinchStart = useRef<{ distance: number; x: number; y: number; rect: WindowRect } | null>(null)
   const captures = useRef(new Map<number, HTMLElement>())
-  const [tip, setTip] = useState(true)
+  const [tip, setTip] = useState(false)
   const shownTip = useRef(false)
   const apply = useCallback((next: Pick<WindowRect, 'x' | 'y' | 'width'>, remember = true) => {
     if (remember) preferredRect.current = constrainWindow(next, boundsRef.current, ratioRef.current)
@@ -60,10 +61,22 @@ export function useWindowGesture(rootRef: RefObject<HTMLDivElement | null>, slot
     apply(preferredRect.current, false)
     if (shownTip.current) return
     shownTip.current = true
+    let seen = false
+    try {
+      seen = window.localStorage.getItem('newsnook:floating-guide-seen') === '1'
+      if (!seen) window.localStorage.setItem('newsnook:floating-guide-seen', '1')
+    } catch {
+      // Private browsing / disabled storage must not block playback.
+    }
+    if (seen) return
     setTip(true)
+  }, [apply, cancel, hidden, slotRef])
+  useEffect(() => {
+    if (hidden) { setTip(false); return }
+    if (!tip) return
     const timer = window.setTimeout(() => setTip(false), 6000)
     return () => window.clearTimeout(timer)
-  }, [apply, cancel, hidden, slotRef])
+  }, [hidden, tip])
   useEffect(() => {
     const sync = () => {
       boundsRef.current = readWindowBounds()
