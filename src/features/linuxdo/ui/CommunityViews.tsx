@@ -1,9 +1,10 @@
 import { NotificationRow } from './NotificationRow'
 import { PrivateMessagesView } from './PrivateMessagesView'
 import type { LinuxDoPrivateMessagesCache } from './privateMessagesCache'
+import { advanceLinuxDoNotificationPagination, emptyLinuxDoNotificationPagination } from '../notification/pagination'
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
-import { Loader2, RotateCw, X } from 'lucide-react'
+import { Bell, Loader2, RotateCw, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
@@ -70,11 +71,18 @@ export function NotificationsView({
   const [items, setItems] = useState<LinuxDoNotification[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
-  const [nextOffset, setNextOffset] = useState<number | undefined>()
-  const [totalRows, setTotalRows] = useState<number | undefined>()
+  const [pagination, setPagination] = useState(emptyLinuxDoNotificationPagination)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<LinuxDoNotificationFilter>(initialFilter)
-  const selectFilter = (next: LinuxDoNotificationFilter) => { setFilter(next); onFilterChange?.(next) }
+  const filterRef = useRef(filter)
+  const autoScannedFilterRef = useRef<LinuxDoNotificationFilter | null>(null)
+  const selectFilter = (next: LinuxDoNotificationFilter) => {
+    if (next === filterRef.current) return
+    filterRef.current = next
+    autoScannedFilterRef.current = null
+    setFilter(next)
+    onFilterChange?.(next)
+  }
   const [unreadCount, setUnreadCount] = useState(session.currentUser?.allUnreadNotificationsCount ?? session.currentUser?.unreadNotifications ?? 0)
   const [markingAll, setMarkingAll] = useState(false)
   const [markingIds, setMarkingIds] = useState<Set<number>>(() => new Set())
@@ -87,6 +95,7 @@ export function NotificationsView({
   const pendingIdsRef = useRef(new Set<number>())
   const markingAllRef = useRef(false)
   const loadingMoreRef = useRef(false)
+  const paginationRef = useRef(pagination)
 
   const applyUnreadCount = useCallback((count: number) => {
     const normalized = Math.max(0, Math.trunc(Number.isFinite(count) ? count : 0))
@@ -94,6 +103,15 @@ export function NotificationsView({
     if (mountedRef.current) setUnreadCount(normalized)
     onUnreadChange(normalized)
   }, [onUnreadChange])
+
+  const applyPagination = useCallback((
+    page: { scannedRows: number; nextOffset?: number; totalRows?: number },
+    reset = false,
+  ) => {
+    const next = advanceLinuxDoNotificationPagination(paginationRef.current, page, reset)
+    paginationRef.current = next
+    if (mountedRef.current) setPagination(next)
+  }, [])
 
   const refreshServerTruth = useCallback(async (mutationGeneration: number, refreshItems: boolean) => {
     const [countResult, listResult] = await Promise.allSettled([
@@ -114,10 +132,9 @@ export function NotificationsView({
         }
         return next
       })
-      setNextOffset(result.nextOffset)
-      setTotalRows(result.totalRows)
+      applyPagination(result)
     }
-  }, [applyUnreadCount])
+  }, [applyPagination, applyUnreadCount])
 
   const loadNotifications = useCallback(async (showSpinner: boolean) => {
     if (!session.authenticated || notificationLoadingRef.current || loadingMoreRef.current) return
@@ -133,8 +150,7 @@ export function NotificationsView({
       ])
       if (!mountedRef.current || generation !== loadGenerationRef.current) return
       setItems((previous) => showSpinner ? mergeLinuxDoNotifications([], result.items) : mergeLinuxDoNotifications(previous, result.items))
-      setNextOffset(result.nextOffset)
-      setTotalRows(result.totalRows)
+      applyPagination(result, showSpinner)
       if (count !== undefined && mutationGeneration === mutationGenerationRef.current) applyUnreadCount(count)
     } catch (nextError) {
       if (mountedRef.current && generation === loadGenerationRef.current) setError(readableError(nextError))
@@ -144,7 +160,7 @@ export function NotificationsView({
         if (mountedRef.current) setLoading(false)
       }
     }
-  }, [applyUnreadCount, session.authenticated])
+  }, [applyPagination, applyUnreadCount, session.authenticated])
 
   useEffect(() => {
     mountedRef.current = true
@@ -171,24 +187,44 @@ export function NotificationsView({
     }
   }, [applyUnreadCount, loadNotifications, session.authenticated])
 
-  const loadMoreNotifications = useCallback(async () => {
-    const offset = nextOffset
-    if (offset === undefined || loadingMoreRef.current || notificationLoadingRef.current) return
+  const loadMoreNotifications = useCallback(async (searchFilter?: LinuxDoNotificationFilter) => {
+    if (paginationRef.current.nextOffset === undefined || loadingMoreRef.current || notificationLoadingRef.current) return
     loadingMoreRef.current = true
     setLoadingMore(true)
+    setError('')
+    const generation = loadGenerationRef.current
     try {
-      const result = await notificationsApi.list(offset)
-      if (!mountedRef.current) return
-      setItems((previous) => mergeLinuxDoNotifications(previous, result.items))
-      setNextOffset(result.nextOffset)
-      setTotalRows(result.totalRows)
+      // A type might not appear in the most recent page. Search a bounded
+      // number of additional pages, stopping early on a match. Never scan
+      // the entire account history automatically or issue overlapping calls.
+      const maxPages = searchFilter && searchFilter !== 'all' ? 3 : 1
+      for (let page = 0; page < maxPages; page++) {
+        const offset = paginationRef.current.nextOffset
+        if (offset === undefined || (searchFilter && filterRef.current !== searchFilter)) break
+        const result = await notificationsApi.list(offset)
+        if (!mountedRef.current || generation !== loadGenerationRef.current) return
+        setItems((previous) => mergeLinuxDoNotifications(previous, result.items))
+        applyPagination(result)
+        if (result.items.some((item) => searchFilter && linuxDoNotificationMatchesFilter(item, searchFilter))) break
+      }
     } catch (nextError) {
-      if (mountedRef.current) setError(readableError(nextError))
+      if (mountedRef.current && generation === loadGenerationRef.current) setError(readableError(nextError))
     } finally {
       loadingMoreRef.current = false
       if (mountedRef.current) setLoadingMore(false)
     }
-  }, [nextOffset])
+  }, [applyPagination])
+
+  // An empty *loaded subset* is not proof that there are no mentions/replies.
+  // Probe up to three older pages on tab selection; users can continue the
+  // search explicitly without incurring hundreds of background API requests.
+  useEffect(() => {
+    if (!session.authenticated || filter === 'all' || filter === 'private' || loading || loadingMore || error) return
+    if (pagination.nextOffset === undefined || items.some((item) => linuxDoNotificationMatchesFilter(item, filter))) return
+    if (autoScannedFilterRef.current === filter) return
+    autoScannedFilterRef.current = filter
+    void loadMoreNotifications(filter)
+  }, [error, filter, items, loadMoreNotifications, loading, loadingMore, pagination.nextOffset, session.authenticated])
 
   const markOneRead = useCallback((item: LinuxDoNotification) => {
     if (item.read || pendingIdsRef.current.has(item.id)) return
@@ -279,6 +315,8 @@ export function NotificationsView({
   if (!session.authenticated) return <div className="px-6 py-20 text-center text-[13px] text-paper-muted">登录后可查看通知</div>
   if (filter === 'private') return <PrivateMessagesView onError={onPrivateError} onVerify={onVerify} onLogin={onLogin} session={session} onOpen={onOpen} onUnreadChange={onUnreadChange} onBack={() => selectFilter('all')} cacheRef={privateMessagesCacheRef} />
   const filteredItems = items.filter((item) => linuxDoNotificationMatchesFilter(item, filter))
+  const filterLabel = { all: '全部', mentions: '提及', replies: '回复', private: '私信', system: '系统' }[filter]
+  const hasOlderNotifications = pagination.nextOffset !== undefined
 
   return (
     <RefreshSurface onRefresh={() => loadNotifications(true)} className="page-x pb-4 pt-3">
@@ -327,7 +365,9 @@ export function NotificationsView({
 
       <div className="mb-3 flex items-center justify-between gap-3 px-1">
         <span className="text-[11px] font-medium text-paper-faint">
-          {`未读 ${unreadCount} · 已加载 ${items.length}${totalRows !== undefined ? ` / ${totalRows}` : ''}`}
+          {filter === 'all'
+            ? `未读 ${unreadCount} · 已检索 ${pagination.scanned}${pagination.totalRows !== undefined ? ` / ${pagination.totalRows}` : ''} 条历史通知`
+            : `已找到 ${filteredItems.length} 条${filterLabel} · 已检索 ${pagination.scanned}${pagination.totalRows !== undefined ? ` / ${pagination.totalRows}` : ''} 条`}
         </span>
         <button
           type="button"
@@ -368,29 +408,35 @@ export function NotificationsView({
             <NotificationRow key={item.id} item={item} marking={markingIds.has(item.id)} onOpen={() => openNotification(item)} />
           ))}
           {!error && !filteredItems.length ? (
-            <div className="py-16 text-center">
-              <div className="mx-auto mb-2.5 grid h-12 w-12 place-items-center rounded-2xl bg-paper/[0.04] text-paper-faint">
-                <RotateCw size={20} className="opacity-40" />
+            <div className="px-5 py-11 text-center" role="status">
+              <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-2xl bg-paper/[0.04] text-paper-faint">
+                {loadingMore ? <Loader2 size={20} className="animate-spin" /> : <Bell size={20} className="opacity-55" />}
               </div>
-              <p className="text-[13px] font-medium text-paper-muted">当前分类暂无通知</p>
-              <p className="mt-1 text-[11px] text-paper-faint">有新动态时会第一时间显示在这里</p>
+              <p className="text-[13px] font-medium text-paper-muted">
+                {loadingMore ? `正在查找更早的${filterLabel}…` : hasOlderNotifications ? `已检索记录中暂未找到${filterLabel}` : `暂无${filterLabel}通知`}
+              </p>
+              <p className="mt-1.5 text-[11px] leading-5 text-paper-faint">
+                {hasOlderNotifications
+                  ? `已检查最近 ${pagination.scanned} 条记录，可能还有更早的${filterLabel}通知`
+                  : '已检查完当前账号可访问的历史通知'}
+              </p>
             </div>
           ) : null}
-          {nextOffset !== undefined ? (
+          {hasOlderNotifications ? (
             <div className="p-3">
               <button
                 type="button"
                 disabled={loadingMore}
-                onClick={() => void loadMoreNotifications()}
+                onClick={() => void loadMoreNotifications(filter)}
                 className="linuxdo-control flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border border-haze/60 bg-paper/[0.025] text-[12px] font-medium text-paper-muted transition-all hover:bg-paper/[0.06] hover:text-paper active:scale-[0.99] disabled:opacity-40"
               >
                 {loadingMore ? (
                   <>
                     <Loader2 size={14} className="animate-spin text-paper-faint" />
-                    <span>加载中…</span>
+                    <span>正在检索历史通知…</span>
                   </>
                 ) : (
-                  '加载更多通知'
+                  filter === 'all' ? '加载更多通知' : `查找更多${filterLabel}`
                 )}
               </button>
             </div>
