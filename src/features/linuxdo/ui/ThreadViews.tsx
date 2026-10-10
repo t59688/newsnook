@@ -37,7 +37,8 @@ import { CategoryPickerSheet, InsertMenuSheet, TagPickerSheet, TemplatePickerShe
 import { buildComposerDraftData, validateComposer } from '../editor/model'
 import { resolveLinuxDoTemplate, type LinuxDoComposerTemplate, type LinuxDoTemplateVariables } from '../template/service'
 import { LinuxDoReadTracker } from '../topic/readTracker'
-import { verifyLinuxDoBrowserSession } from '../session/native'
+import { verifyLinuxDoBrowserSession, verifyLinuxDoChallenge } from '../session/native'
+import { LinuxDoRequestError, type LinuxDoVerify } from './VerificationAction'
 import { ReadSyncStatus } from './ReadSyncStatus'
 import { PostDevice } from './PostDevice'
 import { readSyncDiagnostic, type ReadSyncFailure } from '../topic/readSyncDiagnostic'
@@ -785,6 +786,7 @@ export function LinuxDoTopicView({
   overlayBackHandlerRef,
   onReadProgress,
   onSession,
+  onVerify,
 }: {
   summary: LinuxDoTopicSummary
   session: LinuxDoSessionSnapshot
@@ -802,6 +804,7 @@ export function LinuxDoTopicView({
   overlayBackHandlerRef: MutableRefObject<(() => boolean) | null>
   onReadProgress?: (topicId: number, highestSeen: number) => void
   onSession?: (session: LinuxDoSessionSnapshot) => void
+  onVerify?: LinuxDoVerify
 }) {
   const [categoryMap, setCategoryMap] = useState<Record<number, LinuxDoCategory>>(categoriesById ?? {})
   useEffect(() => {
@@ -817,6 +820,7 @@ export function LinuxDoTopicView({
   const [posts, setPosts] = useState<LinuxDoPost[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<unknown>(null)
+  const [failedJumpPost, setFailedJumpPost] = useState<number | undefined>()
   const [loadingPosts, setLoadingPosts] = useState(false)
   const [jumpingPostNumber, setJumpingPostNumber] = useState<number | undefined>()
   const [lightbox, setLightbox] = useState<{ items: Array<{ src: string; actionSrc?: string; alt: string }>; index: number } | null>(null)
@@ -973,6 +977,7 @@ export function LinuxDoTopicView({
   const load = useCallback(async () => {
     setLoading(true)
     setError(null)
+    setFailedJumpPost(undefined)
     setReadPostNumbers(new Set())
     setReadSyncFailure(null)
     const request = ++loadRequestRef.current
@@ -1123,6 +1128,8 @@ export function LinuxDoTopicView({
       try {
         const windowTopic = await linuxDoTopics.get(summary.slug, summary.id, postNumber)
         if (request !== loadRequestRef.current) return
+        setError(null)
+        setFailedJumpPost(undefined)
         setPosts((previous) => {
           const byId = new Map(previous.map((post) => [post.id, post]))
           for (const post of windowTopic.postStream.posts) byId.set(post.id, post)
@@ -1131,6 +1138,7 @@ export function LinuxDoTopicView({
       } catch (nextError) {
         if (request !== loadRequestRef.current) return
         setError(nextError)
+        setFailedJumpPost(postNumber)
         setJumpingPostNumber(undefined)
         return
       }
@@ -1147,10 +1155,9 @@ export function LinuxDoTopicView({
     if (!tracker || readSyncBusy) return
     setReadSyncBusy(true)
     try {
-      const error = readSyncFailure?.error
-      const readSyncChallenge = error instanceof LinuxDoApiError && error.kind === 'browser-verification'
-        && error.diagnostics?.transport === 'browser-firstparty'
-      const next = await verifyLinuxDoBrowserSession('https://linux.do/', { readSyncChallenge })
+      // Authentication-required recovery is intentionally separate: only this
+      // path may replace the session, and mismatched accounts abandon the batch.
+      const next = await verifyLinuxDoBrowserSession('https://linux.do/login')
       if (!next.authenticated || !next.currentUser) throw new Error('请先完成 Linux.do 登录')
       if (next.currentUser.id !== session.currentUser?.id) {
         tracker.stop(false)
@@ -1236,7 +1243,8 @@ export function LinuxDoTopicView({
         failure={readSyncFailure}
         busy={readSyncBusy}
         onRetry={() => readTrackerRef.current?.resume()}
-        onVerify={() => void recoverReadSession()}
+        onVerify={onVerify ?? ((options) => verifyLinuxDoChallenge(options?.url, { readSyncChallenge: options?.readSyncChallenge }))}
+        onLogin={() => void recoverReadSession()}
         onCopy={() => {
           if (!navigator.clipboard?.writeText) { showToast('复制不可用，请截图保留错误信息'); return }
           void navigator.clipboard.writeText(readSyncDiagnostic(readSyncFailure))
@@ -1268,7 +1276,16 @@ export function LinuxDoTopicView({
         }).finally(() => { if (request === loadRequestRef.current) setLoadingPosts(false) })
       }}>
         {loading ? <div className="space-y-2.5 sm:space-y-3 py-4 sm:py-5" role="status" aria-label="正在加载主题回复">{Array.from({ length: 4 }, (_, index) => <div key={index} className="rounded-xl sm:rounded-2xl border border-haze/50 bg-ink-raised/35 p-3 sm:p-4"><div className="flex items-center gap-2.5 sm:gap-3"><div className="linuxdo-skeleton h-8 w-8 sm:h-9 sm:w-9 rounded-full" /><div className="flex-1"><div className="linuxdo-skeleton h-3 w-28 rounded" /><div className="linuxdo-skeleton mt-2 h-2.5 w-20 rounded" /></div></div><div className="linuxdo-skeleton mt-4 sm:mt-5 h-3 w-[92%] rounded" /><div className="linuxdo-skeleton mt-2.5 sm:mt-3 h-3 w-[76%] rounded" /><div className="linuxdo-skeleton mt-2.5 sm:mt-3 h-28 sm:h-32 rounded-lg sm:rounded-xl" /></div>)}</div> : null}
-        {error ? <div className="py-24 text-center text-[13px] text-paper-muted">{readableError(error)}</div> : null}
+        {error ? (
+          <LinuxDoRequestError
+            variant={topic ? 'inline' : 'empty'}
+            error={error}
+            onVerify={onVerify}
+            onRetry={() => failedJumpPost ? jumpToPost(failedJumpPost) : load()}
+            verificationOptions={{ url: 'https://linux.do/t/' + encodeURIComponent(summary.slug || 'topic') + '/' + summary.id }}
+            busy={loading || jumpingPostNumber !== undefined}
+          />
+        ) : null}
         {topic ? (
           <>
             <header className="px-1.5 sm:px-0 py-3.5 sm:py-5 border-b border-haze/30 mb-2.5 sm:mb-3">

@@ -426,7 +426,8 @@ public class LinuxDoSessionPlugin extends Plugin {
             call.reject("已有 Linux.do 验证窗口正在进行", "LINUXDO_SESSION_BUSY");
             return;
         }
-        String initialUrl = call.getString("url", ORIGIN + "/");
+        boolean readSyncChallenge = Boolean.TRUE.equals(call.getBoolean("readSyncChallenge", false));
+        String initialUrl = readSyncChallenge ? READ_SYNC_CHALLENGE_URL : call.getString("url", ORIGIN + "/");
         if (!isAllowedUrl(initialUrl)) {
             call.reject("只允许打开 linux.do 第一方 HTTPS 页面", "LINUXDO_SESSION_URL");
             return;
@@ -435,7 +436,7 @@ public class LinuxDoSessionPlugin extends Plugin {
         pendingCall = call;
         verificationOnly = true;
         finishing = false;
-        getActivity().runOnUiThread(() -> openDialog(initialUrl, false));
+        getActivity().runOnUiThread(() -> openDialog(initialUrl, readSyncChallenge));
     }
 
     @PluginMethod
@@ -1414,7 +1415,7 @@ public class LinuxDoSessionPlugin extends Plugin {
             otpExchange
                 ? "正在把浏览器授权兑换为 App 会话；如出现 Cloudflare 验证，请在此页完成。"
                 : readSyncChallenge
-                ? "正在打开阅读记录提交的安全验证；此请求不含阅读数据。完成验证后点“完成”，应用会重试原记录。"
+                ? "正在打开阅读记录提交的安全验证；此请求不含阅读数据。完成验证后点右上角“" + (challengeOnly ? "继续" : "完成") + "”，应用会重试原记录。"
                 : challengeOnly
                 ? "请在 Linux.do 官方页面完成安全验证，再点右上角“继续”。返回后将重新请求，是否通过以站点响应为准。"
                 : "请在 Linux.do 官方页面完成账号密码、人机或二次验证，登录后点“完成”。"

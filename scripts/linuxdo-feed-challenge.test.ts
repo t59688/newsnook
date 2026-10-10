@@ -2,26 +2,25 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
 const workspace = readFileSync('src/features/linuxdo/ui/LinuxDoWorkspace.tsx', 'utf8')
+const action = readFileSync('src/features/linuxdo/ui/VerificationAction.tsx', 'utf8')
 const native = readFileSync('src/features/linuxdo/session/native.ts', 'utf8')
 const android = readFileSync('android/app/src/main/java/com/aizeek/newsnook/LinuxDoSessionPlugin.java', 'utf8')
 
-assert.match(workspace, /data-linuxdo-feed-error[\s\S]*?needsVerification \? verifyAndReload\(\) : load\(false\)/,
-  'an error above cached topics must provide the verification action, not retry alone')
-assert.match(workspace, /aria-label=\{needsVerification \? '打开安全验证'/,
-  'verification action should be accessible to screen readers')
-assert.match(workspace, /return await verifyLinuxDoChallenge\(\)/,
-  'verification should use the dedicated challenge flow')
-assert.doesNotMatch(workspace, /const verify = async[\s\S]*?api\.setSession\(next\)/,
-  'challenge recovery must not overwrite the active account session')
-assert.match(native, /verifyChallenge\(options: \{ url: string \}\): Promise<\{ completed: boolean \}>/)
+assert.match(workspace, /data-linuxdo-feed-error[\s\S]*?<LinuxDoRequestError/,
+  'errors above cached topics must render the shared verification surface')
+assert.match(workspace, /LinuxDoRequestError variant="empty"/,
+  'empty feed errors must provide the same actionable surface')
+assert.match(action, /data-linuxdo-verify/, 'all security challenges must have a visible first-party verification button')
+assert.match(action, /if \(await onVerify\(options\) && mountedRef\.current\) await onRetry\(\)/,
+  'only a user-completed challenge in a mounted view may retry the original action')
+assert.match(workspace, /return await verifyLinuxDoChallenge\(options\?\.url/,
+  'workspace verification must use the dedicated first-party challenge flow')
+assert.match(native, /verifyChallenge\(options: \{ url: string; readSyncChallenge\?: boolean \}\)/,
+  'the first-party challenge API also supports the POST-specific read-sync path')
 assert.match(android, /public void verifyChallenge\(PluginCall call\)/)
 assert.match(android, /CookieManager\.getInstance\(\)\.flush\(\);[\s\S]*?result\.put\("completed", true\)/,
-  'challenge completion should commit first-party cookies before the blocked request retries')
+  'challenge completion commits cookies and never claims a successful request')
 assert.match(android, /if \(challengeOnly\) \{[\s\S]*?verificationCall\.resolve\(result\)/,
-  'challenge completion must be separate from login snapshot navigation')
-const { retryAfterVerification } = await import('../src/features/linuxdo/ui/feedModel')
-const calls: string[] = []
-assert.equal(await retryAfterVerification(async () => { calls.push('verify'); return true }, async () => { calls.push('reload') }), true)
-assert.deepEqual(calls, ['verify', 'reload'])
-assert.equal(await retryAfterVerification(async () => false, async () => { throw new Error('cancel must not reload') }), false)
+  'challenge completion must be distinct from account snapshot navigation')
+
 console.log('linuxdo-feed-challenge: ok')
