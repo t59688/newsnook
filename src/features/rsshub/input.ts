@@ -9,6 +9,7 @@ export interface RssHubLogicalInput {
 export function parseRssHubLogicalInput(raw: string): RssHubLogicalInput | null {
   const value = raw.trim()
   if (!/^rsshub:\/\//i.test(value)) return null
+  if (/(?:^|\/)(?:\.|%2e){1,2}(?:\/|[?#]|$)/i.test(value)) throw new Error('RSSHub 路由包含非法路径')
   let url: URL
   try { url = new URL(value) } catch { throw new Error('RSSHub 路由地址格式无效') }
   if (url.protocol !== 'rsshub:' || url.username || url.password || url.port || url.hash ||
