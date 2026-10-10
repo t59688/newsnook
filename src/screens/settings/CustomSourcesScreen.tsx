@@ -38,6 +38,7 @@ import {
 } from '../../sources/preferences'
 import type { NewsSource } from '../../sources/registry'
 import { MAX_CATALOG_BYTES } from '../../features/siteCatalog/context'
+import { getSiteCleanDomain } from '../../features/siteCatalog/uiUtils'
 import { probeCatalog } from '../../features/siteCatalog/probe'
 import { detectFramework } from '../../features/frameworkDetect/detect'
 import type { FrameworkHint } from '../../features/frameworkDetect/types'
@@ -342,7 +343,11 @@ export function CustomSourcesScreen({
         const displayName = probeSource.name
         const hint = detectFramework(text, normalizedUrl)
         setProbeCatalogHit({ name: displayName, extractor: '目录', frameworkHint: hint ?? undefined, catalogProfile: page.profile })
-        if (!inputName) { setInputName(displayName); setInputLabel(displayName.slice(0, 4)) }
+        const cleanDomain = getSiteCleanDomain(normalizedUrl)
+        if (!inputName) {
+          setInputName(cleanDomain || displayName)
+          setInputLabel(cleanDomain ? cleanDomain.slice(0, 8) : displayName.slice(0, 4))
+        }
         if (!inputSiteUrl) setInputSiteUrl(page.profile.siteRoot)
         setInputUrl(page.url)
         return

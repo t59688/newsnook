@@ -97,6 +97,32 @@ try {
   await click(button('全球视野'))
   assert.equal(selectedPreset, 'world', '从 CMS 回到普通资讯布局要走预设选择回调')
 
+  // 测试 CMS 帮助说明弹窗
+  await render([])
+  await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
+  await click(document.querySelector('[role="tab"]:last-child') as HTMLButtonElement)
+  assert.ok(document.body.textContent?.includes('了解用途与支持类型'))
+  await click(button('了解用途与支持类型'))
+  assert.ok(document.body.textContent?.includes('CMS 站点说明与支持类型'))
+  assert.ok(document.body.textContent?.includes('什么是 CMS 独立站点空间？'))
+  assert.ok(document.body.textContent?.includes('支持添加哪些类型的网站？'))
+  assert.ok(document.body.textContent?.includes('影视与动漫'))
+  assert.ok(document.body.textContent?.includes('MacCMS'))
+  assert.ok(document.body.textContent?.includes('WordPress'))
+  await click(button('我知道了'))
+  assert.equal(document.body.textContent?.includes('CMS 站点说明与支持类型'), false, '点击“我知道了”后说明弹窗关闭')
+
+  // 测试有站点时头部与底部的帮助按钮及“去添加站点”按钮
+  await render(cms, true, 'cms-a')
+  await click(document.querySelector('button[aria-haspopup="dialog"]') as HTMLButtonElement)
+  const helpBtn = document.querySelector('button[aria-label="查看 CMS 站点说明"]') as HTMLButtonElement
+  assert.ok(helpBtn, 'CMS 面板中应存在感叹号帮助按钮')
+  await click(helpBtn)
+  assert.ok(document.body.textContent?.includes('CMS 站点说明与支持类型'))
+  const prevAddCalls = addCalls
+  await click(button('去添加站点'))
+  assert.equal(addCalls, prevAddCalls + 1, '在说明弹窗中点击“去添加站点”应触发添加入口')
+
   console.log('cms switcher ui: ok')
 } finally {
   await act(async () => root.unmount())
