@@ -500,8 +500,9 @@ async function nativeGetFollowingRedirects(
     if (REDIRECT_STATUSES.has(response.status)) {
       const location = headerValue(response.headers, 'location')
       if (!location) throw new Error(`HTTP ${response.status}`)
-      const next = resolveRedirectUrl(current, location)
-      current = requestUrlCandidates(next)[0] ?? next
+      // Honor the server's Location, including an intentional HTTPS -> HTTP
+      // redirect. Upgrading this hop can address a different virtual host.
+      current = resolveRedirectUrl(current, location)
       continue
     }
 
@@ -586,7 +587,9 @@ function headerValue(headers: Record<string, string>, name: string): string | un
 }
 
 export function resolveRedirectUrl(currentUrl: string, location: string): string {
-  return new URL(location, currentUrl).href
+  const next = new URL(location, currentUrl)
+  if (next.protocol !== 'https:' && next.protocol !== 'http:') throw new Error('不支持的重定向协议')
+  return next.href
 }
 
 /** 请求前候选：目前仅做 https 升格（信源地址以 registry 配置为准，不做域名改写）。 */

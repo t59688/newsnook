@@ -41,6 +41,7 @@ import { MAX_CATALOG_BYTES } from '../../features/siteCatalog/context'
 import { getSiteCleanDomain } from '../../features/siteCatalog/uiUtils'
 import { probeCatalog } from '../../features/siteCatalog/probe'
 import { fetchProbeEntryPage } from '../../features/siteCatalog/probeUrl'
+import { catalogUserAgent } from '../../features/siteCatalog/requestIdentity'
 import { detectFramework } from '../../features/frameworkDetect/detect'
 import type { FrameworkHint } from '../../features/frameworkDetect/types'
 
@@ -300,6 +301,7 @@ export function CustomSourcesScreen({
         (candidate, onResponse) => fetchAbsoluteText(candidate, {
           signal: controller.signal,
           maxBytes: MAX_CATALOG_BYTES,
+          userAgent: catalogUserAgent(),
           onResponse,
         }),
         controller.signal,
@@ -384,7 +386,12 @@ export function CustomSourcesScreen({
         )
       }
     } catch (err) {
-      if (probeController.current === controller) setProbeError(err instanceof Error ? err.message : '网络请求失败，无法连接到该地址')
+      if (probeController.current === controller) {
+        const message = err instanceof Error ? err.message : '网络请求失败，无法连接到该地址'
+        setProbeError(message === 'HTTP 404'
+          ? '站点对应用的页面请求返回 HTTP 404；若浏览器正常，请检查应用代理或站点对非浏览器请求的限制。'
+          : message)
+      }
     } finally {
       clearTimeout(timeout)
       if (probeController.current === controller) setProbing(false)

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { fetchAbsoluteText } from '../src/lib/http'
 import { apexHomepageFallback, fetchProbeEntryPage } from '../src/features/siteCatalog/probeUrl'
+import { normalizeCatalogWebViewAgent } from '../src/features/siteCatalog/requestIdentity'
 const original = globalThis.fetch
 let cancelled = false
 try {
@@ -51,4 +52,17 @@ await assert.rejects(fetchProbeEntryPage(wwwUrl, async (url) => {
   throw new Error('HTTP 404')
 }, probeAbort.signal), /HTTP 404/)
 assert.deepEqual(probeCalls, [wwwUrl], 'aborted probes must not start a fallback request')
-console.log('site catalog transport and probe URL fallback: ok')
+const webviewAgent = 'Mozilla/5.0 (Linux; Android 16; Pixel 10 Pro Build/BP1A; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/141.0.0.0 Mobile Safari/537.36'
+const chromeAgent = 'Mozilla/5.0 (Linux; Android 16; Pixel 10 Pro Build/BP1A) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Mobile Safari/537.36'
+assert.equal(normalizeCatalogWebViewAgent(webviewAgent), chromeAgent, 'strip embedded WebView identity for native CMS requests')
+assert.equal(normalizeCatalogWebViewAgent(chromeAgent), chromeAgent)
+assert.equal(normalizeCatalogWebViewAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/126'), undefined)
+assert.equal(normalizeCatalogWebViewAgent('bad'), undefined)
+
+probeCalls = []
+await assert.rejects(fetchProbeEntryPage(wwwUrl, async (candidate) => {
+  probeCalls.push(candidate)
+  throw new Error(candidate === wwwUrl ? 'HTTP 404' : 'HTTP 403')
+}), /HTTP 403/, 'fallback errors must retain the real status')
+assert.deepEqual(probeCalls, [wwwUrl, apexUrl])
+console.log('site catalog transport, probe URL fallback and identity: ok')

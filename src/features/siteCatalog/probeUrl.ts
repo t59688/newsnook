@@ -37,7 +37,10 @@ export async function fetchProbeEntryPage(
       return await fetchPage(fallback)
     } catch (fallbackError) {
       if (signal?.aborted) throw fallbackError
-      throw new Error('HTTP 404：原地址返回 404，尝试不带 www 的地址后仍无法读取')
+      if (fallbackError instanceof Error && fallbackError.message === 'HTTP 404') {
+        throw new Error('两种域名的请求均返回 HTTP 404；如果浏览器正常，请检查应用代理或站点对非浏览器请求的限制。')
+      }
+      throw fallbackError
     }
   }
 }
