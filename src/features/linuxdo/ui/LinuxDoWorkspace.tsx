@@ -745,6 +745,27 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
     }
   }
 
+  const handleResumeDraft = useCallback(async (draft: LinuxDoProfileDraft) => {
+    if (draft.key.startsWith('new_private_message')) throw new Error('新私信草稿暂不支持在 App 中编辑')
+    const owner = api.sessionSnapshot().currentUser?.id
+    if (!session.authenticated || owner !== session.currentUser?.id) throw new Error('请重新登录后打开草稿')
+    const snapshot = await draftsApi.get(draft.key)
+    const data = snapshot.data
+    if (!data) throw new Error('草稿已被移除或无法读取，请刷新列表')
+    if (!['createTopic', 'reply', 'edit'].includes(data.action)) throw new Error('此类型草稿暂不支持在 App 中编辑')
+    if (data.action === 'reply' && !draft.topicId) throw new Error('草稿缺少回复主题，无法恢复')
+    if (data.action === 'edit' && !data.postId) throw new Error('草稿缺少编辑帖子，无法恢复')
+    const topic = draft.topicId ? await topicsApi.get(draft.topicSlug || 'topic', draft.topicId) : undefined
+    const post = data.action === 'edit' && data.postId ? decodePost(await api.getJson(linuxDoEndpoints.post(data.postId), { auth: 'required' })) : undefined
+    if (owner !== api.sessionSnapshot().currentUser?.id) throw new Error('账号已切换，请重新打开草稿')
+    setComposerTopic(topic)
+    setComposerEditPost(post)
+    setComposerInitialRaw(data.reply)
+    setComposerReplyTo(data.reply_to_post_number)
+    setComposerDraft({ ...draft, sequence: snapshot.sequence, data })
+    setComposerOpen(true)
+  }, [session.authenticated])
+
   const title =
     route.kind === 'feed' ? 'Linux.do'
       : route.kind === 'topic' ? '主题'
@@ -857,32 +878,24 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         ) : route.kind === 'messages' ? (
           <PrivateMessagesView onVerify={verify} onLogin={() => navigate({ kind: 'account' })} key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} cacheRef={privateMessagesCacheRef} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onUnreadChange={applyNotificationUnread} onError={setWorkspaceError} />
         ) : route.kind === 'user' ? (
-          <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} session={session} onVerify={verify} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} onResumeDraft={async (draft) => {
-            if (draft.key.startsWith('new_private_message')) throw new Error('新私信草稿暂不支持在 App 中编辑')
-            const owner = api.sessionSnapshot().currentUser?.id
-            if (!session.authenticated || owner !== session.currentUser?.id) throw new Error('请重新登录后打开草稿')
-            const snapshot = await draftsApi.get(draft.key)
-            const data = snapshot.data
-            if (!data) throw new Error('草稿已被移除或无法读取，请刷新列表')
-            if (!['createTopic', 'reply', 'edit'].includes(data.action)) throw new Error('此类型草稿暂不支持在 App 中编辑')
-            if (data.action === 'reply' && !draft.topicId) throw new Error('草稿缺少回复主题，无法恢复')
-            if (data.action === 'edit' && !data.postId) throw new Error('草稿缺少编辑帖子，无法恢复')
-            const topic = draft.topicId ? await topicsApi.get(draft.topicSlug || 'topic', draft.topicId) : undefined
-            const post = data.action === 'edit' && data.postId ? decodePost(await api.getJson(linuxDoEndpoints.post(data.postId), { auth: 'required' })) : undefined
-            if (owner !== api.sessionSnapshot().currentUser?.id) throw new Error('账号已切换，请重新打开草稿')
-            setComposerTopic(topic)
-            setComposerEditPost(post)
-            setComposerInitialRaw(data.reply)
-            setComposerReplyTo(data.reply_to_post_number)
-            setComposerDraft({ ...draft, sequence: snapshot.sequence, data })
-            setComposerOpen(true)
-          }} />
+          <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} session={session} onVerify={verify} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} onResumeDraft={handleResumeDraft} />
         ) : route.kind === 'bookmarks' ? (
           <BookmarksView session={session} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} />
         ) : route.kind === 'trust' ? (
           <TrustLevelView session={session} />
         ) : (
-          <AccountView onPrivateMessages={() => navigate({ kind: 'messages' })} session={session} onSession={applyWorkspaceSession} onBookmarks={() => navigate({ kind: 'bookmarks' })} onProfile={(username, tab) => navigate({ kind: 'user', username, tab })} onTrustLevel={() => navigate({ kind: 'trust' })} />
+          <AccountView
+            onPrivateMessages={() => navigate({ kind: 'messages' })}
+            session={session}
+            onSession={applyWorkspaceSession}
+            onBookmarks={() => navigate({ kind: 'bookmarks' })}
+            onProfile={(username, tab) => navigate({ kind: 'user', username, tab })}
+            onTrustLevel={() => navigate({ kind: 'trust' })}
+            onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })}
+            onOpenUser={(username) => navigate({ kind: 'user', username })}
+            onResumeDraft={handleResumeDraft}
+            onVerify={verify}
+          />
         )}
       </div>
 
