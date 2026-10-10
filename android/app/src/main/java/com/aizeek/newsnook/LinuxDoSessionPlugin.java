@@ -92,6 +92,8 @@ public class LinuxDoSessionPlugin extends Plugin {
     private boolean browserTransportInitializing;
     private final List<BrowserTransportReadyCallback> browserTransportWaiters = new ArrayList<>();
     private volatile PluginCall pendingCall;
+    // An interactive Cloudflare challenge is not an account-login operation.
+    private volatile boolean verificationOnly;
     private volatile PluginCall pendingUserApiCall;
     private volatile LinuxDoUserApiAuth.Credential pendingOtpCredential;
     private final AtomicBoolean probing = new AtomicBoolean(false);
@@ -413,8 +415,27 @@ public class LinuxDoSessionPlugin extends Plugin {
         }
 
         pendingCall = call;
+        verificationOnly = false;
         finishing = false;
         getActivity().runOnUiThread(() -> openDialog(initialUrl, readSyncChallenge));
+    }
+
+    @PluginMethod
+    public void verifyChallenge(PluginCall call) {
+        if (pendingCall != null || pendingUserApiCall != null || dialog != null) {
+            call.reject("已有 Linux.do 验证窗口正在进行", "LINUXDO_SESSION_BUSY");
+            return;
+        }
+        String initialUrl = call.getString("url", ORIGIN + "/");
+        if (!isAllowedUrl(initialUrl)) {
+            call.reject("只允许打开 linux.do 第一方 HTTPS 页面", "LINUXDO_SESSION_URL");
+            return;
+        }
+
+        pendingCall = call;
+        verificationOnly = true;
+        finishing = false;
+        getActivity().runOnUiThread(() -> openDialog(initialUrl, false));
     }
 
     @PluginMethod
@@ -1328,6 +1349,7 @@ public class LinuxDoSessionPlugin extends Plugin {
 
     private void openDialog(String initialUrl, boolean readSyncChallenge) {
         boolean otpExchange = pendingUserApiCall != null && pendingOtpCredential != null;
+        boolean challengeOnly = verificationOnly && !otpExchange;
         if ((pendingCall == null && !otpExchange) || getActivity().isFinishing()) {
             rejectPending("LINUXDO_SESSION_UNAVAILABLE", "当前 Activity 无法打开 Linux.do 验证页");
             return;
@@ -1358,7 +1380,7 @@ public class LinuxDoSessionPlugin extends Plugin {
         root.addView(chrome, chromeParams);
 
         TextView title = new TextView(getActivity());
-        title.setText(otpExchange ? "Linux.do · 正在建立安全会话" : readSyncChallenge ? "Linux.do · 阅读同步验证" : "Linux.do · 登录与安全验证");
+        title.setText(otpExchange ? "Linux.do · 正在建立安全会话" : readSyncChallenge ? "Linux.do · 阅读同步验证" : challengeOnly ? "Linux.do · 安全验证" : "Linux.do · 登录与安全验证");
         title.setTextSize(15f);
         title.setTextColor(Color.rgb(238, 239, 242));
         title.setGravity(Gravity.CENTER);
@@ -1374,7 +1396,7 @@ public class LinuxDoSessionPlugin extends Plugin {
         chrome.addView(close, closeParams);
 
         TextView done = new TextView(getActivity());
-        done.setText("完成");
+        done.setText(challengeOnly ? "继续" : "完成");
         done.setTextSize(13f);
         done.setTextColor(Color.WHITE);
         done.setGravity(Gravity.CENTER);
@@ -1393,6 +1415,8 @@ public class LinuxDoSessionPlugin extends Plugin {
                 ? "正在把浏览器授权兑换为 App 会话；如出现 Cloudflare 验证，请在此页完成。"
                 : readSyncChallenge
                 ? "正在打开阅读记录提交的安全验证；此请求不含阅读数据。完成验证后点“完成”，应用会重试原记录。"
+                : challengeOnly
+                ? "请在 Linux.do 官方页面完成安全验证，再点右上角“继续”。返回后将重新请求，是否通过以站点响应为准。"
                 : "请在 Linux.do 官方页面完成账号密码、人机或二次验证，登录后点“完成”。"
         );
         hint.setTextSize(11.5f);
@@ -1457,6 +1481,20 @@ public class LinuxDoSessionPlugin extends Plugin {
 
         close.setOnClickListener(v -> cancelPending());
         done.setOnClickListener(v -> {
+            if (challengeOnly) {
+                // A clearance challenge can be completed without signing in. Do not
+                // query /session/current.json or clear cached user identity here:
+                // only retrying the original blocked request proves recovery.
+                PluginCall verificationCall = pendingCall;
+                if (verificationCall == null) return;
+                CookieManager.getInstance().flush();
+                pendingCall = null;
+                JSObject result = new JSObject();
+                result.put("completed", true);
+                verificationCall.resolve(result);
+                finishDialog();
+                return;
+            }
             if (sessionWebView != null) {
                 sessionWebView.loadUrl(SESSION_URL + "?newsnook_snapshot=1");
             }
@@ -1822,6 +1860,7 @@ public class LinuxDoSessionPlugin extends Plugin {
     private void finishDialog() {
         finishing = true;
         if (dialog != null) dialog.dismiss();
+        verificationOnly = false;
         finishing = false;
     }
 
@@ -1845,6 +1884,7 @@ public class LinuxDoSessionPlugin extends Plugin {
     }
 
     private void cancelPending() {
+        verificationOnly = false;
         if (pendingCall != null) {
             pendingCall.reject("已取消 Linux.do 登录/验证", "LINUXDO_SESSION_CANCELLED");
             pendingCall = null;
