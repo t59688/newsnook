@@ -2,6 +2,7 @@ import { fetchAbsoluteText } from '../../lib/http'
 import { validateFeedUrl } from './routeBuilder'
 import { discoverSiteFeeds } from './siteDiscovery'
 import { discoverRssHubRadar } from '../rsshub/radar'
+import { parseRssHubLogicalInput, describeRssHubRoute } from '../rsshub/input'
 import { DEFAULT_RSSHUB_INSTANCES, validateRssHubRoutePath, type RssHubInstance } from '../rsshub/instances'
 import type { FeedDiscoveryEntry } from './types'
 
@@ -24,6 +25,15 @@ export async function searchOnlineFeeds(query: string, signal?: AbortSignal, ins
   const timer = globalThis.setTimeout(() => controller.abort(), 30_000)
   try {
     if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
+    const logical = parseRssHubLogicalInput(value)
+    if (logical) {
+      return [{
+        providerId: 'rsshub', entryId: 'rsshub:logical:' + logical.routePath,
+        type: 'rsshub', title: describeRssHubRoute(logical.routePath), categories: [],
+        routeTemplate: logical.routePath, routePath: logical.routePath,
+        parameters: {}, missingParameters: [], statusNote: '正在查找可用的 RSSHub 实例',
+      }]
+    }
     const siteUrl = websiteSearchUrl(value)
     if (siteUrl) {
       // A pasted feed link for a configured RSSHub instance already contains a

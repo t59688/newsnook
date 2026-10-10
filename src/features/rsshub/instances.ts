@@ -12,6 +12,9 @@ export const DEFAULT_RSSHUB_INSTANCES: readonly RssHubInstance[] = [
   { id: 'cups', name: 'FunnyCups', url: 'https://rsshub.cups.moe', enabled: true, builtin: true },
   { id: 'slarker', name: 'Slarker', url: 'https://hub.slarker.me', enabled: true, builtin: true },
   { id: 'rssforever', name: 'RSSForever', url: 'https://rsshub.rssforever.com', enabled: true, builtin: true },
+  { id: 'virworks', name: 'Virworks', url: 'https://rsshub-balancer.virworks.moe', enabled: true, builtin: true },
+  { id: 'owonz', name: 'owo.nz', url: 'https://rss.owo.nz', enabled: true, builtin: true },
+  { id: 'wudifeixue', name: '无敌飞雪', url: 'https://rss.wudifeixue.com', enabled: true, builtin: true },
   { id: 'official-demo', name: 'RSSHub 官方演示', url: 'https://rsshub.app', enabled: false, builtin: true },
 ]
 
