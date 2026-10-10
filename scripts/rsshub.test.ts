@@ -26,8 +26,8 @@ import { normalizePreferences, DEFAULT_PREFERENCES } from '../src/sources/prefer
 import { searchOnlineFeeds } from '../src/features/feedDiscovery/onlineSearch'
 
 const enabled = normalizeRssHubInstances(DEFAULT_RSSHUB_INSTANCES)
-assert.equal(enabled.length, 5)
-assert.equal(enabled.filter((item) => item.enabled).length, 4)
+assert.equal(enabled.length, 8)
+assert.equal(enabled.filter((item) => item.enabled).length, 7)
 assert.equal(enabled.find((item) => item.id === 'official-demo')?.enabled, false)
 for (const url of ['http://example.org', 'https://localhost', 'https://192.168.1.1', 'https://10.0.0.1',
   'https://example.org:8443', 'https://example.org@127.0.0.1', 'https://user:pass@example.org',
