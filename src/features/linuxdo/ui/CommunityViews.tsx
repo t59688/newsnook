@@ -9,6 +9,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { RefreshSurface } from './RefreshSurface'
+import { LinuxDoRequestError } from './VerificationAction'
 
 import type { LinuxDoBookmarkService } from '../bookmark/service'
 import {
@@ -73,6 +74,7 @@ export function NotificationsView({
   const [loadingMore, setLoadingMore] = useState(false)
   const [pagination, setPagination] = useState(emptyLinuxDoNotificationPagination)
   const [error, setError] = useState('')
+  const [apiFailure, setApiFailure] = useState<unknown>(null)
   const [filter, setFilter] = useState<LinuxDoNotificationFilter>(initialFilter)
   const filterRef = useRef(filter)
   const autoScannedFilterRef = useRef<LinuxDoNotificationFilter | null>(null)
@@ -143,6 +145,7 @@ export function NotificationsView({
     const mutationGeneration = mutationGenerationRef.current
     if (showSpinner) setLoading(true)
     setError('')
+    setApiFailure(null)
     try {
       const [result, count] = await Promise.all([
         notificationsApi.list(),
@@ -153,7 +156,10 @@ export function NotificationsView({
       applyPagination(result, showSpinner)
       if (count !== undefined && mutationGeneration === mutationGenerationRef.current) applyUnreadCount(count)
     } catch (nextError) {
-      if (mountedRef.current && generation === loadGenerationRef.current) setError(readableError(nextError))
+      if (mountedRef.current && generation === loadGenerationRef.current) {
+        setError(readableError(nextError))
+        setApiFailure(nextError)
+      }
     } finally {
       if (generation === loadGenerationRef.current) {
         notificationLoadingRef.current = false
@@ -192,6 +198,7 @@ export function NotificationsView({
     loadingMoreRef.current = true
     setLoadingMore(true)
     setError('')
+    setApiFailure(null)
     const generation = loadGenerationRef.current
     try {
       // A type might not appear in the most recent page. Search a bounded
@@ -208,7 +215,10 @@ export function NotificationsView({
         if (result.items.some((item) => searchFilter && linuxDoNotificationMatchesFilter(item, searchFilter))) break
       }
     } catch (nextError) {
-      if (mountedRef.current && generation === loadGenerationRef.current) setError(readableError(nextError))
+      if (mountedRef.current && generation === loadGenerationRef.current) {
+        setError(readableError(nextError))
+        setApiFailure(nextError)
+      }
     } finally {
       loadingMoreRef.current = false
       if (mountedRef.current) setLoadingMore(false)
@@ -242,7 +252,7 @@ export function NotificationsView({
     void notificationsApi.markRead(item.id).then(() => {
       void refreshServerTruth(mutationGeneration, false)
     }).catch((nextError) => {
-      if (mountedRef.current) setError('标记通知已读失败：' + readableError(nextError))
+      if (mountedRef.current) { setError('标记通知已读失败：' + readableError(nextError)); setApiFailure(nextError) }
       void refreshServerTruth(mutationGeneration, true)
     }).finally(() => {
       pendingIdsRef.current.delete(item.id)
@@ -268,7 +278,7 @@ export function NotificationsView({
     void notificationsApi.markAllRead().then(() => {
       void refreshServerTruth(mutationGeneration, true)
     }).catch((nextError) => {
-      if (mountedRef.current) setError('全部已读失败：' + readableError(nextError))
+      if (mountedRef.current) { setError('全部已读失败：' + readableError(nextError)); setApiFailure(nextError) }
       void refreshServerTruth(mutationGeneration, true)
     }).finally(() => {
       markingAllRef.current = false
@@ -387,13 +397,7 @@ export function NotificationsView({
       </div>
 
       {error ? (
-        <button
-          type="button"
-          onClick={() => void loadNotifications(true)}
-          className="mb-3.5 w-full rounded-2xl border border-cinnabar/25 bg-cinnabar/[0.08] px-3.5 py-2.5 text-left text-[11px] font-medium leading-relaxed text-cinnabar-soft shadow-sm transition-colors hover:bg-cinnabar/[0.12]"
-        >
-          {error} · 点击重试
-        </button>
+        <LinuxDoRequestError error={apiFailure ?? new Error(error)} onVerify={onVerify} onLogin={onLogin} onRetry={() => loadNotifications(true)} busy={loading || loadingMore} />
       ) : null}
 
       {loading ? (

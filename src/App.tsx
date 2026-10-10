@@ -163,7 +163,7 @@ import {
   type TypographyPrefs,
 } from './sources/preferences'
 import { SITES, SOURCES, findSite, findSource, makeCustomSourceId } from './sources/registry'
-import { replaceCustomSourceInstance, setCustomSourcePaused } from './features/feedDiscovery/subscriptionActions'
+import { findSubscriptionDuplicate, replaceCustomSourceInstance, setCustomSourcePaused } from './features/feedDiscovery/subscriptionActions'
 import { SettingsShell } from './components/SettingsShell'
 
 const FeedStoreScreen = lazy(() => import('./screens/settings/FeedStoreScreen').then((module) => ({ default: module.FeedStoreScreen })))
@@ -1389,6 +1389,34 @@ export default function App() {
             if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             const sourceId = makeCustomSourceId(source.url)
             const nextEnabled = addToMix && !enabledIds.includes(sourceId) ? [...enabledIds, sourceId] : enabledIds
+            try {
+              saveSubscriptionState(sanitizeForPersistence(nextPrefs), nextEnabled)
+            } catch {
+              return { ok: false, message: '订阅保存失败，请检查本机存储空间后重试。' }
+            }
+            replacePreferences(nextPrefs)
+            setEnabledIds(nextEnabled)
+            return { ok: true }
+          }}
+          onSubscribeMany={(drafts, targetCatId, addToMix, expectedPresetId) => {
+            if (presets.state.activePresetId !== expectedPresetId) {
+              return { ok: false, message: '场景预设已变化，请重新选择订阅分类。' }
+            }
+            if (!drafts.length || drafts.length > 8) return { ok: false, message: '单次最多添加 8 个频道。' }
+            let nextPrefs = prefs
+            const nextEnabled = [...enabledIds]
+            let added = 0
+            for (const draft of drafts) {
+              const existing = findSubscriptionDuplicate(nextPrefs, { url: draft.url, discovery: draft.discovery })
+              if (existing) continue
+              const outcome = addCustomSource(nextPrefs, draft, targetCatId)
+              nextPrefs = outcome.nextPrefs
+              if (addToMix && !nextEnabled.includes(outcome.newSourceId)) nextEnabled.push(outcome.newSourceId)
+              added++
+            }
+            if (!added) return { ok: false, message: '所选频道已经订阅，无需重复添加。' }
+            if (targetCatId && nextPrefs.hiddenCategoryIds.includes(targetCatId)) nextPrefs = toggleCategoryVisible(nextPrefs, targetCatId)
+            if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             try {
               saveSubscriptionState(sanitizeForPersistence(nextPrefs), nextEnabled)
             } catch {

@@ -26,6 +26,7 @@ import { RefreshSurface } from './RefreshSurface'
 import { discoveryScopeKey, loadDiscoveryScope, mergeDiscoveryTopics, type LinuxDoDiscoveryScope } from './discoveryScope'
 import type { LinuxDoDiscoverTab, LinuxDoDiscoveryCache } from './discoveryCache'
 import { compact, readableError } from './utils'
+import { isLinuxDoVerificationError, LinuxDoRequestError, type LinuxDoVerify } from './VerificationAction'
 
 function getCategoryColor(category?: LinuxDoCategory): string {
   if (!category?.color) return 'var(--color-cinnabar)'
@@ -140,11 +141,13 @@ export function DiscoverView({
   initialScope,
   onScopeChange,
   cacheRef,
+  onVerify,
 }: {
   onOpen: (topic: LinuxDoTopicSummary) => void
   initialScope?: LinuxDoDiscoveryScope
   onScopeChange: (scope: LinuxDoDiscoveryScope | null) => void
   cacheRef: MutableRefObject<LinuxDoDiscoveryCache>
+  onVerify?: LinuxDoVerify
 }) {
   const activeScope = initialScope ?? null
   const initialScopeCache = activeScope ? cacheRef.current.scopes[discoveryScopeKey(activeScope)] : undefined
@@ -160,6 +163,7 @@ export function DiscoverView({
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(initialScopeCache?.hasMore ?? false)
   const [itemsError, setItemsError] = useState('')
+  const [itemsFailure, setItemsFailure] = useState<unknown>(null)
   const [itemsErrorMode, setItemsErrorMode] = useState<'initial' | 'refresh' | 'more' | null>(null)
   const [activeTab, setActiveTab] = useState<LinuxDoDiscoverTab>(() => cacheRef.current.hub.activeTab)
   const [tagQuery, setTagQuery] = useState(() => cacheRef.current.hub.tagQuery)
@@ -169,6 +173,8 @@ export function DiscoverView({
   const [tagSearchError, setTagSearchError] = useState('')
   const [categoriesError, setCategoriesError] = useState('')
   const [tagsError, setTagsError] = useState('')
+  const [taxonomyFailure, setTaxonomyFailure] = useState<unknown>(null)
+  const [tagSearchRevision, setTagSearchRevision] = useState(0)
   const pageRef = useRef(initialScopeCache?.page ?? 0)
   const scopeBusyRef = useRef(false)
   const scopeRequestIdRef = useRef(0)
@@ -192,17 +198,18 @@ export function DiscoverView({
     setTaxonomyRefreshing(true)
     setCategoriesError('')
     setTagsError('')
+    setTaxonomyFailure(null)
     try {
       const [categoryResult, tagResult] = await Promise.allSettled([discovery.categories(), discovery.tags()])
       if (!mountedRef.current) return
       if (categoryResult.status === 'fulfilled') {
         cacheRef.current.categories = categoryResult.value
         setCategories(categoryResult.value)
-      } else setCategoriesError(readableError(categoryResult.reason))
+      } else { setCategoriesError(readableError(categoryResult.reason)); if (isLinuxDoVerificationError(categoryResult.reason)) setTaxonomyFailure(categoryResult.reason) }
       if (tagResult.status === 'fulfilled') {
         cacheRef.current.tags = tagResult.value
         setTags(tagResult.value)
-      } else setTagsError(readableError(tagResult.reason))
+      } else { setTagsError(readableError(tagResult.reason)); if (isLinuxDoVerificationError(tagResult.reason)) setTaxonomyFailure(tagResult.reason) }
       // A failed load is recoverable, including when the screen is revisited.
       cacheRef.current.taxonomyLoaded = categoryResult.status === 'fulfilled' && tagResult.status === 'fulfilled'
     } finally {
@@ -247,7 +254,7 @@ export function DiscoverView({
       void discovery.searchTags(tagQuery.trim()).then((results) => {
         if (active) setTagSearchResults(sortLinuxDoTags(results))
       }).catch((nextError) => {
-        if (active) setTagSearchError(readableError(nextError))
+        if (active) { setTagSearchError(readableError(nextError)); if (isLinuxDoVerificationError(nextError)) setTaxonomyFailure(nextError) }
       }).finally(() => {
         if (active) setTagSearchLoading(false)
       })
@@ -256,7 +263,7 @@ export function DiscoverView({
       active = false
       window.clearTimeout(timer)
     }
-  }, [activeTab, normalizedTagQuery, tagQuery])
+  }, [activeTab, normalizedTagQuery, tagQuery, tagSearchRevision])
 
   const loadActiveScope = useCallback(async (mode: 'initial' | 'refresh' | 'more') => {
     if (!activeScope || !activeScopeKey || scopeBusyRef.current) return
@@ -268,6 +275,7 @@ export function DiscoverView({
     else if (mode === 'refresh') setItemsRefreshing(true)
     else setLoadingMore(true)
     setItemsError('')
+    setItemsFailure(null)
     setItemsErrorMode(null)
 
     try {
@@ -293,6 +301,7 @@ export function DiscoverView({
     } catch (nextError) {
       if (requestId !== scopeRequestIdRef.current) return
       setItemsError(readableError(nextError))
+      setItemsFailure(nextError)
       setItemsErrorMode(mode)
     } finally {
       if (requestId === scopeRequestIdRef.current) {
@@ -465,27 +474,11 @@ export function DiscoverView({
         ) : null}
 
         {itemsError && items.length === 0 ? (
-          <div className="rounded-2xl border border-cinnabar/25 bg-cinnabar/[0.07] p-4 text-center">
-            <p className="text-[12px] text-cinnabar-soft">{itemsError}</p>
-            <button
-              type="button"
-              onClick={() => void reloadActiveScope()}
-              className="linuxdo-control mt-3 rounded-full bg-cinnabar px-4 py-1.5 text-[11.5px] font-medium text-white shadow-sm"
-            >
-              重新加载
-            </button>
-          </div>
+          <LinuxDoRequestError variant="empty" error={itemsFailure ?? new Error(itemsError)} onVerify={onVerify} onRetry={reloadActiveScope} />
         ) : null}
 
         {itemsError && items.length > 0 ? (
-          <button
-            type="button"
-            onClick={() => void (itemsErrorMode === 'more' ? loadMoreActiveScope() : reloadActiveScope())}
-            className="linuxdo-control mb-2 flex w-full items-center justify-between rounded-2xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3.5 py-2.5 text-left text-[10.5px] text-cinnabar-soft"
-          >
-            <span className="min-w-0 flex-1 truncate">{itemsError}</span>
-            <span className="ml-3 shrink-0 font-semibold">重试</span>
-          </button>
+          <LinuxDoRequestError error={itemsFailure ?? new Error(itemsError)} onVerify={onVerify} onRetry={itemsErrorMode === 'more' ? loadMoreActiveScope : reloadActiveScope} />
         ) : null}
 
         {!itemsLoading && items.length > 0 ? (
@@ -556,9 +549,10 @@ export function DiscoverView({
     >
       {loading ? <div className="linuxdo-skeleton mb-4 h-40 rounded-2xl" role="status" aria-label="正在加载分类与标签" /> : null}
       {categoriesError || tagsError ? (
-        <button type="button" onClick={() => void refreshTaxonomy()} className="linuxdo-control mb-3 w-full rounded-xl border border-cinnabar/25 bg-cinnabar/10 px-3 py-2 text-left text-[11px] text-cinnabar-soft">
-          {[categoriesError, tagsError].filter(Boolean).join(' · ')} · 点击重试
-        </button>
+        <LinuxDoRequestError error={taxonomyFailure ?? new Error([categoriesError, tagsError].filter(Boolean).join(' · '))} onVerify={onVerify} onRetry={refreshTaxonomy} />
+      ) : null}
+      {tagSearchError && isLinuxDoVerificationError(taxonomyFailure) ? (
+        <LinuxDoRequestError error={taxonomyFailure} onVerify={onVerify} onRetry={() => setTagSearchRevision(value => value + 1)} />
       ) : null}
       {/* 顶部社区氛围横幅 */}
       <section className="linuxdo-discover-hero rounded-[26px] p-5">

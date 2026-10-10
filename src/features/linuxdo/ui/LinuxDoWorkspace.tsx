@@ -27,7 +27,7 @@ import {
   linuxDoDrafts as draftsApi,
 } from '../runtime'
 import { TopicCard } from './shared'
-import { retryAfterVerification } from './feedModel'
+import { LinuxDoRequestError, type LinuxDoVerificationOptions, type LinuxDoVerify } from './VerificationAction'
 import { useFeedUpdates } from './useFeedUpdates'
 import type { LinuxDoFeedUpdates, LinuxDoIncomingSnapshot } from '../feed/updates'
 import { applyLinuxDoReadProgress, linuxDoTopicHasUnreadIndicator } from '../topic/readState'
@@ -118,7 +118,7 @@ function FeedView({
   session: LinuxDoSessionSnapshot
   onMode: (mode: LinuxDoFeedMode) => void
   onOpen: (topic: LinuxDoTopicSummary) => void
-  onVerify: () => Promise<boolean>
+  onVerify: LinuxDoVerify
   onOpenScope: (scope: LinuxDoDiscoveryScope) => void
   onCategories: () => void
   onLogin: () => void
@@ -136,7 +136,6 @@ function FeedView({
   const [hasMore, setHasMore] = useState(() => cacheRef.current[mode].hasMore)
   const [error, setError] = useState<unknown>(null)
   const [pullDistance, setPullDistance] = useState(0)
-  const [verifying, setVerifying] = useState(false)
   const [filterMenuOpen, setFilterMenuOpen] = useState(false)
 
   const pageRef = useRef(0)
@@ -291,19 +290,6 @@ function FeedView({
       if (node) cache[mode].scrollTop = node.scrollTop
     }
   }, [cacheRef, mode])
-
-  const needsVerification = error instanceof LinuxDoApiError && error.kind === 'browser-verification'
-  const needsLogin = error instanceof LinuxDoApiError && error.kind === 'auth-required'
-
-  const verifyAndReload = async () => {
-    if (verifying) return
-    setVerifying(true)
-    try {
-      await retryAfterVerification(onVerify, () => load(true))
-    } finally {
-      setVerifying(false)
-    }
-  }
 
   const onTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
     const target = event.target as HTMLElement
@@ -468,40 +454,12 @@ function FeedView({
             {Array.from({ length: 6 }, (_, index) => <div key={index} className="linuxdo-skeleton h-[106px] rounded-2xl border border-haze/40" />)}
           </div>
         ) : error && items.length === 0 ? (
-          <div className="mx-auto mt-20 max-w-sm rounded-[22px] border border-haze bg-ink-raised/50 px-5 py-6 text-center">
-            <p className="text-[14px] font-medium text-paper">{readableError(error)}</p>
-            <p className="mt-2 text-[11.5px] leading-6 text-paper-faint">
-              {needsVerification
-                ? '安全验证由你在 Linux.do 第一方页面中完成，NewsNook 不尝试绕过 Cloudflare。'
-                : needsLogin
-                  ? '“新 / 未读 / 我的帖子 / 已读 / 书签”与 LinuxDO PWA 一样依赖当前账号会话。'
-                  : '请求失败不会自动循环重试，避免触发 LinuxDO 频率限制。'}
-            </p>
-            <button
-              type="button"
-              disabled={verifying}
-              onClick={needsVerification ? () => void verifyAndReload() : needsLogin ? onLogin : () => void load(true)}
-              className="linuxdo-control mt-4 inline-flex items-center gap-2 rounded-full bg-cinnabar px-4 py-2 text-[12px] font-medium text-white disabled:opacity-55"
-            >
-              {verifying ? <Loader2 size={13} className="animate-spin" /> : null}
-              {verifying ? '正在重新验证' : needsVerification ? '打开安全验证' : needsLogin ? '登录 Linux.do' : '重新加载'}
-            </button>
-          </div>
+          <LinuxDoRequestError variant="empty" error={error} onVerify={onVerify} onLogin={onLogin} onRetry={() => load(true)} />
         ) : (
           <div className="space-y-2 sm:space-y-2.5">
             {error && items.length > 0 ? (
-              <div data-linuxdo-feed-error className="flex min-h-11 w-full items-center gap-2 rounded-xl border border-cinnabar/20 bg-cinnabar/[0.06] px-3 py-2 text-[11px] text-cinnabar-soft" role="alert">
-                <span className="min-w-0 flex-1 leading-5">{readableError(error)}</span>
-                <button
-                  type="button"
-                  disabled={verifying || refreshing || loading}
-                  onClick={() => void (needsVerification ? verifyAndReload() : load(false))}
-                  className="linuxdo-control inline-flex min-h-8 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-cinnabar/10 px-3 font-semibold text-cinnabar transition-colors hover:bg-cinnabar/20 disabled:opacity-50"
-                  aria-label={needsVerification ? '打开安全验证' : '重试加载'}
-                >
-                  {verifying ? <Loader2 size={13} className="animate-spin" /> : null}
-                  {verifying ? '验证中' : needsVerification ? '去验证' : '重试'}
-                </button>
+              <div data-linuxdo-feed-error>
+                <LinuxDoRequestError error={error} onVerify={onVerify} onLogin={onLogin} onRetry={() => load(true)} busy={refreshing || loading} />
               </div>
             ) : null}
             {items.map((topic, index) => (
@@ -775,11 +733,11 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
     return () => { backHandlerRef.current = null }
   }, [backHandlerRef, boostPost, composerOpen, goBack, route])
 
-  const verify = async (): Promise<boolean> => {
+  const verify: LinuxDoVerify = async (options?: LinuxDoVerificationOptions): Promise<boolean> => {
     try {
-      // Cloudflare clearance and account login are distinct states. A challenge
-      // must not replace the current account or erase cached personalized feeds.
-      return await verifyLinuxDoChallenge()
+      // Keep Cloudflare clearance separate from account login. Replaying each
+      // affected screen's request is the only authority for successful recovery.
+      return await verifyLinuxDoChallenge(options?.url, { readSyncChallenge: options?.readSyncChallenge })
     } catch (nextError) {
       const message = readableError(nextError)
       if (!message.includes('取消')) setWorkspaceError(message)
@@ -883,7 +841,7 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
             onUpdatesAcknowledged={acknowledgeFeedUpdates}
           />
         ) : route.kind === 'topic' ? (
-          <LinuxDoTopicView key={`${route.topic.id}:${session.authenticated ? session.currentUser?.id ?? 'guest' : 'guest'}:${route.targetPostNumber ?? ''}`} summary={route.topic} session={session} targetPostNumber={route.targetPostNumber} postMutation={topicPostMutation} overlayBackHandlerRef={topicOverlayBackHandlerRef} onReadProgress={applyTopicReadProgress} onSession={applyWorkspaceSession} onBack={() => { if (!goBack()) setRoute({ kind: 'feed', mode: 'latest' }) }} onCompose={(topic, options) => { setComposerTopic(topic); setComposerEditPost(undefined); setComposerInitialRaw(options?.initialRaw || ''); setComposerReplyTo(options?.replyToPostNumber); setComposerOpen(true) }} onBoost={setBoostPost} onOpenUser={(username) => navigate({ kind: 'user', username })} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenTag={(name) => navigate({ kind: 'discover', scope: { kind: 'tag', name } })} onOpenCategory={(category) => navigate({ kind: 'discover', scope: { kind: 'category', category } })} categoriesById={workspaceCategories} onEdit={(topic, post) => {
+          <LinuxDoTopicView key={`${route.topic.id}:${session.authenticated ? session.currentUser?.id ?? 'guest' : 'guest'}:${route.targetPostNumber ?? ''}`} summary={route.topic} session={session} targetPostNumber={route.targetPostNumber} postMutation={topicPostMutation} overlayBackHandlerRef={topicOverlayBackHandlerRef} onReadProgress={applyTopicReadProgress} onSession={applyWorkspaceSession} onVerify={verify} onBack={() => { if (!goBack()) setRoute({ kind: 'feed', mode: 'latest' }) }} onCompose={(topic, options) => { setComposerTopic(topic); setComposerEditPost(undefined); setComposerInitialRaw(options?.initialRaw || ''); setComposerReplyTo(options?.replyToPostNumber); setComposerOpen(true) }} onBoost={setBoostPost} onOpenUser={(username) => navigate({ kind: 'user', username })} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenTag={(name) => navigate({ kind: 'discover', scope: { kind: 'tag', name } })} onOpenCategory={(category) => navigate({ kind: 'discover', scope: { kind: 'category', category } })} categoriesById={workspaceCategories} onEdit={(topic, post) => {
             setComposerTopic(topic)
             setComposerReplyTo(undefined)
             const openEditor = (raw: string) => { setComposerEditPost({ ...post, raw }); setComposerInitialRaw(raw); setComposerOpen(true) }
@@ -893,13 +851,13 @@ export function LinuxDoWorkspace({ onExit, backHandlerRef, presetSwitcher }: Pro
         ) : route.kind === 'search' ? (
           <SearchView cacheRef={searchCacheRef} key={session.authenticated ? session.currentUser?.id ?? 'member' : 'guest'} authenticated={session.authenticated} categoriesById={workspaceCategories} onVerify={verify} onLogin={() => navigate({ kind: 'account' })} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} onOpenCategory={(category) => navigate({ kind: 'discover', scope: { kind: 'category', category } })} onOpenTag={(name) => navigate({ kind: 'discover', scope: { kind: 'tag', name } })} />
         ) : route.kind === 'discover' ? (
-          <DiscoverView initialScope={route.scope} cacheRef={discoverCacheRef} onScopeChange={replaceDiscoverScope} onOpen={(topic) => navigate({ kind: 'topic', topic })} />
+          <DiscoverView initialScope={route.scope} cacheRef={discoverCacheRef} onVerify={verify} onScopeChange={replaceDiscoverScope} onOpen={(topic) => navigate({ kind: 'topic', topic })} />
         ) : route.kind === 'notifications' ? (
           <NotificationsView onPrivateError={setWorkspaceError} initialFilter={notificationFilterRef.current} onFilterChange={(filter) => { notificationFilterRef.current = filter }} onVerify={verify} onLogin={() => navigate({ kind: 'account' })} privateMessagesCacheRef={privateMessagesCacheRef} key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} onUnreadChange={applyNotificationUnread} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username, tab, badgeId) => navigate({ kind: 'user', username, tab, badgeId })} />
         ) : route.kind === 'messages' ? (
           <PrivateMessagesView onVerify={verify} onLogin={() => navigate({ kind: 'account' })} key={`${session.authMode}:${session.currentUser?.id ?? ''}`} session={session} cacheRef={privateMessagesCacheRef} onOpen={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onUnreadChange={applyNotificationUnread} onError={setWorkspaceError} />
         ) : route.kind === 'user' ? (
-          <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} session={session} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} onResumeDraft={async (draft) => {
+          <UserProfileView username={route.username} initialTab={route.tab} initialBadgeId={route.badgeId} session={session} onVerify={verify} onOpenTopic={(topic, targetPostNumber) => navigate({ kind: 'topic', topic, targetPostNumber })} onOpenUser={(username) => navigate({ kind: 'user', username })} onResumeDraft={async (draft) => {
             if (draft.key.startsWith('new_private_message')) throw new Error('新私信草稿暂不支持在 App 中编辑')
             const owner = api.sessionSnapshot().currentUser?.id
             if (!session.authenticated || owner !== session.currentUser?.id) throw new Error('请重新登录后打开草稿')

@@ -7,6 +7,7 @@ import { LinuxDoApiError } from '../types'
 import type { LinuxDoSessionSnapshot, LinuxDoTopicSummary } from '../types'
 import { RefreshSurface } from './RefreshSurface'
 import { ago, avatar, readableError } from './utils'
+import { LinuxDoVerificationAction } from './VerificationAction'
 
 const emptyEntry = (): Entry => ({ items: [], loaded: false, scrollTop: 0 })
 const filters: Array<{ id: Filter; label: string; empty: string }> = [
@@ -238,13 +239,7 @@ function PrivateMessagesContent({ session, onOpen, onUnreadChange, onBack, onErr
                 重试私信
               </button>
               {error instanceof LinuxDoApiError && error.kind === 'browser-verification' && onVerify ? (
-                <button
-                  type="button"
-                  onClick={async () => { if (await onVerify()) await load() }}
-                  className="linuxdo-control inline-flex min-h-8 items-center rounded-full border border-cinnabar/30 bg-cinnabar/10 px-3.5 text-[12px] font-medium text-cinnabar-soft"
-                >
-                  打开安全验证
-                </button>
+                <LinuxDoVerificationAction onVerify={onVerify} onRetry={() => load(lastResetRef.current)} busy={busy !== null} />
               ) : null}
               {error instanceof LinuxDoApiError && error.kind === 'auth-required' && onLogin ? (
                 <button

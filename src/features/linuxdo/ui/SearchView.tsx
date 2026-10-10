@@ -24,6 +24,7 @@ import {
 import type { LinuxDoCategory, LinuxDoPost, LinuxDoTopicSummary } from '../types'
 import { LinuxDoApiError } from '../types'
 import { SearchFilters } from './SearchFilters'
+import { LinuxDoVerificationAction } from './VerificationAction'
 import { createLinuxDoSearchCache, type LinuxDoSearchCache, type LinuxDoSearchTab } from './searchCache'
 import { ago, avatar, readableError } from './utils'
 
@@ -59,7 +60,6 @@ export function SearchView({
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
   const [errorKind, setErrorKind] = useState<LinuxDoApiError['kind']>()
-  const [verifying, setVerifying] = useState(false)
   const [queryError, setQueryError] = useState('')
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [sortOpen, setSortOpen] = useState(false)
@@ -506,26 +506,15 @@ export function SearchView({
                 </button>
               ) : null}
               {errorKind === 'browser-verification' && onVerify ? (
-                <button
-                  type="button"
-                  disabled={verifying}
-                  onClick={async () => {
+                <LinuxDoVerificationAction
+                  onVerify={async () => {
                     const generation = generationRef.current
-                    setVerifying(true)
-                    try {
-                      const verified = await onVerify()
-                      if (verified && generation === generationRef.current)
-                        await run(retryRef.current.page, retryRef.current.query)
-                    } catch (nextError) {
-                      if (generation === generationRef.current) setError(readableError(nextError))
-                    } finally {
-                      setVerifying(false)
-                    }
+                    const verified = await onVerify()
+                    return verified && generation === generationRef.current
                   }}
-                  className="linuxdo-control inline-flex min-h-9 items-center rounded-full bg-cinnabar px-4 text-[12.5px] font-medium text-white shadow-sm transition-transform active:scale-95 disabled:opacity-50"
-                >
-                  {verifying ? '验证中…' : '完成安全验证'}
-                </button>
+                  onRetry={() => run(retryRef.current.page, retryRef.current.query)}
+                  busy={loading || loadingMore}
+                />
               ) : null}
               <button
                 type="button"

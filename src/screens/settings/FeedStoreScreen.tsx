@@ -21,6 +21,8 @@ import { RssHubInstancesScreen } from '../../features/rsshub/RssHubInstancesScre
 import { RssHubSubscriptionRebindScreen } from '../../features/rsshub/RssHubSubscriptionRebindScreen'
 import { isSensitiveRssHubRoute, normalizeRssHubInstances, rssHubFeedUrl, type RssHubInstance } from '../../features/rsshub/instances'
 import { resolveRssHubRadarTarget } from '../../features/rsshub/radar'
+import { parseRssHubLogicalInput } from '../../features/rsshub/input'
+import { probeRssHubRoutes, probeRssHubRoute, type RssHubProbeResult } from '../../features/rsshub/probe'
 import { previewFeed } from '../../features/feedDiscovery/preview'
 import { findSubscriptionDuplicate } from '../../features/feedDiscovery/subscriptionActions'
 import { clearLegacyDiscoveryCache } from '../../features/feedDiscovery/legacyCache'
@@ -45,6 +47,7 @@ interface Props {
   currentPresetName: string
   enabledIds: string[]
   onSubscribe: (draft: SubscriptionDraft, categoryId: CategoryId | undefined, addToMix: boolean, presetId: string) => { ok: boolean; message?: string }
+  onSubscribeMany?: (drafts: SubscriptionDraft[], categoryId: CategoryId | undefined, addToMix: boolean, presetId: string) => { ok: boolean; message?: string }
   onAddBuiltinToCategory: (sourceId: string, categoryId: CategoryId, presetId: string, addToMix?: boolean) => { ok: boolean; message?: string }
   onPause: (sourceId: string, paused: boolean) => { ok: boolean; message?: string }
   onUpdateRssHubInstances?: (instances: RssHubInstance[]) => void
@@ -77,15 +80,19 @@ function candidateHost(entry: FeedDiscoveryEntry): string {
 }
 
 function isWebsiteUrl(value: string): boolean {
-  try { return Boolean(websiteSearchUrl(value)) } catch { return false }
+  try { return Boolean(websiteSearchUrl(value) || parseRssHubLogicalInput(value)) } catch { return false }
 }
 
-export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
+export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onSubscribeMany, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
   const [tab, setTab] = useState<'discover' | 'subscribed'>('discover')
   const [query, setQuery] = useState(initialQuery)
   const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>(() => isWebsiteUrl(initialQuery) ? 'website' : 'keyword')
   const [results, setResults] = useState<FeedDiscoveryEntry[]>([])
   const [searchedQuery, setSearchedQuery] = useState('')
+  const [probes, setProbes] = useState<Record<string, RssHubProbeResult>>({})
+  const [probing, setProbing] = useState(false)
+  const [selectedRoutes, setSelectedRoutes] = useState<string[]>([])
+  const probeController = useRef<AbortController | null>(null)
   const [searching, setSearching] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const searchController = useRef<AbortController | null>(null)
@@ -118,11 +125,17 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     return () => {
       searchController.current?.abort()
       previewController.current?.abort()
+      probeController.current?.abort()
     }
   }, [])
 
   const changeQuery = (value: string) => {
     searchController.current?.abort()
+    probeController.current?.abort()
+    probeController.current = null
+    setProbing(false)
+    setProbes({})
+    setSelectedRoutes([])
     searchController.current = null
     setSearching(false)
     setQuery(value)
@@ -151,7 +164,9 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     closeEntry()
     setEntry(next)
     setRouteInputs({})
-    setSelectedInstanceId(next.instanceId ?? instances.find((item) => item.enabled)?.id ?? '')
+    setSelectedInstanceId(probes[next.routePath ?? '']?.instanceId ?? next.instanceId ?? instances.find((item) => item.enabled)?.id ?? '')
+    const alreadyChecked = next.routePath ? probes[next.routePath] : undefined
+    if (alreadyChecked?.feed) setPreview(alreadyChecked.feed)
     setPresetId(currentPresetId)
     const visible = visibleCategories(prefs).filter((item) => !isAggregateCategoryId(item.id))
     setTarget(visible.find((item) => item.id === currentCategoryId)?.id ?? visible[0]?.id ?? '__mix_only__')
@@ -175,6 +190,21 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
       if (searchController.current !== controller || controller.signal.aborted) return
       setResults(found)
       setSearchedQuery(query.trim())
+      const ready = found.filter((item) => item.type === 'rsshub' && item.routePath && !item.missingParameters?.length)
+      if (ready.length) {
+        const probeCtl = new AbortController()
+        probeController.current?.abort()
+        probeController.current = probeCtl
+        setProbing(true)
+        const routes = ready.map((item) => item.routePath!)
+        void probeRssHubRoutes(routes, instances, probeCtl.signal, (outcome) => {
+          if (probeController.current !== probeCtl) return
+          setProbes((before) => ({ ...before, [outcome.routePath]: outcome }))
+          if (outcome.state === 'available') setSelectedRoutes((before) => [...new Set([...before, outcome.routePath])])
+        }, found.length === 1 && found[0].type === 'rsshub' ? found[0].instanceId : undefined).catch(() => {}).finally(() => {
+          if (probeController.current === probeCtl) { probeController.current = null; setProbing(false) }
+        })
+      }
     } catch (cause) {
       if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : '在线搜索失败，请重试')
     } finally {
@@ -202,6 +232,16 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
         if (previewController.current === controller && !controller.signal.aborted) setPreview(next)
         return
       }
+      if (entry.type === 'rsshub' && route) {
+        const result = await probeRssHubRoute(route, instances, controller.signal, first?.id)
+        if (previewController.current === controller && result.feed) {
+          setSelectedInstanceId(result.instanceId ?? '')
+          setPreview(result.feed)
+        } else if (previewController.current === controller) {
+          setError(result.detail ?? 'RSSHub 暂不可用')
+        }
+        return
+      }
       let last: FeedDiscoveryPreviewResult | null = null
       for (const instance of eligible) {
         if (controller.signal.aborted) return
@@ -222,6 +262,24 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     } finally {
       if (previewController.current === controller) { previewController.current = null; setPreviewing(false) }
     }
+  }
+  const subscribeSelected = () => {
+    if (!onSubscribeMany || !selectedRoutes.length) return
+    const ready = results.filter((item) => item.type === 'rsshub' && item.routePath && selectedRoutes.includes(item.routePath))
+      .map((item) => ({ item, result: probes[item.routePath!] }))
+      .filter((item) => item.result?.state === 'available' && item.result.feedUrl && item.result.feed)
+    const drafts: SubscriptionDraft[] = ready.map(({ item, result }) => ({
+      name: result.feed!.title || item.title, label: item.title.slice(0, 12), url: result.feedUrl!,
+      kind: 'feed', siteUrl: item.siteUrl,
+      discovery: { providerId: 'rsshub', entryId: item.entryId, generator: 'rsshub',
+        instanceId: result.instanceId, routeKey: item.routePath,
+        verification: { status: 'verified', checkedAt: result.feed!.checkedAt } },
+    }))
+    if (!drafts.length) return
+    const outcome = onSubscribeMany(drafts, undefined, true, currentPresetId)
+    if (!outcome.ok) { setError(outcome.message ?? '批量订阅保存失败'); return }
+    setSavedId(makeCustomSourceId(drafts[0].url))
+    setSelectedRoutes([])
   }
   const subscribe = (unverified = false) => {
     if (!entry || !effectiveFeedUrl || previewing || (!preview?.ok && !(unverified && preview && !preview.ok && preview.retryable))) return
@@ -322,7 +380,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             id="feed-store-search"
             value={query}
             onChange={(event) => changeQuery(event.target.value)}
-            placeholder={tab === 'subscribed' ? '搜索已保存的订阅' : discoveryMode === 'website' ? 'https://space.bilibili.com/…' : '例如 Bilibili、人工智能、汽车'}
+            placeholder={tab === 'subscribed' ? '搜索已保存的订阅' : discoveryMode === 'website' ? '网站主页或 rsshub://bilibili/…' : '例如 Bilibili、人工智能、汽车'}
             autoComplete="off"
             spellCheck={false}
             inputMode={tab === 'discover' && discoveryMode === 'website' ? 'url' : 'search'}
@@ -424,12 +482,13 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             </div>
           ) : orderedResults.length ? (
             <>
-              <p className="mb-2.5 px-0.5 text-[11px] text-paper-faint">以下是候选来源，选择一项进行实际预览后再订阅。</p>
+              <p className="mb-2.5 px-0.5 text-[11px] text-paper-faint">{probing ? '正在自动检测 RSSHub 频道，可用结果会逐步出现。' : 'RSSHub 频道可选择，已验证的结果支持批量订阅。'}</p>
               <div className="overflow-hidden rounded-2xl border border-haze bg-ink-raised/70 shadow-[var(--shadow-lift)]">
                 {orderedResults.map((item, index) => {
                   const badge = duplicateLabel(item)
                   const firstOfGroup = discoveryMode === 'website' && (index === 0 || orderedResults[index - 1]?.type !== item.type)
                   const hostname = candidateHost(item)
+                  const check = item.routePath ? probes[item.routePath] : undefined
                   return (
                     <div key={item.entryId}>
                       {firstOfGroup ? (
@@ -442,6 +501,14 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                           </span>
                         </div>
                       ) : null}
+                      <div className="flex items-start gap-2">
+                        {item.type === 'rsshub' && check?.state === 'available' && item.routePath ? (
+                          <label className="flex min-h-11 shrink-0 items-center pl-3" aria-label={'选择订阅 ' + item.title}>
+                            <input type="checkbox" checked={selectedRoutes.includes(item.routePath)}
+                              onChange={(event) => setSelectedRoutes((before) => event.target.checked ? [...new Set([...before, item.routePath!])] : before.filter((route) => route !== item.routePath))}
+                              className="size-4 accent-[var(--color-cinnabar)]" />
+                          </label>
+                        ) : null}
                       <button type="button" onClick={() => openEntry(item)}
                         className={`group flex min-h-[72px] w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-paper/4 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-cinnabar ${
                           index > 0 && !firstOfGroup ? 'border-t border-haze/70' : ''
@@ -462,16 +529,27 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                             <span className="truncate">{hostname || (item.routeTemplate ?? '待检测地址')}</span>
                             {item.type === 'rsshub' && item.missingParameters?.length ? <span className="shrink-0 text-cinnabar-soft">· 需补参数</span> : null}
                           </span>
+                          {item.type === 'rsshub' ? <span aria-live="polite" className="mt-1 block text-[11px] text-paper-faint">{
+                            check?.state === 'available' ? '可订阅 · ' + check.feed?.itemCount + ' 篇文章 · 自动选择 ' + new URL(check.feedUrl!).hostname :
+                            check?.state === 'unavailable' ? '暂不可用 · ' + (check.detail ?? '请稍后重试') :
+                            item.missingParameters?.length ? '需要补充参数后检测' : probing ? '正在自动检测可用实例…' : '尚未验证，可打开检测'
+                          }</span> : null}
                           {item.providerId === 'direct-discovery' && item.statusNote ? (
                             <span className="mt-1 block text-[10.5px] text-paper-faint">{item.statusNote}</span>
                           ) : null}
                         </span>
                         <ChevronRight size={15} strokeWidth={1.6} className="mt-1 shrink-0 text-paper-faint/70 transition-colors group-hover:text-cinnabar-soft" />
                       </button>
+                      </div>
                     </div>
                   )
                 })}
               </div>
+              {selectedRoutes.length > 0 && onSubscribeMany ? (
+                <button type="button" onClick={subscribeSelected} className="mt-3 min-h-11 w-full rounded-full bg-cinnabar text-[13px] font-medium text-white">
+                  订阅所选 {selectedRoutes.length} 个频道
+                </button>
+              ) : null}
               {discoveryMode === 'website' && !results.some((item) => item.type === 'rsshub') ? (
                 <p className="mt-2.5 px-0.5 text-[11px] leading-relaxed text-paper-faint">
                   暂未匹配 RSSHub 转换规则。仍可点击上方网址检测是否包含原生 RSS。
@@ -623,24 +701,28 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                     />
                   </label>
                 ))}
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[10px] tracking-[0.1em] text-paper-faint">使用实例</p>
-                  {onUpdateRssHubInstances ? <button type="button" onClick={() => setShowInstances(true)}
-                    className="inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-[11px] text-cinnabar-soft transition-colors hover:bg-cinnabar/8">
-                    管理服务 <ChevronRight size={12} />
-                  </button> : null}
+                <div className="rounded-xl bg-ink/25 px-3.5 py-3 text-[11.5px] leading-relaxed text-paper-muted">
+                  自动检测可用实例；实际成功的服务会用于保存与后续刷新。
+                  {selectedInstance ? <span className="mt-1 block truncate font-mono text-[10.5px] text-paper-faint">当前 · {selectedInstance.url}</span> : null}
                 </div>
-                <div>
-                  <FeedStorePicker title="使用 RSSHub 实例" value={selectedInstance?.id ?? ''}
-                    disabled={!instances.some((item) => item.enabled)}
-                    options={instances.filter((item) => item.enabled).map((item) => ({ id: item.id, label: item.name + ' · ' + new URL(item.url).hostname }))}
-                    onChange={(id) => {
-                      previewController.current?.abort()
-                      setPreview(null)
-                      setSelectedInstanceId(id)
-                    }}
-                  />
-                </div>
+                <details className="rounded-xl border border-haze/70 px-3.5 py-2.5">
+                  <summary className="min-h-8 cursor-pointer text-[11.5px] text-paper-muted">高级选项 · 手动指定实例</summary>
+                  <div className="space-y-3 pt-2">
+                    <FeedStorePicker title="手动选择 RSSHub 实例" value={selectedInstance?.id ?? ''}
+                      disabled={!instances.some((item) => item.enabled)}
+                      options={instances.filter((item) => item.enabled).map((item) => ({ id: item.id, label: item.name + ' · ' + new URL(item.url).hostname }))}
+                      onChange={(id) => {
+                        previewController.current?.abort()
+                        setPreview(null)
+                        setSelectedInstanceId(id)
+                      }}
+                    />
+                    {onUpdateRssHubInstances ? <button type="button" onClick={() => setShowInstances(true)}
+                      className="inline-flex min-h-9 items-center gap-1 rounded-full text-[11.5px] text-cinnabar-soft">
+                      管理服务 <ChevronRight size={12} />
+                    </button> : null}
+                  </div>
+                </details>
                 {routeResolution?.missing.length ? (
                   <p role="status" className="text-[11.5px] text-cinnabar-soft">还需填写：{routeResolution.missing.join('、')}</p>
                 ) : null}
