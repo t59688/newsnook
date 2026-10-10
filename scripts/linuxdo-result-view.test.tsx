@@ -135,7 +135,7 @@ let verified = false
 linuxDoApi.getJson = async () => { if (!verified) throw new LinuxDoApiError('browser-verification', '需要安全验证'); return result('验证后的结果') as any }
 await act(async () => { root.render(<SearchView key="verification" cacheRef={{ current: { ...createLinuxDoSearchCache(), query: 'rss' } }} onOpen={() => {}} onOpenUser={() => {}} onVerify={async () => { verified = true; return true }} />); await flush() })
 await click('搜索')
-await click('完成安全验证')
+await click('打开安全验证')
 assert.ok(host.textContent?.includes('验证后的结果'), 'successful verification must retry the failed search')
 // Real notification service decoding, including JSON-string data.
 linuxDoApi.getJson = async (url: string) => (url.includes('session/current') ? { current_user: { id: 1, username: 'self', all_unread_notifications_count: 1 } } : { notifications: [{ id: 5, notification_type: 25, topic_id: 41, post_number: 6, slug: 'reader', read: false, acting_user_name: 'Alice', acting_user_avatar_template: '/alice/{size}.png', data: JSON.stringify({ display_username: 'alice', topic_title: 'RSS 阅读器' }), created_at: '2026-10-05' }] }) as any
