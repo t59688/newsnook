@@ -4,19 +4,22 @@ import { linuxDoProfileSections } from '../runtime'
 import type { LinuxDoProfileDraft, LinuxDoProfileItem, LinuxDoProfileSection } from '../people/sections'
 import type { LinuxDoSessionSnapshot, LinuxDoTopicSummary } from '../types'
 import { ago, readableError } from './utils'
+import { LinuxDoRequestError, type LinuxDoVerify } from './VerificationAction'
 import { reactionGlyph } from './engagementModel'
 
-export function ProfileSectionView({ section, username, session, onOpenTopic, onResumeDraft }: {
+export function ProfileSectionView({ section, username, session, onOpenTopic, onResumeDraft, onVerify }: {
   section: LinuxDoProfileSection
   username: string
   session: LinuxDoSessionSnapshot
   onOpenTopic: (topic: LinuxDoTopicSummary, postNumber?: number) => void
   onResumeDraft?: (draft: LinuxDoProfileDraft) => Promise<void>
+  onVerify?: LinuxDoVerify
 }) {
   const [items, setItems] = useState<LinuxDoProfileItem[]>([])
   const [next, setNext] = useState<string>()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [requestError, setRequestError] = useState<unknown>(null)
   const [revision, setRevision] = useState(0)
   const [resuming, setResuming] = useState(false)
   const request = useRef<{ controller: AbortController | null; generation: number; failedPage?: string }>({ controller: null, generation: 0 }).current
@@ -32,13 +35,14 @@ export function ProfileSectionView({ section, username, session, onOpenTopic, on
     request.failedPage = page
     setLoading(true)
     setError('')
+    setRequestError(null)
     try {
       const result = await linuxDoProfileSections.list(section, username, page, controller.signal)
       if (current !== request.generation || controller.signal.aborted) return
       setItems(old => page ? [...old, ...result.items.filter(item => !old.some(existing => existing.id === item.id))] : result.items)
       setNext(result.next)
     } catch (cause) {
-      if (current === request.generation && !controller.signal.aborted) setError(readableError(cause))
+      if (current === request.generation && !controller.signal.aborted) { setError(readableError(cause)); setRequestError(cause) }
     } finally {
       if (current === request.generation) { request.controller = null; setLoading(false) }
     }
@@ -75,7 +79,7 @@ export function ProfileSectionView({ section, username, session, onOpenTopic, on
       }} className="linuxdo-control mt-2 min-h-9 rounded-full border border-haze px-3 text-[11px] text-cinnabar disabled:opacity-50">{resuming ? '正在打开草稿…' : item.draft.data ? '继续编辑' : '草稿格式无法读取'}</button> : null}
     </article>)}
     {loading ? <div role="status" className="flex justify-center gap-2 py-8 text-[11px] text-paper-faint"><Loader2 size={15} className="animate-spin" />正在加载</div> : null}
-    {error ? <div role="alert" className="rounded-xl border border-cinnabar/20 p-3 text-[11px] text-cinnabar"><p>{error}</p><button type="button" onClick={() => void load(request.failedPage)} className="linuxdo-control mt-2 min-h-9 underline">重试栏目</button></div> : null}
+    {error ? <LinuxDoRequestError error={requestError ?? new Error(error)} onVerify={onVerify} onRetry={() => load(request.failedPage)} busy={loading} /> : null}
     {!loading && !error && !items.length ? <p className="py-8 text-center text-[12px] text-paper-muted">此栏目暂无内容</p> : null}
     {!loading && !error && next ? <button type="button" onClick={() => void load(next)} className="linuxdo-control min-h-10 w-full rounded-full border border-haze text-[11px] text-paper-muted">加载更多</button> : null}
   </div>

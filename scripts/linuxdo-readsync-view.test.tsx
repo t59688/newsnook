@@ -55,6 +55,7 @@ const native = {
   },
   prepareBrowserSession: async () => ({ ready: false }),
   authenticate: async (options: any) => { verificationRequests++; verificationOptions = options; denied = false; return session },
+  verifyChallenge: async (options: any) => { verificationRequests++; verificationOptions = options; denied = false; return { completed: true } },
 }
 registerPlugin('LinuxDoSession', { web: () => native, android: () => native })
 const { createRoot } = await import('react-dom/client')

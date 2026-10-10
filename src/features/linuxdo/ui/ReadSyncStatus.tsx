@@ -1,12 +1,14 @@
 import { Copy, RotateCw, ShieldCheck, TriangleAlert } from 'lucide-react'
 import { LinuxDoApiError } from '../types'
 import type { ReadSyncFailure } from '../topic/readSyncDiagnostic'
+import { LinuxDoVerificationAction, type LinuxDoVerify } from './VerificationAction'
 
-export function ReadSyncStatus({ failure, busy, onRetry, onVerify, onCopy }: {
+export function ReadSyncStatus({ failure, busy, onRetry, onVerify, onLogin, onCopy }: {
   failure: ReadSyncFailure
   busy: boolean
   onRetry: () => void
-  onVerify: () => void
+  onVerify: LinuxDoVerify
+  onLogin: () => void
   onCopy: () => void
 }) {
   const error = failure.error instanceof LinuxDoApiError ? failure.error : undefined
@@ -25,7 +27,20 @@ export function ReadSyncStatus({ failure, busy, onRetry, onVerify, onCopy }: {
             ? 'Linux.do 安全规则拦截了第一方页面中的提交请求；后台请求不会弹出验证页。可打开可见的提交验证页，完成后重试；如仍失败，请复制诊断中的 CF-Ray 交由站点方排查。'
             : requiresVerification ? '普通浏览不受影响；可在应用内恢复同一账号会话，再补传当前阅读记录。' : '待发送记录已保留，不会把失败请求当作已读。'}</p>
           <div className="mt-1.5 flex flex-wrap gap-2">
-            {requiresVerification ? <button type="button" data-read-sync-verify disabled={busy} onClick={onVerify} className="linuxdo-control inline-flex items-center gap-1 rounded-full border border-cinnabar/30 px-2.5 py-1 text-cinnabar disabled:opacity-50"><ShieldCheck size={12} />{error?.kind === 'auth-required' ? '在应用内登录' : firstPartyChallenge ? '打开提交验证' : '在应用内验证'}</button> : null}
+            {error?.kind === 'browser-verification' ? (
+              <LinuxDoVerificationAction
+                onVerify={onVerify}
+                options={{ readSyncChallenge: firstPartyChallenge }}
+                onRetry={onRetry}
+                busy={busy}
+                label={firstPartyChallenge ? '打开提交验证' : '打开安全验证'}
+                readSync
+              />
+            ) : error?.kind === 'auth-required' ? (
+              <button type="button" data-read-sync-verify disabled={busy} onClick={onLogin} className="linuxdo-control inline-flex min-h-9 items-center gap-1 rounded-xl bg-cinnabar px-3.5 font-semibold text-white disabled:opacity-50">
+                <ShieldCheck size={13} />在应用内登录
+              </button>
+            ) : null}
             <button type="button" disabled={busy} onClick={onRetry} className="linuxdo-control inline-flex items-center gap-1 rounded-full border border-haze px-2.5 py-1 disabled:opacity-50"><RotateCw size={12} />重试同步</button>
             <button type="button" onClick={onCopy} className="linuxdo-control inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-paper-faint"><Copy size={12} />复制诊断</button>
           </div>

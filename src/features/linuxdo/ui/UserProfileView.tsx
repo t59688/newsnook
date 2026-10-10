@@ -41,6 +41,7 @@ import type { LinuxDoProfileDraft, LinuxDoProfileSection } from '../people/secti
 import { ProfileSectionView } from './ProfileSectionView'
 import { BookmarksView } from './CommunityViews'
 import { ago, avatar, compact, readableError, tagGlyph } from './utils'
+import { isLinuxDoVerificationError, LinuxDoRequestError, type LinuxDoVerify } from './VerificationAction'
 
 export type UserProfileTab = 'overview' | 'activity' | 'topics' | 'replies' | 'likes' | 'boosts' | 'responses' | 'badges' | 'bookmarks' | LinuxDoProfileSection
 type ActivityTab = Extract<UserProfileTab, 'activity' | 'topics' | 'replies' | 'likes' | 'responses'>
@@ -407,6 +408,7 @@ export function UserProfileView({
   onOpenUser,
   session = { authenticated: false, authMode: 'none' },
   onResumeDraft,
+  onVerify,
 }: {
   username: string
   initialTab?: UserProfileTab
@@ -415,11 +417,21 @@ export function UserProfileView({
   onOpenUser: (username: string) => void
   session?: LinuxDoSessionSnapshot
   onResumeDraft?: (draft: LinuxDoProfileDraft) => Promise<void>
+  onVerify?: LinuxDoVerify
 }) {
   const [profile, setProfile] = useState<LinuxDoUserProfile | null>(null)
   const [summary, setSummary] = useState<LinuxDoUserSummary | null>(null)
   const [loading, setLoading] = useState(true)
   const [profileError, setProfileError] = useState('')
+  const [challenge, setChallenge] = useState<{
+    error: unknown
+    scope: 'header' | 'activity' | 'boosts' | 'badges'
+    tab?: ActivityTab
+    append?: boolean
+  } | null>(null)
+  const captureChallenge = useCallback((error: unknown, scope: 'header' | 'activity' | 'boosts' | 'badges', tab?: ActivityTab, append?: boolean) => {
+    if (isLinuxDoVerificationError(error)) setChallenge({ error, scope, tab, append })
+  }, [])
   const [summaryError, setSummaryError] = useState('')
   const [activeTab, setActiveTab] = useState<UserProfileTab>(initialTab)
   const [activities, setActivities] = useState<Partial<Record<ActivityTab, ActivityCacheEntry>>>({})
@@ -453,6 +465,7 @@ export function UserProfileView({
     setSummary(null)
     setProfileError('')
     setSummaryError('')
+    setChallenge(null)
     setActiveTab(initialTab)
     setActivities({})
     setBoostsReceived([])
@@ -470,13 +483,13 @@ export function UserProfileView({
       if (generation === generationRef.current) setProfile(next)
     }).catch((error) => {
       if (generation !== generationRef.current) return
-      if (!(error instanceof DOMException && error.name === 'AbortError')) setProfileError(readableError(error))
+      if (!(error instanceof DOMException && error.name === 'AbortError')) { setProfileError(readableError(error)); captureChallenge(error, 'header') }
     })
     const summaryRequest = peopleApi.summary(username, { signal: controller.signal }).then((next) => {
       if (generation === generationRef.current) setSummary(next)
     }).catch((error) => {
       if (generation !== generationRef.current) return
-      if (!(error instanceof DOMException && error.name === 'AbortError')) setSummaryError(readableError(error))
+      if (!(error instanceof DOMException && error.name === 'AbortError')) { setSummaryError(readableError(error)); captureChallenge(error, 'header') }
     })
 
     void Promise.allSettled([profileRequest, summaryRequest]).finally(() => {
@@ -484,7 +497,7 @@ export function UserProfileView({
     })
 
     return () => controller.abort()
-  }, [initialTab, username])
+  }, [captureChallenge, initialTab, username])
 
   useEffect(() => loadHeader(), [loadHeader])
 
@@ -546,6 +559,7 @@ export function UserProfileView({
       })
     } catch (error) {
       if (generation !== generationRef.current) return
+      captureChallenge(error, 'activity', tab, append)
       setActivities((previous) => ({
         ...previous,
         [tab]: {
@@ -557,7 +571,7 @@ export function UserProfileView({
         },
       }))
     }
-  }, [activities, ensureCategories, username])
+  }, [activities, captureChallenge, ensureCategories, username])
 
   const loadBoosts = useCallback(async (force = false) => {
     if (boostLoading || (!force && boostReceivedLoaded && boostGivenLoaded)) return
@@ -575,6 +589,7 @@ export function UserProfileView({
       setBoostReceivedLoaded(true)
     } else {
       setBoostReceivedError(readableError(received.reason))
+      captureChallenge(received.reason, 'boosts')
       setBoostReceivedLoaded(true)
     }
     if (given.status === 'fulfilled') {
@@ -582,10 +597,11 @@ export function UserProfileView({
       setBoostGivenLoaded(true)
     } else {
       setBoostGivenError(readableError(given.reason))
+      captureChallenge(given.reason, 'boosts')
       setBoostGivenLoaded(true)
     }
     setBoostLoading(false)
-  }, [boostGivenLoaded, boostLoading, boostReceivedLoaded, username])
+  }, [boostGivenLoaded, boostLoading, boostReceivedLoaded, captureChallenge, username])
 
   const loadBadges = useCallback(async (force = false) => {
     if (badgesLoading || (!force && badgesLoaded)) return
@@ -600,11 +616,12 @@ export function UserProfileView({
     } catch (error) {
       if (generation !== generationRef.current) return
       setBadgesError(readableError(error))
+      captureChallenge(error, 'badges')
       setBadgesLoaded(true)
     } finally {
       if (generation === generationRef.current) setBadgesLoading(false)
     }
-  }, [badgesLoaded, badgesLoading, username])
+  }, [badgesLoaded, badgesLoading, captureChallenge, username])
 
   useEffect(() => {
     if (activeTab === 'activity' || activeTab === 'topics' || activeTab === 'replies' || activeTab === 'likes' || activeTab === 'responses') {
@@ -678,12 +695,26 @@ export function UserProfileView({
     }, postNumber)
   }
 
+  const retryChallenge = () => {
+    const pending = challenge
+    if (!pending) return
+    setChallenge(null)
+    if (pending.scope === 'header') { loadHeader(); return }
+    if (pending.scope === 'activity' && pending.tab) { void loadActivity(pending.tab, pending.append); return }
+    if (pending.scope === 'boosts') { void loadBoosts(true); return }
+    if (pending.scope === 'badges') void loadBadges(true)
+  }
+
   if (loading && !profile) return <ProfileSkeleton />
 
   if (!profile) {
     return (
       <div className="page-x py-16">
-        <InlineStatus message={profileError || '用户资料暂时无法加载'} actionLabel="重新加载" onAction={() => loadHeader()} />
+        {challenge ? (
+          <LinuxDoRequestError variant="empty" error={challenge.error} onVerify={onVerify} onRetry={retryChallenge} />
+        ) : (
+          <InlineStatus message={profileError || '用户资料暂时无法加载'} actionLabel="重新加载" onAction={() => loadHeader()} />
+        )}
       </div>
     )
   }
@@ -711,6 +742,7 @@ export function UserProfileView({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain page-x pb-5 pt-3">
+      {challenge ? <LinuxDoRequestError error={challenge.error} onVerify={onVerify} onRetry={retryChallenge} /> : null}
       <section className="overflow-hidden rounded-[22px] border border-haze/60 bg-ink-raised/45 shadow-[0_8px_30px_-24px_rgba(0,0,0,0.35)]">
         <div className="p-4 sm:p-5">
           <div className="flex items-center gap-3.5">
@@ -804,7 +836,7 @@ export function UserProfileView({
       </div>
 
       <section className="mt-3">
-        {sectionTab ? <ProfileSectionView key={sectionTab + ':' + username + ':' + (session.currentUser?.id ?? 'guest')} section={sectionTab} username={username} session={session} onOpenTopic={onOpenTopic} onResumeDraft={onResumeDraft} /> : activeTab === 'bookmarks' ? (viewingSelf ? <BookmarksView key={session.currentUser?.id} session={session} onOpenTopic={onOpenTopic} /> : <InlineStatus message="书签仅本人登录后可查看" />) : activeTab === 'overview' ? (
+        {sectionTab ? <ProfileSectionView key={sectionTab + ':' + username + ':' + (session.currentUser?.id ?? 'guest')} section={sectionTab} username={username} session={session} onVerify={onVerify} onOpenTopic={onOpenTopic} onResumeDraft={onResumeDraft} /> : activeTab === 'bookmarks' ? (viewingSelf ? <BookmarksView key={session.currentUser?.id} session={session} onOpenTopic={onOpenTopic} /> : <InlineStatus message="书签仅本人登录后可查看" />) : activeTab === 'overview' ? (
           <div className="space-y-4">
             <div>
               <div className="mb-2 flex items-center justify-between">
