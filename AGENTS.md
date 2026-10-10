@@ -85,6 +85,7 @@ newsnook/
 | 本地推荐（动态分类） | 原理与效果见 [`docs/local-recommend.md`](./docs/local-recommend.md)；代码：`lib/recommend.ts`（排序 + 阅读阈值） · `lib/articleId.ts`（信源归属） · `sources/categories.ts`（`RECOMMEND_CATEGORY` · 保留名） · `sources/preferences/categoryPrefs.ts`（候选池 / 轨道拼装）；接线在 `App.tsx` |
 | 功能引导 | `features/productTour/`（steps 纯定义 · Service 封装 driver.js · useProductTour 接 App）；目标元素用 `data-tour` 锚定；重看入口在 `screens/settings/AboutScreen.tsx` |
 | 站内正文 | `lib/resolveBody.ts` · `lib/sanitize.ts` · `lib/bodyCache.ts` · `screens/ReaderScreen.tsx` |
+| 视频悬浮播放 | `features/floatingVideo/`（会话 / 稳定宿主 / 窗口手势） · `components/InkVideoPlayer.tsx` · `BootstrapRoot.tsx`；`test:floating-video`，原生鉴权隔离见 `PlaybackSessionTest` |
 | 翻译 | `features/translation/`（稳定边界：`types.ts`；新增引擎实现 Provider 并注册） |
 | 代理 / 网络 | `features/proxy/` · `lib/http.ts` · `vite.config.ts` · `functions/` |
 | 跟贴 | `features/comments/` |

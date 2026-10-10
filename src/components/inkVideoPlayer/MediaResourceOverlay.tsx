@@ -99,6 +99,7 @@ export function MediaResourceOverlay({
   open,
   immersive,
   suppressFab = false,
+  layer,
   onToggle,
   onSelect,
 }: {
@@ -106,6 +107,7 @@ export function MediaResourceOverlay({
   open: boolean
   immersive: boolean
   suppressFab?: boolean
+  layer?: number
   onToggle: () => void
   onSelect: (resource: MediaResourceDescriptor) => void
 }) {
@@ -151,6 +153,7 @@ export function MediaResourceOverlay({
           onClick={onToggle}
           className="fixed z-[100] flex items-center gap-2 rounded-full border border-haze bg-ink/95 px-3.5 py-2 text-paper shadow-xl shadow-black/35 backdrop-blur-md transition-transform hover:scale-105 active:scale-95"
           style={{
+            zIndex: layer,
             bottom: 'calc(var(--sab, 0px) + 76px)',
             right: 'calc(var(--sar, 0px) + 1rem)',
           }}
@@ -166,6 +169,7 @@ export function MediaResourceOverlay({
         <div
           className="fixed inset-0 z-[100] flex items-end justify-center bg-black/60 p-0 backdrop-blur-sm md:items-center md:p-4"
           role="presentation"
+          style={{ zIndex: layer }}
           data-no-page-tap=""
           onClick={onToggle}
         >

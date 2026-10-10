@@ -15,19 +15,22 @@ interface NativeMediaSnifferPlugin {
   }>
   startLiveSession(options: { url: string; referrer?: string; sessionId: string }): Promise<void>
   stopLiveSession(options: { sessionId: string }): Promise<void>
-  setLiveSessionVisible(options: { visible: boolean }): Promise<void>
+  setLiveSessionVisible(options: { visible: boolean; sessionId?: string }): Promise<void>
+  setLiveSurfaceSuppressed(options: { suppressed: boolean }): Promise<void>
   setLiveSessionBounds(options: {
     x: number
     y: number
     width: number
     height: number
     cornerRadius?: number
+    sessionId?: string
   }): Promise<void>
   addListener(
     eventName: 'mediaObservation',
     listener: (event: { sessionId?: string; observation?: MediaObservation }) => void,
   ): Promise<PluginListenerHandle>
   preparePlayback(options: {
+    sessionId?: string
     url: string
     intercept: boolean
     sourcePage?: string
@@ -42,6 +45,7 @@ interface NativeMediaSnifferPlugin {
       password?: string
     }
   }): Promise<void>
+  releasePlayback(options: { sessionId: string }): Promise<void>
   getStreamProxyPort(): Promise<{ port: number }>
 }
 
@@ -83,6 +87,7 @@ export function nativePreparePlaybackUrl(options: {
 }
 
 export async function prepareNativeMediaPlayback(options: {
+  sessionId?: string
   url: string
   sourcePage?: string
   format?: string
@@ -109,6 +114,7 @@ export async function prepareNativeMediaPlayback(options: {
   const origins = collectPlaybackOrigins(options)
   if (!playbackUrl) return intercept
   await NativeMediaSniffer.preparePlayback({
+    ...(options.sessionId ? { sessionId: options.sessionId } : {}),
     url: playbackUrl,
     intercept,
     sourcePage: options.sourcePage,
@@ -118,6 +124,18 @@ export async function prepareNativeMediaPlayback(options: {
     ...(transport.kind === 'native-tunnel' ? { proxy: transport.tunnel } : {}),
   })
   return intercept
+}
+
+/** Dispose only this decoder's credentials; other pages and DLNA remain alive. */
+export async function releaseNativeMediaPlayback(sessionId: string): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return
+  await NativeMediaSniffer.releasePlayback({ sessionId }).catch(() => undefined)
+}
+
+/** Native surfaces sit above the main WebView, independently of DOM z-index. */
+export async function setNativeLiveSurfaceSuppressed(suppressed: boolean): Promise<void> {
+  if (Capacitor.getPlatform() !== 'android') return
+  await NativeMediaSniffer.setLiveSurfaceSuppressed({ suppressed }).catch(() => undefined)
 }
 
 let cachedStreamProxyPort: number | null = null
@@ -244,9 +262,9 @@ export async function startNativeLiveSniffSession(options: {
   return { sessionId, stop }
 }
 
-export async function setNativeLiveSessionVisible(visible: boolean): Promise<void> {
+export async function setNativeLiveSessionVisible(visible: boolean, sessionId?: string): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return
-  await NativeMediaSniffer.setLiveSessionVisible({ visible }).catch(() => undefined)
+  await NativeMediaSniffer.setLiveSessionVisible({ visible, sessionId }).catch(() => undefined)
 }
 
 export async function setNativeLiveSessionBounds(bounds: {
@@ -255,6 +273,7 @@ export async function setNativeLiveSessionBounds(bounds: {
   width: number
   height: number
   cornerRadius?: number
+  sessionId?: string
 }): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return
   await NativeMediaSniffer.setLiveSessionBounds(bounds).catch(() => undefined)

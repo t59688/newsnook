@@ -15,6 +15,8 @@ export function syncInlineVideoFullscreenHost(
   anchor: Comment,
   doc: Document = document,
 ): void {
+  // The app session Host owns promotion and can outlive this article slot.
+  if (host.querySelector('[data-video-session-host]')) return
   const fullscreenRoot = host.querySelector<HTMLElement>('[data-video-fullscreen="true"]')
   const needsPromotion = Boolean(
     fullscreenRoot && doc.fullscreenElement !== fullscreenRoot,

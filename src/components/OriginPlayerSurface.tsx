@@ -10,6 +10,7 @@ import {
 import { reduceLiveObservations } from '../features/mediaSniffer/liveCandidate'
 import type { MediaDescriptor, MediaObservation } from '../features/mediaSniffer/types'
 import { InkVideoPlayer, type InkVideoPlayerFullscreenHandle } from './InkVideoPlayer'
+import { useHasGlobalVideoSurface } from '../features/floatingVideo/context'
 
 type Mode = 'origin' | 'custom'
 
@@ -63,6 +64,7 @@ function pushLiveSessionBounds(
   el: HTMLElement,
   lastKeyRef: { current: string },
   force = false,
+  sessionId?: string,
 ): void {
   const rect = el.getBoundingClientRect()
   if (rect.width < 8 || rect.height < 8) return
@@ -80,6 +82,7 @@ function pushLiveSessionBounds(
     width: rect.width,
     height: rect.height,
     cornerRadius: SLOT_CORNER_RADIUS_PX,
+    sessionId,
   })
 }
 
@@ -98,6 +101,7 @@ export function OriginPlayerSurface({
   autoUseReader = false,
   embedded = false,
 }: Props) {
+  const globalVideoSurface = useHasGlobalVideoSurface()
   const [mode, setMode] = useState<Mode>('origin')
   const [candidate, setCandidate] = useState<MediaDescriptor | null>(null)
   // Live ranking feeds the resource picker; playback stays on the chosen snapshot.
@@ -109,6 +113,7 @@ export function OriginPlayerSurface({
   const slotRef = useRef<HTMLDivElement | null>(null)
   const lastBoundsKeyRef = useRef('')
   const sessionReadyRef = useRef(false)
+  const sessionIdRef = useRef<string | undefined>(undefined)
   const playerFullscreenRef = useRef<InkVideoPlayerFullscreenHandle | null>(null)
   const autoSwitchedRef = useRef(false)
 
@@ -126,11 +131,11 @@ export function OriginPlayerSurface({
         preparingRef.current = false
         setActiveCandidate(null)
         setMode('origin')
-        void setNativeLiveSessionVisible(true)
+        if (sessionIdRef.current) void setNativeLiveSessionVisible(true, sessionIdRef.current)
         lastBoundsKeyRef.current = ''
         const el = slotRef.current
         if (el && sessionReadyRef.current) {
-          pushLiveSessionBounds(el, lastBoundsKeyRef, true)
+          pushLiveSessionBounds(el, lastBoundsKeyRef, true, sessionIdRef.current)
         }
         return true
       },
@@ -153,12 +158,13 @@ export function OriginPlayerSurface({
     setSessionError(null)
     setMode('origin')
     sessionReadyRef.current = false
+    sessionIdRef.current = undefined
     lastBoundsKeyRef.current = ''
 
     const syncAfterNativeReady = () => {
       const el = slotRef.current
       if (!el || stopped) return
-      pushLiveSessionBounds(el, lastBoundsKeyRef, true)
+      pushLiveSessionBounds(el, lastBoundsKeyRef, true, sessionIdRef.current)
     }
 
     void startNativeLiveSniffSession({
@@ -177,6 +183,7 @@ export function OriginPlayerSurface({
           return
         }
         stopSession = session.stop
+        sessionIdRef.current = session.sessionId
         // Native WebView starts off-screen; bounds calls before this are no-ops.
         sessionReadyRef.current = true
         syncAfterNativeReady()
@@ -197,6 +204,7 @@ export function OriginPlayerSurface({
       handoffVersionRef.current = {}
       preparingRef.current = false
       sessionReadyRef.current = false
+      sessionIdRef.current = undefined
       for (const id of lateTimers) window.clearTimeout(id)
       void stopSession?.()
     }
@@ -208,7 +216,7 @@ export function OriginPlayerSurface({
     const syncBounds = () => {
       const el = slotRef.current
       if (!el || !sessionReadyRef.current) return
-      pushLiveSessionBounds(el, lastBoundsKeyRef)
+      pushLiveSessionBounds(el, lastBoundsKeyRef, false, sessionIdRef.current)
     }
 
     lastBoundsKeyRef.current = ''
@@ -250,7 +258,7 @@ export function OriginPlayerSurface({
         extraUrls: chosen.relatedUrls,
       }).catch(() => undefined)
       if (version !== handoffVersionRef.current) return
-      await setNativeLiveSessionVisible(false)
+      if (sessionIdRef.current) await setNativeLiveSessionVisible(false, sessionIdRef.current)
       if (version !== handoffVersionRef.current) return
       setActiveCandidate(chosen)
       setMode('custom')
@@ -270,11 +278,11 @@ export function OriginPlayerSurface({
     preparingRef.current = false
     setActiveCandidate(null)
     setMode('origin')
-    void setNativeLiveSessionVisible(true)
+    if (sessionIdRef.current) void setNativeLiveSessionVisible(true, sessionIdRef.current)
     lastBoundsKeyRef.current = ''
     const el = slotRef.current
     if (el && sessionReadyRef.current) {
-      pushLiveSessionBounds(el, lastBoundsKeyRef, true)
+      pushLiveSessionBounds(el, lastBoundsKeyRef, true, sessionIdRef.current)
     }
   }
 
@@ -285,6 +293,7 @@ export function OriginPlayerSurface({
           ref={slotRef}
           className={`relative w-full bg-[#0c0d10] ${mode === 'origin' ? 'reader-video-aspect' : ''}`}
         >
+          {mode === 'origin' && globalVideoSurface && <div className="reader-video-aspect flex items-center justify-center px-6 text-center text-[12px] text-paper-muted">关闭悬浮后可使用原站播放器</div>}
           {mode === 'custom' && activeCandidate ? (
             <InkVideoPlayer
               src={activeCandidate.url}

@@ -128,7 +128,7 @@ final class LocalStreamProxy implements Closeable {
                 return;
             }
 
-            MediaSnifferPlugin.PlaybackContext context = MediaSnifferPlugin.findPlaybackContext(targetUrl);
+            MediaSnifferPlugin.PlaybackContext context = MediaSnifferPlugin.findPlaybackContext(targetUrl, request.query.get("session"));
             if (context == null) {
                 writeError(output, 404, "Playback Context Missing");
                 return;

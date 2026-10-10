@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useState } from 'react'
 import { Capacitor } from '@capacitor/core'
 
 import App from './App'
+import { FloatingVideoProvider } from './features/floatingVideo/FloatingVideoProvider'
 import { StartupSplash, type SplashMode } from './components/StartupSplash'
 import { WebAppDownloadBanner } from './components/WebAppDownloadBanner'
 import {
@@ -155,7 +156,7 @@ export function BootstrapRoot() {
 
   return (
     <>
-      {appReady && <App />}
+      {appReady && <FloatingVideoProvider><App /></FloatingVideoProvider>}
       {showSplash && (
         <StartupSplash
           mode={splashMode}

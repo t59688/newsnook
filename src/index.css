@@ -11,6 +11,7 @@
 @import './styles/reader/surface.css';
 @import './styles/reader/images.css';
 @import './styles/player/chrome.css';
+@import './styles/player/floating.css';
 @import './styles/controls.css';
 @import './styles/player/media.css';
 @import './styles/reader/overflow.css';

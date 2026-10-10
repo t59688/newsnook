@@ -6,6 +6,7 @@ import android.webkit.WebView;
 import com.getcapacitor.Bridge;
 import com.getcapacitor.BridgeWebViewClient;
 import java.io.IOException;
+import java.io.ByteArrayInputStream;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Locale;
@@ -24,10 +25,16 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
         WebResourceResponse local = super.shouldInterceptRequest(view, request);
-        if (local != null || !"GET".equalsIgnoreCase(request.getMethod())) return local;
+        if (local != null) return local;
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return playbackPreflight(request.getUrl().toString(), request.getRequestHeaders());
+        if (!"GET".equalsIgnoreCase(request.getMethod())) return null;
 
         String url = request.getUrl().toString();
-        MediaSnifferPlugin.PlaybackContext context = MediaSnifferPlugin.findPlaybackContext(url);
+        String sessionId = null;
+        for (Map.Entry<String, String> header : request.getRequestHeaders().entrySet()) {
+            if ("x-newsnook-playback-session".equalsIgnoreCase(header.getKey())) sessionId = header.getValue();
+        }
+        MediaSnifferPlugin.PlaybackContext context = MediaSnifferPlugin.findPlaybackContext(url, sessionId);
         if (context == null) return null;
 
         Request.Builder builder = new Request.Builder().url(url);
@@ -79,6 +86,34 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
             if (response != null) response.close();
             return null;
         }
+    }
+
+    /** The internal marker must not require permission from the upstream CDN. */
+    static WebResourceResponse playbackPreflight(String url, Map<String, String> requestHeaders) {
+        String origin = headerValue(requestHeaders, "origin");
+        String method = headerValue(requestHeaders, "access-control-request-method");
+        String requested = headerValue(requestHeaders, "access-control-request-headers");
+        if (origin == null || !"GET".equalsIgnoreCase(method) || requested == null
+            || !MediaSnifferPlugin.hasSessionPlaybackOrigin(url)) return null;
+        boolean marker = false;
+        for (String header : requested.split(",")) {
+            String name = header.trim();
+            if ("x-newsnook-playback-session".equalsIgnoreCase(name)) marker = true;
+            else if (!"range".equalsIgnoreCase(name) && !"accept".equalsIgnoreCase(name)) return null;
+        }
+        if (!marker) return null;
+        Map<String, String> headers = new HashMap<>();
+        headers.put("Access-Control-Allow-Origin", origin);
+        headers.put("Access-Control-Allow-Methods", "GET");
+        headers.put("Access-Control-Allow-Headers", requested);
+        headers.put("Access-Control-Allow-Credentials", "true");
+        headers.put("Vary", "Origin");
+        return new WebResourceResponse("text/plain", "UTF-8", 204, "No Content", headers, new ByteArrayInputStream(new byte[0]));
+    }
+
+    private static String headerValue(Map<String, String> headers, String name) {
+        for (Map.Entry<String, String> header : headers.entrySet()) if (name.equalsIgnoreCase(header.getKey())) return header.getValue();
+        return null;
     }
 
     private static boolean isGenericBinaryMime(String value) {

@@ -1,0 +1,30 @@
+import assert from 'node:assert/strict'
+import { createVideoSessionManager } from '../src/features/floatingVideo/session'
+
+const manager = createVideoSessionManager()
+const slot = { isConnected: true } as HTMLDivElement
+const a = manager.register('a', { src: 'https://example.com/a.mp4', onPlaybackError() {} }, slot)
+assert.equal(manager.getSnapshot().length, 1)
+manager.float('a')
+manager.detach('a', a)
+assert.equal(manager.getSnapshot()[0].mode, 'floating')
+assert.equal(manager.getSnapshot()[0].slot, null)
+assert.equal(manager.getSnapshot()[0].props.onPlaybackError, undefined)
+manager.restore('a')
+assert.equal(manager.getSnapshot()[0].mode, 'page')
+manager.float('a')
+const b = manager.register('b', { src: 'https://example.com/b.mp4' }, slot)
+manager.float('b')
+assert.deepEqual(manager.getSnapshot().map(s => s.id), ['b'], 'only one detached window may survive')
+manager.detach('b', b)
+const freshOwner = manager.register('b', { src: 'https://example.com/b.mp4' }, slot)
+manager.detach('b', b)
+assert.equal(manager.getSnapshot()[0].slot, slot, 'stale cleanup cannot detach a new owner')
+manager.restore('b')
+assert.equal(manager.getSnapshot()[0].mode, 'inline')
+manager.detach('b', freshOwner)
+assert.equal(manager.getSnapshot().length, 0)
+manager.close('b')
+manager.dispose()
+console.log('floating-video-session: ok')
+
