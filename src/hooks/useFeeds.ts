@@ -1,3 +1,7 @@
+import { catalogCacheVersion, migrateCatalogCache } from '../features/siteCatalog/cache'
+import { siteUrl } from '../features/siteCatalog/context'
+import { loadCatalogPage } from '../features/siteCatalog/service'
+import type { CatalogPage } from '../features/siteCatalog/types'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 
 import {
@@ -125,6 +129,10 @@ function pagingFromCache(
   const persisted = cached.paging
   switch (pagingStrategyOf(source)) {
     case 'upstream-offset': {
+      if (source.kind === 'web-catalog') {
+        const nextUrl = persisted?.nextUrl && siteUrl(persisted.nextUrl, source.url)
+        return { phase: nextUrl ? 'ready' : persisted?.exhausted ? 'exhausted' : 'uninitialized', page: persisted?.page ?? 0, nextUrl: nextUrl || undefined }
+      }
       const maxPage = Math.max(0, maxOffsetPages(source) - 1)
       const inferredPage = Math.max(
         0,
@@ -171,10 +179,15 @@ function loadCachedSource(
 } {
   const source = findSource(sourceId, extraSources)
   const loadedCache = loadCachedList(sourceId)
-  const cached = cachedListMatchesSourceVersion(loadedCache, source?.cacheVersion)
-    ? loadedCache
-    : null
+  const expectedVersion = catalogCacheVersion(source)
+  const matches = cachedListMatchesSourceVersion(loadedCache, expectedVersion)
+  const legacyCatalog = source?.kind === 'web-catalog' && loadedCache && !matches
+  const cached = matches || legacyCatalog ? loadedCache : null
   let items = (cached?.items ?? []).map(normalizeLegacyVideoArticle)
+  if (legacyCatalog && source && cached) {
+    items = migrateCatalogCache(source, items)
+    saveCachedArticles(sourceId, items, { ...cached.paging, sourceVersion: expectedVersion }, cached.cachedAt)
+  }
   if (
     source &&
     cached &&
@@ -253,6 +266,7 @@ function cacheMeta(state: SourcePagingState | undefined): CachedPagingMeta | und
   const meta: CachedPagingMeta = {}
   if (typeof state.page === 'number') meta.page = state.page
   if (state.cursor) meta.cursor = state.cursor
+  if (state.nextUrl) meta.nextUrl = state.nextUrl
   if (state.phase === 'exhausted') meta.exhausted = true
   return Object.keys(meta).length ? meta : undefined
 }
@@ -265,7 +279,8 @@ function cacheMetaForItems(
 ): CachedPagingMeta | undefined {
   const source = findSource(sourceId, extraSources)
   const meta: CachedPagingMeta = { ...cacheMeta(state) }
-  if (source?.cacheVersion) meta.sourceVersion = source.cacheVersion
+  const version = catalogCacheVersion(source)
+  if (version) meta.sourceVersion = version
   if (source?.kind !== 'zhihu') return Object.keys(meta).length ? meta : undefined
 
   const cachedItems = items.slice(0, 160)
@@ -313,6 +328,7 @@ export function useFeeds(
   const getSource = useCallback((id: string) => findSource(id, extraSourcesRef.current), [])
   /** client-catalog：完整解析结果仅驻内存，列表窗口从此切片 */
   const catalogRef = useRef<Map<string, Article[]>>(new Map())
+  const catalogTraversalRef = useRef(new Map<string, { urls: Set<string>; signatures: Set<string> }>())
 
   const refreshControllerRef = useRef<AbortController | null>(null)
   const prefetchControllerRef = useRef<AbortController | null>(null)
@@ -372,9 +388,10 @@ export function useFeeds(
     async (source: NewsSource, signal: AbortSignal): Promise<Article[]> => {
       const cached = catalogRef.current.get(source.id)
       if (cached?.length) return cached
-      const payload = await fetchSourceText(source, signal)
+      const page = source.kind === 'web-catalog' ? await loadCatalogPage(source, { method: 'GET', url: source.url }, signal) : undefined
+      const payload = page ? '' : await fetchSourceText(source, signal)
       const { catalog } = openClientCatalog(
-        await parseSourceArticles(source, payload, signal),
+        page?.articles ?? await parseSourceArticles(source, payload, signal),
         CATALOG_PAGE_SIZE,
       )
       catalogRef.current.set(source.id, catalog)
@@ -417,7 +434,7 @@ export function useFeeds(
   }, [])
 
   const applyHeadPage = useCallback(
-    (id: string, source: NewsSource, payload: string, incoming: Article[]): number => {
+    (id: string, source: NewsSource, payload: string, incoming: Article[], catalogPage?: CatalogPage): number => {
       const previousPaging = pagingRef.current[id] ?? { phase: 'uninitialized' as const }
       const strategy = pagingStrategyOf(source)
 
@@ -434,7 +451,11 @@ export function useFeeds(
       if (strategy === 'upstream-offset') {
         // Offset pages shift when new headlines arrive. Rewalk from page 1 and
         // dedupe against retained history so a refresh cannot create gaps.
-        updatePaging(id, { phase: 'ready', page: 0 })
+        if (source.kind === 'web-catalog') {
+          catalogTraversalRef.current.set(id, { urls: new Set([source.url, catalogPage?.url ?? source.url]), signatures: new Set([incoming.map((article) => article.id).sort().join('|')]) })
+          const nextUrl = catalogPage?.pagination.nextUrl ?? detectNextPageUrl(payload, source.url)
+          updatePaging(id, { phase: nextUrl ? 'ready' : 'exhausted', page: 0, nextUrl })
+        } else updatePaging(id, { phase: 'ready', page: 0 })
       } else if (source.kind === 'thepaper') {
         // 澎湃的 startTime 是服务端快照游标；刷新必须采用本次首页返回的新游标，
         // 不能沿用旧缓存，否则会从旧快照继续翻页并产生缺口。
@@ -541,13 +562,14 @@ export function useFeeds(
           if (!source) return
           let synced = false
           try {
-            const payload = await fetchSourceText(source, controller.signal)
+            const catalogPage = source.kind === 'web-catalog' ? await loadCatalogPage(source, { method: 'GET', url: source.url }, controller.signal) : undefined
+            const payload = catalogPage ? '' : await fetchSourceText(source, controller.signal)
             if (controller.signal.aborted) return
-            const articles = parseSourcePayload(source, payload)
+            const articles = catalogPage?.articles ?? parseSourcePayload(source, payload)
             if (!articles.length) {
               throw new Error(describeNonFeedPayload(payload) || '返回内容为空')
             }
-            applyHeadPage(id, source, payload, articles)
+            applyHeadPage(id, source, payload, articles, catalogPage)
             scheduleDetailDateEnrichment(
               id,
               source,
@@ -633,13 +655,14 @@ export function useFeeds(
             const source = getSource(id)
             if (!source) return
             try {
-              const payload = await fetchSourceText(source, controller.signal)
+              const catalogPage = source.kind === 'web-catalog' ? await loadCatalogPage(source, { method: 'GET', url: source.url }, controller.signal) : undefined
+              const payload = catalogPage ? '' : await fetchSourceText(source, controller.signal)
               if (controller.signal.aborted) return
-              const articles = parseSourcePayload(source, payload)
+              const articles = catalogPage?.articles ?? parseSourcePayload(source, payload)
               if (!articles.length) {
                 throw new Error(describeNonFeedPayload(payload) || '返回内容为空')
               }
-              applyHeadPage(id, source, payload, articles)
+              applyHeadPage(id, source, payload, articles, catalogPage)
               scheduleDetailDateEnrichment(
                 id,
                 source,
@@ -742,43 +765,45 @@ export function useFeeds(
 
             if (strategy === 'upstream-offset') {
               // next-link: use discovered URL from previous page
-              if (source.frameworkHint?.paginationPattern.kind === 'next-link') {
-                const nextUrl = pagingRef.current[id]?.nextUrl
-                if (!nextUrl) {
-                  const headPayload = await fetchSourceText(source, controller.signal)
+              if (source.kind === 'web-catalog') {
+                let nextUrl = pagingRef.current[id]?.nextUrl
+                if (!nextUrl && previous.phase === 'uninitialized') {
+                  const head = await loadCatalogPage(source, { method: 'GET', url: source.url }, controller.signal)
                   if (controller.signal.aborted) return
-                  const headArticles = await parseSourceArticles(source, headPayload, controller.signal)
-                  applyHeadPage(id, source, headPayload, headArticles)
-                  const discoveredNext = detectNextPageUrl(headPayload, source.url)
-                  updatePaging(id, {
-                    phase: discoveredNext ? 'ready' : 'exhausted',
-                    page: 0,
-                    nextUrl: discoveredNext,
-                  })
-                  return
+                  applyHeadPage(id, source, '', head.articles, head)
+                  nextUrl = head.pagination.nextUrl
                 }
-
-                const payload = await fetchSourceText(source, controller.signal, { url: nextUrl })
-                if (controller.signal.aborted) return
-                const parsed = await parseSourceArticles(source, payload, controller.signal)
-                const discoveredNext = detectNextPageUrl(payload, nextUrl)
-                const currentPage = pagingRef.current[id]?.page ?? 0
-                updatePaging(id, {
-                  phase: discoveredNext && parsed.length ? 'ready' : 'exhausted',
-                  page: currentPage + 1,
-                  nextUrl: discoveredNext,
-                })
-                const existing = bucketsRef.current.get(id) ?? []
-                if (!parsed.length) {
-                  saveCachedArticles(id, existing, cacheMetaForItems(id, pagingRef.current[id], existing))
-                  return
-                }
-                const historical = placeUndatedPageAfterExisting(existing, parsed)
-                const { merged, added } = mergeOlderPage(existing, historical)
-                if (added > 0) {
-                  commitBucket(id, merged)
-                  anyAdded = true
-                  markBucketReady(id, merged)
+                const traversal = catalogTraversalRef.current.get(id) ?? { urls: new Set<string>(), signatures: new Set<string>() }
+                catalogTraversalRef.current.set(id, traversal)
+                // A head refresh retains historical buckets: skip already-known pages,
+                // stopping only on repeated pages within this traversal or observed end.
+                for (let attempt = 0; attempt < 3; attempt++) {
+                  const currentPage = pagingRef.current[id]?.page ?? 0
+                  if (!nextUrl || traversal.urls.has(nextUrl) || currentPage >= maxOffsetPages(source) - 1) {
+                    updatePaging(id, { ...pagingRef.current[id], phase: 'exhausted' })
+                    return
+                  }
+                  const page = await loadCatalogPage(source, { method: 'GET', url: nextUrl }, controller.signal)
+                  if (controller.signal.aborted) return
+                  const parsed = page.articles
+                  const signature = parsed.map((article) => article.id).sort().join('|')
+                  const repeated = traversal.signatures.has(signature)
+                  traversal.urls.add(nextUrl)
+                  traversal.urls.add(page.url)
+                  traversal.signatures.add(signature)
+                  nextUrl = page.pagination.nextUrl
+                  const exhausted = !nextUrl || !parsed.length || repeated || traversal.urls.has(nextUrl)
+                  updatePaging(id, { phase: exhausted ? 'exhausted' : 'ready', page: currentPage + 1, nextUrl })
+                  const existing = bucketsRef.current.get(id) ?? []
+                  const { merged, added } = mergeOlderPage(existing, placeUndatedPageAfterExisting(existing, parsed))
+                  if (added > 0) {
+                    commitBucket(id, merged)
+                    anyAdded = true
+                    markBucketReady(id, merged)
+                    return
+                  }
+                  saveCachedArticles(id, existing, cacheMetaForItems(id, pagingRef.current[id], existing, extraSourcesRef.current))
+                  if (exhausted) return
                 }
                 return
               }

@@ -32,6 +32,7 @@
     "test:feed-discovery": "npx tsx scripts/feed-discovery.test.ts && npx tsx scripts/feed-discovery-runtime.test.ts && npx tsx scripts/feed-discovery-online.test.ts && npx tsx scripts/feed-discovery-ui.test.tsx && npx tsx scripts/rsshub.test.ts && npx tsx scripts/rsshub-ui.test.tsx",
     "test:rsshub": "npx tsx scripts/rsshub.test.ts && npx tsx scripts/rsshub-ui.test.tsx",
     "test:framework-detect": "npx tsx scripts/framework-detect.test.ts",
+    "test:site-catalog": "npx tsx scripts/site-catalog.test.ts && npx tsx scripts/site-capabilities.test.ts && npx tsx scripts/site-session.test.ts && npx tsx scripts/site-profile.test.ts && npx tsx scripts/site-detail.test.ts && npx tsx scripts/site-transport.test.ts && npx tsx scripts/site-matrix.test.ts && npx tsx scripts/site-templates.test.ts && npx tsx scripts/site-ui.test.tsx && npx tsx scripts/site-ui-utils.test.ts && npx tsx scripts/site-ui-advanced.test.tsx && npx tsx scripts/site-feed-runtime.test.tsx && npx tsx scripts/site-native-transport.test.ts && npx tsx scripts/site-registry-boundary.test.ts",
     "test:catalog-engine": "npx tsx scripts/catalog-engine.test.ts",
     "test:async-pool": "npx tsx scripts/async-pool.test.ts",
     "test:feed-refresh-concurrency": "npx tsx scripts/feed-refresh-concurrency.test.ts",

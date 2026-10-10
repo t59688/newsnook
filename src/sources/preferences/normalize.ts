@@ -1,3 +1,4 @@
+import { normalizeCatalogProfile, normalizeFrameworkHint, preserveFutureCatalogProfile } from '../../features/siteCatalog/profile'
 /**
  * 偏好归一化：读入持久化数据时剔除已下线的分类与信源，避免脏配置导致空列表。
  */
@@ -113,6 +114,13 @@ export function normalizePreferences(raw: unknown): Preferences {
       const rawUrl = typeof item.url === 'string' ? item.url.trim() : ''
       const rawName = typeof item.name === 'string' ? item.name.trim() : ''
       if (!rawUrl || !rawName) return
+      const kind = normalizeSourceKind(typeof item.kind === 'string' ? item.kind : undefined)
+      if (kind === 'web-catalog') {
+        try {
+          const url = new URL(rawUrl)
+          if (!/^https?:$/.test(url.protocol) || url.username || url.password) return
+        } catch { return }
+      }
 
       const rawId =
         typeof item.id === 'string' && item.id.trim()
@@ -133,7 +141,7 @@ export function normalizePreferences(raw: unknown): Preferences {
         name: rawName,
         label: rawLabel || rawName.slice(0, 4),
         group: rawGroup,
-        kind: normalizeSourceKind(typeof item.kind === 'string' ? item.kind : undefined),
+        kind,
         url: rawUrl,
         siteUrl: rawSiteUrl,
         enabled: typeof item.enabled === 'boolean' ? item.enabled : true,
@@ -142,9 +150,10 @@ export function normalizePreferences(raw: unknown): Preferences {
         paused: item.paused === true,
         discovery: normalizeDiscoveryMetadata(item.discovery),
       }
-      if (item.frameworkHint && typeof item.frameworkHint === 'object') {
-        source.frameworkHint = item.frameworkHint
-      }
+      source.catalogProfileOpaque = preserveFutureCatalogProfile(item.catalogProfile ?? item.catalogProfileOpaque, source.url)
+      source.catalogProfile = normalizeCatalogProfile(item.catalogProfile, source.url)
+      source.frameworkHint = normalizeFrameworkHint(item.frameworkHint, source.url)
+
       customSources.push(source)
     })
   }

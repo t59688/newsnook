@@ -1,3 +1,4 @@
+import { normalizeCatalogProfile } from '../../features/siteCatalog/profile'
 /**
  * 自定义订阅源：单个增删改、批量删除与 OPML 批量导入。
  */
@@ -26,6 +27,7 @@ export function addCustomSource(
     siteUrl?: string
     group?: SourceGroup
     kind?: NewsSource['kind']
+    catalogProfile?: NewsSource['catalogProfile']
     frameworkHint?: import('../../features/frameworkDetect/types').FrameworkHint
     discovery?: SourceDiscoveryMetadata
     paused?: boolean
@@ -56,6 +58,7 @@ export function addCustomSource(
     createdAt: Date.now(),
     paused: draft.paused === true,
     ...(draft.discovery ? { discovery: draft.discovery } : {}),
+    catalogProfile: normalizeCatalogProfile(draft.catalogProfile, url),
     ...(draft.frameworkHint ? { frameworkHint: draft.frameworkHint } : {}),
   }
 
@@ -105,7 +108,7 @@ export function addCustomSource(
 export function updateCustomSource(
   prefs: Preferences,
   sourceId: string,
-  patch: Partial<Pick<NewsSource, 'name' | 'label' | 'url' | 'siteUrl' | 'group' | 'kind' | 'paused' | 'discovery'>>,
+  patch: Partial<Pick<NewsSource, 'name' | 'label' | 'url' | 'siteUrl' | 'group' | 'kind' | 'paused' | 'discovery' | 'frameworkHint' | 'catalogProfile'>>,
 ): Preferences {
   const list = prefs.customSources ?? []
   const index = list.findIndex((s) => s.id === sourceId)
@@ -127,6 +130,9 @@ export function updateCustomSource(
     siteUrl,
     group,
     kind,
+    frameworkHint: Object.hasOwn(patch, 'frameworkHint') ? patch.frameworkHint : url === current.url && kind === current.kind ? current.frameworkHint : undefined,
+    catalogProfileOpaque: patch.catalogProfile || url !== current.url || kind !== current.kind ? undefined : current.catalogProfileOpaque,
+    catalogProfile: Object.hasOwn(patch, 'catalogProfile') ? normalizeCatalogProfile(patch.catalogProfile, url) : url === current.url && kind === current.kind ? current.catalogProfile : undefined,
     ...(patch.paused !== undefined ? { paused: patch.paused } : {}),
     ...(patch.discovery !== undefined ? { discovery: patch.discovery } : {}),
   }

@@ -182,12 +182,25 @@ export async function fetchSourceText(
   return decodeBrowserResponse(response)
 }
 
-function encodeFormBody(form?: Record<string, string | number>): string {
+type FormFields = readonly { name: string; value: string }[]
+
+function encodeFormBody(form?: Record<string, string | number> | FormFields): string {
   const params = new URLSearchParams()
-  for (const [key, value] of Object.entries(form ?? {})) {
-    params.set(key, String(value))
-  }
+  const entries = Array.isArray(form) ? form.map((field) => [field.name, field.value]) : Object.entries(form ?? {})
+  for (const [key, value] of entries) params.append(key, String(value))
   return params.toString()
+}
+
+export interface PageResponseOptions {
+  maxBytes?: number
+  onResponse?: (metadata: { url?: string }) => void
+}
+
+function pageMetadata(response: Response, options?: PageResponseOptions) {
+  const raw = response.headers.get('X-NewsNook-Upstream-Url')
+  let url: string | undefined
+  try { const parsed = raw && new URL(raw); if (parsed && /^https?:$/.test(parsed.protocol) && !parsed.username && !parsed.password) url = parsed.href } catch { /* Unknown final URL. */ }
+  options?.onResponse?.({ url })
 }
 
 /** 拉取任意绝对 URL（用于详情页全文抽取） */
@@ -199,7 +212,7 @@ export async function fetchAbsoluteText(
     /** 传给边缘/开发代理的 Accept；原生则写入请求头 */
     accept?: string
     headers?: Record<string, string>
-  },
+  } & PageResponseOptions,
 ): Promise<string> {
   const ua = options?.userAgent ?? BROWSER_UA
   const transport = transportFor(url)
@@ -217,6 +230,7 @@ export async function fetchAbsoluteText(
       options?.signal,
       Object.keys(extraHeaders).length ? extraHeaders : undefined,
       tunnel,
+      transport.kind === 'web-wrap' ? { ...options, onResponse: undefined } : options,
     )
   }
 
@@ -226,7 +240,8 @@ export async function fetchAbsoluteText(
       headers: { 'User-Agent': ua, ...extraHeaders },
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    return decodeBrowserResponse(response)
+    pageMetadata(response, options)
+    return decodeBrowserResponse(response, options?.maxBytes)
   }
 
   // direct / dev-vite / unsupported → 开发态 CORS 代理（unsupported 不宣称已走用户 SOCKS）
@@ -237,7 +252,8 @@ export async function fetchAbsoluteText(
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}`)
   }
-  const text = await decodeBrowserResponse(response)
+  pageMetadata(response, options)
+  const text = await decodeBrowserResponse(response, options?.maxBytes)
   if (response.status === 204 || !text.trim()) {
     throw new Error(`HTTP ${response.status}`)
   }
@@ -247,12 +263,12 @@ export async function fetchAbsoluteText(
 /** 对任意绝对 URL 发 application/x-www-form-urlencoded POST（Google News 解码等） */
 export async function fetchAbsoluteFormPost(
   url: string,
-  form: Record<string, string>,
+  form: Record<string, string> | FormFields,
   options?: {
     userAgent?: string
     signal?: AbortSignal
     headers?: Record<string, string>
-  },
+  } & PageResponseOptions,
 ): Promise<string> {
   const ua = options?.userAgent ?? BROWSER_UA
   const extra = options?.headers
@@ -261,7 +277,7 @@ export async function fetchAbsoluteFormPost(
   if (Capacitor.isNativePlatform()) {
     const targetUrl = transport.kind === 'web-wrap' ? transport.requestUrl : url
     const tunnel = transport.kind === 'native-tunnel' ? transport.tunnel : undefined
-    return nativePost(targetUrl, ua, 'form', form, undefined, extra, options?.signal, tunnel)
+    return nativePost(targetUrl, ua, 'form', form, undefined, extra, options?.signal, tunnel, transport.kind === 'web-wrap' ? { ...options, onResponse: undefined } : options)
   }
 
   if (transport.kind === 'web-wrap') {
@@ -276,7 +292,8 @@ export async function fetchAbsoluteFormPost(
       body: encodeFormBody(form),
     })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
-    const text = await decodeBrowserResponse(response)
+    pageMetadata(response, options)
+    const text = await decodeBrowserResponse(response, options?.maxBytes)
     if (response.status === 204 || !text.trim()) throw new Error(`HTTP ${response.status}`)
     return text
   }
@@ -292,7 +309,8 @@ export async function fetchAbsoluteFormPost(
     body: encodeFormBody(form),
   })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
-  const text = await decodeBrowserResponse(response)
+  pageMetadata(response, options)
+  const text = await decodeBrowserResponse(response, options?.maxBytes)
   if (response.status === 204 || !text.trim()) throw new Error(`HTTP ${response.status}`)
   return text
 }
@@ -333,6 +351,7 @@ async function nativeGet(
   signal?: AbortSignal,
   extraHeaders?: Record<string, string>,
   tunnel?: NativeTunnelProxy,
+  pageOptions?: PageResponseOptions,
 ): Promise<string> {
   const candidates = requestUrlCandidates(url)
   let lastError: unknown
@@ -340,7 +359,7 @@ async function nativeGet(
   for (const candidate of candidates) {
     if (signal?.aborted) throw abortReason(signal)
     try {
-      return await nativeGetFollowingRedirects(candidate, userAgent, signal, extraHeaders, tunnel)
+      return await nativeGetFollowingRedirects(candidate, userAgent, signal, extraHeaders, tunnel, pageOptions)
     } catch (error) {
       if (signal?.aborted) throw abortReason(signal)
       lastError = error
@@ -354,11 +373,13 @@ async function nativePost(
   url: string,
   userAgent: string,
   bodyType: 'form' | 'json',
-  form: Record<string, string | number> | undefined,
+  form: Record<string, string | number> | FormFields | undefined,
   json: Record<string, unknown> | undefined,
   extraHeaders: Record<string, string> | undefined,
   signal?: AbortSignal,
   tunnel?: NativeTunnelProxy,
+  pageOptions?: PageResponseOptions,
+  redirectsLeft = MAX_REDIRECTS,
 ): Promise<string> {
   if (signal?.aborted) throw abortReason(signal)
 
@@ -376,6 +397,7 @@ async function nativePost(
         nativeProxiedRequest({
           url,
           method: 'POST',
+          followRedirects: false,
           headers,
           data: body,
           proxy: tunnel,
@@ -390,11 +412,22 @@ async function nativePost(
           readTimeout: 25000,
           connectTimeout: 15000,
           responseType: 'arraybuffer',
+          disableRedirects: true,
           headers,
           data: body,
         }),
         signal,
       )
+
+  if (REDIRECT_STATUSES.has(response.status)) {
+    const location = headerValue(response.headers, 'location')
+    if (!location) throw new Error(`HTTP ${response.status}`)
+    if (redirectsLeft <= 0) throw new Error('重定向次数过多')
+    const next = resolveRedirectUrl(url, location)
+    const nextHeaders = new URL(next).origin === new URL(url).origin ? extraHeaders : undefined
+    if (response.status === 307 || response.status === 308) return nativePost(next, userAgent, bodyType, form, json, nextHeaders, signal, tunnel, pageOptions, redirectsLeft - 1)
+    return nativeGetFollowingRedirects(next, userAgent, signal, nextHeaders, tunnel, pageOptions, redirectsLeft - 1)
+  }
 
   if (response.status < 200 || response.status >= 300) {
     throw new Error(`HTTP ${response.status}`)
@@ -408,6 +441,8 @@ async function nativePost(
   if (response.status === 204 || !text.trim()) {
     throw new Error(`HTTP ${response.status || 204}`)
   }
+  checkPageSize(text, pageOptions?.maxBytes)
+  pageOptions?.onResponse?.({ url: 'url' in response && typeof response.url === 'string' ? response.url : url })
   return text
 }
 
@@ -421,10 +456,12 @@ async function nativeGetFollowingRedirects(
   signal?: AbortSignal,
   extraHeaders?: Record<string, string>,
   tunnel?: NativeTunnelProxy,
+  pageOptions?: PageResponseOptions,
+  redirectsLeft = MAX_REDIRECTS,
 ): Promise<string> {
   let current = url
 
-  for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
+  for (let hop = 0; hop <= redirectsLeft; hop += 1) {
     if (signal?.aborted) throw abortReason(signal)
 
     const headers = {
@@ -480,14 +517,39 @@ async function nativeGetFollowingRedirects(
     if (response.status === 204 || !text.trim()) {
       throw new Error(`HTTP ${response.status || 204}`)
     }
+    checkPageSize(text, pageOptions?.maxBytes)
+    pageOptions?.onResponse?.({ url: current })
     return text
   }
 
   throw new Error('重定向次数过多')
 }
 
-async function decodeBrowserResponse(response: Response): Promise<string> {
-  const bytes = await response.arrayBuffer()
+function checkPageSize(text: string, maxBytes?: number) {
+  if (maxBytes && new TextEncoder().encode(text).byteLength > maxBytes) throw new Error('目录页面过大，请使用更具体的栏目地址')
+}
+
+async function decodeBrowserResponse(response: Response, maxBytes?: number): Promise<string> {
+  if (!maxBytes || !response.body) {
+    const bytes = await response.arrayBuffer()
+    if (maxBytes && bytes.byteLength > maxBytes) throw new Error('目录页面过大，请使用更具体的栏目地址')
+    return decodeResponseBytes(bytes, response.headers.get('content-type'))
+  }
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let size = 0
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      size += value.byteLength
+      if (size > maxBytes) { await reader.cancel(); throw new Error('目录页面过大，请使用更具体的栏目地址') }
+      chunks.push(value)
+    }
+  } finally { reader.releaseLock() }
+  const bytes = new Uint8Array(size)
+  let offset = 0
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
   return decodeResponseBytes(bytes, response.headers.get('content-type'))
 }
 

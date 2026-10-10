@@ -109,6 +109,9 @@ export interface NewsSource {
   discovery?: SourceDiscoveryMetadata
   /** CMS 框架探测结果（仅自定义 web-catalog 源） */
   frameworkHint?: import('../../features/frameworkDetect/types').FrameworkHint
+  /** Versioned, observed CMS catalog capabilities; optional for legacy sources. */
+  catalogProfileOpaque?: Record<string, unknown>
+  catalogProfile?: import('../../features/siteCatalog/types').CatalogProfile
 }
 
 export const SOURCE_GROUPS: Record<SourceGroup, { title: string; caption: string }> = {

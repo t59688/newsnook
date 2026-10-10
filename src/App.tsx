@@ -73,6 +73,7 @@ import { ChannelsScreen } from './screens/ChannelsScreen'
 import { FeedScreen } from './screens/FeedScreen'
 import { MeScreen } from './screens/MeScreen'
 import { SiteScreen } from './screens/SiteScreen'
+import { formatSiteBrandName, getSiteCleanDomain } from './features/siteCatalog/uiUtils'
 import { AboutScreen } from './screens/settings/AboutScreen'
 import { AccountSyncScreen } from './screens/settings/AccountSyncScreen'
 import { ChangelogScreen } from './screens/settings/ChangelogScreen'
@@ -1056,7 +1057,7 @@ export default function App() {
   }, [activeSiteId, presets.builtins, presets.state])
 
   const cmsSources = useMemo(
-    () => (prefs.customSources ?? []).filter((s) => s.frameworkHint && s.kind === 'web-catalog'),
+    () => (prefs.customSources ?? []).filter((s) => s.kind === 'web-catalog'),
     [prefs.customSources],
   )
   const frameworkSiteCount = cmsSources.length
@@ -1077,8 +1078,7 @@ export default function App() {
   const presetSwitcherConfig = useMemo(() => ({
     activeName: findSite(activeSiteId)?.name
       ?? (tab === 'sites'
-        ? (cmsSources.find((source) => source.id === selectedCmsId)?.label
-          || cmsSources.find((source) => source.id === selectedCmsId)?.name
+        ? (formatSiteBrandName(cmsSources.find((source) => source.id === selectedCmsId))
           || 'CMS 站点')
         : null)
       ?? presets.activePreset?.name ?? '场景预设',
@@ -1120,7 +1120,13 @@ export default function App() {
     } : undefined,
     cmsActive: tab === 'sites',
     activeCmsId: tab === 'sites' ? selectedCmsId : null,
-    cmsSites: cmsSources.map((source) => ({ id: source.id, name: source.label || source.name, description: source.url })),
+    cmsSites: cmsSources.map((source) => ({
+      id: source.id,
+      name: formatSiteBrandName(source),
+      description: getSiteCleanDomain(source.url),
+      framework: source.frameworkHint?.framework ?? source.catalogProfile?.engine,
+      url: source.url,
+    })),
     onSelectCms: (id: string) => {
       if (!cmsSources.some((source) => source.id === id)) return
       if (activeSiteId) leaveActiveSite()
@@ -1662,8 +1668,7 @@ export default function App() {
           onLoadMore={() => void loadMore([focusSource.id])}
           onOpen={openArticle}
           onBack={closeSourceFeed}
-          searchTemplate={focusSource.frameworkHint?.searchTemplate}
-          frameworkCategories={focusSource.frameworkHint?.categories}
+          catalogSource={focusSource.kind === 'web-catalog' ? focusSource : undefined}
         />
       )
     }
@@ -1713,16 +1718,28 @@ export default function App() {
     }
 
     if (tab === 'sites') {
-      const frameworkSites = cmsSources
-        .filter((s) => !selectedCmsId || s.id === selectedCmsId)
-        .map((s) => ({ source: s, hint: s.frameworkHint! }))
+      const allFrameworkSites = cmsSources.map((s) => ({
+        source: s,
+        hint: s.frameworkHint!,
+      }))
       return (
         <SiteScreen
-          key={selectedCmsId ?? 'all-cms-sites'}
-          sites={frameworkSites}
+          key="cms-site-workspace"
+          sites={allFrameworkSites}
+          activeSiteId={selectedCmsId ?? allFrameworkSites[0]?.source.id}
           readIds={readIds}
           onOpen={openArticle}
-          onBack={() => { setSelectedCmsId(null); setTab('today') }}
+          onSelectSite={(id) => {
+            setSelectedCmsId(id)
+          }}
+          onManageSites={() => {
+            setTab('me')
+            setSettingsRoute({ name: 'custom-sources' })
+          }}
+          onBack={() => {
+            setSelectedCmsId(null)
+            setTab('today')
+          }}
         />
       )
     }
@@ -1778,8 +1795,7 @@ export default function App() {
         onBrandTap={onBrandTap}
         onOpenLocalSearch={() => setSettingsRoute({ name: 'local-search' })}
         pullRefreshSeq={todayPullRefreshSeq}
-        searchTemplate={activeFilterSource?.frameworkHint?.searchTemplate}
-        frameworkCategories={activeFilterSource?.frameworkHint?.categories}
+        catalogSource={activeFilterSource?.kind === 'web-catalog' ? activeFilterSource : undefined}
       />
     )
   }
@@ -1874,7 +1890,7 @@ export default function App() {
                 currentReaderArticleId={reading?.id ?? null}
               />
 
-              {!focusSource && (
+              {!focusSource && tab !== 'sites' && (
                 <TabBar
                   active={tab}
                   laterCount={later.length}

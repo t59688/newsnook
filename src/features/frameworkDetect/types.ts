@@ -10,6 +10,14 @@ export type FrameworkId =
   | 'hexo'
   | 'ghost'
   | 'generic'
+  | 'typecho'
+  | 'dedecms'
+  | 'empirecms'
+  | 'pbootcms'
+  | 'eyoucms'
+  | 'zblog'
+  | 'drupal'
+  | 'joomla'
 
 export type PaginationPattern =
   | { kind: 'query-param'; param: string }

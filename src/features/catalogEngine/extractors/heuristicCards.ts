@@ -14,7 +14,7 @@ import {
 
 const MIN_ITEMS = 3
 const MIN_PATTERN_COUNT = 2
-const MAX_ITEMS = 80
+const MAX_ITEMS = 1000
 
 interface RawCard {
   originUrl: string
@@ -126,7 +126,7 @@ function extractAnchorBlocks(html: string, pageUrl: string): RawCard[] {
     const originUrl = absoluteUrl(href, pageUrl)
     if (!originUrl || !sameOrigin(originUrl, pageUrl)) continue
 
-    const key = originUrl.toLowerCase()
+    const key = originUrl
     if (isUtilityPath(originUrl)) continue
 
     try {
@@ -218,5 +218,6 @@ export function extractHeuristicCardCatalog(html: string, pageUrl: string): Cata
     originUrl: card.originUrl,
     image: card.image,
     summary: card.title.slice(0, 220),
+    contentType: /\/(?:v|watch|video|voddetail|vodplay|dianying|dianshiju)\//i.test(card.originUrl) ? 'video' : undefined,
   }))
 }

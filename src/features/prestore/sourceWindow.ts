@@ -1,4 +1,4 @@
-import { detectNextPageUrl } from '../catalogEngine/pagination'
+import { loadCatalogPage } from '../siteCatalog/service'
 import {
   mergeOlderPage,
   placeUndatedPageAfterExisting,
@@ -36,28 +36,25 @@ async function fetchOffsetWindow(
   desired: number,
   signal: AbortSignal,
 ): Promise<Article[]> {
-  const headPayload = await fetchSourceText(source, signal)
-  let collected = sortArticles(
-    requireArticles(headPayload, await parseSourceArticles(source, headPayload, signal)),
-  )
   const maxPages = Math.max(1, maxOffsetPages(source))
-
-  if (source.frameworkHint?.paginationPattern.kind === 'next-link') {
-    let currentUrl = source.url
-    let nextUrl = detectNextPageUrl(headPayload, currentUrl)
-    let page = 1
-    while (collected.length < desired && nextUrl && page < maxPages) {
-      const payload = await fetchSourceText(source, signal, { url: nextUrl })
-      const parsed = await parseSourceArticles(source, payload, signal)
-      const historical = placeUndatedPageAfterExisting(collected, parsed)
-      collected = mergeOlderPage(collected, historical).merged
-      currentUrl = nextUrl
-      nextUrl = detectNextPageUrl(payload, currentUrl)
-      page += 1
-      if (!parsed.length) break
+  if (source.kind === 'web-catalog') {
+    let page = await loadCatalogPage(source, { method: 'GET', url: source.url }, signal)
+    let collected = sortArticles(page.articles)
+    const visited = new Set([page.url])
+    for (let index = 1; index < maxPages && collected.length < desired; index++) {
+      const nextUrl = page.pagination.nextUrl
+      if (!nextUrl || visited.has(nextUrl)) break
+      visited.add(nextUrl)
+      page = await loadCatalogPage(source, { method: 'GET', url: nextUrl }, signal)
+      visited.add(page.url)
+      const before = collected.length
+      collected = mergeOlderPage(collected, placeUndatedPageAfterExisting(collected, page.articles)).merged
+      if (collected.length === before) break
     }
     return collected.slice(0, desired)
   }
+  const headPayload = await fetchSourceText(source, signal)
+  let collected = sortArticles(requireArticles(headPayload, await parseSourceArticles(source, headPayload, signal)))
 
   for (let page = 1; page < maxPages && collected.length < desired; page += 1) {
     const payload = await fetchSourceText(source, signal, { page })
@@ -133,6 +130,7 @@ export async function fetchSourcePrestoreCandidates(
     return fetchCursorWindow(source, safeDesired, signal)
   }
 
+  if (source.kind === 'web-catalog') return sortArticles((await loadCatalogPage(source, { method: 'GET', url: source.url }, signal)).articles).slice(0, safeDesired)
   const payload = await fetchSourceText(source, signal)
   const catalog = requireArticles(payload, await parseSourceArticles(source, payload, signal))
   return sortArticles(catalog).slice(0, safeDesired)

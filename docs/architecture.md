@@ -314,7 +314,7 @@ ReaderScreen / CommentsDrawer
             → searchLocalArticles（空格切片 AND 子串匹配，标题/摘要/信源名加权，默认取前 80 条）
 ```
 
-本地搜索与 `web-catalog` 源的 `searchTemplate`（站内联网搜索）是两条独立路径：前者零请求，只覆盖本机已有内容。
+本地搜索与 `web-catalog` 源的 `catalogProfile.search`（站内联网搜索，旧配置仍可发现页面能力）是两条独立路径：前者零请求，只覆盖本机已有内容。
 
 #### 8.6.1 分享深链 `/a/<token>`
 
@@ -691,3 +691,10 @@ npm run android:apk | android:aab
 | APK 构建 | `scripts/android-build.mjs` |
 | 产品设计 | `docs/superpowers/specs/2026-07-31-newsnook-mobile-app-design.md` |
 | 墨水屏设计 | `docs/superpowers/specs/2026-08-11-eink-mode-design.md` |
+
+
+## 网页目录与 CMS 适配（2026-10）
+
+`features/siteCatalog` 是站点浏览、单源搜索、主列表与预存共用的页面服务。引擎身份独立于页面能力；分类/排序/筛选/分页使用实际链接，搜索使用已观察的 GET/POST 表单。`catalogEngine` 抽取语义卡片与 JSON-LD，并始终使用真实 sourceId 映射 Article。错误保留上次成功页面，请求取消与过期响应不影响新的会话。
+
+可选 `catalogProfile` 配置保存在本机并兼容备份/同步；未来合法配置保留为 `catalogProfileOpaque`，仅运行时退化。列表新增可选 nextUrl 与目录专用版本标识，旧全视频元信息在本机迁移；正文缓存、已读与稍后读身份不变。读取继续直连上游，Cloud 不参与解析。具体模块、规则矩阵、网络预算与限制见 [网页目录与 CMS 适配](./cms-catalog.md)。

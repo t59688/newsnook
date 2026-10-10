@@ -5,8 +5,7 @@
 import {
   buildCatalogPageUrl,
   catalogMaxOffsetPages,
-  catalogUsesOffsetPaging,
-} from '../../features/catalogEngine/pagination'
+} from '../../features/catalogEngine/pageUrl'
 import { frameworkPageUrl } from '../../features/frameworkDetect/buildPageUrl'
 import { md5Hex, sha1Hex } from '../../lib/hash'
 import {
@@ -151,10 +150,7 @@ export function pagingStrategyOf(source: NewsSource): PagingStrategy {
   if (source.kind === 'infzm') return 'upstream-offset'
   if (source.kind === 'thepaper') return 'upstream-cursor'
   if (source.kind === 'zhihu') return 'upstream-cursor'
-  if (source.kind === 'web-catalog') {
-    if (source.frameworkHint) return 'upstream-offset'
-    return catalogUsesOffsetPaging(source.url) ? 'upstream-offset' : 'client-catalog'
-  }
+  if (source.kind === 'web-catalog') return 'upstream-offset'
   return 'client-catalog'
 }
 

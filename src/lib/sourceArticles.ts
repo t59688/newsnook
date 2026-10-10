@@ -1,3 +1,4 @@
+import { parseCatalogPage } from '../features/siteCatalog/service'
 import { fetchAbsoluteText } from './http'
 import {
   enrichJazzyearDates,
@@ -17,8 +18,9 @@ export async function parseSourceArticles(
   source: NewsSource,
   payload: string,
   signal?: AbortSignal,
+  pageUrl = source.url,
 ): Promise<Article[]> {
-  const articles = parseSourcePayload(source, payload)
+  const articles = source.kind === 'web-catalog' ? parseCatalogPage(source, { method: 'GET', url: pageUrl }, payload).articles : parseSourcePayload(source, payload)
   if (!articles.length) return articles
   if (source.kind === 'latepost') {
     return enrichLatepostDates(

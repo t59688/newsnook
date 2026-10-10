@@ -74,6 +74,7 @@ export const subscriptionPayloadSchema = z.object({
   /** Optional feed-discovery provenance. Clients that do not understand it may ignore it. */
   discovery: z.unknown().optional(),
   frameworkHint: z.unknown().optional(),
+  catalogProfile: z.unknown().optional(),
 })
 export type SubscriptionPayload = z.infer<typeof subscriptionPayloadSchema>
 

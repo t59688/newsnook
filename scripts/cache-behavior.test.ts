@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 
+import './helpers/immediate-idle'
+
 import {
   bodyCacheStats,
   clearBodyCache,

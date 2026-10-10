@@ -397,6 +397,8 @@ export interface CachedList {
 }
 
 export interface CachedPagingMeta {
+  /** Observed catalog URL; optional so legacy caches remain readable. */
+  nextUrl?: string
   page?: number
   cursor?: string
   exhausted?: boolean
@@ -455,12 +457,13 @@ export function saveCachedArticles(
   sourceId: string,
   items: Article[],
   paging?: CachedPagingMeta,
+  cachedAt = Date.now(),
 ): void {
   const compactItems = items.slice(0, 160).map(compactCachedArticle)
   scheduleTask(() => {
     write(
       `${LIST_CACHE_PREFIX}${sourceId}`,
-      { at: Date.now(), items: compactItems, paging },
+      { at: cachedAt, items: compactItems, paging },
       { localOnly: true },
     )
   })

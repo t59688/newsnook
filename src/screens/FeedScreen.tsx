@@ -18,12 +18,12 @@ import type { Article, RefreshProgress, SourceStatus } from '../lib/types'
 import { DEFAULT_TRANSLATION_PREFS } from '../features/translation/config'
 import { useFeedTranslation } from '../features/translation/useFeedTranslation'
 import type { TranslationPrefs } from '../features/translation/types'
-import { extractCatalog } from '../features/catalogEngine/engine'
-import { catalogHtmlToArticles } from '../features/catalogEngine/toArticles'
+import { useCatalogSession } from '../features/siteCatalog/useCatalogSession'
+import { catalogProfileFor } from '../features/siteCatalog/profile'
+import { catalogSearchRequest } from '../features/siteCatalog/requests'
 import { RECOMMEND_CATEGORY_ID, type CategoryId, type NewsCategory } from '../sources/categories'
 import type { HomeFeedLayout } from '../sources/preferences'
 import { findSource, type NewsSource } from '../sources/registry'
-import { fetchAbsoluteText } from '../lib/http'
 
 const EMPTY_ARTICLE_IDS: ReadonlySet<string> = new Set()
 
@@ -76,10 +76,7 @@ interface Props {
   onOpenLocalSearch?: () => void
   /** 递增时触发与下拉相同的刷新动画与加载（底栏双击速闻） */
   pullRefreshSeq?: number
-  /** 站内搜索模板（仅 web-catalog 源有 frameworkHint.searchTemplate 时传入） */
-  searchTemplate?: string
-  /** 框架站点分类列表（frameworkHint.categories） */
-  frameworkCategories?: { title: string; url: string }[]
+  catalogSource?: NewsSource
 }
 
 /** 邻页预览：排版与正式列表对齐，并恢复该分类上次滚动位置，避免滑入时先顶后跳 */
@@ -223,8 +220,7 @@ export const FeedScreen = memo(function FeedScreen({
   onBrandTap,
   onOpenLocalSearch,
   pullRefreshSeq = 0,
-  searchTemplate,
-  frameworkCategories,
+  catalogSource,
 }: Props) {
   const isDesktop = useIsDesktop()
   const reduced = useReducedMotion()
@@ -241,101 +237,45 @@ export const FeedScreen = memo(function FeedScreen({
   const onLoadMoreRef = useRef(onLoadMore)
   onLoadMoreRef.current = onLoadMore
 
+  const { session: catalogSession, state: catalogState } = useCatalogSession(catalogSource)
   const [searchQuery, setSearchQuery] = useState('')
-  const [searching, setSearching] = useState(false)
-  const [searchResults, setSearchResults] = useState<Article[] | null>(null)
-  const [searchError, setSearchError] = useState<string | null>(null)
-
-  const handleSearch = useCallback(async () => {
-    if (!searchTemplate || !searchQuery.trim()) return
-    const url = searchTemplate.replace('{query}', encodeURIComponent(searchQuery.trim()))
-    setSearching(true)
-    setSearchError(null)
-    try {
-      const html = await fetchAbsoluteText(url)
-      const catalog = extractCatalog(html, url)
-      if (!catalog.items.length) {
-        setSearchResults([])
-        return
-      }
-      const dummySource: NewsSource = {
-        id: 'search_temp',
-        name: 'Search',
-        label: 'Search',
-        group: 'custom',
-        kind: 'web-catalog',
-        url,
-        enabled: true,
-      }
-      const results = catalogHtmlToArticles(dummySource, html, Date.now())
-      setSearchResults(results)
-    } catch (err) {
-      setSearchError(err instanceof Error ? err.message : '搜索失败')
-    } finally {
-      setSearching(false)
-    }
-  }, [searchTemplate, searchQuery])
-
-  const clearSearch = useCallback(() => {
-    setSearchQuery('')
-    setSearchResults(null)
-    setSearchError(null)
-  }, [])
-
+  const [catalogMode, setCatalogMode] = useState<'search' | 'category' | null>(null)
   const [activeFwCat, setActiveFwCat] = useState<number | null>(null)
-  const [fwCatArticles, setFwCatArticles] = useState<Article[] | null>(null)
-  const [fwCatLoading, setFwCatLoading] = useState(false)
-  const [fwCatPage, setFwCatPage] = useState(0)
-  const [fwCatExhausted, setFwCatExhausted] = useState(false)
-
-  const selectFwCategory = useCallback(async (idx: number | null) => {
+  const profile = catalogState.page?.profile ?? (catalogSource ? catalogProfileFor(catalogSource) : undefined)
+  const searchTemplate = Boolean(profile?.search)
+  const frameworkCategories = profile?.categories
+  const searching = catalogMode === 'search' && catalogState.loading
+  const searchResults = catalogMode === 'search' ? catalogState.history.flatMap((page) => page.articles).filter((article, index, all) => all.findIndex((item) => item.id === article.id) === index) : null
+  const searchError = catalogState.error ?? null
+  const fwCatArticles = catalogMode === 'category' ? catalogState.history.flatMap((page) => page.articles).filter((article, index, all) => all.findIndex((item) => item.id === article.id) === index) : null
+  const fwCatLoading = catalogMode === 'category' && catalogState.loading
+  const fwCatExhausted = catalogState.exhausted
+  useEffect(() => {
+    setCatalogMode(null)
+    setActiveFwCat(null)
+    setSearchQuery('')
+    if (catalogSource) void catalogSession?.open({ method: 'GET', url: catalogSource.url })
+  }, [catalogSession, catalogSource])
+  const handleSearch = useCallback(() => {
+    const request = profile && catalogSearchRequest(profile, searchQuery.trim())
+    if (!request || !searchQuery.trim()) return
+    setCatalogMode('search')
+    setActiveFwCat(null)
+    void catalogSession?.open(request)
+  }, [profile, searchQuery, catalogSession])
+  const clearSearch = useCallback(() => {
+    catalogSession?.cancel()
+    setSearchQuery('')
+    setCatalogMode(null)
+    if (catalogSource) void catalogSession?.open({ method: 'GET', url: catalogSource.url })
+  }, [catalogSession, catalogSource])
+  const selectFwCategory = useCallback((idx: number | null) => {
     setActiveFwCat(idx)
-    setFwCatPage(0)
-    setFwCatExhausted(false)
-    if (idx === null || !frameworkCategories?.[idx]) {
-      setFwCatArticles(null)
-      return
-    }
-    const catUrl = frameworkCategories[idx].url
-    setFwCatLoading(true)
-    try {
-      const html = await fetchAbsoluteText(catUrl)
-      const results = catalogHtmlToArticles(
-        { id: 'fw_cat', name: '', label: '', group: 'custom', kind: 'web-catalog', url: catUrl, enabled: true },
-        html, Date.now(),
-      )
-      setFwCatArticles(results)
-    } catch {
-      setFwCatArticles([])
-    } finally {
-      setFwCatLoading(false)
-    }
-  }, [frameworkCategories])
-
-  const loadMoreFwCat = useCallback(async () => {
-    if (fwCatLoading || fwCatExhausted || activeFwCat === null || !frameworkCategories?.[activeFwCat]) return
-    const catUrl = frameworkCategories[activeFwCat].url
-    const nextPage = fwCatPage + 1
-    const pageUrl = catUrl.replace(/\.html$/i, '') + `/page/${nextPage + 1}.html`
-    setFwCatLoading(true)
-    try {
-      const html = await fetchAbsoluteText(pageUrl)
-      const results = catalogHtmlToArticles(
-        { id: 'fw_cat', name: '', label: '', group: 'custom', kind: 'web-catalog', url: pageUrl, enabled: true },
-        html, Date.now(),
-      )
-      if (!results.length) {
-        setFwCatExhausted(true)
-      } else {
-        setFwCatArticles((prev) => [...(prev ?? []), ...results])
-        setFwCatPage(nextPage)
-      }
-    } catch {
-      setFwCatExhausted(true)
-    } finally {
-      setFwCatLoading(false)
-    }
-  }, [activeFwCat, frameworkCategories, fwCatPage, fwCatLoading, fwCatExhausted])
+    setCatalogMode(idx === null ? null : 'category')
+    const url = idx === null ? catalogSource?.url : frameworkCategories?.[idx]?.url
+    if (url) void catalogSession?.open({ method: 'GET', url })
+  }, [frameworkCategories, catalogSession, catalogSource?.url])
+  const loadMoreFwCat = useCallback(() => { void catalogSession?.next() }, [catalogSession])
 
   const loadingMoreRef = useRef(loadingMore)
   loadingMoreRef.current = loadingMore
@@ -576,7 +516,7 @@ export const FeedScreen = memo(function FeedScreen({
       )}
 
       {searchError && (
-        <p className="page-x lg:px-6 xl:px-8 2xl:px-10 py-2 text-[12px] text-red-400">{searchError}</p>
+        <p className="page-x lg:px-6 xl:px-8 2xl:px-10 py-2 text-[12px] text-red-400">{searchError}<button type="button" className="ml-3 text-cinnabar" onClick={() => void catalogSession?.retry()}>重试</button></p>
       )}
 
       {frameworkCategories && frameworkCategories.length > 0 && (
@@ -636,6 +576,8 @@ export const FeedScreen = memo(function FeedScreen({
               />
             ))}
           </ul>
+          {!catalogState.exhausted && searchResults.length > 0 && <button type="button" disabled={searching} onClick={() => void catalogSession?.next()} className="my-4 rounded-xl border border-haze px-4 py-2 text-[12px] text-paper-muted">加载更多</button>}
+          {!searching && !searchError && !searchResults.length && <p className="py-6 text-center text-[13px] text-paper-muted">未找到相关内容</p>}
         </div>
       ) : fwCatArticles !== null ? (
         <div className="page-x lg:px-6 xl:px-8 2xl:px-10">

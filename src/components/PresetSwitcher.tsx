@@ -6,14 +6,15 @@ import {
   Bot,
   Check,
   ChevronDown,
+  CircleAlert,
   Cpu,
+  Film,
   FlaskConical,
   Globe,
   Layers3,
   Grid2X2,
   LayoutTemplate,
   Newspaper,
-  PanelsTopLeft,
   Plus,
   Settings,
   Settings2,
@@ -23,6 +24,12 @@ import {
 } from 'lucide-react'
 
 import { useHardwareBackLayer } from '../hooks/useHardwareBackLayer'
+import {
+  formatSiteBrandName,
+  getSiteCleanDomain,
+  getSiteFrameworkInfo,
+} from '../features/siteCatalog/uiUtils'
+import { CmsHelpDialog } from './CmsHelpDialog'
 
 export interface PresetSwitcherItem {
   id: string
@@ -53,7 +60,13 @@ export interface PresetSwitcherProps {
   onSites?: () => void
   /** 进入自定义源管理以添加受支持的 CMS 站点 */
   onAddCms?: () => void
-  cmsSites?: { id: string; name: string; description?: string }[]
+  cmsSites?: {
+    id: string
+    name: string
+    description?: string
+    framework?: string
+    url?: string
+  }[]
   onSelectCms?: (id: string) => void
   /** CMS 站点页为独立阅读空间，打开切换器时优先定位到该类型。 */
   cmsActive?: boolean
@@ -86,6 +99,7 @@ export function PresetSwitcher({
   variant = 'pill',
 }: PresetSwitcherProps) {
   const [open, setOpen] = useState(false)
+  const [helpOpen, setHelpOpen] = useState(false)
   const [presetTab, setPresetTab] = useState<'builtin' | 'custom' | 'cms'>('builtin')
   const titleId = useId()
 
@@ -158,6 +172,17 @@ export function PresetSwitcher({
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
+              {presetTab === 'cms' && (
+                <button
+                  type="button"
+                  aria-label="查看 CMS 站点说明"
+                  title="CMS 站点使用说明与支持类型"
+                  onClick={() => setHelpOpen(true)}
+                  className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-haze/90 bg-ink text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
+                >
+                  <CircleAlert size={15} strokeWidth={1.8} className="text-cinnabar" />
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => {
@@ -257,59 +282,67 @@ export function PresetSwitcher({
                 )
               ) : presetTab === 'cms' ? (
                 cmsSites.length > 0 && onSelectCms ? (
-                  <div className="space-y-3 rounded-xl border border-haze/80 bg-ink/45 p-4">
-                    <div className="flex items-center gap-3">
-                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-cinnabar/10 text-cinnabar"><Layers3 size={20} /></div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-display text-[14px] font-semibold text-paper">我的 CMS 站点 · {cmsSites.length}</p>
-                        <p className="mt-1 text-[11px] text-paper-faint">独立阅读空间，不混入资讯分类</p>
-                      </div>
-                      {onSites && cmsSites.length > 1 && (
+                  <div className="space-y-2.5">
+                    <ul className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                      {cmsSites.map((site) => (
+                        <CmsGridCard
+                          key={site.id}
+                          site={site}
+                          active={Boolean(cmsActive && activeCmsId === site.id)}
+                          onPick={() => {
+                            setOpen(false)
+                            onSelectCms(site.id)
+                          }}
+                        />
+                      ))}
+                    </ul>
+                      <div className="flex items-center gap-2 pt-0.5">
+                        {onSites && cmsSites.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpen(false)
+                              onSites()
+                            }}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-haze/90 bg-ink/30 px-3 py-2 text-[11.5px] font-medium text-paper-muted transition-colors hover:border-cinnabar/50 hover:text-paper active:scale-[0.99]"
+                          >
+                            <Layers3 size={13} strokeWidth={1.8} />
+                            全部站点
+                          </button>
+                        )}
+                        {onAddCms && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpen(false)
+                              onAddCms()
+                            }}
+                            className="flex-1 inline-flex items-center justify-center gap-1.5 rounded-xl border border-dashed border-haze/90 bg-ink/30 px-3 py-2 text-[11.5px] font-medium text-paper-muted transition-colors hover:border-cinnabar/50 hover:text-paper active:scale-[0.99]"
+                          >
+                            <Plus size={13} strokeWidth={2} />
+                            添加更多 CMS 站点
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => { setOpen(false); onSites() }}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-lg px-2 py-2 text-[11px] text-paper-muted transition-colors hover:bg-paper/5 hover:text-cinnabar"
+                          onClick={() => setHelpOpen(true)}
+                          aria-label="查看 CMS 站点说明"
+                          title="CMS 站点用途与支持类型"
+                          className="inline-flex size-8 shrink-0 items-center justify-center rounded-xl border border-haze/90 bg-ink/30 text-paper-muted transition-colors hover:border-cinnabar/50 hover:text-cinnabar active:scale-95"
                         >
-                          <PanelsTopLeft size={14} strokeWidth={1.7} />
-                          全部站点
+                          <CircleAlert size={14} strokeWidth={1.8} />
                         </button>
-                      )}
+                      </div>
                     </div>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      {cmsSites.map((site) => {
-                        const active = cmsActive && activeCmsId === site.id
-                        return (
-                          <button
-                            key={site.id}
-                            type="button"
-                            onClick={() => { setOpen(false); onSelectCms(site.id) }}
-                            aria-current={active ? 'page' : undefined}
-                            className={`flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-left transition-colors active:scale-[0.99] ${active ? 'border-cinnabar/45 bg-cinnabar/7' : 'border-haze/75 bg-ink-raised hover:border-cinnabar/50'}`}
-                          >
-                            <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-cinnabar/10 text-cinnabar">
-                              <Globe size={18} strokeWidth={1.7} />
-                            </span>
-                            <span className="min-w-0 flex-1">
-                              <span className="block truncate font-display text-[13px] font-semibold text-paper">{site.name}</span>
-                              <span className="mt-0.5 block truncate text-[10.5px] text-paper-faint">{site.description || '打开站点'}</span>
-                            </span>
-                            {active
-                              ? <Check size={15} className="shrink-0 text-cinnabar" aria-hidden />
-                              : <ChevronDown size={14} className="shrink-0 -rotate-90 text-paper-faint" aria-hidden />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {onAddCms && <button type="button" onClick={() => { setOpen(false); onAddCms() }} className="w-full rounded-xl border border-haze px-4 py-2.5 text-[12px] text-paper-muted">添加更多站点</button>}
-                  </div>
-                ) : (
-                  <div className="flex flex-col items-center rounded-xl border border-dashed border-haze/90 bg-ink/45 px-5 py-8 text-center">
-                    <div className="mb-3 flex size-12 items-center justify-center rounded-2xl bg-cinnabar/10 text-cinnabar"><Layers3 size={24} strokeWidth={1.6} /></div>
-                    <p className="font-display text-[15px] font-semibold text-paper">让熟悉的网站成为你的阅读空间</p>
-                    <p className="mt-2 max-w-64 text-[11px] leading-relaxed text-paper-faint">支持识别已适配的 CMS 站点。添加站点后，可在这里集中浏览。</p>
-                    {onAddCms && <button type="button" onClick={() => { setOpen(false); onAddCms() }} className="mt-5 inline-flex items-center gap-1.5 rounded-full bg-cinnabar px-5 py-2.5 text-[12px] font-medium text-white"><Plus size={14} />添加站点</button>}
-                  </div>
-                )
+                  ) : (
+                    <CmsPresetEmptyState
+                      onAdd={() => {
+                        setOpen(false)
+                        onAddCms?.()
+                      }}
+                      onOpenHelp={() => setHelpOpen(true)}
+                    />
+                  )
               ) : mine.length > 0 ? (
                 <ul className="space-y-2">
                   {mine.map((item) => (
@@ -367,6 +400,21 @@ export function PresetSwitcher({
       document.body,
     )
 
+  const helpModal = (
+    <CmsHelpDialog
+      open={helpOpen}
+      onClose={() => setHelpOpen(false)}
+      onAddCms={
+        onAddCms
+          ? () => {
+              setOpen(false)
+              onAddCms()
+            }
+          : undefined
+      }
+    />
+  )
+
   if (variant === 'tabbar') {
     return (
       <>
@@ -393,6 +441,7 @@ export function PresetSwitcher({
           </span>
         </button>
         {sheet}
+        {helpModal}
       </>
     )
   }
@@ -422,6 +471,7 @@ export function PresetSwitcher({
           </span>
         </button>
         {sheet}
+        {helpModal}
       </>
     )
   }
@@ -464,6 +514,7 @@ export function PresetSwitcher({
           </div>
         </button>
         {sheet}
+        {helpModal}
       </>
     )
   }
@@ -494,6 +545,7 @@ export function PresetSwitcher({
         />
       </button>
       {sheet}
+      {helpModal}
     </>
   )
 }
@@ -767,3 +819,136 @@ const PresetPickRow = memo(function PresetPickRow({
     </li>
   )
 })
+
+const CmsGridCard = memo(function CmsGridCard({
+  site,
+  active,
+  onPick,
+}: {
+  site: {
+    id: string
+    name: string
+    description?: string
+    framework?: string
+    url?: string
+  }
+  active: boolean
+  onPick: () => void
+}) {
+  const fw = getSiteFrameworkInfo(site.framework)
+  const domain = site.description || getSiteCleanDomain(site.url)
+  const brand = formatSiteBrandName({ name: site.name, url: site.url || site.description })
+
+  return (
+    <li className="min-w-0">
+      <button
+        type="button"
+        onClick={onPick}
+        aria-current={active ? 'page' : undefined}
+        aria-pressed={active}
+        className={`group relative flex min-h-[78px] w-full flex-col overflow-hidden rounded-xl border px-2.5 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cinnabar/45 ${
+          active
+            ? 'border-cinnabar/75 bg-cinnabar/12 shadow-[0_4px_12px_rgba(0,0,0,0.08)]'
+            : 'border-haze/80 bg-ink/55 hover:-translate-y-px hover:border-cinnabar/40 hover:bg-ink hover:shadow-sm active:translate-y-0'
+        }`}
+      >
+        <span className="flex w-full min-w-0 items-center gap-2">
+          <span
+            className={`flex size-7 shrink-0 items-center justify-center rounded-lg border transition-all duration-200 ${
+              active
+                ? 'border-cinnabar bg-cinnabar text-white shadow-xs'
+                : 'border-haze bg-ink-raised text-paper-muted group-hover:border-cinnabar/35 group-hover:text-cinnabar'
+            }`}
+          >
+            {fw.isVideo ? (
+              <Film size={14} strokeWidth={1.75} />
+            ) : site.framework === 'wordpress' || site.framework === 'typecho' ? (
+              <BookOpen size={14} strokeWidth={1.75} />
+            ) : site.framework === 'discuz' ? (
+              <UsersRound size={14} strokeWidth={1.75} />
+            ) : (
+              <Layers3 size={14} strokeWidth={1.75} />
+            )}
+          </span>
+
+          <span
+            className={`min-w-0 flex-1 truncate font-display text-[13.5px] font-semibold leading-none transition-colors ${
+              active ? 'text-cinnabar' : 'text-paper group-hover:text-cinnabar'
+            }`}
+          >
+            {brand}
+          </span>
+
+          <span
+            className={`shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[8.5px] font-semibold leading-none tracking-[0.06em] transition-colors ${
+              active
+                ? 'bg-cinnabar/15 text-cinnabar'
+                : 'border border-haze/80 bg-ink-raised/70 text-paper-faint group-hover:border-cinnabar/30 group-hover:text-cinnabar'
+            }`}
+          >
+            {active ? (
+              <span className="inline-flex items-center gap-0.5"><Check size={9} strokeWidth={2.4} />当前</span>
+            ) : (
+              '选用'
+            )}
+          </span>
+        </span>
+
+        <span className="mt-1.5 block line-clamp-1 pl-9 text-[10px] leading-[1.35] text-paper-faint transition-colors group-hover:text-paper-muted">
+          {fw.categoryBadge !== '目录' ? `${fw.categoryBadge} · ` : ''}{domain || '独立空间'}
+        </span>
+
+        {active && (
+          <span
+            className="pointer-events-none absolute inset-x-2.5 bottom-0 h-px bg-gradient-to-r from-transparent via-cinnabar/45 to-transparent"
+            aria-hidden
+          />
+        )}
+      </button>
+    </li>
+  )
+})
+
+function CmsPresetEmptyState({
+  onAdd,
+  onOpenHelp,
+}: {
+  onAdd: () => void
+  onOpenHelp?: () => void
+}) {
+  return (
+    <div className="flex min-h-[190px] flex-col items-center justify-center rounded-2xl border border-haze/80 bg-ink/45 px-5 py-5 text-center">
+      <div className="relative flex size-14 items-center justify-center rounded-2xl border border-haze/80 bg-ink-raised text-paper-muted shadow-xs">
+        <Layers3 size={24} strokeWidth={1.5} />
+        <span className="absolute -bottom-1.5 -right-1.5 flex size-6 items-center justify-center rounded-full border-2 border-ink-raised bg-cinnabar text-white">
+          <Plus size={13} strokeWidth={2.2} />
+        </span>
+      </div>
+      <h3 className="mt-3 font-display text-[15px] font-semibold text-paper">让熟悉的网站成为你的阅读空间</h3>
+      <p className="mt-1 max-w-[260px] text-[11px] leading-relaxed text-paper-faint">
+        支持识别已适配的 CMS 站点。添加站点后，可在这里集中浏览。
+      </p>
+      <div className="mt-3.5 flex flex-wrap items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={onAdd}
+          className="inline-flex items-center gap-1.5 rounded-full bg-cinnabar px-4 py-2 text-[11.5px] font-medium text-white shadow-xs transition-opacity hover:opacity-90 active:scale-95"
+        >
+          <Plus size={13} strokeWidth={2} />
+          添加站点
+        </button>
+        {onOpenHelp && (
+          <button
+            type="button"
+            onClick={onOpenHelp}
+            aria-label="查看 CMS 站点说明"
+            className="inline-flex items-center gap-1.5 rounded-full border border-haze/90 bg-ink px-3.5 py-2 text-[11.5px] font-medium text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar active:scale-95"
+          >
+            <CircleAlert size={13} strokeWidth={1.8} className="text-cinnabar" />
+            了解用途与支持类型
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}

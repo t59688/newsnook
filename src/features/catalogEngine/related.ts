@@ -13,10 +13,9 @@ function canonicalUrl(url: string): string {
   try {
     const parsed = new URL(url)
     parsed.hash = ''
-    parsed.pathname = parsed.pathname.replace(/\/+$/, '') || '/'
-    return parsed.href.toLowerCase()
+    return parsed.href
   } catch {
-    return url.trim().toLowerCase()
+    return url.trim()
   }
 }
 
