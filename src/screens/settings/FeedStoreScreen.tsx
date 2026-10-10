@@ -701,24 +701,28 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                     />
                   </label>
                 ))}
-                <div className="flex items-center justify-between gap-3">
-                  <p className="font-mono text-[10px] tracking-[0.1em] text-paper-faint">使用实例</p>
-                  {onUpdateRssHubInstances ? <button type="button" onClick={() => setShowInstances(true)}
-                    className="inline-flex min-h-9 items-center gap-1 rounded-full px-2 text-[11px] text-cinnabar-soft transition-colors hover:bg-cinnabar/8">
-                    管理服务 <ChevronRight size={12} />
-                  </button> : null}
+                <div className="rounded-xl bg-ink/25 px-3.5 py-3 text-[11.5px] leading-relaxed text-paper-muted">
+                  自动检测可用实例；实际成功的服务会用于保存与后续刷新。
+                  {selectedInstance ? <span className="mt-1 block truncate font-mono text-[10.5px] text-paper-faint">当前 · {selectedInstance.url}</span> : null}
                 </div>
-                <div>
-                  <FeedStorePicker title="使用 RSSHub 实例" value={selectedInstance?.id ?? ''}
-                    disabled={!instances.some((item) => item.enabled)}
-                    options={instances.filter((item) => item.enabled).map((item) => ({ id: item.id, label: item.name + ' · ' + new URL(item.url).hostname }))}
-                    onChange={(id) => {
-                      previewController.current?.abort()
-                      setPreview(null)
-                      setSelectedInstanceId(id)
-                    }}
-                  />
-                </div>
+                <details className="rounded-xl border border-haze/70 px-3.5 py-2.5">
+                  <summary className="min-h-8 cursor-pointer text-[11.5px] text-paper-muted">高级选项 · 手动指定实例</summary>
+                  <div className="space-y-3 pt-2">
+                    <FeedStorePicker title="手动选择 RSSHub 实例" value={selectedInstance?.id ?? ''}
+                      disabled={!instances.some((item) => item.enabled)}
+                      options={instances.filter((item) => item.enabled).map((item) => ({ id: item.id, label: item.name + ' · ' + new URL(item.url).hostname }))}
+                      onChange={(id) => {
+                        previewController.current?.abort()
+                        setPreview(null)
+                        setSelectedInstanceId(id)
+                      }}
+                    />
+                    {onUpdateRssHubInstances ? <button type="button" onClick={() => setShowInstances(true)}
+                      className="inline-flex min-h-9 items-center gap-1 rounded-full text-[11.5px] text-cinnabar-soft">
+                      管理服务 <ChevronRight size={12} />
+                    </button> : null}
+                  </div>
+                </details>
                 {routeResolution?.missing.length ? (
                   <p role="status" className="text-[11.5px] text-cinnabar-soft">还需填写：{routeResolution.missing.join('、')}</p>
                 ) : null}
