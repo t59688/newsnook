@@ -2,7 +2,6 @@ import { memo, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ArrowLeft,
-  Check,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
@@ -26,14 +25,13 @@ import { catalogProfileFor } from '../features/siteCatalog/profile'
 import { catalogSearchRequest } from '../features/siteCatalog/requests'
 import {
   formatSiteBrandName,
-  getSiteAvatarMeta,
-  getSiteCleanDomain,
   getSiteFrameworkInfo,
   isLikelyVideoArticle,
   parseArticlePosterMeta,
 } from '../features/siteCatalog/uiUtils'
 import { InkImage } from '../components/InkImage'
 import { CmsHelpDialog } from '../components/CmsHelpDialog'
+import { CmsGridCard } from '../components/CmsGridCard'
 import { useHardwareBackLayer } from '../hooks/useHardwareBackLayer'
 
 export interface SiteScreenProps {
@@ -722,7 +720,7 @@ export const SiteScreen = memo(function SiteScreen({
               role="dialog"
               aria-modal="true"
               aria-labelledby={sheetTitleId}
-              className="relative z-10 flex max-h-[min(85vh,640px)] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl md:rounded-2xl border border-haze/90 bg-ink-raised shadow-2xl"
+              className="preset-switcher-sheet relative z-10 flex max-h-[min(88vh,680px)] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl md:rounded-2xl border border-haze/90 bg-ink-raised shadow-lg"
               style={{
                 paddingBottom: 'calc(var(--sab, 0px) + 14px)',
               }}
@@ -735,15 +733,15 @@ export const SiteScreen = memo(function SiteScreen({
               {/* 头部标题与管理入口 */}
               <div className="page-x flex shrink-0 items-center justify-between gap-3 border-b border-haze/50 pt-3 pb-3">
                 <div className="flex min-w-0 items-center gap-2.5">
-                  <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-cinnabar/15 text-cinnabar">
-                    <Layers3 size={18} />
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-cinnabar/15 text-cinnabar">
+                    <Layers3 size={16} />
                   </div>
                   <div className="min-w-0">
-                    <h2 id={sheetTitleId} className="font-display text-[17px] font-semibold text-paper">
+                    <h2 id={sheetTitleId} className="font-display text-[18px] font-semibold leading-none text-paper">
                       切换 CMS 站点
                     </h2>
-                    <p className="mt-0.5 text-[11px] text-paper-faint">
-                      已添加 {sites.length} 个独立空间 · 点击快速切换
+                    <p className="mt-1 truncate text-[11px] text-paper-faint">
+                      当前：<span className="font-medium text-cinnabar">{brandName}</span> · 共 {sites.length} 个站点
                     </p>
                   </div>
                 </div>
@@ -754,7 +752,7 @@ export const SiteScreen = memo(function SiteScreen({
                     aria-label="查看 CMS 站点说明"
                     title="CMS 站点使用说明与支持类型"
                     onClick={() => setHelpOpen(true)}
-                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-haze bg-ink text-paper-muted transition-colors hover:border-cinnabar/50 hover:text-cinnabar"
+                    className="inline-flex size-8 shrink-0 items-center justify-center rounded-full border border-haze/90 bg-ink text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
                   >
                     <CircleAlert size={14} strokeWidth={1.8} className="text-cinnabar" />
                   </button>
@@ -765,83 +763,50 @@ export const SiteScreen = memo(function SiteScreen({
                         setSiteSheetOpen(false)
                         onManageSites()
                       }}
-                      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-haze bg-ink px-3 py-1.5 text-[11px] font-medium text-paper-muted hover:border-cinnabar/50 hover:text-cinnabar"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-haze/90 bg-ink px-3 py-1.5 font-mono text-[11px] font-medium text-paper-muted transition-colors hover:border-cinnabar/60 hover:text-cinnabar"
                     >
-                      <Plus size={12} />
+                      <Plus size={13} strokeWidth={1.8} />
                       管理站点
                     </button>
                   )}
                 </div>
               </div>
 
-              {/* 站点卡片列表 */}
-              <div className="scroll-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 space-y-2">
-                {sites.map(({ source: site, hint }) => {
-                  const active = site.id === source.id
-                  const brand = formatSiteBrandName(site)
-                  const domain = getSiteCleanDomain(site.url)
-                  const av = getSiteAvatarMeta(site.url || site.id)
-                  const siteFw = getSiteFrameworkInfo(hint?.framework ?? site.frameworkHint?.framework ?? site.catalogProfile?.engine)
-
-                  return (
-                    <button
-                      key={site.id}
-                      type="button"
-                      onClick={() => handleSelectSite(site.id)}
-                      className={`group flex w-full items-center gap-3.5 rounded-2xl border p-3.5 text-left transition-all active:scale-[0.985] ${
-                        active
-                          ? 'border-cinnabar/60 bg-cinnabar/8 ring-1 ring-cinnabar/20 shadow-xs'
-                          : 'border-haze/70 bg-ink hover:border-cinnabar/40 hover:bg-paper/4'
-                      }`}
-                    >
-                      {/* 渐变品牌头像 */}
-                      <span
-                        className={`flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${av.gradientClass} text-[16px] font-bold text-white shadow-xs`}
-                      >
-                        {av.letter}
-                      </span>
-
-                      {/* 站点信息 */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5">
-                          <span className="truncate font-display text-[15px] font-semibold text-paper group-hover:text-cinnabar transition-colors">
-                            {brand}
-                          </span>
-                          <span className={`shrink-0 rounded px-1.5 py-0.5 text-[9.5px] font-medium border ${siteFw.badgeClass}`}>
-                            {siteFw.categoryBadge}
-                          </span>
-                        </div>
-                        <p className="mt-1 truncate font-mono text-[11px] text-paper-faint">
-                          {domain || site.url}
-                        </p>
-                      </div>
-
-                      {/* 激活标记与箭头 */}
-                      {active ? (
-                        <div className="flex items-center gap-1 text-[11px] font-medium text-cinnabar">
-                          <Check size={16} strokeWidth={2.5} />
-                          <span className="hidden sm:inline">浏览中</span>
-                        </div>
-                      ) : (
-                        <ChevronRight size={16} className="text-paper-faint transition-transform group-hover:translate-x-0.5" />
-                      )}
-                    </button>
-                  )
-                })}
+              {/* 站点卡片 2 列网格 */}
+              <div className="scroll-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain px-3.5 py-2.5 sm:px-5 sm:py-3">
+                <ul className="grid grid-cols-2 gap-1.5 sm:gap-2">
+                  {sites.map(({ source: site, hint }) => {
+                    const active = site.id === source.id
+                    const framework = hint?.framework ?? site.frameworkHint?.framework ?? site.catalogProfile?.engine
+                    return (
+                      <CmsGridCard
+                        key={site.id}
+                        site={{
+                          id: site.id,
+                          name: site.name,
+                          url: site.url,
+                          framework,
+                        }}
+                        active={active}
+                        onPick={() => handleSelectSite(site.id)}
+                      />
+                    )
+                  })}
+                </ul>
               </div>
 
               {/* 底部新增引导 */}
               {onManageSites && (
-                <div className="shrink-0 border-t border-haze/40 p-3.5">
+                <div className="shrink-0 border-t border-haze/40 p-3 sm:px-5">
                   <button
                     type="button"
                     onClick={() => {
                       setSiteSheetOpen(false)
                       onManageSites()
                     }}
-                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-haze/90 bg-ink/40 py-2.5 text-[12px] font-medium text-paper-muted hover:border-cinnabar/50 hover:text-paper"
+                    className="flex w-full items-center justify-center gap-1.5 rounded-xl border border-dashed border-haze/90 bg-ink/30 px-3 py-2 text-[11.5px] font-medium text-paper-muted transition-colors hover:border-cinnabar/50 hover:text-paper active:scale-[0.99]"
                   >
-                    <Plus size={14} />
+                    <Plus size={13} strokeWidth={2} />
                     添加更多 CMS 站点
                   </button>
                 </div>
