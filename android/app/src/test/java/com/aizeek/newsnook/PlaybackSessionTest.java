@@ -67,11 +67,11 @@ public class PlaybackSessionTest {
         assertEquals(204, response.getStatusCode());
         assertEquals("https://localhost", response.getResponseHeaders().get("Access-Control-Allow-Origin"));
         assertFalse(response.getResponseHeaders().containsKey("Cookie"));
-        assertNull(MediaPlaybackWebViewClient.playbackPreflight("https://unknown.example/play.mpd", request));
+        assertEquals(403, MediaPlaybackWebViewClient.playbackPreflight("https://unknown.example/play.mpd", request).getStatusCode());
         request.put("Access-Control-Request-Headers", "authorization");
         assertNull(MediaPlaybackWebViewClient.playbackPreflight(url, request));
         MediaSnifferPlugin.releasePlaybackSession("first");
         request.put("Access-Control-Request-Headers", "x-newsnook-playback-session");
-        assertNull(MediaPlaybackWebViewClient.playbackPreflight(url, request));
+        assertEquals(403, MediaPlaybackWebViewClient.playbackPreflight(url, request).getStatusCode());
     }
 }

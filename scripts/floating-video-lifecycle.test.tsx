@@ -87,6 +87,11 @@ try {
   assert.equal(loads, count, 'presentation must not reload media')
   assert.equal(hardwareBackLayerCount(), 0, 'a floating window must not consume page back')
   const floating = document.querySelector<HTMLElement>('[data-floating-video-window]')!
+  assert.ok(floating.querySelector('.floating-video-tip'), 'first floating playback offers a guide')
+  await click('恢复播放页')
+  assert.equal(floating.querySelector('.floating-video-tip'), null, 'hiding the window must dismiss its guide')
+  await click('悬浮播放')
+  assert.equal(floating.querySelector('.floating-video-tip'), null, 'returning to floating mode must not pin a cancelled guide')
   const compactSurface = floating.querySelector<HTMLElement>('[data-video-gesture-surface]')!
   const compactChrome = floating.querySelector<HTMLElement>('.ink-video-bottom-chrome')!
   await act(async () => {

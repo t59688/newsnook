@@ -24,21 +24,27 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
 
     @Override
     public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
-        WebResourceResponse local = super.shouldInterceptRequest(view, request);
-        if (local != null) return local;
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) return playbackPreflight(request.getUrl().toString(), request.getRequestHeaders());
-        if (!"GET".equalsIgnoreCase(request.getMethod())) return null;
-
         String url = request.getUrl().toString();
-        String sessionId = null;
-        for (Map.Entry<String, String> header : request.getRequestHeaders().entrySet()) {
-            if ("x-newsnook-playback-session".equalsIgnoreCase(header.getKey())) sessionId = header.getValue();
+        String sessionId = headerValue(request.getRequestHeaders(), "x-newsnook-playback-session");
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            WebResourceResponse preflight = playbackPreflight(url, request.getRequestHeaders());
+            if (preflight != null) return preflight;
+        }
+        // Handle the internal marker before Capacitor's optional HTTP proxy.
+        // An invalid/released session must never fall back to a naked CDN request.
+        if (sessionId == null) {
+            WebResourceResponse local = super.shouldInterceptRequest(view, request);
+            if (local != null) return local;
+        }
+        if (!"GET".equalsIgnoreCase(request.getMethod())) {
+            return sessionId == null ? null : playbackError(405, "Method Not Allowed", request.getRequestHeaders());
         }
         MediaSnifferPlugin.PlaybackContext context = MediaSnifferPlugin.findPlaybackContext(url, sessionId);
-        if (context == null) return null;
+        if (context == null) return sessionId == null ? null : playbackError(403, "Playback Session Missing", request.getRequestHeaders());
 
         Request.Builder builder = new Request.Builder().url(url);
         for (Map.Entry<String, String> header : context.headers.entrySet()) {
+            if ("x-newsnook-playback-session".equalsIgnoreCase(header.getKey())) continue;
             builder.header(header.getKey(), header.getValue());
         }
         for (Map.Entry<String, String> header : request.getRequestHeaders().entrySet()) {
@@ -53,7 +59,7 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
             ResponseBody body = response.body();
             if (body == null) {
                 response.close();
-                return null;
+                return sessionId == null ? null : playbackError(502, "Empty Upstream Response", request.getRequestHeaders());
             }
             MediaType contentType = body.contentType();
             String mimeType = contentType == null
@@ -66,8 +72,10 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
                 : contentType.charset().name();
             Map<String, String> headers = new HashMap<>();
             for (String name : response.headers().names()) {
+                if ("x-newsnook-playback-session".equalsIgnoreCase(name)) continue;
                 headers.put(name, response.header(name, ""));
             }
+            if (sessionId != null) addPlaybackCors(headers, request.getRequestHeaders());
             String contentTypeHeader = findHeaderName(headers, "content-type");
             if (inferredMime != null && isGenericBinaryMime(contentTypeHeader == null ? null : headers.get(contentTypeHeader))) {
                 headers.put(contentTypeHeader == null ? "Content-Type" : contentTypeHeader, inferredMime);
@@ -84,7 +92,7 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
             );
         } catch (IOException | IllegalArgumentException error) {
             if (response != null) response.close();
-            return null;
+            return sessionId == null ? null : playbackError(502, "Playback Request Failed", request.getRequestHeaders());
         }
     }
 
@@ -93,15 +101,19 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
         String origin = headerValue(requestHeaders, "origin");
         String method = headerValue(requestHeaders, "access-control-request-method");
         String requested = headerValue(requestHeaders, "access-control-request-headers");
-        if (origin == null || !"GET".equalsIgnoreCase(method) || requested == null
-            || !MediaSnifferPlugin.hasSessionPlaybackOrigin(url)) return null;
+        if (requested == null) return null;
         boolean marker = false;
+        boolean allowedHeaders = true;
         for (String header : requested.split(",")) {
             String name = header.trim();
             if ("x-newsnook-playback-session".equalsIgnoreCase(name)) marker = true;
-            else if (!"range".equalsIgnoreCase(name) && !"accept".equalsIgnoreCase(name)) return null;
+            else if (!"range".equalsIgnoreCase(name) && !"accept".equalsIgnoreCase(name)) allowedHeaders = false;
         }
         if (!marker) return null;
+        if (!allowedHeaders || origin == null || !"GET".equalsIgnoreCase(method)
+            || !MediaSnifferPlugin.hasSessionPlaybackOrigin(url)) {
+            return playbackError(403, "Playback Preflight Denied", requestHeaders);
+        }
         Map<String, String> headers = new HashMap<>();
         headers.put("Access-Control-Allow-Origin", origin);
         headers.put("Access-Control-Allow-Methods", "GET");
@@ -114,6 +126,29 @@ final class MediaPlaybackWebViewClient extends BridgeWebViewClient {
     private static String headerValue(Map<String, String> headers, String name) {
         for (Map.Entry<String, String> header : headers.entrySet()) if (name.equalsIgnoreCase(header.getKey())) return header.getValue();
         return null;
+    }
+
+    private static WebResourceResponse playbackError(int code, String reason, Map<String, String> requestHeaders) {
+        Map<String, String> headers = new HashMap<>();
+        addPlaybackCors(headers, requestHeaders);
+        return new WebResourceResponse("text/plain", "UTF-8", code, reason, headers, new ByteArrayInputStream(new byte[0]));
+    }
+
+    private static void addPlaybackCors(Map<String, String> headers, Map<String, String> requestHeaders) {
+        String origin = headerValue(requestHeaders, "origin");
+        replaceHeader(headers, "Access-Control-Allow-Origin", origin == null ? "*" : origin);
+        if (origin != null) replaceHeader(headers, "Access-Control-Allow-Credentials", "true");
+        String exposed = headerValue(headers, "access-control-expose-headers");
+        replaceHeader(headers, "Access-Control-Expose-Headers", "Content-Length, Content-Range, Accept-Ranges, Content-Type"
+            + (exposed == null || exposed.isEmpty() ? "" : ", " + exposed));
+        String vary = headerValue(headers, "vary");
+        replaceHeader(headers, "Vary", vary == null || vary.isEmpty() ? "Origin" : vary + ", Origin");
+    }
+
+    private static void replaceHeader(Map<String, String> headers, String name, String value) {
+        String existing = findHeaderName(headers, name);
+        if (existing != null) headers.remove(existing);
+        headers.put(name, value);
     }
 
     private static boolean isGenericBinaryMime(String value) {

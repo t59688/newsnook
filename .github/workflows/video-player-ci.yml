@@ -1,0 +1,47 @@
+name: Video Player CI
+on:
+  pull_request:
+    paths:
+      - 'src/components/InkVideoPlayer.tsx'
+      - 'src/components/inkVideoPlayer/**'
+      - 'src/features/floatingVideo/**'
+      - 'src/features/mediaSniffer/**'
+      - 'src/lib/mediaFetch.ts'
+      - 'android/app/src/**'
+      - 'android/app/build.gradle'
+      - 'functions/api/**'
+      - 'vite.config.ts'
+      - 'scripts/*video*'
+      - 'scripts/media-range.test.ts'
+      - 'scripts/android-*.mjs'
+      - 'package*.json'
+      - '.github/workflows/video-player-ci.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 cmake;3.22.1'
+      - run: npm ci
+      - run: npm run test:video-player
+      - run: node scripts/android-apk-pages.test.mjs
+      - run: npm run lint
+      - run: npm run build
+      - name: Verify Android playback and lifecycle
+        working-directory: android
+        run: bash gradlew :app:testCloudDebugUnitTest :app:compileLocalDebugJavaWithJavac --max-workers=2

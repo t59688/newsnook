@@ -46,6 +46,7 @@ interface NativeMediaSnifferPlugin {
     }
   }): Promise<void>
   releasePlayback(options: { sessionId: string }): Promise<void>
+  renewPlayback(options: { sessionId: string }): Promise<void>
   getStreamProxyPort(): Promise<{ port: number }>
 }
 
@@ -130,6 +131,12 @@ export async function prepareNativeMediaPlayback(options: {
 export async function releaseNativeMediaPlayback(sessionId: string): Promise<void> {
   if (!Capacitor.isNativePlatform()) return
   await NativeMediaSniffer.releasePlayback({ sessionId }).catch(() => undefined)
+}
+
+/** Renew an existing decoder lease without re-reading the sniffer's temporary cache. */
+export async function renewNativeMediaPlayback(sessionId: string): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return
+  await NativeMediaSniffer.renewPlayback({ sessionId })
 }
 
 /** Native surfaces sit above the main WebView, independently of DOM z-index. */

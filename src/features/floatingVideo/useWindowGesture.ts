@@ -70,9 +70,13 @@ export function useWindowGesture(rootRef: RefObject<HTMLDivElement | null>, slot
     }
     if (seen) return
     setTip(true)
+  }, [apply, cancel, hidden, slotRef])
+  useEffect(() => {
+    if (hidden) { setTip(false); return }
+    if (!tip) return
     const timer = window.setTimeout(() => setTip(false), 6000)
     return () => window.clearTimeout(timer)
-  }, [apply, cancel, hidden, slotRef])
+  }, [hidden, tip])
   useEffect(() => {
     const sync = () => {
       boundsRef.current = readWindowBounds()

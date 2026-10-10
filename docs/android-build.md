@@ -68,6 +68,8 @@ npm run android:aab
 
 两个命令都会自动完成 Web 生产构建、Capacitor 同步、Gradle Release 构建、R8 压缩、资源裁剪和签名校验。
 
+APK 构建还会检查 ZIP 中原生库的 16KB 对齐，以及所有 64 位 ELF 的 LOAD / RELRO 对齐；不兼容的 JNI 或预编译库会阻止交付。回归检查：`node scripts/android-apk-pages.test.mjs`。
+
 | 变体 | 本地翻译 | 设置中的离线入口 | 用途 |
 |---|---|---|---|
 | `cloud` | 不编译 ML Kit / Bergamot 原生库 | 隐藏 | 默认轻量版，仅使用 DeepLX、Google、Azure、DeepL 等云服务 |

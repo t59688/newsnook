@@ -25,7 +25,7 @@ function corsHeaders(): Headers {
   const headers = new Headers()
   headers.set('Access-Control-Allow-Origin', '*')
   headers.set('Access-Control-Allow-Methods', 'GET, POST, HEAD, OPTIONS')
-  headers.set('Access-Control-Allow-Headers', 'Content-Type, User-Agent, Authorization, Accept, Accept-Language')
+  headers.set('Access-Control-Allow-Headers', 'Content-Type, User-Agent, Authorization, Accept, Accept-Language, Range')
   headers.set('Access-Control-Max-Age', '86400')
   headers.set('Access-Control-Expose-Headers', 'X-NewsNook-Upstream-Url')
   return headers
@@ -222,13 +222,22 @@ export const onRequest: PagesFunction = async (context) => {
             : `${targetUrl.origin}/`
       }
 
+      const range = isMedia ? request.headers.get('Range') : null
+      if (range) headers.Range = range
       const upstream = await fetch(targetUrl.href, { headers, redirect: 'follow' })
       const respHeaders = corsHeaders()
       respHeaders.set(
         'Content-Type',
         upstream.headers.get('content-type') || (isMedia ? 'application/octet-stream' : 'image/jpeg'),
       )
-      respHeaders.set('Cache-Control', 'public, max-age=3600')
+      respHeaders.set('Cache-Control', range || upstream.status === 206 ? 'no-store' : 'public, max-age=3600')
+      if (isMedia) {
+        for (const name of ['Content-Range', 'Accept-Ranges']) {
+          const value = upstream.headers.get(name)
+          if (value) respHeaders.set(name, value)
+        }
+        respHeaders.set('Access-Control-Expose-Headers', 'X-NewsNook-Upstream-Url, Content-Range, Accept-Ranges')
+      }
 
       return new Response(upstream.body, {
         status: upstream.status,

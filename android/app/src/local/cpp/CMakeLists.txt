@@ -28,6 +28,11 @@ if (ANDROID)
 endif()
 
 add_library(bergamot_jni SHARED bergamot_jni.cpp)
+if (ANDROID)
+  target_link_options(bergamot_jni PRIVATE
+    "-Wl,-z,max-page-size=16384"
+    "-Wl,-z,common-page-size=16384")
+endif()
 
 if (HAS_BERGAMOT)
   message(STATUS "Bergamot third_party found — linking real engine")

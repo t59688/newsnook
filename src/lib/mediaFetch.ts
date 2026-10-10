@@ -112,24 +112,42 @@ export async function fetchMediaBytes(
     if (result.status < 200 || result.status >= 300) {
       throw new Error(`HTTP ${result.status}`)
     }
-    return { data: result.data, contentType: result.contentType }
+    const contentRange = Object.entries(result.responseHeaders).find(([name]) => name.toLowerCase() === 'content-range')?.[1]
+    return { data: selectRequestedRange(result.data, result.status, context?.range, contentRange), contentType: result.contentType }
   }
 
   if (transport.kind === 'web-wrap') {
-    const response = await fetch(transport.requestUrl, { signal })
+    const response = await fetch(transport.requestUrl, { signal, headers: context?.range ? { Range: context.range } : undefined })
     if (!response.ok) throw new Error(`HTTP ${response.status}`)
     return {
-      data: await response.arrayBuffer(),
+      data: selectRequestedRange(await response.arrayBuffer(), response.status, context?.range, response.headers.get('content-range')),
       contentType: response.headers.get('content-type') ?? undefined,
     }
   }
 
-  const response = await fetch(browserMediaProxyUrl(url), { signal })
+  const response = await fetch(browserMediaProxyUrl(url), { signal, headers: context?.range ? { Range: context.range } : undefined })
   if (!response.ok) throw new Error(`HTTP ${response.status}`)
   return {
-    data: await response.arrayBuffer(),
+    data: selectRequestedRange(await response.arrayBuffer(), response.status, context?.range, response.headers.get('content-range')),
     contentType: response.headers.get('content-type') ?? undefined,
   }
+}
+
+function selectRequestedRange(data: ArrayBuffer, status: number, range?: string, contentRange?: string | null): ArrayBuffer {
+  const requested = /^bytes=(\d+)-(\d+)$/.exec(range ?? '')
+  if (!requested) return data
+  const start = Number(requested[1])
+  const end = Number(requested[2]) + 1
+  if (status === 200) {
+    if (start >= data.byteLength) throw new Error('Incomplete media byte range')
+    return data.slice(start, end)
+  }
+  const returned = /^bytes (\d+)-(\d+)\/(\d+|\*)$/i.exec(contentRange ?? '')
+  const expectedEnd = returned && returned[3] !== '*' ? Math.min(end, Number(returned[3])) : end
+  if (status !== 206 || !returned || Number(returned[1]) !== start || Number(returned[2]) + 1 !== expectedEnd || data.byteLength !== expectedEnd - start) {
+    throw new Error('Unexpected media byte range')
+  }
+  return data
 }
 
 /** hls.js 自定义 loader：绕开网易 CDN 对 localhost Origin 的 403 */
@@ -161,9 +179,9 @@ export function createHotlinkHlsLoader(requestContext?: MediaFetchContext): HlsC
       config: LoaderConfiguration,
       callbacks: LoaderCallbacks<LoaderContext>,
     ) {
+      this.abort()
       this.context = context
       this.stats = emptyStats()
-      this.abortCtrl?.abort()
       const controller = new AbortController()
       this.abortCtrl = controller
       const started = performance.now()
@@ -176,7 +194,10 @@ export function createHotlinkHlsLoader(requestContext?: MediaFetchContext): HlsC
         callbacks.onTimeout(this.stats, context, null)
       }, timeoutMs)
 
-      void fetchMediaBytes(context.url, controller.signal, requestContext)
+      const range = Number.isSafeInteger(context.rangeStart) && Number.isSafeInteger(context.rangeEnd)
+        && context.rangeStart! >= 0 && context.rangeEnd! > context.rangeStart!
+        ? `bytes=${context.rangeStart}-${context.rangeEnd! - 1}` : requestContext?.range
+      void fetchMediaBytes(context.url, controller.signal, { ...requestContext, range })
         .then(({ data }) => {
           if (controller.signal.aborted) return
           if (this.timeoutId != null) {

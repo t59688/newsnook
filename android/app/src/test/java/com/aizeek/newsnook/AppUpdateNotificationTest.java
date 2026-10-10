@@ -16,6 +16,8 @@ import com.getcapacitor.JSObject;
 import com.getcapacitor.PermissionState;
 import com.getcapacitor.PluginCall;
 import java.lang.reflect.Method;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -126,12 +128,15 @@ public class AppUpdateNotificationTest {
     }
 
     private int visibility(DownloadCall call) {
+        call.awaitCompletion();
         DownloadManager downloadManager = context.getSystemService(DownloadManager.class);
         return Shadows.shadowOf(Shadows.shadowOf(downloadManager).getRequest(call.downloadId)).getNotificationVisibility();
     }
 
     private static class DownloadCall extends PluginCall {
         long downloadId;
+        private final CountDownLatch completed = new CountDownLatch(1);
+        private String rejection;
 
         DownloadCall() {
             super(null, "AppUpdate", "test", "startDownload", options());
@@ -147,6 +152,23 @@ public class AppUpdateNotificationTest {
         @Override
         public void resolve(JSObject result) {
             downloadId = result.optLong("downloadId");
+            completed.countDown();
+        }
+
+        @Override
+        public void reject(String message) {
+            rejection = message;
+            completed.countDown();
+        }
+
+        void awaitCompletion() {
+            try {
+                org.junit.Assert.assertTrue("Download callback timed out", completed.await(5, TimeUnit.SECONDS));
+            } catch (InterruptedException error) {
+                Thread.currentThread().interrupt();
+                throw new AssertionError(error);
+            }
+            assertNull("Download was rejected", rejection);
         }
     }
 
