@@ -16,6 +16,8 @@ export type ProxiedHttpRequest = {
   readTimeout?: number
   /** 默认 false：由 JS 侧跟随重定向，与现有 CapacitorHttp 路径一致 */
   followRedirects?: boolean
+  /** Opt-in parity with CapacitorHttp for ordinary CMS pages; isolated account jars stay separate. */
+  webViewCookies?: boolean
 }
 
 export type ProxiedHttpResponse = {

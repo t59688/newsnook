@@ -63,7 +63,7 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     selector: tourSelector('me-reading'),
     title: '稍后读与足迹',
     description:
-      '阅读器里收藏的「稍后读」会自动缓存正文，离线也能读；最近阅读与不联网的本地搜索也在这里。',
+      '阅读页中收藏的「稍后读」会自动缓存正文，离线也能读；最近阅读与不联网的本地搜索也在这里。',
     side: 'bottom',
   },
   {
@@ -72,7 +72,7 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     selector: tourSelector('me-custom-sources'),
     title: '自定义订阅',
     description:
-      '内置源之外，粘贴地址即可添加 RSS / Atom 订阅，部分站点还能直接解析网页目录；OPML 支持批量导入导出，方便从其他阅读器迁移。',
+      '内置源之外，粘贴地址即可添加 RSS / Atom 订阅，部分站点还能直接解析网页目录；OPML 支持批量导入导出，方便从其他阅读应用迁移。',
     side: 'bottom',
   },
   {

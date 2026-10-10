@@ -60,11 +60,12 @@ let renewals = 0
 let releases = 0
 let renewalGate: Promise<void> | undefined
 let prepareGate: Promise<void> | undefined
+let preparedOrigins: string[] = []
 Capacitor.isNativePlatform = () => nativeMode
 Capacitor.getPlatform = () => nativeMode ? 'android' : 'web'
 registerPlugin('MediaSniffer', { web: () => nativeMock, android: () => nativeMock })
 const nativeMock = {
-  async preparePlayback() { prepares++; await prepareGate },
+  async preparePlayback(options: { origins?: string[] }) { prepares++; preparedOrigins = options.origins ?? []; await prepareGate },
   async renewPlayback() { renewals++; await renewalGate },
   async releasePlayback() { releases++ },
 }
@@ -77,6 +78,109 @@ async function fatal(type?: string) { await act(async () => engine().fatal(type)
 async function tick(ms: number) { await act(async () => mock.timers.tick(ms)) }
 type Render = (element: React.ReactNode) => Promise<void>
 const cases: Array<[string, (render: Render) => Promise<void>]> = [
+  ['brief progress during waiting does not abandon subsequent stall checks', async render => {
+    await render(<InkVideoPlayer src={src} />)
+    const v = video()
+    await act(async () => {
+      Object.assign(v, { paused: false, readyState: 2, buffered: { length: 1, start: () => 0, end: () => 30 } })
+      v.dispatchEvent(new window.Event('waiting'))
+      v.currentTime = 1
+    })
+    await tick(10000)
+    assert.equal(engine().mediaRecoveries, 0)
+    await tick(10000); await tick(500)
+    assert.equal(engine().mediaRecoveries, 1)
+  }],
+  ['returning to the foreground rearms buffered stall recovery', async render => {
+    await render(<InkVideoPlayer src={src} />)
+    const v = video()
+    try {
+      await act(async () => {
+        Object.assign(v, { paused: false, readyState: 2, buffered: { length: 1, start: () => 0, end: () => 30 } })
+        v.dispatchEvent(new window.Event('waiting'))
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' })
+        document.dispatchEvent(new window.Event('visibilitychange'))
+      })
+      await tick(15000)
+      assert.equal(engine().mediaRecoveries, 0)
+      await act(async () => {
+        Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+        document.dispatchEvent(new window.Event('visibilitychange'))
+      })
+      await tick(10000); await tick(500)
+      assert.equal(engine().mediaRecoveries, 1)
+    } finally {
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' })
+    }
+  }],
+  ['buffered decoder stall recovers but an empty network buffer does not', async render => {
+    await render(<InkVideoPlayer src={src} />)
+    const v = video()
+    await act(async () => {
+      Object.assign(v, { paused: false, readyState: 2, buffered: { length: 1, start: () => 0, end: () => 30 } })
+      v.dispatchEvent(new window.Event('waiting'))
+    })
+    await tick(10000); await tick(500)
+    assert.equal(engine().mediaRecoveries, 1)
+    await act(async () => {
+      Object.assign(v, { buffered: { length: 0 } })
+      v.dispatchEvent(new window.Event('waiting'))
+    })
+    await tick(10000); await tick(1000)
+    assert.equal(engine().mediaRecoveries, 1, 'network buffering must not reset the decoder')
+  }],
+  ['readyState 4 playback stall is recovered even without a waiting event', async render => {
+    await render(<InkVideoPlayer src={src} />)
+    const v = video()
+    await act(async () => {
+      Object.assign(v, { paused: false, readyState: 4, buffered: { length: 1, start: () => 0, end: () => 40 } })
+      v.dispatchEvent(new window.Event('playing'))
+    })
+    await tick(10000); await tick(500)
+    assert.equal(engine().mediaRecoveries, 1)
+  }],
+  ['advancing playback does not trigger a false decoder recovery', async render => {
+    await render(<InkVideoPlayer src={src} />)
+    const v = video()
+    await act(async () => {
+      Object.assign(v, { paused: false, readyState: 4, buffered: { length: 1, start: () => 0, end: () => 40 } })
+      v.dispatchEvent(new window.Event('playing'))
+    })
+    for (let second = 1; second <= 3; second++) {
+      await act(async () => { v.currentTime = second * 5; v.dispatchEvent(new window.Event('timeupdate')) })
+      await tick(10000)
+    }
+    assert.equal(engine().mediaRecoveries, 0)
+  }],
+  ['paused playback is never treated as a decoder stall', async render => {
+    await render(<InkVideoPlayer src={src} />)
+    const v = video()
+    await act(async () => {
+      Object.assign(v, { paused: false, readyState: 4, buffered: { length: 1, start: () => 0, end: () => 40 } })
+      v.dispatchEvent(new window.Event('playing'))
+      v.pause()
+    })
+    await tick(12000)
+    assert.equal(engine().mediaRecoveries, 0)
+  }],
+  ['playlist CDN requests await native session registration without reloading media', async render => {
+    nativeMode = true
+    await render(<InkVideoPlayer src={src} />)
+    const previous = engine()
+    const setup = previous.config.xhrSetup as (xhr: XMLHttpRequest, url: string) => Promise<void>
+    const sequence: string[] = []
+    const xhr = {
+      open(_method: string, _url: string, _async: boolean) { sequence.push('open') },
+      setRequestHeader() { sequence.push('header') },
+    } as unknown as XMLHttpRequest
+    await act(async () => setup(xhr, 'https://segments.example/part-1.ts'))
+    assert.deepEqual(sequence.slice(0, 2), ['open', 'header'], 'XHR must be opened before custom headers are set')
+    assert.ok(preparedOrigins.includes('https://segments.example'), 'manifest-only observations must not leave cross-origin fragments unauthorized')
+    const count = prepares
+    await act(async () => setup(xhr, 'https://segments.example/part-2.ts'))
+    assert.equal(prepares, count, 'one CDN registration is shared by subsequent fragments')
+    assert.equal(engine(), previous)
+  }],
   ['duplicate fatal errors during the last retry stay single-flight', async render => {
     await render(<InkVideoPlayer src={src} />)
     await fatal(); await tick(500)
@@ -194,7 +298,10 @@ const cases: Array<[string, (render: Render) => Promise<void>]> = [
     assert.equal(config.loader, undefined, 'Android authentication must flow through native WebView XHR interception')
     const headers = new Map<string, string>()
     assert.equal(typeof config.xhrSetup, 'function')
-    ;(config.xhrSetup as (xhr: XMLHttpRequest) => void)({ setRequestHeader: (name, value) => headers.set(name, value) } as XMLHttpRequest)
+    await act(async () => (config.xhrSetup as (xhr: XMLHttpRequest, url: string) => Promise<void>)({
+      open(_method, _url, _async) { /* opened before headers */ },
+      setRequestHeader: (name, value) => headers.set(name, value),
+    } as XMLHttpRequest, src))
     assert.ok(headers.get('X-NewsNook-Playback-Session')?.startsWith('play-'))
     assert.equal(headers.has('Cookie'), false)
     await render(<span>Closed</span>)

@@ -305,7 +305,6 @@ export function OriginPlayerSurface({
               extraUrls={activeCandidate.relatedUrls}
               resources={candidate?.resources ?? activeCandidate.resources}
               onRefreshSource={backToOrigin}
-              onPlaybackError={backToOrigin}
               fullscreenHandleRef={playerFullscreenRef}
               suppressResourceFab={suppressResourceFab}
             />
@@ -344,13 +343,13 @@ export function OriginPlayerSurface({
                       onClick={() => void openCustom()}
                       className="shrink-0 rounded-lg bg-cinnabar px-3 py-1.5 font-mono text-[11px] font-medium text-white hover:bg-cinnabar-soft active:scale-95 transition-all"
                     >
-                      用阅读器播放
+                      切换播放器
                     </button>
                     <button
                       type="button"
                       onClick={() => void openCustom()}
-                      aria-label="关闭原站并使用阅读器播放"
-                      title="关闭原站并使用阅读器播放"
+                      aria-label="关闭原站并切换播放器"
+                      title="关闭原站并切换播放器"
                       className="shrink-0 rounded-lg p-1.5 text-paper-muted hover:bg-ink hover:text-paper active:scale-95 transition-all"
                     >
                       <X size={15} strokeWidth={2} />

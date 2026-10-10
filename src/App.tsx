@@ -73,7 +73,7 @@ import { ChannelsScreen } from './screens/ChannelsScreen'
 import { FeedScreen } from './screens/FeedScreen'
 import { MeScreen } from './screens/MeScreen'
 import { SiteScreen } from './screens/SiteScreen'
-import { formatSiteBrandName, getSiteCleanDomain } from './features/siteCatalog/uiUtils'
+import { formatSiteBrandName, formatSiteDisplayName, getSiteCleanDomain } from './features/siteCatalog/uiUtils'
 import { AboutScreen } from './screens/settings/AboutScreen'
 import { AccountSyncScreen } from './screens/settings/AccountSyncScreen'
 import { ChangelogScreen } from './screens/settings/ChangelogScreen'
@@ -1122,7 +1122,9 @@ export default function App() {
     activeCmsId: tab === 'sites' ? selectedCmsId : null,
     cmsSites: cmsSources.map((source) => ({
       id: source.id,
-      name: formatSiteBrandName(source),
+      // A source label is a short category tag (often auto-cut to 8 characters),
+      // not the site title. Preserve the full name and its domain suffix.
+      name: formatSiteDisplayName({ name: source.name, url: source.url }),
       description: getSiteCleanDomain(source.url),
       framework: source.frameworkHint?.framework ?? source.catalogProfile?.engine,
       url: source.url,

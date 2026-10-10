@@ -192,6 +192,8 @@ function encodeFormBody(form?: Record<string, string | number> | FormFields): st
 }
 
 export interface PageResponseOptions {
+  /** CMS pages use the existing OkHttp bridge even without a user tunnel. */
+  nativeTransport?: 'okhttp'
   maxBytes?: number
   onResponse?: (metadata: { url?: string }) => void
 }
@@ -392,11 +394,13 @@ async function nativePost(
   }
   const body = bodyType === 'json' ? JSON.stringify(json ?? {}) : encodeFormBody(form)
 
-  const response = tunnel
+  const useOkHttp = !!tunnel || pageOptions?.nativeTransport === 'okhttp'
+  const response = useOkHttp
     ? await abortable(
         nativeProxiedRequest({
           url,
           method: 'POST',
+          webViewCookies: pageOptions?.nativeTransport === 'okhttp',
           followRedirects: false,
           headers,
           data: body,
@@ -433,7 +437,7 @@ async function nativePost(
     throw new Error(`HTTP ${response.status}`)
   }
 
-  const data = tunnel
+  const data = useOkHttp
     ? decodeBase64ToArrayBuffer((response as { data: string }).data)
     : (response as { data: unknown }).data
 
@@ -460,6 +464,7 @@ async function nativeGetFollowingRedirects(
   redirectsLeft = MAX_REDIRECTS,
 ): Promise<string> {
   let current = url
+  const useOkHttp = !!tunnel || pageOptions?.nativeTransport === 'okhttp'
 
   for (let hop = 0; hop <= redirectsLeft; hop += 1) {
     if (signal?.aborted) throw abortReason(signal)
@@ -472,11 +477,12 @@ async function nativeGetFollowingRedirects(
       ...(extraHeaders ?? {}),
     }
 
-    const response = tunnel
+    const response = useOkHttp
       ? await abortable(
           nativeProxiedRequest({
             url: current,
             method: 'GET',
+            webViewCookies: pageOptions?.nativeTransport === 'okhttp',
             headers,
             proxy: tunnel,
             readTimeout: 25000,
@@ -500,8 +506,9 @@ async function nativeGetFollowingRedirects(
     if (REDIRECT_STATUSES.has(response.status)) {
       const location = headerValue(response.headers, 'location')
       if (!location) throw new Error(`HTTP ${response.status}`)
-      const next = resolveRedirectUrl(current, location)
-      current = requestUrlCandidates(next)[0] ?? next
+      // Honor the server's Location, including an intentional HTTPS -> HTTP
+      // redirect. Upgrading this hop can address a different virtual host.
+      current = resolveRedirectUrl(current, location)
       continue
     }
 
@@ -509,7 +516,7 @@ async function nativeGetFollowingRedirects(
       throw new Error(`HTTP ${response.status}`)
     }
 
-    const data = tunnel
+    const data = useOkHttp
       ? decodeBase64ToArrayBuffer((response as { data: string }).data)
       : (response as { data: unknown }).data
 
@@ -586,7 +593,9 @@ function headerValue(headers: Record<string, string>, name: string): string | un
 }
 
 export function resolveRedirectUrl(currentUrl: string, location: string): string {
-  return new URL(location, currentUrl).href
+  const next = new URL(location, currentUrl)
+  if (next.protocol !== 'https:' && next.protocol !== 'http:') throw new Error('不支持的重定向协议')
+  return next.href
 }
 
 /** 请求前候选：目前仅做 https 升格（信源地址以 registry 配置为准，不做域名改写）。 */

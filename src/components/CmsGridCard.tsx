@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { BookOpen, Check, Film, Layers3, UsersRound } from 'lucide-react'
 import {
-  formatSiteBrandName,
+  formatSiteDisplayName,
   getSiteCleanDomain,
   getSiteFrameworkInfo,
 } from '../features/siteCatalog/uiUtils'
@@ -32,7 +32,11 @@ export const CmsGridCard = memo(function CmsGridCard({
 }: CmsGridCardProps) {
   const fw = getSiteFrameworkInfo(site.framework)
   const domain = site.description || getSiteCleanDomain(site.url)
-  const brand = formatSiteBrandName({ name: site.name, url: site.url || site.description })
+  const name = formatSiteDisplayName({ name: site.name, url: site.url || site.description })
+  const subtitle = [
+    fw.categoryBadge !== '目录' ? fw.categoryBadge : '',
+    domain.toLowerCase() === name.toLowerCase() ? '' : domain,
+  ].filter(Boolean).join(' · ') || '独立空间'
 
   return (
     <li className="min-w-0">
@@ -41,7 +45,9 @@ export const CmsGridCard = memo(function CmsGridCard({
         onClick={onPick}
         aria-current={active ? 'page' : undefined}
         aria-pressed={active}
-        className={`group relative flex min-h-[78px] w-full flex-col overflow-hidden rounded-xl border px-2.5 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cinnabar/45 ${
+        aria-label={`${active ? '当前站点' : '切换至'}：${name}`}
+        title={name}
+        className={`group relative flex min-h-[78px] h-full w-full flex-col overflow-hidden rounded-xl border px-2.5 py-2.5 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cinnabar/45 ${
           active
             ? 'border-cinnabar/75 bg-cinnabar/12 shadow-[0_4px_12px_rgba(0,0,0,0.08)]'
             : 'border-haze/80 bg-ink/55 hover:-translate-y-px hover:border-cinnabar/40 hover:bg-ink hover:shadow-sm active:translate-y-0'
@@ -67,13 +73,19 @@ export const CmsGridCard = memo(function CmsGridCard({
           </span>
 
           <span
-            className={`min-w-0 flex-1 truncate font-display text-[13.5px] font-semibold leading-none transition-colors ${
+            className={`min-w-0 flex-1 break-words pb-[2px] font-display text-[13px] font-semibold leading-[1.4] transition-colors ${
               active ? 'text-cinnabar' : 'text-paper group-hover:text-cinnabar'
             }`}
           >
-            {brand}
+            {name}
           </span>
+        </span>
 
+        {/* Selection state is on the secondary row so full names have the first row. */}
+        <span className="mt-1.5 flex w-full min-w-0 items-center justify-between gap-1.5">
+          <span className="min-w-0 flex-1 truncate text-[10px] leading-[1.35] text-paper-faint transition-colors group-hover:text-paper-muted">
+            {subtitle}
+          </span>
           <span
             className={`shrink-0 rounded-full px-1.5 py-0.5 font-mono text-[8.5px] font-semibold leading-none tracking-[0.06em] transition-colors ${
               active
@@ -85,14 +97,8 @@ export const CmsGridCard = memo(function CmsGridCard({
               <span className="inline-flex items-center gap-0.5">
                 <Check size={9} strokeWidth={2.4} />当前
               </span>
-            ) : (
-              '选用'
-            )}
+            ) : '选用'}
           </span>
-        </span>
-
-        <span className="mt-1.5 block line-clamp-1 pl-9 text-[10px] leading-[1.35] text-paper-faint transition-colors group-hover:text-paper-muted">
-          {fw.categoryBadge !== '目录' ? `${fw.categoryBadge} · ` : ''}{domain || '独立空间'}
         </span>
 
         {active && (

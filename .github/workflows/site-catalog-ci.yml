@@ -1,0 +1,31 @@
+name: CMS Catalog CI
+
+on:
+  pull_request:
+    paths:
+      - 'src/features/siteCatalog/**'
+      - 'src/features/catalogEngine/**'
+      - 'src/features/frameworkDetect/**'
+      - 'src/screens/settings/CustomSourcesScreen.tsx'
+      - 'src/lib/http.ts'
+      - 'scripts/site-*.test.ts'
+      - '.github/workflows/site-catalog-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run build:contracts
+      - run: npm run test:site-catalog
+      - run: npm run test:framework-detect

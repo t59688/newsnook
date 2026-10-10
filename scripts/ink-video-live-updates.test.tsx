@@ -144,10 +144,25 @@ const cases: Array<[string, (render: Render) => Promise<void>]> = [
     nativeMode = true
     await render(<OriginPlayerSurface pageUrl="https://example.com/watch/1" title="One" />)
     await emit({ url: src })
-    await click('button[aria-label="关闭原站并使用阅读器播放"]')
+    await click('button[aria-label="关闭原站并切换播放器"]')
     const v = await playAt(); const count = loads
     await emit({ url: 'https://example.com/higher-score.mp4', source: 'dom', width: 1920, height: 1080 })
     steady(v, count)
+  }],
+  ['failed origin handoff keeps the error and manual retry visible', async render => {
+    nativeMode = true
+    await render(<OriginPlayerSurface pageUrl="https://example.com/watch/1" title="One" />)
+    await emit({ url: src })
+    await click('button[aria-label="关闭原站并切换播放器"]')
+    const v = player()
+    let reject!: (error: Error) => void
+    prepareGate = new Promise((_resolve, fail) => { reject = fail })
+    await act(async () => v.dispatchEvent(new window.Event('error')))
+    await act(async () => reject(new Error('synthetic transport failure')))
+    prepareGate = undefined
+    assert.ok(document.querySelector('video'), 'failure must not silently return to origin')
+    assert.ok(document.querySelector('button[aria-label="重试当前视频"]'))
+    assert.ok(document.body.textContent?.includes('视频源暂时无法播放'))
   }],
   ['late handoff cannot reopen a different origin session', async render => {
     nativeMode = true
@@ -156,7 +171,7 @@ const cases: Array<[string, (render: Render) => Promise<void>]> = [
     let release!: () => void
     prepareGate = new Promise(resolve => { release = resolve })
     try {
-      await click('button[aria-label="关闭原站并使用阅读器播放"]')
+      await click('button[aria-label="关闭原站并切换播放器"]')
       await render(<OriginPlayerSurface pageUrl="https://example.com/watch/2" title="Two" />)
       await emit({ url: 'https://example.com/two.mp4' })
     } finally {

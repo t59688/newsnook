@@ -1135,7 +1135,11 @@ resolveArticleBody
 
 运行时 WebView（SniffSession）仅用于当前文章或其播放器嵌入页的一次短时探测，不作为常驻浏览器，也不把媒体字节或登录凭据写入正文缓存。静态 HTML / JSON 与 Android 运行时嗅探始终都跑：静态已经给出可信媒体时仍会启动 SniffSession，在 quiet window（清单/MSE 等高价值信号静止约 800ms，且已过最短时长）结束后收集观察，而不是「得到完整候选后立即停止」。正文含 iframe 时最多对 3 个嵌入页与文章页一并探测，按目标顺序共享一个全局 deadline；首个目标获得完整预算，后续目标只使用剩余时间。播放器 iframe 的 inline 配置若声明强媒体 URL，即使页面脚本在首次媒体请求前报错，也可在 iframe 文档自身已被当前 SniffSession 加载的前提下进入 Graph；普通跨文档消息仍要求媒体 URL 真实出现在网络观察中。Web 平台无 SniffSession，仅静态 HTML/JSON 观察。
 
-**自建源视频（Android）例外路径：** 当 `isCustomSourceId` 且 `contentType === 'video'` 时，阅读器上方挂载可见可操作的原站 WebView（`startLiveSession`），旁路观察与表面同寿、不以 quiet/timeout 结束会话；出现可信非广告 `MediaDescriptor` 后显示浮钮「用阅读器播放」，用户点击才进入 `InkVideoPlayer`。离开文章调用 `stopLiveSession`。此路径不替代内置源与 Web 上的短时 SniffSession。
+**自建源视频（Android）例外路径：** 当 `isCustomSourceId` 且 `contentType === 'video'` 时，阅读器上方挂载可见可操作的原站 WebView（`startLiveSession`），旁路观察与表面同寿、不以 quiet/timeout 结束会话；出现可信非广告 `MediaDescriptor` 后显示浮钮「切换播放器」，用户点击才进入 `InkVideoPlayer`。离开文章调用 `stopLiveSession`。此路径不替代内置源与 Web 上的短时 SniffSession。
+
+HLS 清单可能指向新的分片或密钥域名；Android XHR 在第一次请求该域名前等待同一播放会话登记，按 origin 去重，不依赖原站嗅探是否已经访问分片。播放失败保留错误、重试与重新探测入口，不自动关闭播放界面返回原站；普通返回原站操作仍由用户选择。失败日志只记录错误类型、HTTP 状态与媒体错误码，不输出媒体地址或鉴权头。
+
+HLS 播放前方已有至少 3 秒缓冲，却连续 10 秒没有推进且解码状态不足时，触发有次数上限的媒体恢复，并保留当前播放位置与播放意图。空缓冲的网络等待不触发解码重置；后台暂停检查，返回前台重新计时。
 
 ## 20.2 候选选择与媒体描述
 
