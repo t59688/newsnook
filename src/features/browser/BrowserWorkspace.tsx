@@ -3,12 +3,13 @@ import { Capacitor, registerPlugin, type PluginListenerHandle } from '@capacitor
 import {
   ArrowLeft, ArrowRight, Bookmark, BookmarkCheck, ChevronLeft, Clock3,
   Globe2, Home, Laptop, LoaderCircle, MoreHorizontal, Plus,
-  RefreshCw, Settings2, ShieldCheck, Smartphone, Trash2, X, Play, Film, Search, Download, PanelBottom, PanelTop,
+  Settings2, ShieldCheck, Smartphone, Trash2, X, Play, Film, Search, Download, PanelBottom, PanelTop, Copy,
 } from 'lucide-react'
 import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
 import { ScriptManager } from './ScriptManager'
 import { loadUserScripts } from './scripts'
 import { InkVideoPlayer } from '../../components/InkVideoPlayer'
+import { browserSearchProviders, browserSearchDestination, type BrowserSearchCategory } from './browserSearchCatalog'
 import { normalizeBrowserHost, compactRecentSites, saveBrowserVisit, removeSiteHistory, DEFAULT_BROWSER_SHORTCUTS, addBrowserShortcut, moveBrowserShortcut, shortcutFaviconUrl, type BrowserShortcut } from './browserHistory'
 import { browserMediaResources, browserResourceTitle, reduceBrowserMedia, type BrowserMediaTab, type BrowserMediaEvent } from './browserMedia'
 import type { MediaResourceDescriptor } from '../mediaSniffer/types'
@@ -89,6 +90,7 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
   const [playError, setPlayError] = useState('')
   const [bottomAddress, setBottomAddress] = useState(() => localStorage.getItem(ADDRESS_POSITION_KEY) !== 'top')
   const [suggestions, setSuggestions] = useState(false)
+  const [searchCategory, setSearchCategory] = useState<BrowserSearchCategory>('常用')
   const [hiddenHosts, setHiddenHosts] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') } catch { return [] } })
   const [shortcuts, setShortcuts] = useState<BrowserShortcut[]>(() => { try { return JSON.parse(localStorage.getItem(SHORTCUT_KEY) || 'null') || DEFAULT_BROWSER_SHORTCUTS } catch { return DEFAULT_BROWSER_SHORTCUTS } })
   const [historyAction, setHistoryAction] = useState<SavedVisit | null>(null)
@@ -261,16 +263,14 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
     { label: '浏览器设置', secondary: '搜索引擎与桌面模式', icon: Settings2, action: () => setPanel('settings') },
   ]
 
-  const addressBar = <div className="flex h-12 min-w-0 items-center gap-2 rounded-2xl border border-haze bg-ink px-3 shadow-sm focus-within:border-cinnabar/70">
-    {loading ? <LoaderCircle size={17} className="shrink-0 animate-spin text-cinnabar"/> : active ? <ShieldCheck size={16} className="shrink-0 text-paper-faint"/> : <Search size={17} className="shrink-0 text-paper-faint"/>}
-    <input ref={input} aria-label="地址或搜索" type="text" enterKeyHint="go" value={address} onChange={event=>{setAddress(event.target.value);setSuggestions(true)}} onFocus={event=>{event.currentTarget.select();setSuggestions(true)}} onKeyDown={event=>{if(event.key==='Enter'){event.currentTarget.blur();void openAddress(address)}}} placeholder="搜索或输入网址" autoCapitalize="none" autoCorrect="off" spellCheck={false} className="min-w-0 flex-1 bg-transparent text-[14px] text-paper outline-none placeholder:text-paper-faint" />
-    {address ? <button type="button" aria-label="清空输入" onClick={()=>{setAddress('');input.current?.focus()}} className="text-paper-faint"><X size={16}/></button> : null}
-    <button type="button" aria-label={active?'刷新网页':'前往'} onClick={()=>{if(active&&!suggestions)action('reload');else void openAddress(address)}} className="grid size-9 shrink-0 place-items-center rounded-xl text-paper-muted active:scale-95">{active&&!suggestions?<RefreshCw size={18}/>:<ArrowRight size={19}/>}</button>
-  </div>
-  const addressRow = <div className="flex items-center gap-2 px-3 py-2">
-    <Button label="返回 NewsNook" onClick={close}><ChevronLeft size={22}/></Button>
-    <div className="min-w-0 flex-1">{addressBar}</div>
-    <Button label="网页工具" onClick={()=>setPanelVisible('menu')}><MoreHorizontal size={23}/></Button>
+  const showSearch = () => { setPanel(null); setSuggestions(true); if (active) setAddress('') }
+  const addressBar = <button type="button" aria-label="搜索或输入网址" onClick={showSearch} className="flex h-11 min-w-0 flex-1 items-center gap-2.5 rounded-2xl bg-haze/60 px-3 text-left text-paper transition-colors active:bg-haze">
+    {loading ? <LoaderCircle size={17} className="shrink-0 animate-spin text-cinnabar"/> : active ? <ShieldCheck size={16} className="shrink-0 text-paper-muted"/> : <Search size={18} className="shrink-0 text-paper-muted"/>}
+    <span className="min-w-0 flex-1 truncate text-[13px] font-medium">{active ? pageTitle : '搜索或输入网址'}</span>
+  </button>
+  const addressRow = <div className="flex h-[52px] items-center gap-1.5 px-2">
+    {addressBar}
+    <Button label="网页工具" onClick={()=>setPanelVisible('menu')}><MoreHorizontal size={22}/></Button>
   </div>
   return <div role="dialog" aria-label="NewsNook 网页浏览器" aria-modal="true" className="fixed inset-0 z-[95] flex min-w-0 flex-col overflow-hidden bg-ink" style={{ paddingTop: 'var(--sat)', paddingBottom: 'var(--sab)' }}>
     {active && !bottomAddress && <header className="z-10 shrink-0 border-b border-haze bg-ink-raised">{addressRow}</header>}
@@ -281,7 +281,7 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
         <div className="mx-auto mb-6 flex size-[70px] items-center justify-center rounded-3xl bg-ink-raised"><img src="/favicon.svg" alt="NewsNook" className="size-12 object-contain"/></div>
         <h1 className="text-center font-display text-2xl text-paper">从这里开始</h1>
         <p className="mt-2 text-center text-sm text-paper-muted">搜索、阅读，发现更多</p>
-        <div className="mt-7 flex min-h-14 items-center gap-3 rounded-2xl border border-haze bg-ink-raised px-4 shadow-sm focus-within:border-cinnabar"><Search size={19} className="shrink-0 text-paper-faint"/><input aria-label="首页搜索或输入网址" enterKeyHint="go" value={address} onChange={event=>setAddress(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.currentTarget.blur();void openAddress(address)}}} placeholder="搜索或输入网址" className="min-w-0 flex-1 bg-transparent text-sm text-paper outline-none"/><button type="button" aria-label="搜索" onClick={()=>void openAddress(address)}><ArrowRight size={18}/></button></div>
+<button type="button" aria-label="首页搜索或输入网址" onClick={showSearch} className="mt-7 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-haze bg-ink-raised px-4 text-paper-muted shadow-sm"><Search size={19}/>搜索或输入网址<ArrowRight size={18} className="ml-auto"/></button>
         <h2 className="mt-7 mb-2 text-xs font-semibold tracking-wider text-paper-muted">快捷访问</h2><div className="grid grid-cols-4 gap-3">
           {shortcuts.map((shortcut,index) => <button key={shortcut.url} type="button" onContextMenu={event=>{event.preventDefault();setShortcutAction(index)}} onTouchStart={event=>{const el=event.currentTarget;const token=window.setTimeout(()=>{setShortcutAction(index);el.dataset.longPress='1'},650);(el as any).__hold=token}} onTouchEnd={event=>window.clearTimeout((event.currentTarget as any).__hold)} onTouchMove={event=>window.clearTimeout((event.currentTarget as any).__hold)} onClick={event=>{if(event.currentTarget.dataset.longPress){delete event.currentTarget.dataset.longPress;return}void openAddress(shortcut.url)}} className="flex min-w-0 flex-col items-center gap-2 rounded-xl px-1 py-2 text-center active:scale-95">
             <span className="grid size-12 place-items-center rounded-2xl bg-ink-raised">{shortcutFaviconUrl(shortcut.url)&&!faviconFailed.includes(shortcut.url)?<img src={shortcutFaviconUrl(shortcut.url)!} alt="" className="size-6 object-contain" onError={()=>setFaviconFailed(prev=>[...prev,shortcut.url])}/>:<Globe2 size={21} strokeWidth={1.7} className="text-paper-muted"/>}</span><span className="w-full truncate text-[12px] font-medium text-paper">{shortcut.name}</span>
@@ -299,22 +299,37 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
       </div>}
     </div>
 
-    <nav aria-label="浏览器控制" className="z-10 flex shrink-0 flex-col border-t border-haze bg-ink-raised">
-      {active && bottomAddress && addressRow}
-      <div className="flex items-center justify-around px-2 pb-2">
-      <Button label="后退" disabled={!nativeState.back} onClick={() => action('back')}><ArrowLeft size={19} /></Button>
-      <Button label="前进" disabled={!nativeState.forward} onClick={() => action('forward')}><ArrowRight size={19} /></Button>
-      <Button label="主页" onClick={goHome}><Home size={19}/></Button>
-      <Button label="媒体资源" onClick={() => {if(loaded.current)action('scanMedia');setPanelVisible('media')}}><span className="relative"><Film size={19}/>{mediaResources.length>0&&<span className="absolute -right-2 -top-2 flex size-[17px] items-center justify-center rounded-full bg-cinnabar text-[10px] font-semibold text-white">{Math.min(mediaResources.length,9)}</span>}</span></Button>
-      <Button label="标签页" onClick={() => {updateNativeState();setPanelVisible('tabs')}}><span className="flex size-[22px] items-center justify-center rounded-md border border-current font-mono text-[12px]">{tabs.length || 1}</span></Button>
+    <nav aria-label="浏览器控制" className="z-10 shrink-0 border-t border-haze bg-ink-raised">
+      <div className="flex h-14 items-center justify-between gap-1 px-2">
+        <Button label="主页" onClick={goHome}><Home size={21}/></Button>
+        <Button label="后退" disabled={!nativeState.back} onClick={()=>action('back')}><ArrowLeft size={20}/></Button>
+        {bottomAddress && active ? addressBar : <button type="button" aria-label="浏览器主页" onClick={active?()=>action('reload'):showSearch} className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-2xl bg-haze/50 px-3 text-[13px] text-paper-muted">{active ? pageTitle : '主页'}</button>}
+        <Button label="标签页" onClick={()=>{updateNativeState();setPanelVisible('tabs')}}><span className="flex size-[23px] items-center justify-center rounded-md border-[1.6px] border-current font-mono text-[12px]">{tabs.length||1}</span></Button>
+        <Button label="网页工具" onClick={()=>setPanelVisible('menu')}><MoreHorizontal size={23}/></Button>
       </div>
     </nav>
 
-    {suggestions && <div className={`absolute inset-x-2 z-40 rounded-2xl border border-haze bg-ink-raised p-3 shadow-xl ${bottomAddress ? 'bottom-[136px]' : 'top-[114px]'}`}>
-      <p className="mb-2 px-2 text-xs font-semibold text-paper-muted">地址与搜索</p>
-      {address.trim() && <button type="button" className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-sm text-paper" onClick={()=>void openAddress(address)}><Search size={17}/><span className="min-w-0 flex-1 truncate">{address}</span><ArrowRight size={16}/></button>}
-      {history.filter(h=>address.trim()&&h.url.toLowerCase().includes(address.toLowerCase())).slice(0,4).map(h=><button type="button" key={h.url} className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xs text-paper-muted" onClick={()=>void openAddress(h.url)}><Clock3 size={16}/><span className="min-w-0 flex-1 truncate">{h.url}</span></button>)}
-      <button type="button" className="mt-1 w-full rounded-xl bg-haze px-3 py-2 text-xs text-paper-muted" onClick={()=>{setSuggestions(false);input.current?.blur()}}>收起</button>
+    {suggestions && <div role="dialog" aria-modal="true" aria-label="搜索与地址" className="absolute inset-0 z-40 flex flex-col bg-ink-raised" style={{top:'var(--sat)',bottom:'var(--sab)'}}>
+      <div className="flex items-center gap-2.5 border-b border-haze px-3 py-3">
+        <div className="flex min-w-0 flex-1 items-center gap-2 rounded-2xl border border-haze bg-ink px-3 focus-within:border-cinnabar">
+          <Search size={18} className="shrink-0 text-paper-muted"/>
+          <input ref={input} type="text" autoFocus aria-label="搜索或输入网址" enterKeyHint="go" value={address} onChange={event=>setAddress(event.target.value)} onKeyDown={event=>{if(event.key==='Enter')void openAddress(address)}} placeholder="搜索或输入网址" autoCapitalize="none" autoCorrect="off" spellCheck={false} className="min-w-0 h-12 flex-1 bg-transparent text-[15px] text-paper outline-none" />
+          {address && <button type="button" aria-label="清空搜索" onClick={()=>{setAddress('');input.current?.focus()}}><X size={17}/></button>}
+        </div>
+        <button type="button" onClick={()=>{setSuggestions(false);setAddress(current)}} className="shrink-0 px-1 py-3 text-sm text-paper">取消</button>
+      </div>
+      <div className="flex items-center gap-2 px-4 py-3 text-xs text-paper-muted">
+        <span className="shrink-0">访问</span><button className="min-w-0 flex-1 truncate text-left text-paper" onClick={()=>void openAddress(current||address)}>{current || '输入完整网址直接访问'}</button>
+        {active && <button aria-label="复制网址" onClick={()=>{void navigator.clipboard.writeText(current)}}><Copy size={17}/></button>}
+      </div>
+      <div className="flex gap-5 overflow-x-auto border-b border-haze px-4 pb-3">
+        {(['常用','搜索','AI','学术'] as const).map(category=><button type="button" key={category} onClick={()=>setSearchCategory(category)} className={`whitespace-nowrap rounded-full px-3 py-1.5 text-sm ${searchCategory===category?'bg-haze font-semibold text-paper':'text-paper-muted'}`}>{category}</button>)}
+      </div>
+      <div className="min-h-0 flex-1 overflow-y-auto bg-ink px-3 py-4">
+        <div className="grid grid-cols-3 gap-2.5">{browserSearchProviders(searchCategory).map(provider=><button key={provider.id} type="button" onClick={()=>void openAddress(browserSearchDestination(provider,address))} className="flex min-h-16 min-w-0 items-center gap-2 rounded-xl bg-ink-raised px-3 text-left text-[13px] text-paper active:scale-[0.98]"><img src={`https://www.google.com/s2/favicons?domain=${new URL(provider.home).hostname}&sz=48`} alt="" className="size-5 shrink-0"/><span className="min-w-0 truncate">{provider.name}</span></button>)}</div>
+        {address.trim() && <button type="button" className="mt-4 flex w-full items-center gap-3 rounded-xl bg-ink-raised p-3 text-left text-sm text-paper" onClick={()=>void openAddress(address)}><Search size={17}/><span className="min-w-0 flex-1 truncate">搜索或打开：{address}</span><ArrowRight size={17}/></button>}
+        {history.filter(h=>address.trim()&&h.url.toLowerCase().includes(address.toLowerCase())).slice(0,4).map(h=><button type="button" key={h.url} onClick={()=>void openAddress(h.url)} className="mt-2 flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left text-xs text-paper-muted"><Clock3 size={17}/><span className="min-w-0 flex-1 truncate">{h.url}</span></button>)}
+      </div>
     </div>}
 
     {panel === 'media' && <div className="absolute inset-0 z-30 flex items-end bg-black/55" onClick={()=>setPanel(null)} role="presentation">
@@ -334,9 +349,9 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
     ].map(([label,handler])=><button key={label as string} type="button" onClick={()=>{(handler as ()=>void)();setHistoryAction(null)}} className="block w-full border-b border-haze px-3 py-3 text-left text-sm text-paper">{label as string}</button>)}<button onClick={()=>setHistoryAction(null)} className="mt-3 w-full rounded-xl bg-haze py-3 text-sm text-paper">取消</button></section></div>}
     {shortcutAction!==null && <div className="absolute inset-0 z-50 flex items-end bg-black/55" onClick={()=>setShortcutAction(null)}><section className="w-full rounded-t-3xl bg-ink-raised p-5" onClick={event=>event.stopPropagation()}><p className="mb-3 text-sm text-paper">管理快捷访问</p>{(['上移','下移','删除'] as const).map((label)=> <button key={label} className="block w-full border-b border-haze py-3 text-left text-sm text-paper" onClick={()=>{const next=label==='删除'?shortcuts.filter((_,index)=>index!==shortcutAction):moveBrowserShortcut(shortcuts,shortcutAction,label==='上移'?-1:1);setShortcuts(next);localStorage.setItem(SHORTCUT_KEY,JSON.stringify(next));setShortcutAction(null)}}>{label}</button>)}<button className="mt-3 w-full rounded-xl bg-haze py-3" onClick={()=>setShortcutAction(null)}>取消</button></section></div>}
     {panel === 'menu' && <div className="absolute inset-0 z-30 flex items-end bg-black/60" onClick={() => setPanel(null)} role="presentation">
-      <section className="w-full rounded-t-3xl border border-haze bg-ink-raised px-4 pt-5 pb-7 shadow-2xl" onClick={event => event.stopPropagation()} aria-label="浏览器菜单">
+      <section className="w-full rounded-t-3xl border border-haze bg-ink-raised px-4 pt-5 pb-5 shadow-2xl" onClick={event => event.stopPropagation()} aria-label="浏览器菜单">
         <div className="mb-4 flex items-center justify-between"><h2 className="font-display text-xl text-paper">网页工具</h2><Button label="关闭菜单" onClick={() => setPanel(null)}><X size={19}/></Button></div>
-        <div className="grid grid-cols-2 gap-2">{menuItems.map(item => <button key={item.label} type="button" onClick={item.action} className="flex min-h-20 items-start gap-3 rounded-xl border border-haze bg-ink px-3 py-3 text-left"><item.icon size={17} className="mt-1 shrink-0 text-cinnabar" /><span className="min-w-0"><span className="block text-sm text-paper">{item.label}</span><span className="mt-1 block text-[12px] text-paper-faint">{item.secondary}</span></span></button>)}</div>
+        <div className="grid grid-cols-5 gap-x-1 gap-y-5">{menuItems.map(item=><button key={item.label} type="button" onClick={item.action} className="flex min-w-0 flex-col items-center gap-2 rounded-2xl px-1 py-2 text-center active:bg-haze"><item.icon size={22} strokeWidth={1.65} className="text-paper"/><span className="max-w-full truncate text-[12px] text-paper">{item.label}</span></button>)}</div>
         <button type="button" disabled={!active} onClick={() => {setPanel(null);action('desktop')}} className="mt-3 flex w-full items-center justify-between rounded-xl border border-haze bg-ink p-3 text-sm text-paper disabled:opacity-40"><span className="flex items-center gap-3">{nativeState.desktop ? <Laptop size={18}/> : <Smartphone size={18}/>}桌面版网页</span><span className="font-mono text-xs text-cinnabar">{nativeState.desktop ? '已启用' : '未启用'}</span></button>
       </section>
     </div>}
