@@ -9,7 +9,7 @@ import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
 import { ScriptManager } from './ScriptManager'
 import { loadUserScripts } from './scripts'
 import { InkVideoPlayer } from '../../components/InkVideoPlayer'
-import { prepareNativeMediaPlayback } from '../mediaSniffer/native'
+import { normalizeBrowserHost, compactRecentSites, saveBrowserVisit, removeSiteHistory, DEFAULT_BROWSER_SHORTCUTS, addBrowserShortcut, moveBrowserShortcut, shortcutFaviconUrl, type BrowserShortcut } from './browserHistory'
 import { browserMediaResources, browserResourceTitle, reduceBrowserMedia, type BrowserMediaTab, type BrowserMediaEvent } from './browserMedia'
 import type { MediaResourceDescriptor } from '../mediaSniffer/types'
 
@@ -29,12 +29,14 @@ type BrowserNative = {
 }
 const nativeBrowser = registerPlugin<BrowserNative>('NewsNookBrowser')
 
-type SavedVisit = { url: string; title: string; time: number }
+import type { BrowserVisit as SavedVisit } from './browserHistory'
 type SearchChoice = 'bing' | 'google' | 'baidu' | 'duckduckgo'
 const HISTORY_KEY = 'newsnook:browser:history:v1'
 const MARKS_KEY = 'newsnook:browser:bookmarks:v1'
 const SEARCH_KEY = 'newsnook:browser:search:v1'
 const ADDRESS_POSITION_KEY = 'newsnook:browser:address-position:v1'
+const HIDDEN_KEY = 'newsnook:browser:hidden-hosts:v1'
+const SHORTCUT_KEY = 'newsnook:browser:shortcuts:v1'
 const engines: Record<SearchChoice, { name: string; url: string }> = {
   bing: { name: 'Bing', url: 'https://www.bing.com/search?q=' },
   google: { name: 'Google', url: 'https://www.google.com/search?q=' },
@@ -72,6 +74,8 @@ function Button({ label, children, onClick, disabled }: { label: string; childre
 export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
   const viewport = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
+  const holdTimer = useRef<number | null>(null)
+  const heldHistory = useRef<string | null>(null)
   const loaded = useRef(false)
   const busy = useRef(false)
   const [address, setAddress] = useState('')
@@ -85,6 +89,12 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
   const [playError, setPlayError] = useState('')
   const [bottomAddress, setBottomAddress] = useState(() => localStorage.getItem(ADDRESS_POSITION_KEY) !== 'top')
   const [suggestions, setSuggestions] = useState(false)
+  const [hiddenHosts, setHiddenHosts] = useState<string[]>(() => { try { return JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]') } catch { return [] } })
+  const [shortcuts, setShortcuts] = useState<BrowserShortcut[]>(() => { try { return JSON.parse(localStorage.getItem(SHORTCUT_KEY) || 'null') || DEFAULT_BROWSER_SHORTCUTS } catch { return DEFAULT_BROWSER_SHORTCUTS } })
+  const [historyAction, setHistoryAction] = useState<SavedVisit | null>(null)
+  const [shortcutAction, setShortcutAction] = useState<number | null>(null)
+  const [faviconFailed, setFaviconFailed] = useState<string[]>([])
+  const [playPending, setPlayPending] = useState(false)
   const [tabs, setTabs] = useState<NativeTab[]>([])
   const [history, setHistory] = useState(() => loadList(HISTORY_KEY))
   const [marks, setMarks] = useState(() => loadList(MARKS_KEY))
@@ -97,15 +107,22 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
   const active = /^https?:\/\//i.test(current)
   const currentMedia = mediaTabs.get(nativeState.tabId ?? -1)
   const mediaResources = useMemo(() => browserMediaResources(currentMedia?.observations ?? []), [currentMedia])
+  const recentSites = useMemo(() => compactRecentSites(history, hiddenHosts), [history, hiddenHosts])
   const activeTabIds = useMemo(() => new Set(tabs.map(tab => tab.id)), [tabs])
   const marked = marks.some(item => item.url === current)
   const pageTitle = useMemo(() => titleOf(current), [current])
   const closing = useRef(false)
 
+  const startHistoryHold = (item: SavedVisit) => {
+    if (holdTimer.current !== null) window.clearTimeout(holdTimer.current)
+    heldHistory.current = null
+    holdTimer.current = window.setTimeout(() => { heldHistory.current = item.url; setHistoryAction(item); holdTimer.current = null }, 520)
+  }
+  const cancelHistoryHold = () => { if (holdTimer.current !== null) window.clearTimeout(holdTimer.current); holdTimer.current = null }
   const saveVisit = useCallback((url: string) => {
     if (!/^https?:\/\//.test(url)) return
     setHistory(prev => {
-      const next = [{ url, title: titleOf(url), time: Date.now() }, ...prev.filter(item => item.url !== url)].slice(0, 400)
+      const next = saveBrowserVisit(prev, url, titleOf(url))
       localStorage.setItem(HISTORY_KEY, JSON.stringify(next))
       return next
     })
@@ -205,12 +222,14 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
       setCurrent(''); setAddress('')
     }
   }
-  const playResource = async (resource: MediaResourceDescriptor) => {
-    setPanel(null); setPlayError('')
-    try {
-      await prepareNativeMediaPlayback({url:resource.url,sourcePage:resource.pageUrl,format:resource.type,headers:resource.requestHeaders,origins:resource.origins,extraUrls:resource.relatedUrls})
-      setPlaying(resource)
-    } catch (err) { setPlayError(err instanceof Error ? err.message : String(err)); setPanel('media') }
+  const playResource = (resource: MediaResourceDescriptor) => {
+    if (playPending) return
+    setPlayPending(true)
+    setPlayError('')
+    setPanel(null)
+    // InkVideoPlayer owns native playback preparation and lease release.
+    setPlaying(resource)
+    window.setTimeout(() => setPlayPending(false), 350)
   }
   useEffect(() => {
     setMediaTabs(prev => {
@@ -254,7 +273,7 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
     <Button label="网页工具" onClick={()=>setPanelVisible('menu')}><MoreHorizontal size={23}/></Button>
   </div>
   return <div role="dialog" aria-label="NewsNook 网页浏览器" aria-modal="true" className="fixed inset-0 z-[95] flex min-w-0 flex-col overflow-hidden bg-ink" style={{ paddingTop: 'var(--sat)', paddingBottom: 'var(--sab)' }}>
-    {!bottomAddress && <header className="z-10 shrink-0 border-b border-haze bg-ink-raised">{addressRow}</header>}
+    {active && !bottomAddress && <header className="z-10 shrink-0 border-b border-haze bg-ink-raised">{addressRow}</header>}
     {error && <p role="alert" className="px-4 py-1 text-xs text-cinnabar">{error}</p>}
 
     <div ref={viewport} className="relative min-h-0 flex-1 overflow-hidden bg-ink">
@@ -262,25 +281,26 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
         <div className="mx-auto mb-6 flex size-[70px] items-center justify-center rounded-3xl bg-ink-raised"><img src="/favicon.svg" alt="NewsNook" className="size-12 object-contain"/></div>
         <h1 className="text-center font-display text-2xl text-paper">从这里开始</h1>
         <p className="mt-2 text-center text-sm text-paper-muted">搜索、阅读，发现更多</p>
-        <button type="button" onClick={()=>input.current?.focus()} className="mt-7 flex min-h-14 items-center gap-3 rounded-2xl border border-haze bg-ink-raised px-4 text-left text-sm text-paper-muted shadow-sm"><Search size={19}/>搜索或输入网址<ArrowRight size={16} className="ml-auto"/></button>
-        <h2 className="mt-9 mb-3 text-xs font-semibold tracking-wider text-paper-muted">快捷访问</h2><div className="grid grid-cols-4 gap-3">
-          {[['Linux.do', 'https://linux.do/'], ['知乎', 'https://www.zhihu.com/'], ['ChatGPT', 'https://chatgpt.com/'], ['Bing', 'https://www.bing.com/']].map(([label,url]) =>
-            <button key={url} type="button" onClick={() => void openAddress(url)} className="group flex min-w-0 flex-col items-center gap-2 rounded-xl px-1 py-2 text-center transition-colors hover:bg-haze">
-              <span className="grid size-12 place-items-center rounded-2xl bg-ink-raised text-cinnabar"><Globe2 size={21} strokeWidth={1.7}/></span><span className="w-full truncate text-[12px] font-medium text-paper">{label}</span>
-            </button>)}
+        <div className="mt-7 flex min-h-14 items-center gap-3 rounded-2xl border border-haze bg-ink-raised px-4 shadow-sm focus-within:border-cinnabar"><Search size={19} className="shrink-0 text-paper-faint"/><input aria-label="首页搜索或输入网址" enterKeyHint="go" value={address} onChange={event=>setAddress(event.target.value)} onKeyDown={event=>{if(event.key==='Enter'){event.currentTarget.blur();void openAddress(address)}}} placeholder="搜索或输入网址" className="min-w-0 flex-1 bg-transparent text-sm text-paper outline-none"/><button type="button" aria-label="搜索" onClick={()=>void openAddress(address)}><ArrowRight size={18}/></button></div>
+        <h2 className="mt-7 mb-2 text-xs font-semibold tracking-wider text-paper-muted">快捷访问</h2><div className="grid grid-cols-4 gap-3">
+          {shortcuts.map((shortcut,index) => <button key={shortcut.url} type="button" onContextMenu={event=>{event.preventDefault();setShortcutAction(index)}} onTouchStart={event=>{const el=event.currentTarget;const token=window.setTimeout(()=>{setShortcutAction(index);el.dataset.longPress='1'},650);(el as any).__hold=token}} onTouchEnd={event=>window.clearTimeout((event.currentTarget as any).__hold)} onTouchMove={event=>window.clearTimeout((event.currentTarget as any).__hold)} onClick={event=>{if(event.currentTarget.dataset.longPress){delete event.currentTarget.dataset.longPress;return}void openAddress(shortcut.url)}} className="flex min-w-0 flex-col items-center gap-2 rounded-xl px-1 py-2 text-center active:scale-95">
+            <span className="grid size-12 place-items-center rounded-2xl bg-ink-raised">{shortcutFaviconUrl(shortcut.url)&&!faviconFailed.includes(shortcut.url)?<img src={shortcutFaviconUrl(shortcut.url)!} alt="" className="size-6 object-contain" onError={()=>setFaviconFailed(prev=>[...prev,shortcut.url])}/>:<Globe2 size={21} strokeWidth={1.7} className="text-paper-muted"/>}</span><span className="w-full truncate text-[12px] font-medium text-paper">{shortcut.name}</span>
+          </button>)}
+          {shortcuts.length<8&&<button type="button" onClick={()=>{const url=window.prompt('快捷方式网址');if(!url)return;const name=window.prompt('名称',normalizeBrowserHost(url))||normalizeBrowserHost(url);const next=addBrowserShortcut(shortcuts,{name,url});setShortcuts(next);localStorage.setItem(SHORTCUT_KEY,JSON.stringify(next))}} className="flex flex-col items-center gap-2 px-1 py-2"><span className="grid size-12 place-items-center rounded-2xl bg-ink-raised"><Plus size={21}/></span><span className="text-xs text-paper-muted">添加</span></button>}
         </div>
-        <div className="mt-8 flex items-center justify-between"><h2 className="text-sm font-semibold text-paper">最近访问</h2><button type="button" onClick={() => setPanel('history')} className="text-xs text-paper-faint">查看全部</button></div>
-        <div className="mt-3 space-y-1">{history.slice(0, 5).map(item => <button type="button" key={item.url} onClick={() => void openAddress(item.url)} className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left hover:bg-haze"><Clock3 size={16} className="text-paper-faint" /><span className="min-w-0 flex-1 truncate text-[12px] text-paper-muted">{item.title}</span><ArrowRight size={14} className="text-paper-faint" /></button>)}{history.length === 0 && <p className="pt-2 text-[12px] text-paper-faint">访问的网站将在这里显示</p>}</div>
+        <div className="mt-5 flex items-center justify-between"><h2 className="text-sm font-semibold text-paper">最近访问</h2><button type="button" onClick={() => setPanel('history')} className="text-xs text-paper-faint">查看全部</button></div>
+        <div className="mt-3 space-y-1">{recentSites.map(item => <button type="button" key={item.url} onClick={()=>{if(heldHistory.current===item.url){heldHistory.current=null;return}void openAddress(item.url)}} onTouchStart={()=>startHistoryHold(item)} onTouchEnd={cancelHistoryHold} onTouchMove={cancelHistoryHold} onContextMenu={event=>{event.preventDefault();setHistoryAction(item)}} className="flex w-full items-center gap-3 rounded-xl px-2 py-3 text-left hover:bg-haze"><Clock3 size={16} className="text-paper-faint" /><span className="min-w-0 flex-1 truncate text-[12px] text-paper-muted">{item.title}</span><ArrowRight size={14} className="text-paper-faint" /></button>)}{recentSites.length === 0 && <p className="pt-2 text-[12px] text-paper-faint">访问的网站将在这里显示</p>}</div>
       </div>}
       {active && loading && <div className="absolute top-0 left-0 h-[2px] w-1/2 animate-pulse bg-cinnabar" />}
       {playing && <div className="absolute inset-0 z-20 flex flex-col bg-ink">
         <div className="flex shrink-0 items-center gap-3 border-b border-haze p-3"><Button label="返回网页" onClick={()=>setPlaying(null)}><ChevronLeft size={22}/></Button><div className="min-w-0 flex-1"><p className="truncate text-sm font-semibold text-paper">{browserResourceTitle(playing)}</p><p className="truncate text-xs text-paper-muted">{titleOf(playing.pageUrl)}</p></div><button type="button" className="text-xs text-cinnabar" onClick={()=>{setPlaying(null);setPanel('media')}}>切换资源</button></div>
-        <div className="min-h-0 flex-1 overflow-y-auto bg-ink p-2"><InkVideoPlayer src={playing.url} title={titleOf(playing.pageUrl)} format={playing.type} sourcePage={playing.pageUrl} requestHeaders={playing.requestHeaders} extraUrls={playing.relatedUrls} resources={mediaResources} autoPlay /></div>
+        {playError&&<div role="alert" className="mx-3 mt-3 flex items-center justify-between gap-3 rounded-xl border border-haze bg-ink-raised p-3 text-sm text-paper"><span>{playError}</span><button type="button" className="shrink-0 text-cinnabar" onClick={()=>{setPlaying(null);setPanel('media')}}>换源</button></div>}
+        <div className="min-h-0 flex-1 overflow-y-auto bg-ink p-2"><InkVideoPlayer src={playing.url} title={titleOf(playing.pageUrl)} format={playing.type} sourcePage={playing.pageUrl} requestHeaders={playing.requestHeaders} extraUrls={playing.relatedUrls} resources={mediaResources} autoPlay mediaPageHost={false} onPlaybackError={()=>setPlayError('视频播放失败，请选择其他资源')} /></div>
       </div>}
     </div>
 
     <nav aria-label="浏览器控制" className="z-10 flex shrink-0 flex-col border-t border-haze bg-ink-raised">
-      {bottomAddress && addressRow}
+      {active && bottomAddress && addressRow}
       <div className="flex items-center justify-around px-2 pb-2">
       <Button label="后退" disabled={!nativeState.back} onClick={() => action('back')}><ArrowLeft size={19} /></Button>
       <Button label="前进" disabled={!nativeState.forward} onClick={() => action('forward')}><ArrowRight size={19} /></Button>
@@ -306,6 +326,13 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
         <button type="button" onClick={()=>{action('scanMedia');setPanel(null)}} className="mt-2 w-full rounded-xl border border-haze py-3 text-sm font-medium text-paper">重新扫描</button>
       </section></div>}
 
+    {historyAction && <div className="absolute inset-0 z-50 flex items-end bg-black/55" onClick={()=>setHistoryAction(null)}><section className="w-full rounded-t-3xl bg-ink-raised p-5" onClick={event=>event.stopPropagation()}><p className="mb-4 truncate text-sm font-semibold text-paper">{normalizeBrowserHost(historyAction.url)}</p>{[
+      ['打开网页',()=>void openAddress(historyAction.url)],
+      ['从首页隐藏此网站',()=>{const host=normalizeBrowserHost(historyAction.url);const next=[...new Set([...hiddenHosts,host])];setHiddenHosts(next);localStorage.setItem(HIDDEN_KEY,JSON.stringify(next))}],
+      ['删除这条记录',()=>{const next=history.filter(v=>v.url!==historyAction.url);setHistory(next);localStorage.setItem(HISTORY_KEY,JSON.stringify(next))}],
+      ['删除该网站全部历史',()=>{const next=removeSiteHistory(history,normalizeBrowserHost(historyAction.url));setHistory(next);localStorage.setItem(HISTORY_KEY,JSON.stringify(next))}],
+    ].map(([label,handler])=><button key={label as string} type="button" onClick={()=>{(handler as ()=>void)();setHistoryAction(null)}} className="block w-full border-b border-haze px-3 py-3 text-left text-sm text-paper">{label as string}</button>)}<button onClick={()=>setHistoryAction(null)} className="mt-3 w-full rounded-xl bg-haze py-3 text-sm text-paper">取消</button></section></div>}
+    {shortcutAction!==null && <div className="absolute inset-0 z-50 flex items-end bg-black/55" onClick={()=>setShortcutAction(null)}><section className="w-full rounded-t-3xl bg-ink-raised p-5" onClick={event=>event.stopPropagation()}><p className="mb-3 text-sm text-paper">管理快捷访问</p>{(['上移','下移','删除'] as const).map((label)=> <button key={label} className="block w-full border-b border-haze py-3 text-left text-sm text-paper" onClick={()=>{const next=label==='删除'?shortcuts.filter((_,index)=>index!==shortcutAction):moveBrowserShortcut(shortcuts,shortcutAction,label==='上移'?-1:1);setShortcuts(next);localStorage.setItem(SHORTCUT_KEY,JSON.stringify(next));setShortcutAction(null)}}>{label}</button>)}<button className="mt-3 w-full rounded-xl bg-haze py-3" onClick={()=>setShortcutAction(null)}>取消</button></section></div>}
     {panel === 'menu' && <div className="absolute inset-0 z-30 flex items-end bg-black/60" onClick={() => setPanel(null)} role="presentation">
       <section className="w-full rounded-t-3xl border border-haze bg-ink-raised px-4 pt-5 pb-7 shadow-2xl" onClick={event => event.stopPropagation()} aria-label="浏览器菜单">
         <div className="mb-4 flex items-center justify-between"><h2 className="font-display text-xl text-paper">网页工具</h2><Button label="关闭菜单" onClick={() => setPanel(null)}><X size={19}/></Button></div>
@@ -325,8 +352,9 @@ export function BrowserWorkspace({ onExit }: { onExit: () => void }) {
 
     {(panel === 'history' || panel === 'bookmarks') && <div className="absolute inset-0 z-30 flex flex-col bg-ink" style={{paddingTop:'var(--sat)',paddingBottom:'var(--sab)'}}>
       <header className="flex items-center justify-between border-b border-haze bg-ink-raised p-3"><Button label="返回浏览器" onClick={() => setPanel(null)}><ChevronLeft size={22}/></Button><h2 className="font-display text-lg text-paper">{panel === 'history' ? '浏览历史' : '书签'}</h2><Button label="关闭" onClick={() => setPanel(null)}><X size={20}/></Button></header>
+      {panel==='history'&&hiddenHosts.length>0&&<button type="button" className="mx-4 mt-3 rounded-xl border border-haze p-3 text-sm text-paper-muted" onClick={()=>{setHiddenHosts([]);localStorage.removeItem(HIDDEN_KEY)}}>恢复首页隐藏的 {hiddenHosts.length} 个网站</button>}
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">{(panel === 'history' ? history : marks).map(item => <div key={item.url} className="flex items-center gap-3 border-b border-haze/55 py-3">
-        <button type="button" className="min-w-0 flex-1 text-left" onClick={() => void openAddress(item.url)}><span className="block truncate text-sm text-paper">{item.title}</span><span className="mt-1 block truncate font-mono text-[12px] text-paper-faint">{item.url}</span></button>
+        <button type="button" className="min-w-0 flex-1 text-left" onContextMenu={event=>{if(panel==='history'){event.preventDefault();setHistoryAction(item)}}} onTouchStart={()=>{if(panel==='history')startHistoryHold(item)}} onTouchEnd={cancelHistoryHold} onTouchMove={cancelHistoryHold} onClick={()=>{if(heldHistory.current===item.url){heldHistory.current=null;return}void openAddress(item.url)}}><span className="block truncate text-sm text-paper">{item.title}</span><span className="mt-1 block truncate font-mono text-[12px] text-paper-faint">{item.url}</span></button>
         <button type="button" aria-label="删除" onClick={() => {if(panel==='history'){const next=history.filter(x=>x.url!==item.url);setHistory(next);localStorage.setItem(HISTORY_KEY,JSON.stringify(next))}else{const next=marks.filter(x=>x.url!==item.url);setMarks(next);localStorage.setItem(MARKS_KEY,JSON.stringify(next))}}}><Trash2 size={16} className="text-paper-faint" /></button>
       </div>)}{(panel==='history'?history:marks).length===0 && <p className="pt-12 text-center text-sm text-paper-faint">暂无记录</p>}</div>
       {panel === 'history' && history.length>0 && <button type="button" onClick={() => {if(window.confirm('清空全部浏览历史？')) clearHistory()}} className="mx-5 mb-5 rounded-xl border border-haze py-3 text-sm text-paper-muted">清除全部历史</button>}
