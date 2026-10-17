@@ -70,7 +70,7 @@ import org.json.JSONTokener;
 @CapacitorPlugin(name = "MediaSniffer")
 public class MediaSnifferPlugin extends Plugin {
 
-    private interface ObservationEmitter {
+    interface ObservationEmitter {
         void emit(JSONObject observation);
     }
 
@@ -113,6 +113,7 @@ public class MediaSnifferPlugin extends Plugin {
           window.__newsnookMediaProbeInstalled = true;
           const nonce = '__NEWSNOOK_SESSION_NONCE__';
           const maxBodyText = __NEWSNOOK_MAX_BODY_TEXT__;
+          const passive = __NEWSNOOK_PASSIVE_MODE__;
           if (window.__newsnookLastHighValueAt == null) window.__newsnookLastHighValueAt = 0;
           const events = window.__newsnookMediaEvents = [];
           const seen = new Set();
@@ -280,7 +281,7 @@ public class MediaSnifferPlugin extends Plugin {
               const url = media.currentSrc || media.src || media.getAttribute('data-src') || media.getAttribute('data-video-src');
               if (url) push({ source: 'dom', url, mimeType: media.getAttribute('type') || undefined, mediaKind: media.tagName === 'AUDIO' ? 'audio' : media.tagName === 'VIDEO' ? 'video' : undefined });
               if (media.srcObject) push({ source: 'mse', url: media.currentSrc || 'blob:', mseMimeType: 'srcObject' });
-              if (media instanceof HTMLMediaElement) {
+              if (!passive && media instanceof HTMLMediaElement) {
                 try {
                   media.muted = true;
                   const playback = media.play();
@@ -318,8 +319,10 @@ public class MediaSnifferPlugin extends Plugin {
           };
           const startDom = () => {
             scan();
-            setTimeout(triggerPlayback, 400);
-            setTimeout(triggerPlayback, 1200);
+            if (!passive) {
+              setTimeout(triggerPlayback, 400);
+              setTimeout(triggerPlayback, 1200);
+            }
             try {
               new MutationObserver((records) => records.forEach((record) => {
                 inspect(record.target);
@@ -409,10 +412,27 @@ public class MediaSnifferPlugin extends Plugin {
         """;
 
     private static String buildProbeScript(String nonce) {
+        return buildProbeScript(nonce, false);
+    }
+
+    /** Reuse the media probe in the user's live browser without autoplay or muting. */
+    static String buildProbeScript(String nonce, boolean passive) {
         return PROBE_SCRIPT_TEMPLATE
             .replace("__NEWSNOOK_SESSION_NONCE__", nonce)
-            .replace("__NEWSNOOK_MAX_BODY_TEXT__", Integer.toString(MAX_BODY_TEXT_BYTES));
+            .replace("__NEWSNOOK_MAX_BODY_TEXT__", Integer.toString(passive ? 65536 : MAX_BODY_TEXT_BYTES))
+            .replace("__NEWSNOOK_PASSIVE_MODE__", passive ? "true" : "false");
     }
+
+    static JSONObject browserNetworkObservation(JSONArray events, String pageUrl, WebResourceRequest request) {
+        return recordNetworkEvent(events, pageUrl, request, new AtomicLong(0L));
+    }
+
+    static JSONArray browserPageObservations(JSONArray networkEvents, String evaluatedValue, String nonce) {
+        JSONArray combined = copyEvents(networkEvents);
+        appendEvaluatedEvents(combined, evaluatedValue);
+        return keepTrustedObservations(combined, nonce);
+    }
+
 
     @PluginMethod
     public void sniff(PluginCall call) {
@@ -1553,7 +1573,7 @@ public class MediaSnifferPlugin extends Plugin {
         return false;
     }
 
-    private static boolean isImmediatelyPlayable(JSONObject event) {
+    static boolean isImmediatelyPlayable(JSONObject event) {
         if (event == null) return false;
         String mime = event.optString("mimeType", "").toLowerCase(Locale.ROOT);
         String url = event.optString("url", "");
@@ -1570,7 +1590,7 @@ public class MediaSnifferPlugin extends Plugin {
      * independent per URL: a slow endpoint cannot delay an obvious m3u8/mp4
      * hit, and the final result only waits for a small bounded drain.
      */
-    private static final class LiveProbeQueue {
+    static final class LiveProbeQueue {
         // MediaProbe has a three-second call timeout; a shorter drain drops
         // late Range/HEAD classifications before they reach the graph.
         private static final long DRAIN_MS = 3500L;
@@ -1851,7 +1871,7 @@ public class MediaSnifferPlugin extends Plugin {
         }
     }
 
-    private static OkHttpClient createProbeClient(String userAgent) {
+    static OkHttpClient createProbeClient(String userAgent) {
         OkHttpClient.Builder builder = new OkHttpClient.Builder()
             .connectTimeout(3, TimeUnit.SECONDS)
             .readTimeout(3, TimeUnit.SECONDS)
