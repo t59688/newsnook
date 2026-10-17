@@ -7,6 +7,25 @@ type NativeChromeBridge = {
   setSystemTheme?: (theme: string) => void
 }
 
+const temporaryThemes = new Map<symbol, ResolvedTheme>()
+let chromeRequestId = 0
+let chromeQueue: Promise<void> = Promise.resolve()
+
+function currentDocumentTheme(): ResolvedTheme {
+  return typeof document !== 'undefined' && document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+}
+
+/** 临时全屏层只接管系统栏；释放时恢复当前页面主题，不改主题偏好。 */
+export function acquireNativeChromeTheme(theme: ResolvedTheme): () => void {
+  const owner = Symbol('native-chrome')
+  temporaryThemes.set(owner, theme)
+  void applyNativeChrome(currentDocumentTheme())
+  return () => {
+    if (!temporaryThemes.delete(owner)) return
+    void applyNativeChrome(currentDocumentTheme())
+  }
+}
+
 function isSplashBoot(): boolean {
   return typeof document !== 'undefined' && document.documentElement.dataset.boot === 'splash'
 }
@@ -56,25 +75,29 @@ export async function setNativeFullScreen(fullScreen: boolean): Promise<void> {
  * 边到边与透明栏在 MainActivity.onCreate 建立；这里只负责图标颜色跟随主题。
  * 使用 Capacitor 8 内置 SystemBars，而不是旧的 @capacitor/status-bar。
  */
-export async function applyNativeChrome(theme: ResolvedTheme): Promise<void> {
-  if (!Capacitor.isNativePlatform()) return
+export function applyNativeChrome(theme: ResolvedTheme): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return Promise.resolve()
 
-  const effective: ResolvedTheme = isSplashBoot() ? 'dark' : theme
-
-  try {
-    await SystemBars.setStyle({
-      style: effective === 'light' ? SystemBarsStyle.Light : SystemBarsStyle.Dark,
-    })
-  } catch {
-    // 继续走项目自带桥，兼容未同步原生工程的旧安装包。
-  }
-
-  try {
-    const bridge = nativeChromeBridge()
-    if (bridge?.setSystemTheme) {
-      bridge.setSystemTheme(effective)
+  const override = [...temporaryThemes.values()].pop()
+  const effective: ResolvedTheme = isSplashBoot() ? 'dark' : override ?? theme
+  const requestId = ++chromeRequestId
+  // Serialize native calls so a late enter reply cannot overwrite a newer close/restore.
+  chromeQueue = chromeQueue.then(async () => {
+    if (requestId !== chromeRequestId) return
+    try {
+      await SystemBars.setStyle({
+        style: effective === 'light' ? SystemBarsStyle.Light : SystemBarsStyle.Dark,
+      })
+    } catch {
+      // 继续走项目自带桥，兼容未同步原生工程的旧安装包。
     }
-  } catch {
-    // ignore
-  }
+    if (requestId !== chromeRequestId) return
+    try {
+      const bridge = nativeChromeBridge()
+      if (bridge?.setSystemTheme) bridge.setSystemTheme(effective)
+    } catch {
+      // ignore
+    }
+  })
+  return chromeQueue
 }

@@ -49,6 +49,12 @@ const openCalls: OpenCall[] = []
 const bounds: Bounds[] = []
 const commands: { action: string; url?: string }[] = []
 let closeCalls = 0
+const appliedSettings: Record<string, unknown>[] = []
+let privateLaunches = 0
+const findCalls: string[] = []
+const clearedSites: string[] = []
+let scanGate: ReturnType<typeof deferred> | null = null
+const imageCancels: unknown[] = []
 
 function deferred() {
   let resolve!: () => void
@@ -178,9 +184,26 @@ const native = {
     listeners.get('closed')?.({})
   },
   updateScripts: async () => {},
+  getBrowserContext: async () => ({privateMode: false, privacyCapabilities: {privateMode: true, clearSiteData: true, sharedSiteData: true}}),
+  updateSettings: async ({settings}: {settings: Record<string, unknown>}) => {appliedSettings.push({...settings})},
+  openPrivate: async () => {privateLaunches++},
+  closePrivate: async () => {},
+  findInPage: async ({query}: {query: string}) => {findCalls.push(query); listeners.get('findResult')?.({tabId:current.tabId, activeMatch:0, count:query ? 2 : 0, done:true})},
+  findNext: async () => {},
+  clearFind: async () => {findCalls.push('')},
+  clearSiteData: async ({url}: {url: string}) => {clearedSites.push(url)},
+  scanImages: async (request: {tabId:number;requestId:string}) => {
+    const pageUrl = current.url!
+    const gate = scanGate
+    scanGate = null
+    if (gate) await gate.promise
+    return {...request, documentId:'test-document', pageUrl, items:[], truncated:false, inaccessibleFrames:0}
+  },
+  cancelImageRequests: async (request: unknown) => {imageCancels.push(request)},
 }
 mock.module('@capacitor/core', { namedExports: {
   WebPlugin: class {}, CapacitorHttp: {}, Capacitor: { getPlatform: () => 'android', isNativePlatform: () => true },
+  SystemBars: { setStyle: async () => {} }, SystemBarsStyle: { Light: 'LIGHT', Dark: 'DARK' },
   registerPlugin: () => native,
 } })
 mock.module('../src/components/InkVideoPlayer.tsx', { namedExports: {
@@ -192,11 +215,11 @@ const { BrowserWorkspace } = await import('../src/features/browser/BrowserWorksp
 const { BrowserLauncher } = await import('../src/features/browser/BrowserLauncher')
 const { dismissTopHardwareBackLayer } = await import('../src/lib/hardwareBackStack')
 const root = createRoot(document.getElementById('root')!)
-function Harness({ recoverySession }: { recoverySession?: BrowserRecoverySession }) {
+function Harness({ recoverySession, privateMode = false }: { recoverySession?: BrowserRecoverySession; privateMode?: boolean }) {
   const [open, setOpen] = useState(true)
-  return open ? <BrowserWorkspace recoverySession={recoverySession} onExit={() => { exits++; setOpen(false) }}/> : <div data-reader>有所闻</div>
+  return open ? <BrowserWorkspace recoverySession={recoverySession} privateContext={privateMode ? {privateMode: true, scripts: []} : undefined} onExit={() => { exits++; setOpen(false) }}/> : <div data-reader>有所闻</div>
 }
-async function mount(preserveStorage = false, recoverySession?: BrowserRecoverySession, strict = false) {
+async function mount(preserveStorage = false, recoverySession?: BrowserRecoverySession, strict = false, privateMode = false) {
   await act(async () => root.render(null))
   if (!preserveStorage) {
     storage.clear()
@@ -214,7 +237,7 @@ async function mount(preserveStorage = false, recoverySession?: BrowserRecoveryS
   commands.length = 0
   closeCalls = 0
   exits = 0
-  const content = <Harness key={++fixture} recoverySession={recoverySession}/>
+  const content = <Harness key={++fixture} recoverySession={recoverySession} privateMode={privateMode}/>
   await act(async () => root.render(strict ? <React.StrictMode>{content}</React.StrictMode> : content))
 }
 const select = (selector: string): Element => {
@@ -550,6 +573,68 @@ try {
 
     console.log('Browser workspace lifecycle and product flow iteration ' + iteration + ': OK')
   }
+
+  await mount()
+  await visit()
+  await menu('浏览设置')
+  await click(button('桌面版'))
+  assert.equal(JSON.parse(storage.get('newsnook:browser:preferences:v1')!).userAgentMode, 'desktop', 'UA choice persists after native application succeeds')
+  assert.equal(appliedSettings.at(-1)?.userAgentMode, 'desktop')
+  failedStorageKey = 'newsnook:browser:preferences:v1'
+  const beforeFailedSetting = storage.get(failedStorageKey)
+  await click(button('JavaScript'))
+  assert.equal(storage.get(failedStorageKey), beforeFailedSetting, 'failed settings persistence retains prior preferences')
+  assert.equal(appliedSettings.at(-1)?.javaScriptEnabled, true, 'failed persistence rolls native settings back')
+  failedStorageKey = null
+  await back()
+  await menu('桌面网页')
+  assert.equal(JSON.parse(storage.get('newsnook:browser:preferences:v1')!).userAgentMode, 'system', 'desktop shortcut updates the same persisted UA setting')
+  await menu('桌面网页')
+  assert.equal(appliedSettings.at(-1)?.userAgentMode, 'desktop')
+  await menu('页内查找')
+  assert.ok(document.querySelector('[aria-label="在网页中查找"]'))
+  assert.equal(bounds.at(-1)?.visible, true, 'find mode leaves the actual webpage visible')
+  await enter('页内查找', '讨论')
+  await act(async () => {await new Promise(resolve => setTimeout(resolve, 170))})
+  assert.equal(findCalls.at(-1), '讨论')
+  assert.equal(button('下一处').hasAttribute('disabled'), false)
+  await back()
+  assert.equal(document.querySelector('[aria-label="在网页中查找"]'), null, 'back closes only the find toolbar')
+  const pendingScan = deferred()
+  scanGate = pendingScan
+  await menu('看图模式')
+  assert.equal(bounds.at(-1)?.visible, false)
+  await back()
+  await act(async () => pendingScan.resolve())
+  assert.equal(document.querySelector('[aria-label="看图模式"]'), null, 'late image scans cannot reopen a closed panel')
+  assert.ok(imageCancels.length > 0, 'closing image mode cancels native image work')
+  await menu('浏览设置')
+  const confirmedSite = current.url!
+  await click(button('清除当前站点数据'))
+  await act(async () => {changeUrl('https://redirect.example/after-confirm'); emitNavigation('end')})
+  await click(button('清除数据'))
+  assert.equal(clearedSites.at(-1), confirmedSite, 'a delayed confirmation only clears the site named when the dialog opened')
+  await back()
+  const normalUrlBeforePrivate = current.url
+  await menu('隐私模式')
+  assert.equal(privateLaunches, 1)
+  assert.equal(current.url, normalUrlBeforePrivate, 'starting private mode preserves the normal session')
+  console.log('Browser settings, live find toolbar, image cancellation and private launch: OK')
+
+  await mount(false, undefined, false, true)
+  const beforePrivateVisit = [...storage.entries()]
+  await visit('https://private.example/account?private_marker=never-persist')
+  assert.deepEqual([...storage.entries()], beforePrivateVisit, 'private navigation never writes browsing history or any other storage key')
+  await click(button('网页工具'))
+  assert.equal([...document.querySelectorAll('button')].some(item => item.textContent?.trim() === '添加书签'), false, 'private URLs cannot be persisted as bookmarks')
+  await back()
+  await menu('页内查找')
+  assert.ok(document.querySelector('[aria-label="在网页中查找"] [aria-label="隐私模式"]'), 'private indicator remains visible in find mode')
+  await act(async () => {changeUrl('https://private.example/next'); emitNavigation('end')})
+  assert.equal(document.querySelector('[aria-label="在网页中查找"]'), null, 'navigation closes a query whose native results were invalidated')
+  await click(button('主页'))
+  assert.equal(document.body.textContent?.includes('private.example'), false, 'private visits do not appear in recently visited sites')
+  console.log('Private browser: navigation, bookmarks and recent-site storage boundary OK')
 
   const recovery: BrowserRecoverySession = { activeIndex: 1, tabs: [
     { url: 'https://linux.do/t/retained', title: '保留的讨论', desktop: false },

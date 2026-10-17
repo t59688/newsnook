@@ -101,4 +101,31 @@ assert.ok(cloudLines.some((line) => line.includes('sync cycle failed')))
 
 logController.reset()
 
+// Private shell must not persist debug settings or emit URLs, even if logging is enabled.
+const originalWindow = Object.getOwnPropertyDescriptor(globalThis, 'window')
+const originalStorage = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+let privateStorageAccesses = 0
+Object.defineProperty(globalThis, 'window', {configurable: true, value: {location: {hash: '#private-browser', search: '?log=trace'}}})
+Object.defineProperty(globalThis, 'localStorage', {configurable: true, value: {
+  getItem: () => {privateStorageAccesses++; return null},
+  setItem: () => {privateStorageAccesses++},
+  removeItem: () => {privateStorageAccesses++},
+}})
+try {
+  const privateLines = withMockConsole(() => {
+    logController.setLevel('trace')
+    http.error('private URL https://private.example/secret')
+    logController.reset()
+    http.warn('private navigation failed')
+  })
+  assert.deepEqual(privateLines, [], 'private diagnostics cannot emit page URLs')
+  assert.equal(privateStorageAccesses, 0, 'private logger never reads or writes persistent settings')
+} finally {
+  if (originalWindow) Object.defineProperty(globalThis, 'window', originalWindow)
+  else Reflect.deleteProperty(globalThis, 'window')
+  if (originalStorage) Object.defineProperty(globalThis, 'localStorage', originalStorage)
+  else Reflect.deleteProperty(globalThis, 'localStorage')
+  logController.reset()
+}
+
 console.log('logger: ok')

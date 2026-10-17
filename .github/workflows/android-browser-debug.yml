@@ -7,6 +7,7 @@ on:
       - feat/userscripts-audit-debug-20261017
       - feat/browser-media-sniffer-20261017
       - feat/browser-unified-ux-20261017-validated
+      - feat/browser-privacy-images-20261017
   workflow_dispatch:
 
 permissions:
@@ -46,7 +47,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Verify userscripts and browser media lifecycle
+      - name: Verify browser product and media lifecycle
         shell: bash
         run: |
           set -euo pipefail
@@ -56,6 +57,7 @@ jobs:
           fi
           npm run test:media-sniffer
           npm run test:origin-player-live-sniff
+          npm run test:browser
 
       - name: Build web assets
         run: npm run build
@@ -67,7 +69,7 @@ jobs:
         working-directory: android
         run: |
           chmod +x ./gradlew
-          ./gradlew :app:assembleCloudDebug --no-daemon
+          ./gradlew :app:testCloudDebugUnitTest :app:assembleCloudDebug --no-daemon
 
       - name: Validate Debug APK identity
         shell: bash

@@ -83,6 +83,7 @@ public class MediaSnifferPlugin extends Plugin {
     private static final long PLAYBACK_CONTEXT_TTL_MS = 10 * 60 * 1000L;
     private static final ConcurrentHashMap<String, PlaybackContext> PLAYBACK_CONTEXTS =
         new ConcurrentHashMap<>();
+    private static final AtomicLong PLAYBACK_CONTEXT_SEQUENCE = new AtomicLong();
     private static final Set<String> SAFE_REQUEST_HEADERS = Collections.unmodifiableSet(
         new HashSet<>(Arrays.asList(
             "accept", "accept-language", "origin", "referer", "user-agent"
@@ -960,9 +961,12 @@ public class MediaSnifferPlugin extends Plugin {
             if (!java.util.Objects.equals(sessionId, candidate.sessionId)) continue;
             if (!origin.equals(candidate.origin) || (candidate.sessionId == null && candidate.expiresAt < now)) continue;
             if (!candidate.scoped && !url.equals(candidate.originalUrl)) continue;
+            boolean exactMatch = url.equals(candidate.originalUrl);
+            boolean bestExactMatch = best != null && url.equals(best.originalUrl);
+            // Lease renewal changes expiry, never registration priority.
             if (best == null
-                || (url.equals(candidate.originalUrl) && !url.equals(best.originalUrl))
-                || candidate.expiresAt > best.expiresAt) {
+                || (exactMatch && !bestExactMatch)
+                || (exactMatch == bestExactMatch && candidate.registrationOrder > best.registrationOrder)) {
                 best = candidate;
             }
         }
@@ -1008,6 +1012,7 @@ public class MediaSnifferPlugin extends Plugin {
         final Map<String, String> jsHeaders;
         final String sourcePage;
         final OkHttpClient client;
+        final long registrationOrder;
         volatile long expiresAt;
         final String sessionId;
 
@@ -1031,6 +1036,7 @@ public class MediaSnifferPlugin extends Plugin {
             this.capturedHeaders = Collections.unmodifiableMap(new HashMap<>(capturedHeaders));
             this.headers = Collections.unmodifiableMap(mergePlaybackHeaders(originalUrl, sourcePage, jsHeaders, capturedHeaders, this.origin));
             this.client = client;
+            this.registrationOrder = PLAYBACK_CONTEXT_SEQUENCE.incrementAndGet();
             this.expiresAt = expiresAt;
             this.sessionId = sessionId;
         }
@@ -1044,6 +1050,7 @@ public class MediaSnifferPlugin extends Plugin {
             this.jsHeaders = source.jsHeaders;
             this.sourcePage = source.sourcePage;
             this.client = source.client;
+            this.registrationOrder = source.registrationOrder;
             this.expiresAt = source.expiresAt;
             this.sessionId = source.sessionId;
         }

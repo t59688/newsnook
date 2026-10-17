@@ -57,6 +57,7 @@ final class UserscriptRuntime {
     private final WebView webView;
     private final Context context;
     private final SharedPreferences storage;
+    private final boolean privateMode;
     private final ExecutorService executor = Executors.newCachedThreadPool();
     private final OkHttpClient client = new OkHttpClient.Builder().followRedirects(false).followSslRedirects(false).build();
     private final SecureRandom random = new SecureRandom();
@@ -107,8 +108,14 @@ final class UserscriptRuntime {
     }
 
     UserscriptRuntime(Context context, WebView webView) {
+        this(context, webView, false);
+    }
+
+    UserscriptRuntime(Context context, WebView webView, boolean privateMode) {
         this.context = context.getApplicationContext(); this.webView = webView;
-        this.storage = this.context.getSharedPreferences("newsnook-userscript-storage", Context.MODE_PRIVATE);
+        this.privateMode = privateMode;
+        this.storage = privateMode ? PrivateBrowserSession.preferences("newsnook-userscript-storage")
+            : this.context.getSharedPreferences("newsnook-userscript-storage", Context.MODE_PRIVATE);
     }
 
     void prepare(JSONArray requested) throws Exception {
@@ -241,11 +248,14 @@ final class UserscriptRuntime {
             if (uri.getUserInfo() != null) throw new IllegalArgumentException("@require invalid URL");
             byte[] key = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
             StringBuilder name = new StringBuilder(); for (byte b : key) name.append(String.format("%02x", b & 255));
-            File directory = new File(context.getCacheDir(), "userscript-requires");
-            if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("resource cache failed");
-            File target = new File(directory, name.toString() + ".js");
+            File target = null;
+            if (!privateMode) {
+                File directory = new File(context.getCacheDir(), "userscript-requires");
+                if (!directory.isDirectory() && !directory.mkdirs()) throw new IllegalStateException("resource cache failed");
+                target = new File(directory, name.toString() + ".js");
+            }
             byte[] bytes;
-            if (target.isFile() && target.length() < MAX_RESOURCE_BYTES) {
+            if (target != null && target.isFile() && target.length() < MAX_RESOURCE_BYTES) {
                 try (InputStream in = new FileInputStream(target)) { bytes = readBounded(in, MAX_RESOURCE_BYTES); }
             } else {
                 Request request = new Request.Builder().url(uri).build();
@@ -255,7 +265,8 @@ final class UserscriptRuntime {
                     bytes = readBounded(response.body().byteStream(), MAX_RESOURCE_BYTES);
                 } finally { ownedCalls.remove(call); }
                 if (closed) return "";
-                try (FileOutputStream output = new FileOutputStream(target)) { output.write(bytes); }
+                if (target != null)
+                    try (FileOutputStream output = new FileOutputStream(target)) { output.write(bytes); }
             }
             bundled.append("\n").append(new String(bytes, StandardCharsets.UTF_8)).append("\n;");
         }
@@ -382,6 +393,10 @@ final class UserscriptRuntime {
         if (runsInPage(script) != "page".equals(runtimeWorld)) return;
         if(!sameOrigin(sourceOrigin, webView.getUrl())) return;
         script.proxy = proxy;
+        if (privateMode && op.startsWith("download")) {
+            failDownload(payload.optString("req", ""), "隐私模式不允许脚本自动保存文件，请退出隐私模式后重试", proxy);
+            return;
+        }
         if ("set".equals(op) && hasGrant(script,"GM_setValue")) {
             String key=payload.optString("key");
             if(key.length()==0 || key.length()>256) return;
@@ -673,11 +688,11 @@ final class UserscriptRuntime {
         if (removeWebViewBindings) {
             for (ScriptHandler handler : scriptHandlers) {
                 try { handler.remove(); }
-                catch (RuntimeException error) { android.util.Log.w("NewsNookBrowser", "Script binding already unavailable", error); }
+                catch (RuntimeException error) { if (!privateMode) android.util.Log.w("NewsNookBrowser", "Script binding already unavailable", error); }
             }
             for (JavaScriptExecutionWorld world : listenerWorlds) {
                 try { WebViewCompat.removeWebMessageListener(webView, world, JS_PORT); }
-                catch (RuntimeException error) { android.util.Log.w("NewsNookBrowser", "Script listener already unavailable", error); }
+                catch (RuntimeException error) { if (!privateMode) android.util.Log.w("NewsNookBrowser", "Script listener already unavailable", error); }
             }
         }
         scriptHandlers.clear();

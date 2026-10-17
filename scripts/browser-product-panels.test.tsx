@@ -3,6 +3,12 @@ import React, { act } from 'react'
 import { parseHTML } from 'linkedom'
 
 const { window } = parseHTML('<html><body><div id="root"></div></body></html>')
+// React initializes controlled textareas through defaultValue; linkedom lacks its DOM setter.
+Object.defineProperty(window.HTMLTextAreaElement.prototype, 'defaultValue', {
+  configurable: true,
+  get(this: HTMLTextAreaElement) { return this.textContent ?? '' },
+  set(this: HTMLTextAreaElement, value: string) { this.textContent = value },
+})
 Object.assign(globalThis, {
   window,
   document: window.document,
@@ -17,6 +23,9 @@ const { createRoot } = await import('react-dom/client')
 const { BrowserPlacesPanel } = await import('../src/features/browser/BrowserPlacesPanel')
 const { BrowserTabsPanel } = await import('../src/features/browser/BrowserTabsPanel')
 const { BrowserSettingsPanel } = await import('../src/features/browser/BrowserSettingsPanel')
+const { BrowserStartPage } = await import('../src/features/browser/BrowserStartPage')
+const { BrowserSearchPanel } = await import('../src/features/browser/BrowserSearchPanel')
+const { BROWSER_KEYS, loadBrowserPreferences, saveBrowserPreferences } = await import('../src/features/browser/browserPreferences')
 const root = createRoot(window.document.getElementById('root')!)
 
 function button(label: string) {
@@ -98,6 +107,38 @@ const settingsProps = {
   onAddressPositionChange: (bottom: boolean) => { calls.positions.push(bottom) },
   onDesktopChange: () => { calls.desktop++ },
   onClearHistory: () => { calls.clear++ },
+}
+
+const preferenceStorage = new Map<string, string>()
+let preferenceWriteFailure = false
+let preferenceWriteCount = 0
+let delayedPreferenceSave: Promise<void> | null = null
+Object.defineProperty(globalThis, 'localStorage', { configurable: true, value: {
+  getItem: (key: string) => preferenceStorage.get(key) ?? null,
+  setItem: (key: string, value: string) => {
+    if (preferenceWriteFailure) throw new Error('Quota exceeded')
+    preferenceStorage.set(key, String(value))
+  },
+} })
+
+function FullSettingsHarness() {
+  const [preferences, setPreferences] = React.useState(loadBrowserPreferences)
+  return <BrowserSettingsPanel {...settingsProps} hasPage preferences={preferences} onPreferencesChange={async next => {
+    preferenceWriteCount++
+    if (delayedPreferenceSave) await delayedPreferenceSave
+    const saved = saveBrowserPreferences(next)
+    setPreferences(saved)
+    return true
+  }}/>
+}
+
+async function enterField(label: string, value: string) {
+  const field = window.document.querySelector('[aria-label="' + label + '"]') as HTMLInputElement | HTMLTextAreaElement | null
+  assert.ok(field, '缺少输入框：' + label)
+  await act(async () => {
+    field.value = value
+    field.dispatchEvent(new window.Event('input', {bubbles: true, cancelable: true}))
+  })
 }
 
 try {
@@ -212,7 +253,93 @@ try {
   assert.ok(button('清除浏览历史').hasAttribute('disabled'))
   await click(button('清除浏览历史'))
   assert.equal(calls.clear, 3, '空历史没有可执行的清除操作')
-  console.log('browser product panels: history/bookmark filtering and actions, dates, tab limits, independent close, settings callbacks and disabled states OK')
+  await act(async () => root.render(<FullSettingsHarness key="full-settings"/>))
+  assert.equal(window.document.querySelectorAll('[role="radio"]').length, 9)
+  assert.equal(button('系统默认').getAttribute('aria-checked'), 'true')
+  assert.ok(!window.document.querySelector('[aria-label="清除当前站点数据"]'), 'unsupported site-data clearing has no inert control')
+  await click(button('自定义'))
+  assert.equal(button('系统默认').getAttribute('aria-checked'), 'true', 'opening the custom editor does not publish an unsaved mode')
+  await enterField('自定义浏览器标识', 'Mozilla/5.0' + String.fromCharCode(10) + 'Unexpected: header')
+  await act(async () => {
+    window.document.querySelector('.browser-user-agent-editor')!.dispatchEvent(new window.Event('submit', {bubbles: true, cancelable: true}))
+  })
+  assert.equal(preferenceWriteCount, 0, 'invalid UA never reaches persistence')
+  assert.equal(window.document.querySelector('textarea')?.getAttribute('aria-invalid'), 'true')
+  const customAgent = 'Mozilla/5.0 (X11; Linux x86_64) NewsNookPanelTest/1.0'
+  await enterField('自定义浏览器标识', customAgent)
+  preferenceWriteFailure = true
+  await act(async () => {
+    window.document.querySelector('.browser-user-agent-editor')!.dispatchEvent(new window.Event('submit', {bubbles: true, cancelable: true}))
+  })
+  assert.equal(button('系统默认').getAttribute('aria-checked'), 'true')
+  assert.equal((window.document.querySelector('textarea') as HTMLTextAreaElement).value, customAgent, 'failed saves retain the UA draft')
+  assert.ok(window.document.body.textContent?.includes('保存失败'), 'failed persistence is visible')
+  assert.equal(preferenceStorage.has(BROWSER_KEYS.preferences), false)
+  preferenceWriteFailure = false
+  await act(async () => {
+    window.document.querySelector('.browser-user-agent-editor')!.dispatchEvent(new window.Event('submit', {bubbles: true, cancelable: true}))
+  })
+  assert.equal(button('自定义').getAttribute('aria-checked'), 'true')
+  assert.equal(loadBrowserPreferences().customUserAgent, customAgent)
+  await act(async () => root.render(<FullSettingsHarness key="reopened-settings"/>))
+  assert.equal(button('自定义').getAttribute('aria-checked'), 'true', 'reopening reads the saved UA mode')
+  assert.equal((window.document.querySelector('textarea') as HTMLTextAreaElement).value, customAgent)
+  await click(button('第三方 Cookie'))
+  assert.equal(loadBrowserPreferences().thirdPartyCookiesEnabled, true)
+  assert.equal(button('第三方 Cookie').getAttribute('aria-checked'), 'true')
+
+  let finishSave!: () => void
+  delayedPreferenceSave = new Promise<void>(resolve => {finishSave = resolve})
+  await click(button('放大网页文字'))
+  assert.equal(loadBrowserPreferences().textZoom, 100, 'in-flight changes leave the stored value intact')
+  assert.equal(window.document.querySelector('output')?.textContent, '100%', 'in-flight values are not published to the UI')
+  assert.ok(button('JavaScript').hasAttribute('disabled'))
+  assert.ok(window.document.querySelector('textarea')?.hasAttribute('disabled'), 'pending saves cannot replace a newer UA draft')
+  assert.ok(button('Google').hasAttribute('disabled'), 'other settings cannot race the pending write')
+  const writesBeforeDisabled = preferenceWriteCount
+  await click(button('JavaScript'))
+  assert.equal(preferenceWriteCount, writesBeforeDisabled)
+  await act(async () => {finishSave(); await delayedPreferenceSave})
+  delayedPreferenceSave = null
+  assert.equal(loadBrowserPreferences().textZoom, 110)
+  assert.equal(window.document.querySelector('output')?.textContent, '110%')
+  await act(async () => root.render(<FullSettingsHarness key="reopened-zoom"/>))
+  assert.equal(window.document.querySelector('output')?.textContent, '110%')
+  await click(button('恢复默认文字大小'))
+  assert.equal(loadBrowserPreferences().textZoom, 100)
+
+  await act(async () => root.render(<BrowserPlacesPanel key="private-history" kind="history" {...placesProps} privateMode/>))
+  assert.ok(!window.document.body.textContent?.includes(entries[0].title), 'private places do not expose ordinary history')
+  assert.ok(!window.document.querySelector('[aria-label="清空浏览历史"]'))
+  assert.ok(!window.document.querySelector('[aria-label="恢复首页隐藏的网站"]'))
+  await act(async () => root.render(<BrowserSettingsPanel {...settingsProps} privateMode/>))
+  assert.ok(button('清除浏览历史').hasAttribute('disabled'))
+  assert.ok(!window.document.body.textContent?.includes('2 条记录'), 'private settings do not reveal the ordinary history count')
+
+  await act(async () => root.render(<BrowserStartPage privateMode shortcuts={[{name:'MDN', url:entries[0].url}]} recent={entries}
+    onSearch={() => {}} onOpen={() => {}} onAddShortcut={() => {}} onShortcutOptions={() => {}}
+    onHistoryOptions={() => {}} onPanel={() => {}}/>))
+  assert.ok(window.document.body.textContent?.includes('隐私浏览'))
+  assert.ok(!window.document.body.textContent?.includes('最近访问'))
+  assert.ok(!window.document.body.textContent?.includes(entries[0].title))
+  assert.ok(!window.document.querySelector('[aria-label="添加快捷方式"]'))
+  assert.ok(![...window.document.querySelectorAll('button')].some(item => ['历史', '书签', '用户脚本', '管理'].includes(item.textContent?.trim() ?? '')))
+  assert.equal(window.document.querySelectorAll('img[src^="https:"]').length, 0, 'private start does not fetch favicons')
+
+  let searchClosed = 0
+  await act(async () => root.render(<BrowserSearchPanel current="" initialValue="" engine="bing" history={entries}
+    privateMode pending={false} error="" onClose={() => {searchClosed++}}
+    onOpen={async () => {throw new Error('网页暂时无法打开')}} onCopy={() => {}}/>))
+  assert.ok(!window.document.body.textContent?.includes(entries[0].title))
+  assert.equal(window.document.querySelectorAll('img[src^="https:"]').length, 0, 'private provider choices do not fetch favicons')
+  await pressKey(button('常用'), 'ArrowLeft')
+  assert.equal(button('学术').getAttribute('aria-selected'), 'true', 'search category tabs support wrapping keyboard navigation')
+  await enterField('搜索或输入网址', 'preserve this search')
+  await click(button('搜索或打开：preserve this search'))
+  assert.equal(searchClosed, 0)
+  assert.equal((window.document.querySelector('input') as HTMLInputElement).value, 'preserve this search')
+  assert.ok(window.document.body.textContent?.includes('网页暂时无法打开'), 'rejected navigation retains the draft and shows the failure')
+  console.log('browser product panels: existing controls, saved settings round-trip, invalid UA, save failures, pending races, private history/favicon isolation and search recovery OK')
 } finally {
   await act(async () => root.unmount())
 }

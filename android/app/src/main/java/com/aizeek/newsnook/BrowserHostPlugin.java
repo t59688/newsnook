@@ -9,6 +9,7 @@ import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.text.InputType;
@@ -26,6 +27,9 @@ import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
+import android.webkit.WebStorage;
+import androidx.webkit.WebStorageCompat;
+import androidx.webkit.WebViewFeature;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.EditText;
@@ -46,6 +50,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
+import okhttp3.HttpUrl;
 
 /** Independent Android System WebView browser; no Capacitor bridge is installed in websites. */
 @CapacitorPlugin(name = "NewsNookBrowser")
@@ -57,17 +62,67 @@ public class BrowserHostPlugin extends Plugin {
     private static final String HISTORY = "history-v1";
     private static final String BOOKMARKS = "bookmarks-v1";
     private static final String RESTORED_PAGE_ERROR = "网页进程已恢复，请重新加载此页";
+    private static final String SITE_DATA_CLEARING = "正在清理该站点数据…";
     // A one-time, memory-only handoff between the retired and recreated Bridges.
     private static final AtomicReference<JSObject> pendingRecoverySession = new AtomicReference<>();
+
+    static final class BrowserSettings {
+        final String userAgentMode;
+        final String customUserAgent;
+        final int textZoom;
+        final boolean javaScriptEnabled;
+        final boolean loadsImagesAutomatically;
+        final boolean thirdPartyCookiesEnabled;
+        final boolean mediaPlaybackRequiresUserGesture;
+        final boolean confirmExternalApps;
+
+        BrowserSettings(JSObject requested) {
+            JSObject values = requested == null ? new JSObject() : requested;
+            String mode = values.optString("userAgentMode", "system");
+            if (!"system".equals(mode) && !"desktop".equals(mode) && !"custom".equals(mode))
+                throw new IllegalArgumentException("无效的浏览器标识模式");
+            userAgentMode = mode;
+            customUserAgent = values.optString("customUserAgent", "").trim();
+            if ("custom".equals(mode) && (customUserAgent.isEmpty() || customUserAgent.length() > 512
+                    || !customUserAgent.matches("[\\x20-\\x7e]+")))
+                throw new IllegalArgumentException("自定义浏览器标识须为 1–512 个可见英文字符，不能换行");
+            textZoom = Math.max(75, Math.min(200, values.optInt("textZoom", 100)));
+            javaScriptEnabled = values.optBoolean("javaScriptEnabled", true);
+            loadsImagesAutomatically = values.optBoolean("loadsImagesAutomatically", true);
+            thirdPartyCookiesEnabled = values.optBoolean("thirdPartyCookiesEnabled", false);
+            mediaPlaybackRequiresUserGesture = values.optBoolean("mediaPlaybackRequiresUserGesture", true);
+            confirmExternalApps = values.optBoolean("confirmExternalApps", true);
+        }
+
+        JSObject toJson() {
+            return new JSObject().put("userAgentMode", userAgentMode).put("customUserAgent", customUserAgent)
+                .put("textZoom", textZoom).put("javaScriptEnabled", javaScriptEnabled)
+                .put("loadsImagesAutomatically", loadsImagesAutomatically)
+                .put("thirdPartyCookiesEnabled", thirdPartyCookiesEnabled)
+                .put("mediaPlaybackRequiresUserGesture", mediaPlaybackRequiresUserGesture)
+                .put("confirmExternalApps", confirmExternalApps);
+        }
+
+        boolean needsReload(BrowserSettings other) {
+            return !userAgentMode.equals(other.userAgentMode) || !customUserAgent.equals(other.customUserAgent)
+                || javaScriptEnabled != other.javaScriptEnabled
+                || loadsImagesAutomatically != other.loadsImagesAutomatically;
+        }
+    }
 
     private static final class Tab {
         // A tab outlives its renderer. Clear this reference before releasing callbacks.
         volatile WebView webView;
         final int id;
         String mobileUserAgent;
+        String userAgentMode = "system";
+        String findQuery = "";
+        int findMatch = -1;
+        int findCount;
         UserscriptRuntime runtime;
         UserscriptRuntime preparingRuntime;
         volatile BrowserMediaCapture media;
+        volatile BrowserImageCapture images;
         PluginCall pendingOpen;
         Runnable pendingNavigation;
         String title = "网页";
@@ -77,6 +132,8 @@ public class BrowserHostPlugin extends Plugin {
         boolean loading;
         boolean preparing;
         boolean hasLoaded;
+        boolean siteDataClearing;
+        boolean recreateAfterSiteClear;
         int progress;
         int scriptVersion = -1;
         Tab(String url, int id) {
@@ -85,6 +142,16 @@ public class BrowserHostPlugin extends Plugin {
         }
     }
 
+    private static final class SiteDataClear {
+        final PluginCall call;
+        String providerSite;
+        String host;
+        boolean includeSubdomains;
+        int retirementGeneration;
+        SiteDataClear(PluginCall call, String host) { this.call = call; this.host = host; }
+    }
+
+    private SiteDataClear siteDataClear;
     private Dialog dialog;
     private boolean embeddedMode;
     private FrameLayout pageFrame;
@@ -102,6 +169,7 @@ public class BrowserHostPlugin extends Plugin {
     private Tab current;
     private JSArray scriptSnapshot;
     private SharedPreferences preferences;
+    private BrowserSettings browserSettings = new BrowserSettings(null);
     private int ink = Color.rgb(14, 15, 18);
     private int surface = Color.rgb(22, 24, 29);
     private int paper = Color.rgb(234, 228, 216);
@@ -128,16 +196,365 @@ public class BrowserHostPlugin extends Plugin {
             if (!activityAvailable()) { call.reject("浏览器所在页面已关闭"); return; }
             try { action.run(); }
             catch (RuntimeException error) {
-                android.util.Log.e("NewsNookBrowser", "Browser operation failed", error);
-                call.reject("浏览器操作失败，请重试", error);
+                if (privateMode()) call.reject("浏览器操作失败，请重试");
+                else {
+                    android.util.Log.e("NewsNookBrowser", "Browser operation failed", error);
+                    call.reject("浏览器操作失败，请重试", error);
+                }
             }
         };
         if (Looper.myLooper() == Looper.getMainLooper()) guarded.run();
         else mainHandler.post(guarded);
     }
 
+    private boolean privateMode() {
+        // Privacy remains true through teardown; ending a session must never re-enable
+        // history/recovery writes or console forwarding for late renderer callbacks.
+        return getActivity() instanceof PrivateBrowserActivity;
+    }
+
+    private JSObject privacyCapabilities() {
+        boolean clear = false;
+        try { clear = WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA); }
+        catch (RuntimeException ignored) {}
+        JSObject result = new JSObject().put("privateMode", PrivateBrowserSession.supported(getContext()))
+            .put("clearSiteData", clear).put("sharedSiteData", !privateMode());
+        String reason = PrivateBrowserSession.unavailableReason(getContext());
+        if (reason != null) result.put("reason", reason);
+        return result;
+    }
+
+    @PluginMethod public void getBrowserContext(PluginCall call) {
+        onUi(call, () -> {
+            if (getActivity() instanceof PrivateBrowserActivity) {
+                ((PrivateBrowserActivity) getActivity()).browserContext(configuration -> {
+                    configuration.put("privateMode", true).put("privacyCapabilities", privacyCapabilities());
+                    call.resolve(configuration);
+                }, call::reject);
+            } else {
+                call.resolve(new JSObject().put("privateMode", false)
+                    .put("privacyCapabilities", privacyCapabilities()));
+            }
+        });
+    }
+
+    @PluginMethod public void openPrivate(PluginCall call) {
+        if (privateMode()) { call.reject("已在隐私会话中"); return; }
+        JSObject configuration = new JSObject();
+        try {
+            configuration.put("settings", new BrowserSettings(call.getObject("settings")).toJson());
+            for (String key : new String[] {"palette", "appearance", "ui"}) {
+                JSObject value = call.getObject(key);
+                if (value != null) configuration.put(key, value);
+            }
+            JSArray scripts = call.getArray("scripts");
+            if (scripts != null) configuration.put("scripts", scripts);
+            String url = normalizeUrl(call.getString("url", "about:blank"));
+            if (url == null) { call.reject("仅支持 HTTP/HTTPS 网站"); return; }
+            configuration.put("url", url);
+        } catch (IllegalArgumentException error) { call.reject(error.getMessage()); return; }
+        onUi(call, () -> {
+            try {
+                PrivateBrowserSession.launch(getActivity(), configuration);
+                call.resolve(new JSObject().put("opened", true));
+            } catch (Exception error) { call.reject(error.getMessage()); }
+        });
+    }
+
+    @PluginMethod public void closePrivate(PluginCall call) {
+        onUi(call, () -> {
+            if (!(getActivity() instanceof PrivateBrowserActivity)) {
+                call.reject("当前不是隐私会话"); return;
+            }
+            closeNative();
+            call.resolve();
+            ((PrivateBrowserActivity) getActivity()).finishPrivate();
+        });
+    }
+
+    @PluginMethod public void updateSettings(PluginCall call) {
+        final BrowserSettings requested;
+        try { requested = new BrowserSettings(call.getObject("settings")); }
+        catch (IllegalArgumentException error) { call.reject(error.getMessage()); return; }
+        onUi(call, () -> {
+            boolean reload = browserSettings.needsReload(requested);
+            browserSettings = requested;
+            for (Tab tab : tabs) {
+                tab.userAgentMode = requested.userAgentMode;
+                tab.desktop = "desktop".equals(requested.userAgentMode);
+                applySettings(tab);
+            }
+            if (reload && current != null && current.webView != null && current.hasLoaded) reloadTab(current);
+            if (current != null) sendNavigation(current.url, "state");
+            call.resolve(new JSObject().put("settings", requested.toJson()));
+        });
+    }
+
+    @PluginMethod public void findInPage(PluginCall call) {
+        String query = call.getString("query", "");
+        if (query.length() > 1000) { call.reject("查找文字过长"); return; }
+        onUi(call, () -> {
+            if (current == null || current.webView == null) { call.reject("请先打开网页"); return; }
+            current.findQuery = query;
+            current.findMatch = -1;
+            current.findCount = 0;
+            if (query.isEmpty()) { current.webView.clearMatches(); sendFindResult(current, true); }
+            else current.webView.findAllAsync(query);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod public void findNext(PluginCall call) {
+        boolean forward = Boolean.TRUE.equals(call.getBoolean("forward", true));
+        onUi(call, () -> {
+            if (current == null || current.webView == null) { call.reject("请先打开网页"); return; }
+            current.webView.findNext(forward);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod public void clearFind(PluginCall call) {
+        onUi(call, () -> {
+            if (current != null) {
+                current.findQuery = "";
+                current.findMatch = -1;
+                current.findCount = 0;
+                if (current.webView != null) current.webView.clearMatches();
+                sendFindResult(current, true);
+            }
+            call.resolve();
+        });
+    }
+
+    private void sendFindResult(Tab tab, boolean done) {
+        if (closing || current != tab) return;
+        notifyListeners("findResult", new JSObject().put("tabId", tab.id)
+            .put("activeMatch", tab.findMatch).put("count", tab.findCount).put("done", done));
+    }
+
+    @PluginMethod public void clearSiteData(PluginCall call) {
+        onUi(call, () -> {
+            if (siteDataClear != null) { call.reject("正在清理网站数据，请稍候"); return; }
+            if (current == null || !isHttpUrl(current.url)) { call.reject("请先打开要清理的网站"); return; }
+            if (!WebViewFeature.isFeatureSupported(WebViewFeature.DELETE_BROWSING_DATA)) {
+                call.reject("当前系统 WebView 不支持完整的单站点数据清理，请更新系统 WebView"); return;
+            }
+            String url = call.getString("url", current.url);
+            String requestedHost = httpHost(url);
+            if (!isHttpUrl(url) || requestedHost == null || !requestedHost.equals(httpHost(current.url))) {
+                call.reject("网站已变化，请重新打开清理操作"); return;
+            }
+            String appDataReason = appStorageProtectionReason(url);
+            if (appDataReason != null) { call.reject(appDataReason); return; }
+            SiteDataClear operation = new SiteDataClear(call, requestedHost);
+            siteDataClear = operation;
+            try {
+                deferForSiteClear(current, current.url);
+                // The provider is the authority for its PSL/site boundary. This API returns
+                // that exact site only after starting deletion; there is no public getSite.
+                // Retire every matching document, then run a final deletion after this pass.
+                operation.providerSite = WebStorageCompat.deleteBrowsingDataForSite(WebStorage.getInstance(), url,
+                    () -> mainHandler.post(() -> deleteRetiredSiteData(operation)));
+                operation.host = siteHost(operation.providerSite);
+                if (operation.host == null) throw new IllegalStateException("WebView returned an invalid site");
+                operation.includeSubdomains = requestedHost.endsWith("." + operation.host)
+                    || siteHasSubdomains(operation.host);
+                for (Tab tab : tabs) deferForSiteClear(tab, tab.url);
+                notifyListeners("siteDataClearing", new JSObject().put("site", operation.providerSite)
+                    .put("sharedSiteData", !privateMode()));
+            } catch (RuntimeException failure) {
+                failSiteClear(operation);
+            }
+        });
+    }
+
+    protected List<String> appStorageUrls() {
+        com.getcapacitor.Bridge appBridge = getBridge();
+        if (appBridge == null) return java.util.Collections.emptyList();
+        // These are configured Bridge origins, never the untrusted website tab's address.
+        return java.util.Arrays.asList(appBridge.getLocalUrl(), appBridge.getServerUrl(), appBridge.getAppUrl(),
+            appBridge.getScheme() + "://" + appBridge.getHost());
+    }
+
+    private String appStorageProtectionReason(String url) {
+        HttpUrl requested = HttpUrl.parse(url);
+        String requestedSite = storageSite(requested);
+        boolean knownAppOrigin = false;
+        for (String appUrl : appStorageUrls()) {
+            HttpUrl app = appUrl == null ? null : HttpUrl.parse(appUrl);
+            if (app == null) continue;
+            knownAppOrigin = true;
+            // Browsing-data deletion crosses scheme and port, and may include sibling
+            // subdomains. Check before the first provider call: discovering the exact
+            // site by deleting first would already destroy application-owned storage.
+            if (requested.host().equals(app.host()) || requestedSite.equals(storageSite(app))) {
+                return "此网站与应用界面共用存储，清理可能删除应用设置或登录信息，已取消操作";
+            }
+        }
+        return knownAppOrigin ? null : "无法确认应用数据的隔离范围，暂不能清理网站数据";
+    }
+
+    private static String storageSite(HttpUrl url) {
+        String domain = url.topPrivateDomain();
+        return domain == null ? url.host() : domain;
+    }
+
+    private static String httpHost(String url) {
+        HttpUrl parsed = url == null ? null : HttpUrl.parse(url);
+        return parsed == null ? null : parsed.host();
+    }
+
+    private static String siteHost(String site) {
+        if (site == null || site.isEmpty()) return null;
+        // The provider returns a domain or IP, without a scheme. IPv6 may be unbracketed.
+        String authority = site.indexOf(':') >= 0 && !site.startsWith("[") ? "[" + site + "]" : site;
+        return httpHost("https://" + authority + "/");
+    }
+
+    private static boolean siteHasSubdomains(String host) {
+        // WebView falls back to an exact host for IPs and internal names such as localhost.
+        // In particular, a.localhost is a different site from localhost.
+        int dot = host.indexOf('.');
+        if (dot <= 0 || dot == host.length() - 1 || host.indexOf(':') >= 0 || host.matches("[0-9.]+")) return false;
+        // Visiting a public/private suffix itself (e.g. github.io) must not retire its
+        // independent tenants. Use the bundled PSL only to exclude known suffixes;
+        // deletion still uses the provider-returned site. PSL version drift remains a
+        // boundary when the provider returns an unchanged, newly listed suffix host.
+        HttpUrl parsed = HttpUrl.parse("https://" + host + "/");
+        return parsed != null && parsed.topPrivateDomain() != null;
+    }
+
+    private boolean deferForSiteClear(Tab tab, String url) {
+        SiteDataClear operation = siteDataClear;
+        String host = httpHost(url);
+        if (operation == null || host == null || !(host.equals(operation.host)
+                || (operation.includeSubdomains && host.endsWith("." + operation.host)))) return false;
+        tab.url = url;
+        if (!tab.siteDataClearing) {
+            if (fullscreenTab == tab) exitFullscreen();
+            releaseTabView(tab, false);
+            operation.retirementGeneration++;
+        }
+        tab.siteDataClearing = true;
+        tab.recreateAfterSiteClear = false;
+        tab.error = SITE_DATA_CLEARING;
+        if (current == tab) {
+            showTabContent(tab);
+            updateChrome();
+            sendNavigation(tab.url, "state");
+        }
+        return true;
+    }
+
+    private void deleteRetiredSiteData(SiteDataClear operation) {
+        if (siteDataClear != operation) return;
+        if (closing || !activityAvailable()) { failSiteClear(operation); return; }
+        final int generation = operation.retirementGeneration;
+        try {
+            WebStorageCompat.deleteBrowsingDataForSite(WebStorage.getInstance(), operation.providerSite,
+                () -> mainHandler.post(() -> {
+                    if (siteDataClear != operation) return;
+                    // A redirect or new navigation may have joined this site during deletion.
+                    // The last deletion must begin after the last old document was retired.
+                    if (generation != operation.retirementGeneration) deleteRetiredSiteData(operation);
+                    else finishSiteClear(operation);
+                }));
+        } catch (RuntimeException failure) {
+            failSiteClear(operation);
+        }
+    }
+
+    private void finishSiteClear(SiteDataClear operation) {
+        if (siteDataClear != operation) return;
+        if (closing || !activityAvailable()) { failSiteClear(operation); return; }
+        siteDataClear = null;
+        for (Tab tab : tabs) if (tab.siteDataClearing) {
+            tab.siteDataClearing = false;
+            tab.recreateAfterSiteClear = true;
+            tab.error = null;
+        }
+        if (current != null && current.recreateAfterSiteClear) {
+            try { initializeTab(current); }
+            catch (RuntimeException failure) {
+                current.recreateAfterSiteClear = false;
+                releaseTabView(current, false);
+                current.error = "网站数据已清理，请重新加载网页";
+                showTabContent(current);
+                updateChrome();
+                sendNavigation(current.url, "state");
+            }
+        }
+        operation.call.resolve(new JSObject().put("site", operation.providerSite)
+            .put("sharedSiteData", !privateMode()));
+    }
+
+    private void failSiteClear(SiteDataClear operation) {
+        if (siteDataClear != operation) return;
+        siteDataClear = null;
+        for (Tab tab : tabs) if (tab.siteDataClearing) {
+            tab.siteDataClearing = false;
+            tab.recreateAfterSiteClear = false;
+            tab.error = "清理未完成，请重试";
+        }
+        if (current != null && current.webView == null) {
+            showTabContent(current);
+            updateChrome();
+            sendNavigation(current.url, "state");
+        }
+        operation.call.reject("清理未完成，请重试");
+    }
+
+    @PluginMethod public void scanImages(PluginCall call) {
+        int tabId = call.getInt("tabId", -1);
+        String requestId = call.getString("requestId", "");
+        onUi(call, () -> {
+            Tab tab = imageTab(tabId);
+            if (tab == null) { call.reject("网页图片会话已关闭"); return; }
+            tab.images.scan(requestId, result -> resolveImage(call, tab, result), call::reject);
+        });
+    }
+
+    @PluginMethod public void loadImage(PluginCall call) {
+        int tabId = call.getInt("tabId", -1);
+        onUi(call, () -> {
+            Tab tab = imageTab(tabId);
+            if (tab == null) { call.reject("网页图片会话已关闭"); return; }
+            tab.images.load(call.getString("documentId", ""), call.getString("requestId", ""),
+                call.getString("imageId", ""), Boolean.TRUE.equals(call.getBoolean("thumbnail", false)),
+                Boolean.TRUE.equals(call.getBoolean("original", false)),
+                result -> resolveImage(call, tab, result), call::reject);
+        });
+    }
+
+    @PluginMethod public void cancelImageRequests(PluginCall call) {
+        int tabId = call.getInt("tabId", -1);
+        onUi(call, () -> {
+            Tab tab = imageTab(tabId);
+            if (tab != null) tab.images.cancel(call.getString("documentId"), call.getString("requestId"));
+            call.resolve();
+        });
+    }
+
+    private Tab imageTab(int id) {
+        for (Tab tab : tabs) if (tab.id == id && isLive(tab, tab.webView) && tab.images != null) return tab;
+        return null;
+    }
+
+    private void resolveImage(PluginCall call, Tab tab, JSONObject result) {
+        if (!isLive(tab, tab.webView) || tab.images == null) { call.reject("网页图片会话已关闭"); return; }
+        try { call.resolve(new JSObject(result.toString())); }
+        catch (Exception error) { call.reject("无法读取网页图片"); }
+    }
+
     @PluginMethod public void open(PluginCall call) {
+        if (Boolean.TRUE.equals(call.getBoolean("privateMode", false)) && !privateMode()) {
+            call.reject("隐私模式必须在独立会话中打开"); return;
+        }
+        final BrowserSettings requestedSettings;
+        try { requestedSettings = new BrowserSettings(call.getObject("settings")); }
+        catch (IllegalArgumentException error) { call.reject(error.getMessage()); return; }
         JSObject requestedRecovery = call.getObject("recoverySession");
+        if (privateMode() && requestedRecovery != null) { call.reject("隐私会话不恢复之前的标签页"); return; }
         JSObject recovery = requestedRecovery == null ? null : normalizeRecoverySession(requestedRecovery);
         if (requestedRecovery != null && recovery == null) { call.reject("没有可恢复的有效标签页"); return; }
         String url = normalizeUrl(call.getString("url", HOME));
@@ -156,7 +573,9 @@ public class BrowserHostPlugin extends Plugin {
                 embeddedVisible = visible;
                 scriptSnapshot = scripts;
                 scriptVersion++;
-                preferences = getContext().getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE);
+                preferences = privateMode() ? PrivateBrowserSession.preferences("newsnook-native-browser")
+                    : getContext().getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE);
+                browserSettings = requestedSettings;
                 updatePalette(palette);
                 if (embed) createEmbedded(top, bottom);
                 else createDialog();
@@ -172,7 +591,7 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     void captureRecoverySession() {
-        if (tabs.isEmpty()) return;
+        if (privateMode() || tabs.isEmpty()) return;
         JSArray entries = new JSArray();
         for (Tab tab : tabs) {
             entries.put(new JSObject().put("url", tab.url).put("title", tab.title).put("desktop", tab.desktop));
@@ -184,7 +603,7 @@ public class BrowserHostPlugin extends Plugin {
 
     @PluginMethod public void takeRecoverySession(PluginCall call) {
         onUi(call, () -> {
-            JSObject session = pendingRecoverySession.getAndSet(null);
+            JSObject session = privateMode() ? null : pendingRecoverySession.getAndSet(null);
             call.resolve(new JSObject().put("session", session == null ? JSONObject.NULL : session));
         });
     }
@@ -218,6 +637,7 @@ public class BrowserHostPlugin extends Plugin {
             Tab tab = new Tab(entry.optString("url"), nextTabId++);
             tab.title = entry.optString("title", "网页");
             tab.desktop = entry.optBoolean("desktop", false);
+            tab.userAgentMode = tab.desktop ? "desktop" : browserSettings.userAgentMode;
             tab.error = RESTORED_PAGE_ERROR;
             tabs.add(tab);
         }
@@ -247,6 +667,10 @@ public class BrowserHostPlugin extends Plugin {
         state.put("back", tab != null && tab.webView != null && tab.webView.canGoBack());
         state.put("forward", tab != null && tab.webView != null && tab.webView.canGoForward());
         state.put("desktop", tab != null && tab.desktop);
+        state.put("privateMode", privateMode());
+        state.put("userAgentMode", tab == null ? browserSettings.userAgentMode : tab.userAgentMode);
+        state.put("userAgent", tab == null || tab.webView == null ? "" : tab.webView.getSettings().getUserAgentString());
+        state.put("textZoom", browserSettings.textZoom);
         state.put("loading", tab != null && (tab.loading || tab.preparing));
         state.put("progress", tab == null ? 0 : tab.progress);
         state.put("error", tab == null || tab.error == null ? JSONObject.NULL : tab.error);
@@ -498,7 +922,12 @@ public class BrowserHostPlugin extends Plugin {
             return;
         }
         Tab tab = new Tab(url, nextTabId++);
-        tab.desktop = preferences.getBoolean("desktop-default", false);
+        tab.userAgentMode = browserSettings.userAgentMode;
+        tab.desktop = "desktop".equals(tab.userAgentMode);
+        if (!embeddedMode && preferences.getBoolean("desktop-default", false)) {
+            tab.desktop = true;
+            tab.userAgentMode = "desktop";
+        }
         tab.pendingOpen = call;
         tabs.add(tab);
         initializeTab(tab);
@@ -509,7 +938,25 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void initializeTab(Tab tab) {
-        WebView view = new WebView(getActivity());
+        if (deferForSiteClear(tab, tab.url)) { selectTab(tab); return; }
+        tab.siteDataClearing = false;
+        tab.recreateAfterSiteClear = false;
+        WebView view = new WebView(getActivity()) {
+            @Override public android.view.inputmethod.InputConnection onCreateInputConnection(EditorInfo info) {
+                android.view.inputmethod.InputConnection connection = super.onCreateInputConnection(info);
+                if (privateMode() && Build.VERSION.SDK_INT >= 26)
+                    info.imeOptions |= EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
+                return connection;
+            }
+        };
+        if (privateMode()) {
+            view.setSaveEnabled(false);
+            view.setSaveFromParentEnabled(false);
+            if (Build.VERSION.SDK_INT >= 26)
+                view.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
+            if (Build.VERSION.SDK_INT >= 29)
+                view.setImportantForContentCapture(View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS);
+        }
         tab.webView = view;
         tab.mobileUserAgent = view.getSettings().getUserAgentString();
         tab.error = null;
@@ -524,28 +971,41 @@ public class BrowserHostPlugin extends Plugin {
         settings.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         settings.setMediaPlaybackRequiresUserGesture(true);
         CookieManager.getInstance().setAcceptCookie(true);
-        CookieManager.getInstance().setAcceptThirdPartyCookies(view, false);
-        applyAgent(tab);
+        if (privateMode()) {
+            settings.setSaveFormData(false);
+            settings.setDatabaseEnabled(false);
+            settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        }
+        applySettings(tab);
+        view.setFindListener((activeMatchOrdinal, numberOfMatches, isDoneCounting) -> {
+            if (!isLive(tab, view) || tab.findQuery.isEmpty()) return;
+            tab.findMatch = numberOfMatches == 0 ? -1 : activeMatchOrdinal;
+            tab.findCount = numberOfMatches;
+            sendFindResult(tab, isDoneCounting);
+        });
         view.setWebViewClient(new WebViewClient() {
             @Override public void onPageStarted(WebView web, String address, Bitmap icon) {
-                if (!isLive(tab, web)) return;
+                if (!isLive(tab, web) || deferForSiteClear(tab, address)) return;
                 tab.url = address; tab.loading = true; tab.progress = 0; tab.error = null;
                 if (current == tab) updateChrome();
                 if (current == tab) sendNavigation(address, "start");
                 if (tab.runtime != null) tab.runtime.onNavigation(address);
                 if (tab.media != null) tab.media.onPageStarted(address);
+                if (tab.images != null) tab.images.onPageStarted(address);
+                tab.findQuery = ""; tab.findMatch = -1; tab.findCount = 0;
+                sendFindResult(tab, true);
             }
             @Override public void onPageFinished(WebView web, String address) {
                 if (!isLive(tab, web) || (tab.loading && !address.equals(tab.url))) return;
                 tab.url = address; tab.title = web.getTitle() == null ? address : web.getTitle();
                 tab.loading = false; tab.progress = 100;
                 if (current == tab) updateChrome();
-                if (!embeddedMode && isHttpUrl(address)) recordVisit(tab.title, address);
+                if (!embeddedMode && !privateMode() && isHttpUrl(address)) recordVisit(tab.title, address);
                 if (current == tab) sendNavigation(address, "end");
                 if (tab.media != null) tab.media.onPageFinished();
             }
             @Override public boolean onRenderProcessGone(WebView web, RenderProcessGoneDetail detail) {
-                android.util.Log.e("NewsNookBrowser", "Renderer terminated: crashed=" + detail.didCrash()
+                if (!privateMode()) android.util.Log.e("NewsNookBrowser", "Renderer terminated: crashed=" + detail.didCrash()
                     + " priority=" + detail.rendererPriorityAtExit());
                 if (!isLive(tab, web)) return true;
                 // Android dispatches this separately for every affected WebView. Never select
@@ -569,14 +1029,21 @@ public class BrowserHostPlugin extends Plugin {
                 return true;
             }
             @Override public WebResourceResponse shouldInterceptRequest(WebView web, WebResourceRequest request) {
+                if (!isLive(tab, web)) return null;
+                BrowserImageCapture images = tab.images;
+                if (images != null) images.onRequest(request);
                 BrowserMediaCapture media = tab.media;
-                return !isLive(tab, web) || media == null ? null : media.onRequest(request);
+                return media == null ? null : media.onRequest(request);
             }
             @Override public boolean shouldOverrideUrlLoading(WebView web, WebResourceRequest request) {
                 if (!isLive(tab, web)) return true;
                 if (!request.isForMainFrame()) return false;
                 String target = request.getUrl().toString();
-                if (!isHttpUrl(target) && !"about:blank".equals(target)) return true;
+                if (!isHttpUrl(target) && !"about:blank".equals(target)) {
+                    if (request.hasGesture()) openExternalApp(target);
+                    return true;
+                }
+                if (deferForSiteClear(tab, target)) return true;
                 if (tab.preparing || tab.scriptVersion != scriptVersion) {
                     runNavigation(tab, () -> web.loadUrl(target));
                     return true;
@@ -595,6 +1062,9 @@ public class BrowserHostPlugin extends Plugin {
             }
         });
         view.setWebChromeClient(new WebChromeClient() {
+            @Override public boolean onConsoleMessage(android.webkit.ConsoleMessage message) {
+                return privateMode() || super.onConsoleMessage(message);
+            }
             @Override public void onProgressChanged(WebView web, int percent) {
                 if (!isLive(tab, web)) return;
                 tab.progress = Math.max(0, Math.min(100, percent));
@@ -634,13 +1104,14 @@ public class BrowserHostPlugin extends Plugin {
         view.setDownloadListener((link, agent, disposition, mime, size) -> {
             if (isLive(tab, view)) enqueueDownload(link, disposition, mime);
         });
+        tab.images = new BrowserImageCapture(view, tab.id, tab.url);
         // Attach the same passive probe before any user script starts executing.
         try {
             tab.media = new BrowserMediaCapture(view, tab.url,
                 observation -> sendMediaObservation(tab, observation),
                 (pageUrl, reset) -> sendMediaPage(tab, pageUrl, reset));
         } catch (Exception error) {
-            android.util.Log.w("NewsNookBrowser", "Media observation unavailable", error);
+            if (!privateMode()) android.util.Log.w("NewsNookBrowser", "Media observation unavailable", error);
         }
         selectTab(tab);
         prepareRuntime(tab);
@@ -650,7 +1121,7 @@ public class BrowserHostPlugin extends Plugin {
         final WebView view = tab.webView;
         if (!isLive(tab, view)) return;
         if (tab.preparingRuntime != null) tab.preparingRuntime.close();
-        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view);
+        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view, privateMode());
         final JSArray snapshot = scriptSnapshot;
         final int version = scriptVersion;
         tab.preparingRuntime = runtime;
@@ -673,7 +1144,7 @@ public class BrowserHostPlugin extends Plugin {
                 catch (Exception error) {
                     runtime.close();
                     tab.runtime = null;
-                    android.util.Log.w("NewsNookBrowser", "Userscript installation failed", error);
+                    if (!privateMode()) android.util.Log.w("NewsNookBrowser", "Userscript installation failed", error);
                     Toast.makeText(getContext(), "脚本功能不可用，请检查脚本或更新系统 WebView", Toast.LENGTH_LONG).show();
                 }
                 tab.scriptVersion = version;
@@ -708,6 +1179,9 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void loadTabUrl(Tab tab, String url) {
+        if (deferForSiteClear(tab, url)) return;
+        tab.siteDataClearing = false;
+        tab.recreateAfterSiteClear = false;
         tab.url = url;
         tab.error = null;
         if (tab.webView == null) initializeTab(tab);
@@ -715,6 +1189,7 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void reloadTab(Tab tab) {
+        if (deferForSiteClear(tab, tab.url)) return;
         tab.error = null;
         if (tab.webView == null) initializeTab(tab);
         else if (tab.webView.getUrl() == null) loadTabUrl(tab, tab.url);
@@ -742,6 +1217,10 @@ public class BrowserHostPlugin extends Plugin {
             if (current.media != null) current.media.setActive(false);
         }
         current = tab;
+        if (tab.recreateAfterSiteClear && !tab.siteDataClearing && tab.webView == null) {
+            initializeTab(tab);
+            return;
+        }
         showTabContent(tab);
         syncTabActivity();
         updateChrome();
@@ -762,13 +1241,16 @@ public class BrowserHostPlugin extends Plugin {
         errorPage.setGravity(Gravity.CENTER);
         errorPage.setPadding(dp(24), dp(24), dp(24), dp(24));
         errorPage.setBackgroundColor(ink);
-        TextView message = text("网页暂时无法显示\n已保留网址，可刷新重试", 16, paper);
+        TextView message = text(tab.siteDataClearing ? SITE_DATA_CLEARING
+            : "网页暂时无法显示\n已保留网址，可刷新重试", 16, paper);
         message.setGravity(Gravity.CENTER);
         errorPage.addView(message, new LinearLayout.LayoutParams(-1, -2));
         TextView retry = action("刷新重试", "重新加载网页", () -> {
             if (current == tab && activityAvailable()) reloadTab(tab);
         });
         retry.setTextSize(14);
+        retry.setEnabled(!tab.siteDataClearing);
+        retry.setVisibility(tab.siteDataClearing ? View.GONE : View.VISIBLE);
         LinearLayout.LayoutParams retrySize = new LinearLayout.LayoutParams(dp(132), dp(44));
         retrySize.topMargin = dp(20);
         errorPage.addView(retry, retrySize);
@@ -826,10 +1308,24 @@ public class BrowserHostPlugin extends Plugin {
         state.put("phase", phase);
         notifyListeners("navigation", state);
     }
+    private void applySettings(Tab tab) {
+        if (tab.webView == null) return;
+        WebSettings settings = tab.webView.getSettings();
+        settings.setJavaScriptEnabled(browserSettings.javaScriptEnabled);
+        settings.setLoadsImagesAutomatically(browserSettings.loadsImagesAutomatically);
+        settings.setTextZoom(browserSettings.textZoom);
+        settings.setMediaPlaybackRequiresUserGesture(browserSettings.mediaPlaybackRequiresUserGesture);
+        CookieManager.getInstance().setAcceptThirdPartyCookies(tab.webView, browserSettings.thirdPartyCookiesEnabled);
+        applyAgent(tab);
+    }
+
     private void applyAgent(Tab tab) {
         if (tab.webView == null) return;
         WebSettings settings = tab.webView.getSettings();
-        if (tab.desktop) {
+        if ("custom".equals(tab.userAgentMode)) {
+            settings.setUserAgentString(browserSettings.customUserAgent);
+            settings.setUseWideViewPort(false); settings.setLoadWithOverviewMode(false);
+        } else if (tab.desktop) {
             settings.setUserAgentString(tab.mobileUserAgent.replaceFirst("\\([^)]*\\)", "(X11; Linux x86_64)")
                 .replace("Version/4.0 ", "").replace(" Mobile ", " "));
             settings.setUseWideViewPort(true); settings.setLoadWithOverviewMode(true);
@@ -841,6 +1337,7 @@ public class BrowserHostPlugin extends Plugin {
     private void toggleDesktop() {
         if (current == null) return;
         current.desktop = !current.desktop;
+        current.userAgentMode = current.desktop ? "desktop" : "system";
         applyAgent(current);
         updateChrome();
         reloadTab(current);
@@ -909,6 +1406,7 @@ public class BrowserHostPlugin extends Plugin {
         catch (Exception e) { return new JSONArray(); }
     }
     private void recordVisit(String title, String url) {
+        if (privateMode()) return;
         JSONArray old = readPlaces(HISTORY), next = new JSONArray();
         JSONObject entry = new JSONObject();
         try {
@@ -922,6 +1420,9 @@ public class BrowserHostPlugin extends Plugin {
         } catch (Exception ignored) { }
     }
     private void bookmarkCurrent() {
+        if (privateMode()) {
+            Toast.makeText(getContext(), "隐私会话不保存书签", Toast.LENGTH_SHORT).show(); return;
+        }
         if (current == null || !isHttpUrl(current.url)) return;
         JSONArray old = readPlaces(BOOKMARKS), next = new JSONArray();
         JSONObject entry = new JSONObject();
@@ -979,6 +1480,41 @@ public class BrowserHostPlugin extends Plugin {
                 }
             }).setNegativeButton("关闭",null).show();
     }
+    static android.content.Intent externalAppIntent(String target) throws java.net.URISyntaxException {
+        Uri requested = Uri.parse(target);
+        android.content.Intent parsed = "intent".equalsIgnoreCase(requested.getScheme())
+            ? android.content.Intent.parseUri(target, android.content.Intent.URI_INTENT_SCHEME)
+            : new android.content.Intent(android.content.Intent.ACTION_VIEW, requested);
+        Uri address = parsed.getData();
+        String scheme = address == null ? null : address.getScheme();
+        if (scheme == null || java.util.Arrays.asList("javascript", "data", "file", "content", "about", "intent")
+                .contains(scheme.toLowerCase(java.util.Locale.ROOT)))
+            throw new IllegalArgumentException("unsupported external address");
+        // A page may supply an address/package, never an explicit component, arbitrary action,
+        // URI grants, selector or extras. Check the unwrapped scheme as well as the outer intent.
+        return new android.content.Intent(android.content.Intent.ACTION_VIEW, address)
+            .addCategory(android.content.Intent.CATEGORY_BROWSABLE).setPackage(parsed.getPackage());
+    }
+
+    private void openExternalApp(String target) {
+        final android.content.Intent intent;
+        try { intent = externalAppIntent(target); }
+        catch (Exception invalid) { return; }
+        Runnable launch = () -> {
+            try {
+                getActivity().startActivity(intent);
+            } catch (Exception error) {
+                Toast.makeText(getContext(), "没有可打开此链接的应用", Toast.LENGTH_SHORT).show();
+            }
+        };
+        if (browserSettings.confirmExternalApps || privateMode()) {
+            new AlertDialog.Builder(getActivity()).setTitle("打开外部应用")
+                .setMessage(privateMode() ? "此链接将离开隐私会话，外部应用可能保留访问记录。" : "网站请求打开另一个应用。")
+                .setPositiveButton("继续", (dialog, which) -> launch.run())
+                .setNegativeButton("取消", null).show();
+        } else launch.run();
+    }
+
     private void openDownloads() {
         try {
             android.content.Intent intent = new android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
@@ -990,6 +1526,17 @@ public class BrowserHostPlugin extends Plugin {
 
     private void enqueueDownload(String url, String disposition, String mime) {
         if (!isHttpUrl(url)) return;
+        if (privateMode()) {
+            new AlertDialog.Builder(getActivity()).setTitle("保存文件")
+                .setMessage("下载文件和系统下载记录会保留在设备上，退出隐私会话不会删除它们。")
+                .setPositiveButton("保存", (dialog, which) -> enqueueConfirmedDownload(url, disposition, mime))
+                .setNegativeButton("取消", null).show();
+            return;
+        }
+        enqueueConfirmedDownload(url, disposition, mime);
+    }
+
+    private void enqueueConfirmedDownload(String url, String disposition, String mime) {
         try {
             android.app.DownloadManager manager=(android.app.DownloadManager)getContext().getSystemService(Context.DOWNLOAD_SERVICE);
             android.app.DownloadManager.Request request=new android.app.DownloadManager.Request(Uri.parse(url));
@@ -1019,7 +1566,7 @@ public class BrowserHostPlugin extends Plugin {
         if (notifyWebView && callback != null) {
             try { callback.onCustomViewHidden(); }
             catch (RuntimeException error) {
-                android.util.Log.w("NewsNookBrowser", "Fullscreen callback already unavailable", error);
+                if (!privateMode()) android.util.Log.w("NewsNookBrowser", "Fullscreen callback already unavailable", error);
             }
         }
     }
@@ -1039,6 +1586,8 @@ public class BrowserHostPlugin extends Plugin {
         tab.runtime = null;
         if (tab.media != null) tab.media.close(!rendererGone);
         tab.media = null;
+        if (tab.images != null) tab.images.close(!rendererGone);
+        tab.images = null;
         if (view != null) {
             ViewGroup parent = (ViewGroup) view.getParent();
             if (parent != null) parent.removeView(view);
@@ -1046,13 +1595,13 @@ public class BrowserHostPlugin extends Plugin {
             // calls: another WebView may already have reported this process as gone.
             try { view.destroy(); }
             catch (RuntimeException error) {
-                android.util.Log.e("NewsNookBrowser", "WebView destruction failed", error);
+                if (!privateMode()) android.util.Log.e("NewsNookBrowser", "WebView destruction failed", error);
             }
         }
         if (opening != null) {
             try { opening.reject(rendererGone ? "网页渲染进程已退出" : "浏览器已关闭"); }
             catch (RuntimeException error) {
-                android.util.Log.w("NewsNookBrowser", "Opening callback already unavailable", error);
+                if (!privateMode()) android.util.Log.w("NewsNookBrowser", "Opening callback already unavailable", error);
             }
         }
     }
@@ -1060,6 +1609,9 @@ public class BrowserHostPlugin extends Plugin {
         if (closing) return;
         boolean wasOpen = pageFrame != null || dialog != null || !tabs.isEmpty();
         closing=true;
+        SiteDataClear clearing = siteDataClear;
+        siteDataClear = null;
+        if (clearing != null) clearing.call.reject("浏览器已关闭");
         exitFullscreen();
         Dialog previous=dialog; dialog=null;
         if (embeddedMode && pageFrame != null && pageFrame.getParent() instanceof ViewGroup)

@@ -111,7 +111,7 @@ function clearBridge() {
     'utf8',
   )
   assert.match(plugin, /public void setVideoFullscreen\(PluginCall call\)/)
-  assert.match(plugin, /\(\(MainActivity\) activity\)\.setVideoFullscreen\(active\)/)
+  assert.match(plugin, /\(\(BrowserFullscreenHost\) activity\)\.setVideoFullscreen\(active\)/)
 
   const css = readAppStyles()
   assert.match(css, /\.ink-video-top-chrome\s*\{[^}]*padding:\s*0\.5rem 0\.625rem 2rem/s)

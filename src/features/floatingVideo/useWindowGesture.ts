@@ -61,6 +61,7 @@ export function useWindowGesture(rootRef: RefObject<HTMLDivElement | null>, slot
     apply(preferredRect.current, false)
     if (shownTip.current) return
     shownTip.current = true
+    if (document.documentElement.dataset.browserPrivate === 'true') return
     let seen = false
     try {
       seen = window.localStorage.getItem('newsnook:floating-guide-seen') === '1'

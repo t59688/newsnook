@@ -29,7 +29,7 @@ import com.getcapacitor.PluginHandle;
 import com.getcapacitor.WebViewListener;
 import java.util.Locale;
 
-public class MainActivity extends BridgeActivity {
+public class MainActivity extends BridgeActivity implements BrowserFullscreenHost {
 
     /** 系统开屏一直挂到 WebView 提交首帧，避免撤出后露出默认白底 WebView */
     private volatile boolean webContentReady = false;
@@ -171,7 +171,7 @@ public class MainActivity extends BridgeActivity {
     }
 
     /** Package-visible entry point used by DeviceMediaControlsPlugin. */
-    void setVideoFullscreen(boolean fullScreen) {
+    @Override public void setVideoFullscreen(boolean fullScreen) {
         if (mainWebViewRetired) return;
         videoFullscreenActive = fullScreen;
         if (fullScreen) {

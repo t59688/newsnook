@@ -105,6 +105,87 @@ public class BrowserHostLifecycleTest {
         return (WebView) webView.get(tab);
     }
 
+    @org.robolectric.annotation.Implements(android.webkit.CookieManager.class)
+    public static class CookiesWithPerViewPolicy extends org.robolectric.shadows.ShadowCookieManager {
+        private static android.webkit.CookieManager instance;
+        @org.robolectric.annotation.Implementation
+        protected static android.webkit.CookieManager getInstance() {
+            if (instance == null) instance = new android.webkit.RoboCookieManager() {
+                private final java.util.Map<WebView, Boolean> policy = new java.util.IdentityHashMap<>();
+                @Override public void setAcceptThirdPartyCookies(WebView view, boolean accept) { policy.put(view, accept); }
+                @Override public boolean acceptThirdPartyCookies(WebView view) { return Boolean.TRUE.equals(policy.get(view)); }
+            };
+            return instance;
+        }
+        @org.robolectric.annotation.Resetter public static void resetPolicy() { instance = null; }
+    }
+
+    @Test
+    @Config(shadows = CookiesWithPerViewPolicy.class)
+    public void browserSettingsApplyBeforeFirstDocumentLoads() throws Exception {
+        JSObject settings = new JSObject().put("userAgentMode", "custom")
+            .put("customUserAgent", "NewsNook-Test/1.0").put("textZoom", 150)
+            .put("javaScriptEnabled", false).put("loadsImagesAutomatically", false)
+            .put("thirdPartyCookiesEnabled", true).put("mediaPlaybackRequiresUserGesture", false);
+        Call opening = new Call("open", new JSObject().put("url", "about:blank")
+            .put("embedded", true).put("settings", settings));
+        host.open(opening);
+        await(opening);
+        WebView view = currentView();
+        assertFalse("site JavaScript follows browser preference before loading", view.getSettings().getJavaScriptEnabled());
+        assertFalse(view.getSettings().getLoadsImagesAutomatically());
+        assertEquals(150, view.getSettings().getTextZoom());
+        assertEquals("NewsNook-Test/1.0", view.getSettings().getUserAgentString());
+        assertFalse(view.getSettings().getMediaPlaybackRequiresUserGesture());
+        assertTrue(android.webkit.CookieManager.getInstance().acceptThirdPartyCookies(view));
+    }
+
+    @Test public void requestingPrivateModeCannotReuseTheOrdinaryProcess() throws Exception {
+        assertNull(open("https://example.com/ordinary").error);
+        WebView ordinary = currentView();
+        Call privateOpen = new Call("open", new JSObject().put("url", "https://example.com/private")
+            .put("embedded", true).put("privateMode", true));
+        host.open(privateOpen);
+        await(privateOpen);
+        assertNotNull("privacy must require a dedicated native process", privateOpen.error);
+        assertSame("a rejected private request must preserve the ordinary tab", ordinary, currentView());
+    }
+
+    @Test public void invalidCustomAgentCannotReplaceOrMutateTheCurrentSession() throws Exception {
+        assertNull(open("https://example.com/ordinary").error);
+        WebView ordinary = currentView();
+        String agent = ordinary.getSettings().getUserAgentString();
+        JSObject invalid = new JSObject().put("userAgentMode", "custom")
+            .put("customUserAgent", "Browser/1.0\r\nInjected: header");
+        Call update = new Call("updateSettings", new JSObject().put("settings", invalid));
+        host.updateSettings(update);
+        await(update);
+        assertNotNull("HTTP header separators must be rejected", update.error);
+        assertSame(ordinary, currentView());
+        assertEquals(agent, ordinary.getSettings().getUserAgentString());
+        Call replacing = new Call("open", new JSObject().put("url", "https://example.com/new")
+            .put("embedded", true).put("settings", invalid));
+        host.open(replacing);
+        await(replacing);
+        assertNotNull(replacing.error);
+        assertSame("validate settings before closing a valid ordinary tab", ordinary, currentView());
+    }
+
+    @Test
+    @Config(shadows = BrowserMediaCaptureLifecycleTest.NoDocumentStart.class, instrumentedPackages = "androidx.webkit")
+    public void unsupportedSiteCleanupLeavesTheDocumentAndCookiesUntouched() throws Exception {
+        assertNull(open("https://example.com/ordinary").error);
+        WebView ordinary = currentView();
+        android.webkit.CookieManager cookies = android.webkit.CookieManager.getInstance();
+        cookies.setCookie("https://example.com", "ordinary_session=preserve; Path=/");
+        Call clear = new Call("clearSiteData", new JSObject().put("url", "https://example.com"));
+        host.clearSiteData(clear);
+        await(clear);
+        assertNotNull("unsupported precise cleanup must fail closed", clear.error);
+        assertSame(ordinary, currentView());
+        assertTrue(cookies.getCookie("https://example.com").contains("ordinary_session=preserve"));
+    }
+
     @Test public void embeddedProgressAndTitleDoNotRequireDialogChrome() throws Exception {
         assertNull(open("https://example.com/").error);
         WebView view = currentView();
@@ -479,6 +560,25 @@ public class BrowserHostLifecycleTest {
         assertTrue(host.payloads.stream().anyMatch(item -> "page".equals(item.getString("type"))));
         view.getWebViewClient().onPageStarted(view, url, null);
         assertEquals(2, host.payloads.stream().filter(item -> "reset".equals(item.getString("type"))).count());
+    }
+
+    @Test public void externalAppIntentsOnlyKeepTheBrowsableAddressAndPackage() throws Exception {
+        android.content.Intent intent = BrowserHostPlugin.externalAppIntent(
+            "intent://example/path#Intent;scheme=reader;package=com.example.reader;"
+                + "component=com.example.reader/.Internal;action=android.intent.action.SEND;"
+                + "launchFlags=0x10000001;S.injected=ignored;end");
+        assertEquals(android.content.Intent.ACTION_VIEW, intent.getAction());
+        assertEquals("reader://example/path", intent.getDataString());
+        assertEquals("com.example.reader", intent.getPackage());
+        assertNull(intent.getComponent());
+        assertNull(intent.getSelector());
+        assertNull(intent.getExtras());
+        assertEquals(0, intent.getFlags());
+        assertEquals(java.util.Collections.singleton(android.content.Intent.CATEGORY_BROWSABLE), intent.getCategories());
+        try {
+            BrowserHostPlugin.externalAppIntent("intent://example/path#Intent;scheme=content;end");
+            fail("intent wrappers must not bypass the blocked local/content schemes");
+        } catch (IllegalArgumentException expected) { }
     }
 
     @Test public void downloadsCanBeOpenedBeforeAnyWebTabExists() {

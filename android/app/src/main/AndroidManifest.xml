@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8" ?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
+        android:name=".NewsNookApplication"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
@@ -67,6 +68,15 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".PrivateBrowserActivity"
+            android:process=":browser_private"
+            android:taskAffinity="${applicationId}.private"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:theme="@style/AppTheme.NoActionBarLaunch" />
+
         <service
             android:name=".DlnaCastForegroundService"
             android:exported="false"
@@ -85,6 +95,13 @@
             android:exported="false"
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
+        </provider>
+        <provider
+            android:name=".PrivateBrowserFileProvider"
+            android:authorities="${applicationId}.privatefileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/private_browser_file_paths" />
         </provider>
     </application>
 

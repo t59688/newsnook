@@ -179,13 +179,13 @@ public class DeviceMediaControlsPlugin extends Plugin {
         }
 
         Activity activity = getActivity();
-        if (!(activity instanceof MainActivity)) {
-            call.reject("MainActivity unavailable");
+        if (!(activity instanceof BrowserFullscreenHost)) {
+            call.reject("Fullscreen activity unavailable");
             return;
         }
 
         activity.runOnUiThread(() -> {
-            ((MainActivity) activity).setVideoFullscreen(active);
+            ((BrowserFullscreenHost) activity).setVideoFullscreen(active);
             call.resolve();
         });
     }

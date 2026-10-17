@@ -1,4 +1,17 @@
 export type BrowserSearchChoice = 'bing' | 'google' | 'baidu' | 'duckduckgo'
+export type BrowserUserAgentMode = 'system' | 'desktop' | 'custom'
+
+/** Web-page options are separate from the existing search and layout keys. */
+export interface BrowserPreferences {
+  userAgentMode: BrowserUserAgentMode
+  customUserAgent: string
+  textZoom: number
+  javaScriptEnabled: boolean
+  loadsImagesAutomatically: boolean
+  thirdPartyCookiesEnabled: boolean
+  mediaPlaybackRequiresUserGesture: boolean
+  confirmExternalApps: boolean
+}
 
 export const BROWSER_KEYS = {
   history: 'newsnook:browser:history:v1',
@@ -7,13 +20,72 @@ export const BROWSER_KEYS = {
   addressPosition: 'newsnook:browser:address-position:v1',
   hiddenHosts: 'newsnook:browser:hidden-hosts:v1',
   shortcuts: 'newsnook:browser:shortcuts:v1',
+  preferences: 'newsnook:browser:preferences:v1',
 } as const
+
+export const DEFAULT_BROWSER_PREFERENCES: Readonly<BrowserPreferences> = Object.freeze({
+  userAgentMode: 'system',
+  customUserAgent: '',
+  textZoom: 100,
+  javaScriptEnabled: true,
+  loadsImagesAutomatically: true,
+  thirdPartyCookiesEnabled: false,
+  mediaPlaybackRequiresUserGesture: true,
+  confirmExternalApps: true,
+})
 
 export const BROWSER_ENGINES: Record<BrowserSearchChoice, { name: string; url: string }> = {
   bing: { name: 'Bing', url: 'https://www.bing.com/search?q=' },
   google: { name: 'Google', url: 'https://www.google.com/search?q=' },
   baidu: { name: '百度', url: 'https://www.baidu.com/s?wd=' },
   duckduckgo: { name: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=' },
+}
+
+/** Match the native HTTP header boundary; never accept control characters. */
+export function validateBrowserUserAgent(value: string): string | null {
+  if (/[^\x20-\x7e]/.test(value)) return '浏览器标识只能包含英文、数字、空格和半角符号'
+  const trimmed = value.trim()
+  if (!trimmed) return '请输入自定义浏览器标识'
+  if (trimmed.length > 512) return '浏览器标识不能超过 512 个字符'
+  return null
+}
+
+export function normalizeBrowserPreferences(value: unknown): BrowserPreferences {
+  const source = value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown> : {}
+  const defaults = DEFAULT_BROWSER_PREFERENCES
+  const rawAgent = typeof source.customUserAgent === 'string' ? source.customUserAgent : ''
+  const customUserAgent = validateBrowserUserAgent(rawAgent) === null ? rawAgent.trim() : ''
+  const userAgentMode = source.userAgentMode === 'desktop' ? 'desktop'
+    : source.userAgentMode === 'custom' && customUserAgent ? 'custom' : 'system'
+  const boolean = (key: keyof BrowserPreferences): boolean =>
+    typeof source[key] === 'boolean' ? source[key] as boolean : defaults[key] as boolean
+  return {
+    userAgentMode,
+    customUserAgent,
+    textZoom: typeof source.textZoom === 'number' && Number.isFinite(source.textZoom)
+      ? Math.max(75, Math.min(200, Math.round(source.textZoom))) : defaults.textZoom,
+    javaScriptEnabled: boolean('javaScriptEnabled'),
+    loadsImagesAutomatically: boolean('loadsImagesAutomatically'),
+    thirdPartyCookiesEnabled: boolean('thirdPartyCookiesEnabled'),
+    mediaPlaybackRequiresUserGesture: boolean('mediaPlaybackRequiresUserGesture'),
+    confirmExternalApps: boolean('confirmExternalApps'),
+  }
+}
+
+export function loadBrowserPreferences(): BrowserPreferences {
+  return normalizeBrowserPreferences(readBrowserList(BROWSER_KEYS.preferences))
+}
+
+/** One atomic local write. The caller publishes the returned state only on success. */
+export function saveBrowserPreferences(value: BrowserPreferences): BrowserPreferences {
+  if (value.userAgentMode === 'custom') {
+    const error = validateBrowserUserAgent(value.customUserAgent)
+    if (error) throw new Error(error)
+  }
+  const next = normalizeBrowserPreferences(value)
+  writeBrowserPreference(BROWSER_KEYS.preferences, next)
+  return next
 }
 
 export function readBrowserPreference(key: string): string | null {

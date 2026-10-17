@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
   type MutableRefObject,
+  type ReactNode,
   type PointerEvent as ReactPointerEvent,
   type WheelEvent as ReactWheelEvent,
 } from 'react'
@@ -12,6 +13,7 @@ import { ChevronLeft, ChevronRight, Download, FlipHorizontal2, FlipVertical2, Lo
 
 import { saveImageToGallery, shareImage } from '../lib/imageActions'
 import { lockBodyScroll } from '../lib/bodyScrollLock'
+import { acquireNativeChromeTheme } from '../lib/nativeChrome'
 import { recoverAppScrollSurfaces } from '../lib/gestureStyles'
 import { shouldResetReaderPinchSequence } from '../lib/readerFontPinch'
 import type { GalleryImage } from '../lib/imageGallery'
@@ -28,6 +30,15 @@ interface Props {
   total?: number
   items?: readonly GalleryImage[]
   onSelect?: (index: number) => void
+  /** Browser images retain their native request context through this optional adapter. */
+  onAction?: (action: 'save' | 'share') => Promise<'saved' | 'shared' | 'cancelled' | void>
+  /** Confirmation precedes the busy label and every export side effect. */
+  onBeforeAction?: (action: 'save' | 'share') => Promise<boolean>
+  browserMode?: boolean
+  contextLabel?: string
+  onRetry?: () => void
+  loadError?: string | null
+  renderThumbnail?: (item: GalleryImage, index: number) => ReactNode
   /** 系统返回：先关菜单，再关灯箱 */
   overlayCloserRef?: MutableRefObject<(() => boolean) | null>
 }
@@ -42,10 +53,11 @@ const SLIDE_DURATION_MS = 240
 type Point = { x: number; y: number }
 type BusyAction = 'save' | 'share' | null
 
-function GallerySlide({ src, alt = '', current, imgRef, stageRef, onLoad, onError }: {
+function GallerySlide({ src, alt = '', current, imgRef, stageRef, onLoad, onError, browserMode }: {
   src: string
   alt?: string
   current: boolean
+  browserMode?: boolean
   imgRef: MutableRefObject<HTMLImageElement | null>
   stageRef: MutableRefObject<HTMLDivElement | null>
   onLoad: () => void
@@ -84,9 +96,9 @@ function GallerySlide({ src, alt = '', current, imgRef, stageRef, onLoad, onErro
   }, [current, fitPreview, stageRef])
   return <>
     {!current && phase === 'loading' ? <Loader2 size={24} className="absolute animate-spin text-paper-faint" /> : null}
-    {!current && phase === 'error' ? <span className="absolute text-[12px] text-paper-faint">图片暂时无法加载</span> : null}
+    {!current && phase === 'error' ? <span className={'absolute ' + (browserMode ? 'text-[13px] text-paper-muted' : 'text-[12px] text-paper-faint')}>图片暂时无法加载</span> : null}
     <img ref={(img) => { localRef.current = img; if (current) imgRef.current = img }}
-      src={src} alt={current ? alt : ''} draggable={false} referrerPolicy="no-referrer"
+      src={src || undefined} alt={current ? alt : ''} draggable={false} referrerPolicy="no-referrer"
       onLoad={() => { if (!current) fitPreview(); setPhase('loaded'); if (current) onLoad() }}
       onError={() => { setPhase('error'); if (current) onError() }}
       className="pointer-events-auto shrink-0 select-none object-contain"
@@ -97,7 +109,7 @@ function GallerySlide({ src, alt = '', current, imgRef, stageRef, onLoad, onErro
 /**
  * 全屏看图：双指捏合、单指平移、双击缩放、下滑关闭；长按保存/分享。
  */
-export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, onNext, index = 0, total = 1, items, onSelect, overlayCloserRef }: Props) {
+export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, onNext, index = 0, total = 1, items, onSelect, overlayCloserRef, onAction, onBeforeAction, browserMode = false, contextLabel, onRetry, loadError, renderThumbnail }: Props) {
   const stageRef = useRef<HTMLDivElement>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
@@ -122,6 +134,7 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
   const closingSwipeRef = useRef({ active: false, startX: 0, startY: 0, dx: 0, dy: 0, axis: null as 'x' | 'y' | null })
   const longPressTimerRef = useRef<number | null>(null)
   const longPressPointRef = useRef<Point | null>(null)
+  const actionPendingRef = useRef(false)
 
   const [menuOpen, setMenuOpen] = useState(false)
   const [adjustOpen, setAdjustOpen] = useState(false)
@@ -129,6 +142,11 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
   const [status, setStatus] = useState<string | null>(null)
   const [imageState, setImageState] = useState<'loading' | 'loaded' | 'error'>('loading')
   const [reload, setReload] = useState<{ src: string; index: number; attempt: number } | null>(null)
+  const canAdjust = imageState === 'loaded' && !loadError
+
+  useLayoutEffect(() => {
+    if (browserMode) return acquireNativeChromeTheme('dark')
+  }, [browserMode])
 
   const clearLongPress = useCallback(() => {
     if (longPressTimerRef.current != null) {
@@ -375,7 +393,7 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
     transformRef.current = { scale: 1, x: 0, y: 0, rotation: 0, flipX: false, flipY: false }
     const img = imgRef.current
     applyTransform(false)
-    if (img?.complete) {
+    if (src && img?.complete) {
       if (img.naturalWidth > 0) {
         fitImage()
         setImageState('loaded')
@@ -617,16 +635,20 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
   }
 
   const runAction = async (action: 'save' | 'share') => {
-    if (busy) return
-    setBusy(action)
+    if (busy || actionPendingRef.current) return
+    actionPendingRef.current = true
     setStatus(null)
     try {
+      if (onBeforeAction && !await onBeforeAction(action)) return
+      setBusy(action)
       const source = actionSrc || src
+      const result = onAction ? await onAction(action) : undefined
+      if (result === 'cancelled') { setStatus(null); return }
       if (action === 'save') {
-        await saveImageToGallery(source)
+        if (!onAction) await saveImageToGallery(source)
         setStatus('已保存到相册 有所闻')
       } else {
-        await shareImage(source, alt || '分享图片')
+        if (!onAction) await shareImage(source, alt || '分享图片')
         setMenuOpen(false)
         setStatus(null)
       }
@@ -639,6 +661,7 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
         setStatus(message)
       }
     } finally {
+      actionPendingRef.current = false
       setBusy(null)
     }
   }
@@ -650,7 +673,9 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
       aria-label="查看图片"
       // 看图始终用深底衬托画面，不跟随浅色主题
       data-theme="dark"
-      className="fixed inset-0 z-[80] flex select-none flex-col bg-ink/98"
+      data-browser-image-viewer={browserMode ? '' : undefined}
+      className={'fixed inset-0 z-[80] flex select-none flex-col ' + (browserMode ? 'bg-ink' : 'bg-ink/98')}
+      style={browserMode ? { fontFamily: 'var(--font-sans)' } : undefined}
     >
       <div
         className="pointer-events-none absolute inset-x-0 top-0 z-10 flex items-center justify-between"
@@ -660,11 +685,13 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
           type="button"
           onClick={onClose}
           aria-label="关闭"
-          className="pointer-events-auto m-3 rounded-full border border-haze bg-ink-raised/80 p-2.5 text-paper backdrop-blur-md"
+          className={'pointer-events-auto m-3 rounded-full border border-haze bg-ink-raised/80 text-paper backdrop-blur-md ' + (browserMode ? 'grid h-11 w-11 place-items-center' : 'p-2.5')}
         >
           <X size={18} strokeWidth={1.7} />
         </button>
-        {total > 1 ? <div className="pointer-events-auto rounded-full border border-haze bg-ink-raised/75 px-3 py-1.5 font-mono text-[11px] text-paper-muted backdrop-blur-md">{index + 1} / {total}</div> : <span />}
+        {total > 1 || contextLabel ? <div className={'pointer-events-auto rounded-full border border-haze bg-ink-raised/75 px-3 py-1.5 text-paper-muted backdrop-blur-md ' + (browserMode ? 'text-[13px] tabular-nums' : 'font-mono text-[11px]')}>
+          {contextLabel ? <span>{contextLabel}{total > 1 ? ' · ' : ''}</span> : null}{total > 1 ? <span>{index + 1} / {total}</span> : null}
+        </div> : <span />}
         <button type="button" aria-label="图片操作" onClick={openMenu} className="pointer-events-auto m-3 grid h-11 w-11 place-items-center rounded-full border border-haze bg-ink-raised/80 text-paper backdrop-blur-md"><MoreHorizontal size={20} strokeWidth={1.7} /></button>
       </div>
 
@@ -692,26 +719,28 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
           }
         }}
       >
-        {imageState === 'loading' ? (
+        {imageState === 'loading' && !loadError ? (
           <div className="pointer-events-none absolute inset-0 grid place-items-center" role="status" aria-live="polite">
             <div className="flex flex-col items-center gap-3 text-paper-faint">
               <Loader2 size={24} className="animate-spin" />
-              <span className="font-mono text-[10px] tracking-[0.12em]">图片加载中</span>
+              <span className={browserMode ? 'text-[13px] text-paper-muted' : 'font-mono text-[10px] tracking-[0.12em]'}>图片加载中</span>
             </div>
           </div>
         ) : null}
-        {imageState === 'error' ? (
-          <div className="absolute inset-0 grid place-items-center px-6">
+        {imageState === 'error' || loadError ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6">
+            {loadError ? <p role="status" className={'max-w-sm text-center leading-relaxed text-paper-muted ' + (browserMode ? 'text-[13px]' : 'text-[12px]')}>{loadError}</p> : null}
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation()
                 cancelGesture()
+                onRetry?.()
                 setImageState('loading')
                 setReload((value) => ({ src, index, attempt: value?.src === src && value.index === index ? value.attempt + 1 : 1 }))
               }}
-              className="flex items-center gap-2 rounded-full border border-haze bg-ink-raised/85 px-4 py-2.5 text-[12px] text-paper-muted backdrop-blur-md"
+              className={'flex items-center gap-2 rounded-full border border-haze bg-ink-raised/85 px-4 py-2.5 text-paper-muted backdrop-blur-md ' + (browserMode ? 'min-h-11 text-[13px]' : 'text-[12px]')}
             >
               <RefreshCcw size={15} />重新加载图片
             </button>
@@ -735,7 +764,7 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
             return <div key={`${position}:${item?.src ?? ''}`} aria-hidden={current ? undefined : true}
               className="absolute top-0 flex h-full w-full items-center justify-center overflow-hidden"
               style={{ left: `${position * 100}%` }}>
-              {item ? <GallerySlide key={reload?.src === item.src && reload.index === position ? reload.attempt : 0} {...item} current={current} imgRef={imgRef} stageRef={stageRef}
+              {item ? <GallerySlide key={reload?.src === item.src && reload.index === position ? reload.attempt : 0} {...item} current={current} imgRef={imgRef} stageRef={stageRef} browserMode={browserMode}
                 onLoad={() => { fitImage(); applyTransform(false); setImageState('loaded') }}
                 onError={() => setImageState('error')} /> : null}
             </div>
@@ -747,8 +776,8 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
         {adjustOpen ? (
           <div className="w-full max-w-[440px] rounded-[22px] border border-haze bg-ink-raised/95 p-2 shadow-xl backdrop-blur-xl">
             <div className="flex items-center justify-between px-2 pb-1.5">
-              <span className="text-[12px] font-medium text-paper">调整图片</span>
-              <button type="button" aria-label="收起图片调整" onClick={() => setAdjustOpen(false)} className="grid h-9 w-9 place-items-center rounded-full text-paper-muted active:bg-haze/40"><X size={17} /></button>
+              <span className={'font-medium text-paper ' + (browserMode ? 'text-[14px]' : 'text-[12px]')}>调整图片</span>
+              <button type="button" aria-label="收起图片调整" onClick={() => setAdjustOpen(false)} className={'grid place-items-center rounded-full text-paper-muted active:bg-haze/40 ' + (browserMode ? 'h-11 w-11' : 'h-9 w-9')}><X size={17} /></button>
             </div>
             <div role="toolbar" aria-label="图片调整" className="grid grid-cols-5 gap-1">
               {([
@@ -758,20 +787,20 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
                 ['vertical', FlipVertical2, '垂直镜像', '垂直'],
                 ['reset', RefreshCcw, '还原', '还原'],
               ] as const).map(([action, Icon, label, shortLabel]) => (
-                <button key={action} type="button" aria-label={label} title={label} disabled={imageState !== 'loaded'} onClick={() => adjustImage(action)} className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-paper transition-colors active:bg-haze/50 disabled:opacity-30">
+                <button key={action} type="button" aria-label={label} title={label} disabled={!canAdjust} onClick={() => adjustImage(action)} className="flex min-h-12 min-w-0 flex-col items-center justify-center gap-1 rounded-xl text-paper transition-colors active:bg-haze/50 disabled:opacity-30">
                   <Icon size={20} strokeWidth={1.6} />
-                  <span className="whitespace-nowrap text-[11px]">{shortLabel}</span>
+                  <span className={'whitespace-nowrap ' + (browserMode ? 'text-[13px]' : 'text-[11px]')}>{shortLabel}</span>
                 </button>
               ))}
             </div>
-            <p className="pt-2 text-center text-[10px] text-paper-faint">仅更改显示方向 · 保存与分享仍是原图</p>
+            <p className={'pt-2 text-center ' + (browserMode ? 'text-[13px] text-paper-muted' : 'text-[10px] text-paper-faint')}>仅更改显示方向 · 保存与分享仍是原图</p>
           </div>
         ) : (
           <div className="flex w-full items-center justify-between gap-3">
-            <button type="button" aria-label="调整图片" aria-expanded={false} onClick={() => setAdjustOpen(true)} className="flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-haze bg-ink-raised/85 px-4 text-[12px] text-paper backdrop-blur-lg active:bg-haze/30">
+            <button type="button" aria-label="调整图片" aria-expanded={false} disabled={!canAdjust} onClick={() => setAdjustOpen(true)} className={'flex min-h-11 shrink-0 items-center gap-2 rounded-full border border-haze bg-ink-raised/85 px-4 text-paper backdrop-blur-lg active:bg-haze/30 disabled:opacity-30 ' + (browserMode ? 'text-[13px]' : 'text-[12px]')}>
               <SlidersHorizontal size={16} strokeWidth={1.7} />调整图片
             </button>
-            <p className="text-right text-[10px] leading-relaxed text-paper-faint">{total > 1 ? '左右滑动切换' : '双指缩放查看'}<span className="hidden sm:inline"> · 长按保存或分享</span></p>
+            <p className={'text-right leading-relaxed ' + (browserMode ? 'text-[13px] text-paper-muted' : 'text-[10px] text-paper-faint')}>{total > 1 ? '左右滑动切换' : '双指缩放查看'}<span className="hidden sm:inline"> · 长按保存或分享</span></p>
           </div>
         )}
         {items && items.length > 1 && onSelect ? (
@@ -805,9 +834,10 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
               {items.map((item, position) => (
                 <button key={`${item.src}:${position}`} type="button" aria-label={`查看第 ${position + 1} 张图片`}
                   aria-current={position === index ? 'true' : undefined} onClick={() => onSelect(position)}
+                  style={browserMode ? { minHeight: 44, minWidth: 44 } : undefined}
                   className={`relative grid h-[60px] w-[60px] shrink-0 place-items-center overflow-hidden rounded-lg border-2 transition-[border-color,opacity] [@media(max-height:500px)]:h-10 [@media(max-height:500px)]:w-12 motion-reduce:transition-none focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-paper ${position === index ? 'border-cinnabar-soft opacity-100' : 'border-transparent opacity-50 hover:opacity-90'}`}>
-                  <img src={item.src} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer" className="h-full w-full object-cover" />
-                  <span className="absolute bottom-0.5 right-0.5 rounded bg-black/60 px-1 font-mono text-[8px] leading-3 text-white">{position + 1}</span>
+                  {renderThumbnail ? renderThumbnail(item, position) : <img src={item.src || undefined} alt="" loading="lazy" draggable={false} referrerPolicy="no-referrer" className="h-full w-full object-cover" />}
+                  <span className={'absolute bottom-0.5 right-0.5 rounded px-1 ' + (browserMode ? 'bg-ink-raised/90 text-[13px] leading-5 text-paper tabular-nums' : 'bg-black/60 font-mono text-[8px] leading-3 text-white')}>{position + 1}</span>
                 </button>
               ))}
             </div>
@@ -830,7 +860,7 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
           <div
             className="border-t border-haze bg-ink-raised px-4 pt-3 safe-pb-16"
           >
-            <p className="mb-3 font-mono text-[10px] tracking-[0.16em] text-paper-faint">图片操作</p>
+            <p className={'mb-3 ' + (browserMode ? 'text-[13px] text-paper-muted' : 'font-mono text-[10px] tracking-[0.16em] text-paper-faint')}>图片操作</p>
             <div className="grid gap-2">
               <button
                 type="button"
@@ -863,7 +893,7 @@ export function ImageLightbox({ src, actionSrc, alt = '', onClose, onPrevious, o
               </button>
             </div>
             {status && (
-              <p className="mt-3 font-mono text-[11px] leading-relaxed text-paper-muted">{status}</p>
+              <p className={'mt-3 leading-relaxed text-paper-muted ' + (browserMode ? 'text-[13px]' : 'font-mono text-[11px]')}>{status}</p>
             )}
           </div>
         </div>

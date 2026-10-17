@@ -253,6 +253,12 @@
       // 数据源是 localStorage 镜像，真实偏好稍后由 main.tsx 再校准一次。
       ;(function () {
         document.documentElement.dataset.boot = 'splash'
+        // The isolated shell receives its appearance in memory from the native owner.
+        if (window.location.hash === '#private-browser') {
+          document.documentElement.dataset.theme = 'dark'
+          document.documentElement.dataset.scheme = 'ink'
+          return
+        }
 
         try {
           var saved = JSON.parse(localStorage.getItem('newsnook:preferences') || '{}')

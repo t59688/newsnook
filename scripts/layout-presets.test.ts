@@ -182,13 +182,16 @@ assert.equal(
 )
 
 const nonWorkspaceSources = SOURCES.filter((source) => !source.workspaceOnly)
-assert.equal(nonWorkspaceSources.length, 153)
 assert.equal(SOURCES.find((source) => source.id === 'zhihu-community')?.workspaceOnly, true)
 
 const assignedSourceIds = BUILTIN_PRESETS.flatMap((preset) =>
   Object.values(preset.snapshot.categorySources).flat(),
 )
-assert.equal(assignedSourceIds.length, 153)
+assert.deepEqual(
+  [...assignedSourceIds].sort(),
+  nonWorkspaceSources.map((source) => source.id).sort(),
+  'built-in presets must assign every non-workspace source exactly once',
+)
 assert.ok(!assignedSourceIds.includes('zhihu-community'))
 assert.equal(new Set(assignedSourceIds).size, assignedSourceIds.length)
 
@@ -270,7 +273,7 @@ assert.deepEqual(visibleIds(BUILTIN_LIFE_ID), [
 
 const expectedPresetSourceCounts = new Map([
   [BUILTIN_DEFAULT_ID, 11],
-  [BUILTIN_WORLD_ID, 22],
+  [BUILTIN_WORLD_ID, 21],
   [BUILTIN_BIZ_ID, 17],
   [BUILTIN_TECH_ID, 23],
   [BUILTIN_AI_ID, 39],

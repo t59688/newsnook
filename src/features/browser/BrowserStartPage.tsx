@@ -4,63 +4,76 @@ import type { BrowserShortcut, BrowserVisit } from './browserHistory'
 import { browserHostLabel } from './browserPreferences'
 import { BrowserIconButton, BrowserSiteIcon } from './BrowserPrimitives'
 
-export function BrowserStartPage({shortcuts, recent, onSearch, onOpen, onAddShortcut, onShortcutOptions, onHistoryOptions, onPanel}: {
+export function BrowserStartPage({
+  shortcuts, recent, onSearch, onOpen, onAddShortcut, onShortcutOptions, onHistoryOptions, onPanel, privateMode = false,
+}: {
   shortcuts: BrowserShortcut[]; recent: BrowserVisit[]
   onSearch: () => void; onOpen: (url: string) => void; onAddShortcut: () => void
   onShortcutOptions: (index: number) => void; onHistoryOptions: (visit: BrowserVisit) => void
-  onPanel: (panel: 'history' | 'bookmarks' | 'scripts') => void
+  onPanel: (panel: 'history' | 'bookmarks' | 'scripts') => void; privateMode?: boolean
 }) {
   const [managing, setManaging] = useState(false)
-  return <div className="browser-start mx-auto h-full w-full max-w-2xl overflow-y-auto overscroll-contain px-5 pt-7 pb-6">
-    <div className="flex items-center gap-3 px-1">
-      <img src="/favicon.svg" alt="" className="size-10 object-contain"/>
-      <span className="text-[21px] font-semibold tracking-tight text-paper">浏览器</span>
+  const canManage = managing && !privateMode
+  return <div className="browser-start">
+    <div className="browser-start-brand">
+      <img src="/favicon.svg" alt=""/>
+      <div><h1>{privateMode ? '隐私浏览' : '浏览器'}</h1>{privateMode && <p>关闭后清除本次会话</p>}</div>
     </div>
-    <button type="button" aria-label="首页搜索或输入网址" onClick={onSearch}
-      className="mt-6 flex min-h-16 w-full items-center gap-3 rounded-2xl border border-haze bg-ink-raised px-4 text-left text-[15px] text-paper-muted transition-colors active:bg-haze">
-      <Search size={21}/><span className="min-w-0 flex-1">搜索或输入网址</span><ArrowRight size={20}/>
+    <button type="button" aria-label="首页搜索或输入网址" onClick={onSearch} className="browser-start-search">
+      <Search size={21} strokeWidth={1.8} aria-hidden="true"/>
+      <span>搜索或输入网址</span>
+      <ArrowRight size={20} strokeWidth={1.8} aria-hidden="true"/>
     </button>
-    <div className="mt-3 grid grid-cols-3 gap-2">
+    {!privateMode && <div className="browser-start-navigation">
       {([{label:'书签',panel:'bookmarks',icon:Bookmark},{label:'历史',panel:'history',icon:Clock3},{label:'用户脚本',panel:'scripts',icon:ShieldCheck}] as const).map(item =>
-        <button key={item.panel} type="button" onClick={() => onPanel(item.panel)} className="flex min-h-12 items-center justify-center gap-2 rounded-xl text-[14px] text-paper-muted transition-colors active:bg-haze">
-          <item.icon size={18} strokeWidth={1.8}/>{item.label}
+        <button key={item.panel} type="button" onClick={() => onPanel(item.panel)}>
+          <item.icon size={18} strokeWidth={1.8} aria-hidden="true"/><span>{item.label}</span>
         </button>)}
-    </div>
-    <div className="mt-4 flex items-center justify-between">
-      <h2 className="text-[14px] font-semibold text-paper">快捷访问</h2>
-      <button type="button" onClick={() => setManaging(!managing)} className="min-h-11 px-2 text-[13px] text-paper-muted">
-        {managing ? '完成' : '管理'}
-      </button>
-    </div>
-    <div className="grid grid-cols-4 gap-x-2 gap-y-3 pt-1">
-      {shortcuts.map((shortcut, index) => <button key={shortcut.url} type="button"
-        onContextMenu={event => {event.preventDefault(); onShortcutOptions(index)}}
-        onClick={() => managing ? onShortcutOptions(index) : onOpen(shortcut.url)}
-        className="relative flex min-w-0 flex-col items-center gap-2 rounded-xl py-2 text-center transition-colors active:bg-haze">
-        <BrowserSiteIcon url={shortcut.url} name={shortcut.name}/>
-        {managing && <span className="absolute top-0 right-1 flex size-5 items-center justify-center rounded-full border border-haze bg-ink-raised text-paper"><MoreHorizontal size={13}/></span>}
-        <span className="w-full truncate text-[13px] font-medium text-paper">{shortcut.name}</span>
-      </button>)}
-      {shortcuts.length < 8 && <button type="button" aria-label="添加快捷方式" onClick={onAddShortcut}
-        className="flex min-w-0 flex-col items-center gap-2 rounded-xl py-2 text-center text-paper-muted active:bg-haze">
-        <span className="flex size-12 items-center justify-center rounded-xl border border-dashed border-paper-faint/40"><Plus size={22}/></span>
-        <span className="text-[13px]">添加</span>
-      </button>}
-    </div>
-    <div className="mt-6 flex items-center justify-between">
-      <h2 className="text-[14px] font-semibold text-paper">最近访问</h2>
-      <button type="button" onClick={() => onPanel('history')} className="flex min-h-11 items-center gap-1 text-[13px] text-paper-muted">全部<ChevronRight size={15}/></button>
-    </div>
-    {recent.length ? <ul className="divide-y divide-haze/70">
-      {recent.map(item => <li key={item.url} className="flex items-center gap-2">
-        <button type="button" onClick={() => onOpen(item.url)} onContextMenu={event => {event.preventDefault(); onHistoryOptions(item)}}
-          className="flex min-h-[72px] min-w-0 flex-1 items-center gap-3 py-3 text-left">
-          <BrowserSiteIcon url={item.url} name={item.title} size="small"/>
-          <span className="min-w-0 flex-1"><span className="block truncate text-[14px] font-medium text-paper">{item.title}</span><span className="mt-1 block truncate text-[12px] text-paper-muted">{browserHostLabel(item.url)}</span></span>
-        </button>
-        <BrowserIconButton label={'管理历史 ' + browserHostLabel(item.url)} onClick={() => onHistoryOptions(item)}><MoreHorizontal size={18}/></BrowserIconButton>
-      </li>)}
-    </ul> : <p className="py-5 text-[14px] text-paper-muted">暂无浏览记录</p>}
-    {managing && <p role="status" className="mt-3 flex items-center gap-1.5 text-[13px] text-paper-muted"><Check size={15}/>点按快捷方式进行编辑或排序</p>}
+    </div>}
+
+    {(!privateMode || shortcuts.length > 0) && <section className="browser-start-section" aria-labelledby="browser-shortcuts-title">
+      <div className="browser-section-heading">
+        <h2 id="browser-shortcuts-title">快捷访问</h2>
+        {!privateMode && <button type="button" aria-pressed={canManage} onClick={() => setManaging(!managing)}
+          className="browser-text-button">{canManage ? '完成' : '管理'}</button>}
+      </div>
+      <div className="browser-shortcut-grid">
+        {shortcuts.map((shortcut, index) => <button key={shortcut.url} type="button" title={shortcut.name}
+          aria-label={canManage ? '管理快捷方式：' + shortcut.name : shortcut.name}
+          onContextMenu={event => {event.preventDefault(); if (!privateMode) onShortcutOptions(index)}}
+          onClick={() => canManage ? onShortcutOptions(index) : onOpen(shortcut.url)} className="browser-shortcut">
+          <BrowserSiteIcon url={shortcut.url} name={shortcut.name} allowRemote={!privateMode}/>
+          {canManage && <span className="browser-shortcut-edit" aria-hidden="true"><MoreHorizontal size={14}/></span>}
+          <span className="browser-shortcut-label">{shortcut.name}</span>
+        </button>)}
+        {!privateMode && shortcuts.length < 8 && <button type="button" aria-label="添加快捷方式" onClick={onAddShortcut}
+          className="browser-shortcut browser-shortcut-add">
+          <span className="browser-shortcut-add-icon"><Plus size={23} strokeWidth={1.7} aria-hidden="true"/></span>
+          <span className="browser-shortcut-label">添加</span>
+        </button>}
+      </div>
+      {canManage && <p role="status" className="browser-start-help"><Check size={15} aria-hidden="true"/>点按快捷方式进行编辑或排序</p>}
+    </section>}
+
+    {!privateMode && <section className="browser-start-section" aria-labelledby="browser-recent-title">
+      <div className="browser-section-heading">
+        <h2 id="browser-recent-title">最近访问</h2>
+        <button type="button" onClick={() => onPanel('history')} className="browser-text-button">全部<ChevronRight size={16} aria-hidden="true"/></button>
+      </div>
+      {recent.length ? <ul className="browser-recent-list">
+        {recent.map(item => <li key={item.url}>
+          <button type="button" title={item.title || item.url} onClick={() => onOpen(item.url)}
+            onContextMenu={event => {event.preventDefault(); onHistoryOptions(item)}} className="browser-recent-link">
+            <BrowserSiteIcon url={item.url} name={item.title} size="small"/>
+            <span><span className="browser-list-title">{item.title || browserHostLabel(item.url)}</span>
+              <span className="browser-list-detail">{browserHostLabel(item.url)}</span></span>
+          </button>
+          <BrowserIconButton label={'管理历史 ' + browserHostLabel(item.url)} onClick={() => onHistoryOptions(item)}><MoreHorizontal size={19}/></BrowserIconButton>
+        </li>)}
+      </ul> : <div className="browser-start-empty">
+        <Clock3 size={19} strokeWidth={1.7} aria-hidden="true"/>
+        <div><p>暂无浏览记录</p><span>访问过的网页会显示在这里。</span></div>
+      </div>}
+    </section>}
   </div>
 }
