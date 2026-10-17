@@ -21,6 +21,7 @@ import android.webkit.DownloadListener;
 import android.webkit.URLUtil;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -54,15 +55,18 @@ public class BrowserHostPlugin extends Plugin {
 
     private static final class Tab {
         final WebView webView;
+        final int id;
         final String mobileUserAgent;
         UserscriptRuntime runtime;
+        BrowserMediaCapture media;
         String title = "网页";
         String url;
         boolean desktop;
         boolean loading;
         boolean preparing = true;
-        Tab(WebView webView, String url) {
+        Tab(WebView webView, String url, int id) {
             this.webView = webView;
+            this.id = id;
             this.mobileUserAgent = webView.getSettings().getUserAgentString();
             this.url = url;
         }
@@ -81,6 +85,7 @@ public class BrowserHostPlugin extends Plugin {
     private TextView desktopButton;
     private TextView menuButton;
     private final List<Tab> tabs = new ArrayList<>();
+    private int nextTabId = 1;
     private Tab current;
     private JSArray scriptSnapshot;
     private SharedPreferences preferences;
@@ -125,6 +130,7 @@ public class BrowserHostPlugin extends Plugin {
         getActivity().runOnUiThread(() -> {
             JSObject result = new JSObject();
             result.put("url", current == null ? JSONObject.NULL : current.url);
+            result.put("tabId", current == null ? JSONObject.NULL : current.id);
             result.put("back", current != null && current.webView.canGoBack());
             result.put("forward", current != null && current.webView.canGoForward());
             result.put("desktop", current != null && current.desktop);
@@ -151,6 +157,7 @@ public class BrowserHostPlugin extends Plugin {
                 Tab tab=tabs.get(i);
                 JSObject entry=new JSObject();
                 entry.put("index",i);
+                entry.put("id",tab.id);
                 entry.put("title",tab.title);
                 entry.put("url",tab.url);
                 entry.put("active",tab == current);
@@ -198,7 +205,10 @@ public class BrowserHostPlugin extends Plugin {
                     if (target == null) { call.reject("仅支持 HTTP/HTTPS 网站"); return; }
                     current.webView.loadUrl(target); break;
                 }
-                case "new": createTab(HOME, null); break;
+                case "new": createTab("about:blank", null); break;
+                case "home": current.webView.loadUrl("about:blank"); break;
+                case "scanMedia": if (current.media != null) current.media.pollNow(); break;
+                case "downloads": openDownloads(); break;
                 case "tabs": showTabs(); break;
                 case "scriptMenu": if (current.runtime != null) current.runtime.showMenus(); break;
                 case "history": showPlaces(HISTORY); break;
@@ -362,7 +372,7 @@ public class BrowserHostPlugin extends Plugin {
             return;
         }
         WebView view = new WebView(getActivity());
-        Tab tab = new Tab(view, url);
+        Tab tab = new Tab(view, url, nextTabId++);
         tabs.add(tab);
         WebSettings settings = view.getSettings();
         settings.setJavaScriptEnabled(true); settings.setDomStorageEnabled(true);
@@ -381,6 +391,7 @@ public class BrowserHostPlugin extends Plugin {
                 if (current == tab) updateChrome();
                 if (current == tab) sendNavigation(address, "start");
                 if (tab.runtime != null) tab.runtime.onNavigation(address);
+                if (tab.media != null) tab.media.onPageStarted(address);
             }
             @Override public void onPageFinished(WebView web, String address) {
                 tab.url = address; tab.title = web.getTitle() == null ? address : web.getTitle();
@@ -388,6 +399,10 @@ public class BrowserHostPlugin extends Plugin {
                 if (current == tab) updateChrome();
                 if (!embeddedMode && isHttpUrl(address)) recordVisit(tab.title, address);
                 if (current == tab) sendNavigation(address, "end");
+                if (tab.media != null) tab.media.onPageFinished();
+            }
+            @Override public WebResourceResponse shouldInterceptRequest(WebView web, WebResourceRequest request) {
+                return tab.media == null ? null : tab.media.onRequest(request);
             }
             @Override public boolean shouldOverrideUrlLoading(WebView web, WebResourceRequest request) {
                 if (!request.isForMainFrame()) return false;
@@ -423,6 +438,15 @@ public class BrowserHostPlugin extends Plugin {
             @Override public void onHideCustomView() { exitFullscreen(); }
         });
         view.setDownloadListener((link, agent, disposition, mime, size) -> enqueueDownload(link, disposition, mime));
+        // Attach the same passive probe before any user script starts executing.
+        try {
+            tab.media = new BrowserMediaCapture(view, url,
+                observation -> sendMediaObservation(tab, observation),
+                pageUrl -> sendMediaPage(tab, pageUrl));
+            tab.media.setActive(true);
+        } catch (Exception error) {
+            android.util.Log.w("NewsNookBrowser", "Media observation unavailable", error);
+        }
         selectTab(tab);
         UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view);
         tab.runtime = runtime;
@@ -449,6 +473,7 @@ public class BrowserHostPlugin extends Plugin {
         if (!tabs.contains(tab)) return;
         if (current != null) {
             current.webView.onPause();
+            if (current.media != null) current.media.setActive(false);
             if (current.webView.getParent() == pageFrame) pageFrame.removeView(current.webView);
         }
         current = tab;
@@ -456,6 +481,7 @@ public class BrowserHostPlugin extends Plugin {
         if (parent != null) parent.removeView(tab.webView);
         pageFrame.addView(tab.webView, new FrameLayout.LayoutParams(-1, -1));
         tab.webView.onResume();
+        if (tab.media != null) tab.media.setActive(true);
         updateChrome();
         if (tab.url != null && isHttpUrl(tab.url)) sendNavigation(tab.url, tab.loading ? "start" : "end");
     }
@@ -474,6 +500,28 @@ public class BrowserHostPlugin extends Plugin {
         if (text == null) return "网页浏览";
         return text.length() > 16 ? text.substring(0, 16) + "…" : text;
     }
+    private void sendMediaObservation(Tab tab, JSONObject observation) {
+        if (closing || !tabs.contains(tab)) return;
+        JSObject payload = new JSObject();
+        payload.put("tabId", tab.id);
+        payload.put("type", "observation");
+        payload.put("observation", observation);
+        notifyListeners("mediaEvent", payload);
+    }
+
+    private void sendMediaPage(Tab tab, String url) {
+        if (closing || !tabs.contains(tab)) return;
+        if (url != null && !url.equals(tab.url)) {
+            tab.url = url;
+            if (tab == current) sendNavigation(url, "end");
+        }
+        JSObject payload = new JSObject();
+        payload.put("tabId", tab.id);
+        payload.put("type", "page");
+        payload.put("pageUrl", url);
+        notifyListeners("mediaEvent", payload);
+    }
+
     private void sendNavigation(String url, String phase) {
         JSObject state = new JSObject(); state.put("url", url); state.put("phase", phase);
         notifyListeners("navigation", state);
@@ -627,6 +675,15 @@ public class BrowserHostPlugin extends Plugin {
                 }
             }).setNegativeButton("关闭",null).show();
     }
+    private void openDownloads() {
+        try {
+            android.content.Intent intent = new android.content.Intent(android.app.DownloadManager.ACTION_VIEW_DOWNLOADS);
+            getActivity().startActivity(intent);
+        } catch (android.content.ActivityNotFoundException error) {
+            Toast.makeText(getContext(), "当前设备没有下载管理器", Toast.LENGTH_SHORT).show();
+        }
+    }
+
     private void enqueueDownload(String url, String disposition, String mime) {
         if (!isHttpUrl(url)) return;
         try {
@@ -657,6 +714,7 @@ public class BrowserHostPlugin extends Plugin {
     }
     private void releaseTab(Tab tab) {
         if (tab.runtime != null) tab.runtime.close();
+        if (tab.media != null) tab.media.close();
         tab.webView.stopLoading();
         tab.webView.setWebViewClient(null); tab.webView.setWebChromeClient(null);
         ViewGroup parent = (ViewGroup) tab.webView.getParent();
@@ -674,6 +732,7 @@ public class BrowserHostPlugin extends Plugin {
         if (previous!=null && previous.isShowing()) previous.dismiss();
         for (Tab tab:new ArrayList<>(tabs)) releaseTab(tab);
         tabs.clear(); current=null;
+        nextTabId = 1;
         scriptSnapshot=null; address=null; titleView=null; tabCounter=null; menuButton=null;
         pageFrame=null; root=null;
         notifyListeners("closed",new JSObject());
