@@ -1,10 +1,11 @@
 name: Native Browser Debug APK
-run-name: Native Browser Debug | ${{ github.ref_name }}
+run-name: Browser Media Debug | ${{ github.ref_name }} | ${{ github.sha }}
 
 on:
   push:
     branches:
       - feat/userscripts-audit-debug-20261017
+      - feat/browser-media-sniffer-20261017
   workflow_dispatch:
 
 permissions:
@@ -44,8 +45,16 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check userscript metadata and matching
-        run: npx tsx scripts/browser-userscripts.test.ts
+      - name: Verify userscripts and browser media lifecycle
+        shell: bash
+        run: |
+          set -euo pipefail
+          npx tsx scripts/browser-userscripts.test.ts
+          if [ -f scripts/browser-media.test.ts ]; then
+            npx tsx scripts/browser-media.test.ts
+          fi
+          npm run test:media-sniffer
+          npm run test:origin-player-live-sniff
 
       - name: Build web assets
         run: npm run build
@@ -69,6 +78,14 @@ jobs:
           mkdir -p artifacts/android
           cp "$apk" "artifacts/android/NewsNook-browser-cloud-debug-${GITHUB_SHA:0:8}.apk"
           sha256sum artifacts/android/*.apk
+          {
+            echo '### NewsNook browser debug APK'
+            echo ''
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo '- Package: `com.aizeek.newsnook.debug`'
+            echo '- Build variant: `cloudDebug`'
+            echo '- Artifact: see **Artifacts** under this run'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload installable Debug APK
         uses: actions/upload-artifact@v4
