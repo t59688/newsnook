@@ -150,6 +150,8 @@ try {
   const articleGrabber = articleSheet.querySelector<HTMLButtonElement>('.wiki-sheet-grabber')!
   await drag(articleGrabber, 740, 450)
   assert.equal(articleSheet.style.height, '630px', '百科半窗拖动时逐帧调整高度，松手后保持中间尺寸')
+  assert.equal(articleSheet.style.maxHeight, '844px', '百科面板解除 82dvh 最大高度限制，允许继续拖至屏幕顶部')
+  assert.equal(articleSheet.style.minHeight, '0px', '百科面板拖动时也不受全屏 min-height 限制')
   assert.equal(articleSheet.classList.contains('wiki-sheet-expanded'), false, '百科尚未触顶时不强制全屏')
   assert.equal(snapCount, 0, '未触顶的手势不触发马达')
 
@@ -163,6 +165,7 @@ try {
   assert.equal(articleSheet.style.height, '630px', 'rAF 提交前保留上帧位置，不同步强迫浏览器重布局')
   await act(async () => paintFrame())
   assert.equal(articleSheet.style.height, '700px', '下一次绘制采用最新指针位置，跳过过时位置')
+  assert.equal(articleSheet.style.maxHeight, '844px', '百科浮层越过 82dvh 时仍允许继续拉伸')
   assert.equal(snapCount, 0, '距吸顶区域尚远时无振动')
   await act(async () => pointer(articleGrabber, 'pointermove', 350))
   assert.equal(snapCount, 1, '进入吸顶阈值时立刻发出一次触觉反馈，不等待松手')
@@ -191,6 +194,8 @@ try {
   const searchGrabber = activeSearchSheet.querySelector<HTMLButtonElement>('.wiki-sheet-grabber')!
   await drag(searchGrabber, 650, 520)
   assert.equal(activeSearchSheet.style.height, '636px', '搜索半窗也支持连续拉高和保持中间尺寸')
+  assert.equal(activeSearchSheet.style.maxHeight, '844px', '搜索面板不得再被原本 75dvh 的 CSS 最大高度卡住')
+  assert.equal(activeSearchSheet.style.minHeight, '0px', '搜索面板拖动期间解除 CSS 高度下限')
   await drag(searchGrabber, 520, 680)
   assert.equal(activeSearchSheet.style.height, '', '搜索面板向下拖至最低位置恢复初始高度')
   const closeSearchBtn = activeSearchSheet.querySelector<HTMLButtonElement>('[aria-label="关闭搜索返回阅读"]')

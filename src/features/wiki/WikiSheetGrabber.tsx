@@ -133,6 +133,11 @@ export function WikiSheetGrabber({ expanded, onExpandedChange, onReachTop }: Wik
       drag.moved = true
       skipNextClickRef.current = true
       drag.sheet.classList.add('wiki-sheet-dragging')
+      // 半窗原本有 75/82dvh 的 CSS 最大高度。拖拽必须同时解除这层限制，
+      // 否则 height 虽在变化，窗口却被 max-height 卡住，而触顶判断仍然会触发。
+      // 只在手势开始时写一次约束；后续每帧只更新 height，避免重复重布局。
+      drag.sheet.style.minHeight = '0px'
+      drag.sheet.style.maxHeight = `${drag.maxHeight}px`
     }
     event.preventDefault()
     const nextHeight = Math.max(drag.minHeight, Math.min(drag.maxHeight, drag.originHeight - delta))
