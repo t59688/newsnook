@@ -6,6 +6,7 @@ import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
+import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.widget.FrameLayout;
 import androidx.activity.ComponentActivity;
@@ -26,6 +27,18 @@ final class OriginVideoFullscreen extends WebChromeClient {
         this.activity = activity;
         this.host = host;
         this.immersive = immersive;
+    }
+
+    /**
+     * Media/CMS sites commonly mark playback-line anchors target=_blank.
+     * Keeping multiple windows enabled while rejecting onCreateWindow() silently
+     * drops those taps. Reuse this owned WebView instead, where its WebViewClient
+     * validates each navigation; never authorize unattended JavaScript popups.
+     * Only the live origin player uses this policy, not the regular browser.
+     */
+    static void configureSameWindowPlaybackLinks(WebSettings settings) {
+        settings.setSupportMultipleWindows(false);
+        settings.setJavaScriptCanOpenWindowsAutomatically(false);
     }
 
     @Override public boolean onCreateWindow(

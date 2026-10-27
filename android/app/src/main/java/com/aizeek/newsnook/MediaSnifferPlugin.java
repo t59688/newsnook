@@ -1401,8 +1401,8 @@ public class MediaSnifferPlugin extends Plugin {
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setSupportMultipleWindows(true);
+        // Route target=_blank playback links through this surface's guarded WebViewClient.
+        OriginVideoFullscreen.configureSameWindowPlaybackLinks(settings);
 
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
