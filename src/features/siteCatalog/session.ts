@@ -54,7 +54,7 @@ export class CatalogSession {
       if (controller.signal.aborted || generation !== this.generation) return
       const previous = this.snapshot.page
       if (previous && new URL(previous.url).origin === new URL(page.url).origin) {
-        page.profile = { ...page.profile, categories: [...new Map([...previous.profile.categories, ...page.profile.categories].map((category) => [category.url, category])).values()].slice(0, 100), search: page.profile.search ?? previous.profile.search }
+        page.profile = { ...page.profile, search: page.profile.search ?? previous.profile.search }
       }
       const old = reset ? [] : this.snapshot.history
       const known = new Set(old.flatMap((entry) => entry.articles.map((article) => article.id)))

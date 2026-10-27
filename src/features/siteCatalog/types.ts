@@ -24,13 +24,25 @@ export interface CatalogProfile {
   sorts?: CatalogLink[]
   filters?: { title: string; options: CatalogLink[] }[]
 }
-export type CatalogPageKind = 'catalog' | 'empty' | 'detail' | 'blocked' | 'dynamic' | 'unsupported'
+export interface CatalogNavigationGroup {
+  title: string
+  parentUrl?: string
+  links: CatalogLink[]
+  activeUrl?: string
+}
+/** Response-local navigation; child menus never accumulate into persisted categories. */
+export interface CatalogNavigation {
+  activePrimaryUrl?: string
+  groups: CatalogNavigationGroup[]
+}
+export type CatalogPageKind = 'catalog' | 'navigation' | 'empty' | 'detail' | 'blocked' | 'dynamic' | 'unsupported'
 export interface CatalogPage {
   request: CatalogRequest
   url: string
   articles: Article[]
   profile: CatalogProfile
   pagination: CatalogPagination
+  navigation?: CatalogNavigation
   kind: CatalogPageKind
   truncated: boolean
 }

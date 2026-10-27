@@ -88,6 +88,9 @@ export const SiteScreen = memo(function SiteScreen({
   const sheetTitleId = useId()
 
   const profile = state.page?.profile ?? (source ? catalogProfileFor(source) : undefined)
+  const loadedUrl = state.page?.url ?? selectedUrl
+  const activePrimaryUrl = state.page?.navigation?.activePrimaryUrl ?? loadedUrl
+  const childGroups = state.page?.navigation?.groups ?? []
   const fwInfo = useMemo(
     () => getSiteFrameworkInfo(source?.frameworkHint?.framework ?? profile?.engine),
     [source?.frameworkHint?.framework, profile?.engine],
@@ -365,12 +368,12 @@ export const SiteScreen = memo(function SiteScreen({
 
         {/* 第二行：分类胶囊栏（优雅 NewsNook 朱砂强调色，告别死黑白方块） */}
         {!!profile?.categories.length && (
-          <nav aria-label="全站分类" className="page-x flex gap-1.5 overflow-x-auto scroll-hidden pb-2 pt-0.5">
+          <nav aria-label="全站导航" className="page-x flex gap-1.5 overflow-x-auto scroll-hidden pb-2 pt-0.5">
             <button
               type="button"
               onClick={() => openUrl(source.url)}
               className={`shrink-0 rounded-full px-3.5 py-1 text-[12px] font-medium transition-all active:scale-95 ${
-                selectedUrl === source.url && !searchActive
+                loadedUrl === source.url && !searchActive
                   ? 'bg-cinnabar text-white shadow-xs shadow-cinnabar/20'
                   : 'text-paper-muted hover:text-paper hover:bg-paper/6'
               }`}
@@ -378,12 +381,13 @@ export const SiteScreen = memo(function SiteScreen({
               全部
             </button>
             {profile.categories.map((link) => {
-              const active = selectedUrl === link.url && !searchActive
+              const active = activePrimaryUrl === link.url && !searchActive
               return (
                 <button
                   key={link.url}
                   type="button"
                   onClick={() => openUrl(link.url)}
+                  aria-current={active ? 'page' : undefined}
                   className={`shrink-0 rounded-full px-3.5 py-1 text-[12px] font-medium transition-all active:scale-95 ${
                     active
                       ? 'bg-cinnabar text-white shadow-xs shadow-cinnabar/20'
@@ -397,6 +401,28 @@ export const SiteScreen = memo(function SiteScreen({
           </nav>
         )}
 
+        {/* Child navigation is scoped to this response, never merged into the site menu. */}
+        {!searchActive && childGroups.map((group, index) => (
+          <nav
+            key={`${group.parentUrl || loadedUrl}:${index}`}
+            aria-label={`${group.title}子栏目`}
+            className="page-x flex items-center gap-1.5 overflow-x-auto scroll-hidden border-t border-haze/30 py-2"
+          >
+            {group.links.map(link => {
+              const active = (group.activeUrl || loadedUrl) === link.url
+              return (
+                <button
+                  key={link.url}
+                  type="button"
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => openUrl(link.url)}
+                  className={`shrink-0 rounded-lg px-3 py-1.5 text-[12px] font-medium transition-colors active:scale-95 ${active ? 'bg-cinnabar/12 text-cinnabar' : 'text-paper-muted hover:bg-paper/6 hover:text-paper'}`}
+                >{link.title}</button>
+              )
+            })}
+          </nav>
+        ))}
+
         {/* 排序与过滤栏（若站点提供） */}
         {(!!profile?.sorts?.length || !!profile?.filters?.length) && (
           <div className="page-x flex flex-col gap-1 border-t border-haze/25 py-1.5">
@@ -409,7 +435,7 @@ export const SiteScreen = memo(function SiteScreen({
                     type="button"
                     onClick={() => openUrl(link.url)}
                     className={`shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      selectedUrl === link.url ? 'bg-cinnabar/15 text-cinnabar' : 'text-paper-muted hover:text-paper'
+                      loadedUrl === link.url ? 'bg-cinnabar/15 text-cinnabar' : 'text-paper-muted hover:text-paper'
                     }`}
                   >
                     {link.title}
@@ -426,7 +452,7 @@ export const SiteScreen = memo(function SiteScreen({
                     type="button"
                     onClick={() => openUrl(link.url)}
                     className={`shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      selectedUrl === link.url ? 'bg-cinnabar/15 text-cinnabar' : 'text-paper-muted hover:text-paper'
+                      loadedUrl === link.url ? 'bg-cinnabar/15 text-cinnabar' : 'text-paper-muted hover:text-paper'
                     }`}
                   >
                     {link.title}
@@ -659,8 +685,8 @@ export const SiteScreen = memo(function SiteScreen({
             <div className="flex size-14 items-center justify-center rounded-2xl bg-paper/5 text-paper-muted">
               <Layers3 size={24} strokeWidth={1.5} />
             </div>
-            <p className="mt-4 font-display text-[15px] font-semibold text-paper">当前分类暂无内容</p>
-            <p className="mt-1 text-[11px] text-paper-faint">请尝试选择其他分类或进行搜索</p>
+            <p className="mt-4 font-display text-[15px] font-semibold text-paper">{state.page?.kind === 'navigation' ? '请选择子栏目' : '当前栏目暂无内容'}</p>
+            <p className="mt-1 text-[11px] text-paper-faint">{state.page?.kind === 'navigation' ? '从上方子栏目进入内容列表' : '请尝试选择其他栏目或进行搜索'}</p>
             <button
               type="button"
               onClick={() => openUrl(source.url)}
@@ -671,7 +697,7 @@ export const SiteScreen = memo(function SiteScreen({
           </div>
         )}
         {/* 原生流式底部分页控制器（自然跟随在列表末尾，舒展大方，绝无遮挡） */}
-        {state.page && (
+        {state.page && state.page.kind !== 'navigation' && (
           <div className="flex items-center justify-center gap-3 pt-6 pb-10">
             <button
               type="button"

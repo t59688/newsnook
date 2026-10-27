@@ -1,3 +1,4 @@
+import { primaryContentHtml } from './extractors/collectionStructure'
 import { extractHeuristicCardCatalog } from './extractors/heuristicCards'
 import { extractJsonLdCatalog } from './extractors/jsonLd'
 import { catalogBaseUrl, catalogDocument, extractDomCards } from './extractors/domCards'
@@ -12,7 +13,7 @@ export function extractCatalog(html: string, pageUrl: string, options: CatalogEx
   const json = extractJsonLdCatalog(html, baseUrl)
   const listed = extractJsonLdCatalog(html, baseUrl, true)
   const dom = extractDomCards(html, pageUrl, document)
-  const heuristic = extractHeuristicCardCatalog(html, baseUrl)
+  const heuristic = extractHeuristicCardCatalog(primaryContentHtml(document), baseUrl)
   let items: CatalogItem[]
   let extractor: CatalogExtractionResult['extractor']
   if (listed.length) { items = listed; extractor = 'json-ld' }

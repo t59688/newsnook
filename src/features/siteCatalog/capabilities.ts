@@ -1,3 +1,4 @@
+import { discoverCatalogNavigation, type DiscoveredCatalogNavigation } from './navigation'
 import { isPaginationNode, isPaginationControlLabel } from './navigationRoles'
 import { catalogBaseUrl } from '../catalogEngine/extractors/domCards'
 import { detectFramework } from '../frameworkDetect/detect'
@@ -57,16 +58,17 @@ function searchForm(document: Document, baseUrl: string): CatalogRequest | undef
   return undefined
 }
 
-export function discoverCatalogProfile(html: string, pageUrl: string, document?: Document): CatalogProfile {
+export function discoverCatalogProfile(html: string, pageUrl: string, document?: Document, navigation?: DiscoveredCatalogNavigation): CatalogProfile {
   const ctx = document ? { document, baseUrl: catalogBaseUrl(document, pageUrl) } : pageContext(html, pageUrl)
   const hint = detectFramework(html, pageUrl, ctx.document)
   const engine = hint?.framework ?? 'generic'
-  const categoryNodes = ctx.document.querySelectorAll('nav a[href], [role="navigation"] a[href], .navbar a[href], .menu a[href], .panel-heading h3 a[href], .categories a[href], .category-list a[href]')
-  const categories = links(categoryNodes, ctx.baseUrl).filter((item) => !/search|vod-search|vodsearch|\/so(?:[/?]|$)/i.test(item.url) && item.url !== pageUrl)
+  const contextNavigation = navigation ?? discoverCatalogNavigation(ctx.document, ctx.baseUrl, pageUrl)
+  const categories = [...contextNavigation.primary]
+  const childUrls = new Set(contextNavigation.groups.flatMap(group => group.links.map(link => link.url)))
   // Framework route evidence supplements semantic navigation, never invents categories.
   for (const category of hint?.categories ?? []) {
     const url = siteUrl(category.url, ctx.baseUrl)
-    if (url && !isPaginationControlLabel(category.title) && !categories.some((item) => item.url === url) && categories.length < 100) categories.push({ title: category.title, url })
+    if (url && !childUrls.has(url) && !isPaginationControlLabel(category.title) && !categories.some((item) => item.url === url) && categories.length < 100) categories.push({ title: category.title, url })
   }
   const sorts = links(ctx.document.querySelectorAll('.sort a[href], .sorting a[href], .sort-list a[href], [data-sort] a[href]'), ctx.baseUrl)
   const filters = [...ctx.document.querySelectorAll('.filter, .filters, .screen-list, .filter-list')].slice(0, 10).map((node) => ({ title: label(node.querySelector('dt, h3, label, .label') ?? node).slice(0, 30) || '筛选', options: links(node.querySelectorAll('a[href]'), ctx.baseUrl) })).filter((group) => group.options.length)

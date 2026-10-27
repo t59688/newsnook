@@ -25,7 +25,7 @@ test('an actual singleton semantic list remains valid',()=>{
 })
 test('pagination glyphs and ellipsis counts are never exposed as site categories',()=>{
  const profile=discoverCatalogProfile(nav+pager,url)
- assert.deepEqual(profile.categories.map(i=>i.title),['10分钟/+'])
+ assert.deepEqual(profile.categories.map(i=>i.title),['最新','10分钟/+'], 'the active primary link remains visible; only pager controls are removed')
  assert.equal(discoverCatalogPagination(pager,url).nextUrl,'https://catalog.example/list-2.htm')
  assert.ok(discoverCatalogPagination(pager,url).pages?.some(i=>i.page===3))
 })

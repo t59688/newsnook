@@ -1,3 +1,4 @@
+import { discoverCatalogNavigation } from './navigation'
 import { fetchAbsoluteText, fetchAbsoluteFormPost } from '../../lib/http'
 import { catalogItemsToArticles } from '../catalogEngine/toArticles'
 import { extractCatalog } from '../catalogEngine/engine'
@@ -21,7 +22,8 @@ function sameContentUrl(left: string, right: string): boolean {
 
 export function parseCatalogPage(source: NewsSource, request: CatalogRequest, html: string, finalUrl = request.url): CatalogPage {
   const ctx = pageContext(html, finalUrl)
-  const found = discoverCatalogProfile(html, finalUrl, ctx.document)
+  const navigation = discoverCatalogNavigation(ctx.document, ctx.baseUrl, finalUrl)
+  const found = discoverCatalogProfile(html, finalUrl, ctx.document, navigation)
   const previous = catalogProfileFor({ ...source, url: finalUrl })
   const engine = found.engine === 'generic' && detectEngineIdentity(html, ctx.document) !== 'generic' ? previous.engine : found.engine
   const profile = { ...found, engine, categories: found.categories.length ? found.categories : previous.categories, search: found.search ?? previous.search }
@@ -33,16 +35,17 @@ export function parseCatalogPage(source: NewsSource, request: CatalogRequest, ht
   else if (!catalog.items.length) {
     const text = ctx.document.body?.textContent || ''
     if (/暂无|没有找到|未找到|无相关|no results|nothing found|not found/i.test(text)) kind = 'empty'
+    else if (navigation.groups.length) kind = 'navigation'
     else if (ctx.document.querySelector('script[src]') && text.trim().length < 100) kind = 'dynamic'
     else kind = 'unsupported'
   } else if (ctx.document.querySelector('meta[property="og:type"][content="article"]') && ctx.document.querySelector('main h1, article h1')) kind = 'detail'
   else if (catalog.items.length === 1 && sameContentUrl(catalog.items[0].originUrl, finalUrl)) kind = 'detail'
   else if (catalog.items.length === 1 && canonical && sameContentUrl(catalog.items[0].originUrl, canonical) && ctx.document.querySelector('main h1, article h1, [role="main"] h1')) kind = 'detail'
   const articles = kind === 'catalog' ? catalogItemsToArticles({ ...source, catalogProfile: profile }, catalog.items, Date.now()) : []
-  const exclude = new Set(profile.categories.map((category) => category.url))
+  const exclude = new Set([...profile.categories.map(category => category.url), ...navigation.groups.flatMap(group => group.links.map(link => link.url))])
   const filtered = articles.filter((article) => !exclude.has(article.originUrl))
-  if (kind === 'catalog' && !filtered.length) kind = 'unsupported'
-  return { request, url: finalUrl, profile, articles: filtered, pagination: discoverCatalogPagination(html, finalUrl, ctx.document), kind, truncated: catalog.truncated === true }
+  if (kind === 'catalog' && !filtered.length) kind = navigation.groups.length ? 'navigation' : 'unsupported'
+  return { request, url: finalUrl, profile, navigation: { activePrimaryUrl: navigation.activePrimaryUrl, groups: navigation.groups }, articles: filtered, pagination: discoverCatalogPagination(html, finalUrl, ctx.document), kind, truncated: catalog.truncated === true }
 }
 
 export async function loadCatalogPage(source: NewsSource, request: CatalogRequest, signal?: AbortSignal): Promise<CatalogPage> {
