@@ -59,7 +59,7 @@ import {
   usableShareTitle,
   withResolvedShareTitle,
 } from '../lib/shareLink'
-import { resolveArticleBody, type BodySource } from '../lib/resolveBody'
+import { resolveArticleBody, pageUserAgentForArticle, type BodySource } from '../lib/resolveBody'
 import { articleCoverUrl } from '../lib/articleAudio'
 import { isExcerptUpgrade, shouldRecheckCachedExcerpt, shouldReplaceCachedBody } from '../lib/feedBodyEvidence'
 import { shouldRenderStandaloneCover } from '../lib/articlePreview'
@@ -1758,6 +1758,7 @@ export function ReaderScreen({
             {useOriginSurface && (feedEmbeddedPlayerUrl || resolvedOriginUrl || article.originUrl) && (
               <OriginPlayerSurface
                 pageUrl={feedEmbeddedPlayerUrl || resolvedOriginUrl || article.originUrl!}
+                userAgent={pageUserAgentForArticle(article, customSources)}
                 referrer={resolvedOriginUrl || article.originUrl || feedEmbeddedPlayerUrl}
                 title={article.title}
                 poster={article.image}

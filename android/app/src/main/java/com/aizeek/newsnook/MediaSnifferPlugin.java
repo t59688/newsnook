@@ -445,11 +445,28 @@ public class MediaSnifferPlugin extends Plugin {
           };
           window.__newsnookSetAutomaticActivation = (enabled, restoreAudio) =>
             setAutomaticActivation(enabled, restoreAudio, true);
+          const mediaSourceUrl = (media) => {
+            // IDL media.src turns an empty src attribute into the document URL.
+            // Use explicit source attributes and the browser-selected currentSrc only.
+            const candidates = [media.currentSrc, media.getAttribute('src'),
+              media.getAttribute('data-src'), media.getAttribute('data-video-src')];
+            for (const value of candidates) {
+              if (typeof value !== 'string' || !value.trim() || value.trim().charAt(0) === '#') continue;
+              try {
+                const target = new URL(value, location.href);
+                const page = new URL(location.href);
+                target.hash = ''; page.hash = '';
+                if (target.href === page.href && !looksMediaUrl(target.href)) continue;
+                return new URL(value, location.href).href;
+              } catch (_) {}
+            }
+            return '';
+          };
           const inspect = (node) => {
             if (!(node instanceof Element)) return;
             const nodes = node.matches('video,audio,source') ? [node] : node.querySelectorAll('video,audio,source');
             for (const media of nodes) {
-              const url = media.currentSrc || media.src || media.getAttribute('data-src') || media.getAttribute('data-video-src');
+              const url = mediaSourceUrl(media);
               if (url) push({ source: 'dom', url, mimeType: media.getAttribute('type') || undefined, mediaKind: media.tagName === 'AUDIO' ? 'audio' : media.tagName === 'VIDEO' ? 'video' : undefined, width: positiveNumber(media.videoWidth), height: positiveNumber(media.videoHeight) });
               if (media.srcObject) push({ source: 'mse', url: media.currentSrc || 'blob:', mseMimeType: 'srcObject' });
               if (media instanceof HTMLMediaElement) activateMedia(media);

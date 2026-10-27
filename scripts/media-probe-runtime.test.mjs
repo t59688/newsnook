@@ -265,4 +265,15 @@ function instrumentMedia(element) {
     'arbitrary script URL literals are not evidence of the current player')
 }
 
+{
+  const { window } = makeRuntime('<html><body><video src=""></video></body></html>')
+  const video = window.document.querySelector('video')
+  // Chromium resolves the empty src IDL property to location.href; linkedom does not.
+  Object.defineProperty(video, 'src', { configurable: true, get: () => window.location.href })
+  Object.defineProperty(video, 'currentSrc', { configurable: true, value: '' })
+  const observations = window.__newsnookCollectMedia()
+  assert.equal(observations.some(item => item.url === window.location.href), false,
+    'an empty video[src] must not publish the HTML document as a video URL')
+}
+
 console.log('media probe runtime tests passed')

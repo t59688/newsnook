@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { X } from 'lucide-react'
 import { fetchAbsoluteText } from '../lib/http'
+import { catalogRequestOptions } from '../features/siteCatalog/requestIdentity'
 
 import {
   prepareNativeMediaPlayback,
@@ -30,6 +31,7 @@ export type OriginPlayerCloseHandle = {
 interface Props {
   pageUrl: string
   referrer?: string
+  userAgent?: string
   title: string
   poster?: string
   openOriginal?: () => void
@@ -98,6 +100,7 @@ function pushLiveSessionBounds(
 export function OriginPlayerSurface({
   pageUrl,
   referrer,
+  userAgent,
   title,
   poster,
   openOriginal,
@@ -125,6 +128,8 @@ export function OriginPlayerSurface({
   const sessionIdRef = useRef<string | undefined>(undefined)
   const playerFullscreenRef = useRef<InkVideoPlayerFullscreenHandle | null>(null)
   const autoSwitchedRef = useRef(false)
+  const manualOriginRef = useRef(false)
+  const surfaceIntentRef = useRef<'automatic' | 'assisted' | 'custom'>('automatic')
   const discoveryAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -137,6 +142,9 @@ export function OriginPlayerSurface({
           return true
         }
         if (mode !== 'custom') return false
+        manualOriginRef.current = true
+        surfaceIntentRef.current = 'assisted'
+        discoveryAbortRef.current?.abort()
         handoffVersionRef.current = {}
         preparingRef.current = false
         setActiveCandidate(null)
@@ -165,6 +173,8 @@ export function OriginPlayerSurface({
     const lateTimers: number[] = []
     observationsRef.current = []
     autoSwitchedRef.current = false
+    manualOriginRef.current = false
+    surfaceIntentRef.current = 'automatic'
     handoffVersionRef.current = {}
     preparingRef.current = false
     setActiveCandidate(null)
@@ -193,7 +203,7 @@ export function OriginPlayerSurface({
         observationsRef.current = []
         handoffVersionRef.current = {}
         preparingRef.current = false
-        autoSwitchedRef.current = false
+        // Native about:blank restoration is navigation, not renewed user consent.
         setCandidate(null)
       },
       onObservation: (observation) => {
@@ -250,6 +260,7 @@ export function OriginPlayerSurface({
       setCandidate(previous => mergeReaderDescriptors(previous, descriptor))
     }
     void fetchAbsoluteText(pageUrl, {
+      ...catalogRequestOptions(userAgent),
       signal: controller.signal,
       headers: referrer ? { Referer: referrer } : undefined,
       accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
@@ -274,7 +285,7 @@ export function OriginPlayerSurface({
       controller.abort()
       if (discoveryAbortRef.current === controller) discoveryAbortRef.current = null
     }
-  }, [pageUrl, referrer, retryGeneration])
+  }, [pageUrl, referrer, retryGeneration, userAgent])
 
   useEffect(() => {
     if (mode !== 'origin' || candidate || sessionError) return
@@ -324,7 +335,16 @@ export function OriginPlayerSurface({
     if (!candidate || preparingRef.current) return
     const chosen = candidate
     const version = handoffVersionRef.current
+    const sessionId = sessionIdRef.current
+    surfaceIntentRef.current = 'custom'
     preparingRef.current = true
+    const restoreManualSurface = async () => {
+      if (!sessionId || sessionId !== sessionIdRef.current || surfaceIntentRef.current !== 'assisted') return
+      await setNativeLiveSessionVisible(true, sessionId)
+      if (sessionId === sessionIdRef.current && surfaceIntentRef.current === 'assisted') {
+        await setNativeLiveSessionInteractive(true, sessionId)
+      }
+    }
     try {
       await prepareNativeMediaPlayback({
         url: chosen.url,
@@ -335,9 +355,17 @@ export function OriginPlayerSurface({
         extraUrls: chosen.relatedUrls,
       })
       if (version !== handoffVersionRef.current) return
-      if (sessionIdRef.current) {
-        await setNativeLiveSessionInteractive(false, sessionIdRef.current)
-        await setNativeLiveSessionVisible(false, sessionIdRef.current)
+      if (sessionId) {
+        await setNativeLiveSessionInteractive(false, sessionId)
+        if (version !== handoffVersionRef.current) {
+          await restoreManualSurface()
+          return
+        }
+        await setNativeLiveSessionVisible(false, sessionId)
+        if (version !== handoffVersionRef.current) {
+          await restoreManualSurface()
+          return
+        }
       }
       if (version !== handoffVersionRef.current) return
       setActiveCandidate(chosen)
@@ -370,12 +398,14 @@ export function OriginPlayerSurface({
   }, [candidateManifestUrl, candidateManifestType, pageUrl])
 
   useEffect(() => {
-    if (!autoUseReader || !candidate || !nativeReady || mode !== 'origin' || autoSwitchedRef.current) return
+    if (!autoUseReader || !candidate || !nativeReady || mode !== 'origin' || autoSwitchedRef.current || manualOriginRef.current) return
     autoSwitchedRef.current = true
     void openCustom()
   }, [autoUseReader, candidate, mode, nativeReady, openCustom])
 
   const backToOrigin = () => {
+    manualOriginRef.current = true
+    surfaceIntentRef.current = 'assisted'
     handoffVersionRef.current = {}
     preparingRef.current = false
     setActiveCandidate(null)
@@ -478,6 +508,7 @@ export function OriginPlayerSurface({
                   <button
                     type="button"
                     onClick={() => {
+                      surfaceIntentRef.current = 'automatic'
                       setAssistMode(false)
                       void setNativeLiveSessionInteractive(false, sessionIdRef.current)
                     }}
@@ -488,6 +519,10 @@ export function OriginPlayerSurface({
                     type="button"
                     disabled={!nativeReady || globalVideoSurface}
                     onClick={() => {
+                      manualOriginRef.current = true
+                      surfaceIntentRef.current = 'assisted'
+                      handoffVersionRef.current = {}
+                      preparingRef.current = false
                       discoveryAbortRef.current?.abort()
                       setAssistMode(true)
                       if (sessionIdRef.current) void setNativeLiveSessionInteractive(true, sessionIdRef.current)

@@ -36,6 +36,17 @@ function imageIn(card: Element, baseUrl: string): string | undefined {
   return candidates.map((raw) => raw && !/^(?:data:|about:)|(?:blank|placeholder|loading|spacer)\./i.test(raw) ? absoluteUrl(raw, baseUrl) : undefined).find(Boolean)
 }
 
+/** Grid columns wrap individual cards; rows wrap a collection, not a single item. */
+function collectionParent(card: Element): Element | null {
+  let parent = card.parentElement
+  for (let depth = 0; parent?.parentElement && depth < 4; depth++) {
+    if (parent.matches('main, section, article, ul, ol, [role="main"], [role="list"]')) break
+    if (parent.childElementCount !== 1 && !parent.classList.contains('row')) break
+    parent = parent.parentElement
+  }
+  return parent
+}
+
 /** Semantic/card containers keep slug URLs and sibling metadata together. */
 export function extractDomCards(html: string, pageUrl: string, document?: Document): CatalogItem[] {
   const doc = document ?? catalogDocument(html)
@@ -72,7 +83,7 @@ export function extractDomCards(html: string, pageUrl: string, document?: Docume
     const articleRoute = /\/(?:art\/(?:detail|read)|articles?|posts?|news)\//i.test(new URL(originUrl).pathname)
     const contentType = articleRoute ? 'article' : videoEvidence ? 'video' : card.tagName.toLowerCase() === 'article' || card.matches('.post, .entry, [itemtype*="Article"]') ? 'article' : undefined
     const item: CatalogItem = { id: `dom-${count++}`, originUrl, title, image, summary, publishedAt, contentType }
-    const parent = card.parentElement
+    const parent = collectionParent(card)
     if (!parent) continue
     const items = groups.get(parent) ?? []
     items.push(item)
@@ -87,10 +98,18 @@ export function extractDomCards(html: string, pageUrl: string, document?: Docume
   const main = ranked[0][0].closest('main, [role="main"]')
   const listClass = ['thumbnail-group', 'stui-vodlist', 'myui-vodlist', 'module-items', 'post-list', 'article-list'].find((name) => ranked[0][0].classList.contains(name))
   const backgroundVideoList = ranked[0][0].querySelector('a.video-pic .player')
+  const primaryContainer = ranked[0][0]
+  // Repeated peer grid containers form homepage sections. Never cross semantic
+  // section/aside boundaries, nor merge arbitrary one-card widgets by count.
+  const peerGrids = primaryContainer.tagName === 'DIV' && primaryContainer.className && ranked[0][1].length >= 2
+    ? ranked.filter(([node, items]) => node.parentElement === primaryContainer.parentElement
+      && node.tagName === primaryContainer.tagName && node.className === primaryContainer.className && items.length >= 2)
+    : []
   const candidates = main
     ? ranked.filter(([node]) => node.closest('main, [role="main"]') === main).flatMap(([, items]) => items)
     : listClass ? ranked.filter(([node]) => node.classList.contains(listClass)).flatMap(([, items]) => items)
-    : backgroundVideoList ? [...groups].filter(([node]) => node.querySelector('a.video-pic .player')).flatMap(([, items]) => items) : ranked[0][1]
+    : backgroundVideoList ? [...groups].filter(([node]) => node.querySelector('a.video-pic .player')).flatMap(([, items]) => items)
+    : peerGrids.length > 1 ? peerGrids.flatMap(([, items]) => items) : ranked[0][1]
   const unique = new Map<string, CatalogItem>()
   for (const item of candidates) if (!unique.has(item.originUrl)) unique.set(item.originUrl, item)
   return [...unique.values()]

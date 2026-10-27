@@ -36,6 +36,7 @@ const { Capacitor, registerPlugin } = await import('@capacitor/core')
 let nativeMode = false
 Capacitor.isNativePlatform = () => nativeMode
 Capacitor.getPlatform = () => nativeMode ? 'android' : 'web'
+const documentListeners = new Set<(event: { sessionId: string; documentEpoch: number; pageUrl: string }) => void>()
 const listeners = new Set<(event: { sessionId: string; observation: MediaObservation }) => void>()
 let liveSessionId = ''
 let liveStarts = 0
@@ -43,18 +44,34 @@ const assistedCalls: boolean[] = []
 let prepares = 0
 let preparedOptions: { origins?: string[] } | undefined
 let prepareGate: Promise<void> | undefined
+let interactiveGate: Promise<void> | undefined
+let hideGate: Promise<void> | undefined
+let nativeVisible = true
 const nativeMock = {
   async addListener(_name: string, fn: (event: { sessionId: string; observation: MediaObservation }) => void) {
+    if (_name === 'mediaDocument') {
+      const callback = fn as unknown as (event: { sessionId: string; documentEpoch: number; pageUrl: string }) => void
+      documentListeners.add(callback)
+      return { remove: async () => { documentListeners.delete(callback) } }
+    }
     listeners.add(fn)
     return { remove: async () => { listeners.delete(fn) } }
   },
   async startLiveSession(options: { sessionId: string }) { liveSessionId = options.sessionId; liveStarts++ },
-  async stopLiveSession() {}, async setLiveSessionBounds() {}, async setLiveSessionVisible() {},
-  async setLiveSessionInteractive(options: { interactive: boolean }) { assistedCalls.push(options.interactive) },
+  async stopLiveSession() {}, async setLiveSessionBounds() {}, async setLiveSessionVisible(options: { visible: boolean }) { if (!options.visible) await hideGate; nativeVisible = options.visible },
+  async setLiveSessionInteractive(options: { interactive: boolean }) { if (!options.interactive) await interactiveGate; assistedCalls.push(options.interactive) },
   async preparePlayback(options: { origins?: string[] }) { prepares++; preparedOptions = options; await prepareGate },
   async getStreamProxyPort() { return { port: 9999 } },
 }
 registerPlugin('MediaSniffer', { web: () => nativeMock, android: () => nativeMock })
+const nativePageRequests: Array<{ url: string; headers?: Record<string, string>; webViewCookies?: boolean }> = []
+registerPlugin('ProxiedHttp', { web: () => ({ async request(options: { url: string; headers?: Record<string, string>; webViewCookies?: boolean }) {
+  nativePageRequests.push(options)
+  return { status: 200, headers: { 'content-type': 'text/html' }, data: btoa('<html><body></body></html>') }
+} }), android: () => ({ async request(options: { url: string; headers?: Record<string, string>; webViewCookies?: boolean }) {
+  nativePageRequests.push(options)
+  return { status: 200, headers: { 'content-type': 'text/html' }, data: btoa('<html><body></body></html>') }
+} }) })
 const { createRoot } = await import('react-dom/client')
 const { InkVideoPlayer } = await import('../src/components/InkVideoPlayer')
 const { OriginPlayerSurface } = await import('../src/components/OriginPlayerSurface')
@@ -111,6 +128,16 @@ function ZhihuVideoFixture() {
 
 type Render = (element: React.ReactNode) => Promise<void>
 const cases: Array<[string, (render: Render) => Promise<void>]> = [
+  ['reader discovery preserves catalog HTTP identity and WebView cookies', async render => {
+    nativeMode = true
+    const pageUrl = 'https://example.com/watch/identity'
+    await render(<OriginPlayerSurface pageUrl={pageUrl} title="Identity" userAgent="CatalogFixture/1.0" />)
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 10)) })
+    const request = nativePageRequests.find(item => item.url === pageUrl)
+    assert.ok(request, 'reader discovery must use the same OkHttp bridge as catalog extraction')
+    assert.equal(request.headers?.['User-Agent'], 'CatalogFixture/1.0')
+    assert.equal(request.webViewCookies, true)
+  }],
   ['manual assistance is immediately available without waiting for sniff timeout', async render => {
     nativeMode = true
     await render(<OriginPlayerSurface pageUrl="https://example.com/watch/early" title="Early" />)
@@ -144,6 +171,63 @@ const cases: Array<[string, (render: Render) => Promise<void>]> = [
     await act(async () => v.dispatchEvent(new window.Event('canplay')))
     assert.equal(plays, before + 1, 'later readiness cannot undo a manual pause')
   }],
+  ['returning to origin remains manual across blank restoration and late candidate events', async render => {
+    nativeMode = true
+    await render(<OriginPlayerSurface pageUrl="https://example.com/watch/sticky" title="Sticky" autoUseReader />)
+    const navigate = async (epoch: number, url: string) => { await act(async () => {
+      for (const fn of documentListeners) fn({ sessionId: liveSessionId, documentEpoch: epoch, pageUrl: url })
+    }) }
+    await navigate(1, 'https://example.com/watch/sticky')
+    await emit({ url: src, width: 1920, height: 1080 })
+    const switchButton = [...document.querySelectorAll('button')].find(b => b.textContent === '切换播放器')
+    if (switchButton) await act(async () => switchButton.click())
+    assert.ok(document.querySelector('video'), 'precondition: custom player mounted')
+    const back = [...document.querySelectorAll('button')].find(b => b.textContent === '返回原站播放器')
+    assert.ok(back)
+    await act(async () => back.click())
+    await navigate(2, 'https://example.com/watch/sticky')
+    await emit({ url: src, width: 1920, height: 1080 })
+    assert.equal(Boolean(document.querySelector('video')), false, 'manual origin choice must survive a native document restore')
+    assert.ok(document.body.textContent?.includes('手动辅助识别中'))
+  }],
+  ['manual assistance cancels a pending automatic handoff without abandoning live observations', async render => {
+    nativeMode = true
+    await render(<OriginPlayerSurface pageUrl="https://example.com/watch/race" title="Race" autoUseReader />)
+    let release!: () => void
+    prepareGate = new Promise(resolve => { release = resolve })
+    await emit({ url: src, width: 1920, height: 1080 })
+    const assist = [...document.querySelectorAll('button')].find(b => b.textContent === '手动辅助识别')
+    assert.ok(assist)
+    await act(async () => assist.click())
+    prepareGate = undefined
+    await act(async () => release())
+    assert.equal(Boolean(document.querySelector('video')), false, 'late preparation cannot override an explicit manual choice')
+    assert.ok(document.body.textContent?.includes('手动辅助识别中'))
+  }],
+  ...(['interactive', 'visibility'] as const).map(phase => [
+    `manual assistance restores the origin if cancelled during ${phase} bridge write`,
+    async (render: Render) => {
+      nativeMode = true
+      nativeVisible = true
+      await render(<OriginPlayerSurface pageUrl={`https://example.com/watch/race-${phase}`} title="Bridge race" autoUseReader />)
+      let release!: () => void
+      const gate = new Promise<void>(resolve => { release = resolve })
+      if (phase === 'interactive') interactiveGate = gate
+      else hideGate = gate
+      try {
+        await emit({ url: src, width: 1920, height: 1080 })
+        const assist = [...document.querySelectorAll('button')].find(b => b.textContent === '手动辅助识别')
+        assert.ok(assist)
+        await act(async () => assist.click())
+        interactiveGate = undefined
+        hideGate = undefined
+        await act(async () => release())
+        assert.equal(Boolean(document.querySelector('video')), false)
+        assert.equal(nativeVisible, true, 'cancelled native hide must not leave a blank manual player')
+        assert.equal(assistedCalls.at(-1), true, 'manual interaction must win the last native write')
+      } finally { interactiveGate = undefined; hideGate = undefined; release() }
+    },
+  ] as [string, (render: Render) => Promise<void>]),
   ['stalled startup stops the spinner and cannot attach after timing out', async render => {
     nativeMode = true
     let release!: () => void

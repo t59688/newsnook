@@ -154,6 +154,17 @@ export function admitObservation(obs: MediaObservation): MediaObservation | null
     return null
   }
   if (isStaticAssetUrl(url)) return null
+  const declaredMime = normalizedMime(obs.mimeType)
+  if (/^(?:text\/html|application\/xhtml\+xml)$/.test(declaredMime)) return null
+  if (isDocumentPath(url) && !isDeclaredMediaMime(declaredMime)) return null
+  // An uninitialised <video src=""> resolves to its containing document in Chromium.
+  if (!isDeclaredMediaMime(declaredMime) && !looksMediaUrl(url)) {
+    try {
+      const target = new URL(url), page = new URL(obs.pageUrl)
+      target.hash = ''; page.hash = ''
+      if (target.href === page.href) return null
+    } catch { /* Malformed values are handled by the format/HTTP gates below. */ }
+  }
 
   const format = mediaFormatFor(
     url,
@@ -182,12 +193,23 @@ export function logicalMediaUrl(url: string): string {
   }
 }
 
+function isDocumentPath(value: string): boolean {
+  try { return /\.(?:html?|xhtml|php|aspx?|jsp)$/i.test(new URL(value).pathname) } catch { return false }
+}
+
+function isDeclaredMediaMime(mime: string): boolean {
+  return /^(?:video|audio)\//.test(mime) || MANIFEST_MIMES.has(mime)
+}
+
 export function mediaFormatFor(
   url: string,
   mimeType?: string,
   hints?: { mediaKind?: 'video' | 'audio' },
 ): MediaFormat {
-  const mime = normalizedMime(mimeType) || mimeFromUrl(url)
+  const declaredMime = normalizedMime(mimeType)
+  if (/^(?:text\/html|application\/xhtml\+xml)$/.test(declaredMime)) return 'unknown'
+  if (isDocumentPath(url) && !isDeclaredMediaMime(declaredMime)) return 'unknown'
+  const mime = declaredMime || mimeFromUrl(url)
   const byMime = MANIFEST_MIMES.get(mime)
   if (byMime) return byMime
   if (url.startsWith('blob:')) return 'blob'

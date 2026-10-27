@@ -157,10 +157,19 @@ export function secondaryPlaybackUrlsInHtml(html: string, pageUrl: string): stri
     const value = anchor.getAttribute('href')
     const label = (anchor.textContent || '').trim()
     if (/^(?:上一集|下一集|上一话|下一话|next(?: episode)?|previous(?: episode)?)$/i.test(label)) continue
-    if (!value || anchor.closest('.related, .related-posts, .recommendations, .recommended, .guesslike')) continue
+    if (!value || !value.trim() || value.trim().startsWith('#')
+      || anchor.closest('.related, .related-posts, .recommendations, .recommended, .guesslike')) continue
+    // A quality badge on a poster is not a playback-line control.
+    if (anchor.matches('.video-pic, .vod-pic, .thumbnail')
+      || anchor.querySelector('img, picture')
+      || /background-image\s*:/i.test(anchor.getAttribute('style') || '')) continue
     try {
       const absolute = new URL(value.replace(/&amp;/g, '&'), baseUrl)
-      if (!isUsablePlaybackUrl(absolute.href) || absolute.href === pageUrl || !isCatalogContentUrl(absolute.href)) continue
+      const documentUrl = new URL(absolute.href)
+      documentUrl.hash = ''
+      const currentDocument = new URL(pageUrl)
+      currentDocument.hash = ''
+      if (!isUsablePlaybackUrl(absolute.href) || documentUrl.href === currentDocument.href || !isCatalogContentUrl(absolute.href)) continue
       if (pageOrigin && originOf(absolute.href) !== pageOrigin) continue
       const explicitControl = isPlaybackControlAnchor(anchor)
       if (!explicitControl && !PLAYBACK_PATH_PATTERN.test(absolute.pathname + absolute.search + absolute.hash)) continue
