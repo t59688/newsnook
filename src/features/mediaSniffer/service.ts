@@ -64,6 +64,8 @@ export async function discoverMediaDescriptor(options: {
   runtime?: boolean
   timeoutMs?: number
   referrer?: string
+  /** Pages already owned by an active live session must not be opened a second time. */
+  excludeRuntimeUrls?: string[]
   signal?: AbortSignal
   onDescriptor?: (descriptor: MediaDescriptor) => void
   observeNative?: (
@@ -71,8 +73,10 @@ export async function discoverMediaDescriptor(options: {
     timeoutMs: number,
     referrer?: string,
     onObservation?: (observation: MediaObservation) => void,
+    signal?: AbortSignal,
   ) => Promise<MediaObservation[]>
 }): Promise<MediaDescriptor | null> {
+  if (options.signal?.aborted) return null
   const staticObservations = options.html
     ? observeMediaInHtml(options.html, options.pageUrl)
     : options.payload === undefined
@@ -93,14 +97,14 @@ export async function discoverMediaDescriptor(options: {
   const runtimeObservations: MediaObservation[] = []
   let lastEmittedSignature = ''
   const emitAvailableDescriptor = (allowProgressive: boolean) => {
-    if (!options.onDescriptor) return
+    if (!options.onDescriptor || options.signal?.aborted) return
     const descriptor = buildMediaDescriptor(
       mergeObservationSources(staticObservations, runtimeObservations),
     )
     if (!descriptor || descriptor.resources?.[0]?.isAd) return
     // Preroll progressive often arrives first; publishing it mid-sniff replaces
     // the player with a short ad and aborts waiting for the real manifest.
-    if (!allowProgressive && descriptor.type === 'progressive') return
+    if (!allowProgressive && descriptor.type === 'progressive' && ![...staticObservations, ...runtimeObservations].some(item => item.source === 'player-config' && item.url === descriptor.url)) return
     const signature = descriptorSignature(descriptor)
     if (signature === lastEmittedSignature) return
     lastEmittedSignature = signature
@@ -121,22 +125,29 @@ export async function discoverMediaDescriptor(options: {
     })
     const totalTimeoutMs = options.timeoutMs ?? 6000
     const deadline = Date.now() + totalTimeoutMs
-    for (const target of sniffTargets) {
+    const excludedTargets = new Set(options.excludeRuntimeUrls || [])
+    const pendingTargets = sniffTargets.filter(target => !excludedTargets.has(target.url))
+    for (const [index, target] of pendingTargets.entries()) {
+      if (options.signal?.aborted) return null
       const remainingMs = deadline - Date.now()
-      if (remainingMs <= 0) break
-      const targetTimeoutMs = Math.min(target.budgetMs, remainingMs)
+      if (remainingMs < 1500) break
+      // Reserve time for fallback players; fast failures release their unused share.
+      const share = Math.max(1500, Math.floor(remainingMs / (pendingTargets.length - index)))
+      const targetTimeoutMs = Math.min(target.budgetMs, share, remainingMs)
       const probeTarget = runtimeProbePageUrl(target.url)
       const observations = await observe(
         probeTarget,
         targetTimeoutMs,
         target.referrer ?? options.referrer,
         (observation) => {
+          if (options.signal?.aborted) return
           const labeled = target.label ? { ...observation, sourceLabel: observation.sourceLabel || target.label } : observation
           const admitted = admitObservation(labeled)
           if (!admitted) return
           runtimeObservations.push(admitted)
           emitAvailableDescriptor(false)
         },
+        options.signal,
       ).catch(() => [])
       for (const observation of observations) {
         const labeled = target.label ? { ...observation, sourceLabel: observation.sourceLabel || target.label } : observation
@@ -147,9 +158,11 @@ export async function discoverMediaDescriptor(options: {
     }
   }
 
+  if (options.signal?.aborted) return null
   const observations = mergeObservationSources(staticObservations, runtimeObservations)
   if (!observations.length) return null
   const manifests = await manifestBodies(observations, options.signal)
+  if (options.signal?.aborted) return null
   const descriptor = buildMediaDescriptor(observations, manifests)
   if (descriptor && options.onDescriptor) {
     const signature = descriptorSignature(descriptor)
@@ -171,7 +184,9 @@ export async function enrichMediaDescriptorFromObservations(
   signal?: AbortSignal,
 ): Promise<MediaDescriptor | null> {
   if (!observations.length) return null
+  if (signal?.aborted) return null
   const manifests = await manifestBodies(observations, signal)
+  if (signal?.aborted) return null
   return buildMediaDescriptor(observations, manifests)
 }
 

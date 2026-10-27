@@ -18,6 +18,7 @@ export type MediaObservationSource =
   | 'performance'
   | 'mse'
   | 'static'
+  | 'player-config'
 
 export interface MediaObservation {
   url?: string

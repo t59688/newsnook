@@ -1,4 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
+import { playerDeclarationsInHtml } from './playerConfig'
 
 import {
   DIRECT_MEDIA_EXT,
@@ -404,81 +405,8 @@ export function observeMediaInPayload(payload: unknown, pageUrl: string): MediaO
   return observations
 }
 
-function jsonObjectsAfterAssignment(html: string, name: string): unknown[] {
-  const result: unknown[] = []
-  const assignment = new RegExp(`\\b${name}\\s*=\\s*`, 'gi')
-
-  while (assignment.exec(html) && result.length < 16) {
-    const start = assignment.lastIndex
-    if (html[start] !== '{') continue
-
-    let depth = 0
-    let quote = ''
-    let escaped = false
-    for (let index = start; index < html.length; index += 1) {
-      const character = html[index]
-      if (quote) {
-        if (escaped) escaped = false
-        else if (character === '\\') escaped = true
-        else if (character === quote) quote = ''
-        continue
-      }
-      if (character === '"' || character === "'") {
-        quote = character
-        continue
-      }
-      if (character === '{') depth += 1
-      else if (character === '}') depth -= 1
-      if (depth !== 0) continue
-
-      try {
-        result.push(JSON.parse(html.slice(start, index + 1)))
-      } catch {
-        // 非 JSON 的同名脚本变量交给运行时嗅探处理。
-      }
-      assignment.lastIndex = index + 1
-      break
-    }
-  }
-  return result
-}
-
-function decodeBase64Text(value: string): string | undefined {
-  try {
-    const compact = value
-      .replace(/\s+/g, '')
-      .replace(/-/g, '+')
-      .replace(/_/g, '/')
-    const normalized = compact.padEnd(Math.ceil(compact.length / 4) * 4, '=')
-    return atob(normalized)
-  } catch {
-    return undefined
-  }
-}
-
-function decodePercentText(value: string): string {
-  try {
-    return decodeURIComponent(value)
-  } catch {
-    return value
-  }
-}
-
-function macCmsPlaybackUrl(payload: unknown): string | undefined {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return undefined
-  const record = payload as Record<string, unknown>
-  if (typeof record.url !== 'string' || !record.url.trim()) return undefined
-
-  const encrypt = Number(record.encrypt)
-  if (encrypt === 2) {
-    const decoded = decodeBase64Text(record.url)
-    return decoded ? decodePercentText(decoded) : undefined
-  }
-  return encrypt === 1 ? decodePercentText(record.url) : record.url
-}
-
 export function observeMediaInHtml(html: string, pageUrl: string): MediaObservation[] {
-  const observations = observeMediaInPayload(html, pageUrl)
+  const observations: MediaObservation[] = playerDeclarationsInHtml(html, pageUrl).flatMap(item => item.observation ? [item.observation] : [])
   const attribute = (tag: string, name: string): string | undefined =>
     tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))
       ?.slice(1)
@@ -506,10 +434,6 @@ export function observeMediaInHtml(html: string, pageUrl: string): MediaObservat
     } catch {
       // 单个无效 JSON-LD 不影响其他信号。
     }
-  }
-  for (const payload of jsonObjectsAfterAssignment(html, 'player_aaaa')) {
-    const value = macCmsPlaybackUrl(payload)
-    if (value) addStaticObservation(observations, value, pageUrl)
   }
   return observations
 }

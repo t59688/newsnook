@@ -166,7 +166,7 @@ export function admitObservation(obs: MediaObservation): MediaObservation | null
   }
 
   if (obs.source === 'performance' && !looksMediaUrl(url)) return null
-  if (obs.source === 'static' && !hasStrongMediaSignal(obs, url)) return null
+  if ((obs.source === 'static' || obs.source === 'player-config') && !hasStrongMediaSignal(obs, url)) return null
   return obs
 }
 

@@ -2,6 +2,7 @@ package com.aizeek.newsnook;
 
 import static org.junit.Assert.*;
 import android.content.pm.ActivityInfo;
+import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -75,5 +76,13 @@ public class OriginVideoFullscreenTest {
             client.onHideCustomView();
             assertEquals(original, activity.getRequestedOrientation());
         }
+    }
+
+    @Test public void ownedOriginSurfaceRejectsPopupWindows() {
+        ComponentActivity activity = Robolectric.buildActivity(ComponentActivity.class).setup().get();
+        FrameLayout host = new FrameLayout(activity);
+        activity.setContentView(host);
+        OriginVideoFullscreen client = new OriginVideoFullscreen(activity, host, active -> {});
+        assertFalse(client.onCreateWindow(null, false, true, Message.obtain()));
     }
 }

@@ -1,4 +1,6 @@
+import { isVideoDocumentUrl } from '../../../lib/videoDocumentUrl'
 import { parseHTML } from 'linkedom'
+import { isCatalogContentUrl, isPlaybackControlAnchor, isPlaybackControlTitle, PLAYBACK_CONTROL_CONTAINERS } from '../linkRoles'
 import { absoluteUrl, isUtilityPath, normalizeCatalogTitle, parseIsoDate, stripTags } from '../normalize'
 import type { CatalogItem } from '../types'
 
@@ -39,27 +41,34 @@ export function extractDomCards(html: string, pageUrl: string, document?: Docume
   const doc = document ?? catalogDocument(html)
   const baseUrl = catalogBaseUrl(doc, pageUrl)
   const groups = new Map<Element, CatalogItem[]>()
-  const containers = doc.querySelectorAll('article, li, .card, .post, .entry, .vod-item, .module-item, .public-list-box, .views-row, .blog-item, .com-content-category-blog__item, .details-info-min, [itemprop="itemListElement"]')
+  const containers = doc.querySelectorAll('article, li, .card, .post, .entry, .thumbnail, .vod-item, .module-item, .public-list-box, .views-row, .blog-item, .com-content-category-blog__item, .details-info-min, [itemprop="itemListElement"]')
   let count = 0
   for (const card of containers) {
+    if (card.closest(PLAYBACK_CONTROL_CONTAINERS)) continue
     if (card.closest('nav, header, footer, aside, [role="navigation"], .rank-group, .panel-aside, .sidebar, .post-meta, .entry-meta, .article-meta, [itemprop="author"], .pagination, .breadcrumbs, .related, .related-posts, .related-articles, .recommendations, .recommended')) continue
     const searchCard = card.matches('.details-info-min') && !!card.querySelector('a.video-pic')
     if (!searchCard && card.closest('.details-info-min')?.querySelector('a.video-pic')) continue
     if (card.querySelector('article, .card, .module-item') || !searchCard && [...card.querySelectorAll('li')].some((item) => item.querySelector('h2 a[href], h3 a[href], h4 a[href], h5 a[href], a[title][href], a[href] img'))) continue
     const heading = card.querySelector('h2, h3, h4, h5, h6, [itemprop="name"], .title, .video-title, .views-field-title')
-    const anchor = heading?.closest('a[href]') ?? heading?.querySelector('a[href]') ?? card.querySelector('a[title][href], a[href]')
+    const preferred = heading?.closest('a[href]') ?? heading?.querySelector('a[href]')
+    const anchor = [preferred, ...card.querySelectorAll('a[href]')].find((candidate) => {
+      if (!candidate || isPlaybackControlAnchor(candidate)) return false
+      const target = absoluteUrl(candidate.getAttribute('href') || '', baseUrl)
+      return Boolean(target && isCatalogContentUrl(target) && !isUtilityPath(target) && new URL(target).origin === new URL(pageUrl).origin)
+    })
     const rawHref = anchor?.getAttribute('href')
     const originUrl = rawHref && absoluteUrl(rawHref, baseUrl)
     if (!originUrl || new URL(originUrl).origin !== new URL(pageUrl).origin || isUtilityPath(originUrl)) continue
     if (originUrl === pageUrl || /\/(?:categories|tags|vodtype|type)\//i.test(new URL(originUrl).pathname)) continue
     const title = normalizeCatalogTitle(stripTags(heading?.textContent || anchor?.getAttribute('title') || card.querySelector('img')?.getAttribute('alt') || anchor?.textContent || ''))
+    if (isPlaybackControlTitle(title)) continue
     if (title.length < 2 || title.length > 200 || /^(?:首页|更多|下一页|上一页|登录|注册|搜索|高清|标清|立即播放|\d+)$/.test(title)) continue
     const image = imageIn(card, baseUrl)
     if (!heading && !image && card.tagName.toLowerCase() !== 'article') continue
     const summary = stripTags(card.querySelector('.summary, .excerpt, .description, .video-info p, .views-field-body, .field--name-body, .post-content p, p')?.textContent || title).slice(0, 220)
     const date = card.querySelector('time[datetime], [itemprop="datePublished"]')
     const publishedAt = parseIsoDate(date?.getAttribute('datetime') || date?.getAttribute('content') || date?.textContent || undefined)
-    const videoEvidence = searchCard || /\/(?:v|watch|video|voddetail|vodplay|dianying|dianshiju|vod\/(?:detail|play)(?:\/id)?)\//i.test(new URL(originUrl).pathname) || card.getAttribute('itemtype')?.includes('VideoObject') || card.closest('.stui-vodlist, .myui-vodlist, .vod-item') || card.querySelector('.video-info, a.video-pic .player')
+    const videoEvidence = isVideoDocumentUrl(originUrl) || searchCard || /\/(?:v|watch|video|voddetail|vodplay|dianying|dianshiju|vod\/(?:detail|play)(?:\/id)?)\//i.test(new URL(originUrl).pathname) || card.getAttribute('itemtype')?.includes('VideoObject') || card.closest('.stui-vodlist, .myui-vodlist, .vod-item') || card.querySelector('.video-info, a.video-pic .player, video, .video-duration, [data-video-id]')
     const articleRoute = /\/(?:art\/(?:detail|read)|articles?|posts?|news)\//i.test(new URL(originUrl).pathname)
     const contentType = articleRoute ? 'article' : videoEvidence ? 'video' : card.tagName.toLowerCase() === 'article' || card.matches('.post, .entry, [itemtype*="Article"]') ? 'article' : undefined
     const item: CatalogItem = { id: `dom-${count++}`, originUrl, title, image, summary, publishedAt, contentType }

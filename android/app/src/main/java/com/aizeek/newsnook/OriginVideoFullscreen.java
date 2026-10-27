@@ -2,9 +2,11 @@ package com.aizeek.newsnook;
 
 import android.graphics.Color;
 import android.content.pm.ActivityInfo;
+import android.os.Message;
 import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.WebChromeClient;
+import android.webkit.WebView;
 import android.widget.FrameLayout;
 import androidx.activity.ComponentActivity;
 import androidx.activity.OnBackPressedCallback;
@@ -24,6 +26,17 @@ final class OriginVideoFullscreen extends WebChromeClient {
         this.activity = activity;
         this.host = host;
         this.immersive = immersive;
+    }
+
+    @Override public boolean onCreateWindow(
+        WebView view,
+        boolean isDialog,
+        boolean isUserGesture,
+        Message resultMsg
+    ) {
+        // This chrome client is installed only on the owned sniff/live surface.
+        // Popups are never handed to another browser or WebView.
+        return false;
     }
 
     @Override public void onShowCustomView(View view, CustomViewCallback callback) {

@@ -1,6 +1,10 @@
+import { episodeIdentity } from './episodeIdentity'
+import { parseHTML } from 'linkedom'
+import { playerDeclarationsInHtml } from './playerConfig'
+import { isPlaybackControlAnchor, isCatalogContentUrl } from '../catalogEngine/linkRoles'
 import { collectMediaCandidates } from './core'
 import { discoverCmsPlayerHints } from './cmsAdapters'
-import { isHttpUrl } from './classifier'
+import { isHttpUrl, isLikelyAdMediaUrl } from './classifier'
 import { originOf } from './originHeaders'
 import type { MediaObservation } from './types'
 
@@ -95,27 +99,34 @@ function collectJsonLdPlaybackUrls(payload: unknown, baseUrl: string, out: strin
 
 /** 从 HTML 提取 iframe 嵌入页作为独立嗅探目标。 */
 export function embeddedPageUrlsInHtml(html: string, pageUrl: string): string[] {
-  const urls: string[] = []
-  const seen = new Set<string>()
+  const { document } = parseHTML(html)
   const baseUrl = effectivePageBaseUrl(html, pageUrl)
-  for (const match of html.matchAll(/<iframe\b[^>]*>/gi)) {
-    const tag = match[0]
-    const value = tag
-      .match(/\b(?:src|data-src|data-video-src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
-      ?.slice(1)
-      .find((item): item is string => item !== undefined)
-    if (!value) continue
-    try {
-      const url = new URL(value.replace(/&amp;/g, '&'), baseUrl)
-      if (!/^https?:$/.test(url.protocol) || seen.has(url.href)) continue
-      seen.add(url.href)
-      urls.push(url.href)
-      if (urls.length >= MAX_EMBEDDED_PAGES) break
-    } catch {
-      // A malformed embed cannot be loaded safely and is left to the fallback.
+  const candidates: Array<{ url: string; priority: number; index: number }> = []
+  const seen = new Set<string>()
+  for (const frame of document.querySelectorAll('iframe')) {
+    if (frame.closest('.advertising, .advertisement, .adsbygoogle, .ad-slot, [data-ad]')) continue
+    const identity = [frame.id, frame.getAttribute('name'), frame.getAttribute('class')].filter(Boolean).join(' ')
+    if (/(?:^|[\s_-])(?:ads?|advert|advertisement|tracking)(?:[\s_-]|$)/i.test(identity)) continue
+    if (frame.hasAttribute('width') && frame.hasAttribute('height')
+      && Number(frame.getAttribute('width')) <= 2 && Number(frame.getAttribute('height')) <= 2) continue
+    for (const attribute of ['src', 'data-src', 'data-video-src']) {
+      const value = frame.getAttribute(attribute)
+      if (!value) continue
+      try {
+        const url = new URL(value.replace(/&amp;/g, '&'), baseUrl)
+        if (!isUsablePlaybackUrl(url.href) || isLikelyAdMediaUrl(url.href)) continue
+        if (seen.has(url.href)) break
+        seen.add(url.href)
+        const priority = (frame.closest('#player, .player, .video-player, .dplayer, .artplayer-app') ? 40 : 0)
+          + (PLAYBACK_PATH_PATTERN.test(url.pathname) ? 20 : 0)
+          + (frame.hasAttribute('allowfullscreen') || attribute === 'data-video-src' ? 10 : 0)
+        candidates.push({ url: url.href, priority, index: candidates.length })
+        break
+      } catch { /* Lazy placeholders are not player documents; try the next attribute. */ }
     }
   }
-  return urls
+  return candidates.sort((left, right) => right.priority - left.priority || left.index - right.index)
+    .slice(0, MAX_EMBEDDED_PAGES).map(item => item.url)
 }
 
 /**
@@ -139,18 +150,25 @@ export function secondaryPlaybackUrlsInHtml(html: string, pageUrl: string): stri
     }
   }
   const pageOrigin = originOf(baseUrl)
-  for (const match of html.matchAll(/<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
-    const value = match[1] ?? match[2] ?? match[3]
-    if (!value) continue
+  const { document } = parseHTML(html)
+  const currentEpisode = episodeIdentity(baseUrl) || episodeIdentity(pageUrl)
+  let selectedEpisode = currentEpisode
+  for (const anchor of document.querySelectorAll('a[href]')) {
+    const value = anchor.getAttribute('href')
+    const label = (anchor.textContent || '').trim()
+    if (/^(?:上一集|下一集|上一话|下一话|next(?: episode)?|previous(?: episode)?)$/i.test(label)) continue
+    if (!value || anchor.closest('.related, .related-posts, .recommendations, .recommended, .guesslike')) continue
     try {
       const absolute = new URL(value.replace(/&amp;/g, '&'), baseUrl)
-      if (!isUsablePlaybackUrl(absolute.href) || absolute.href === pageUrl) continue
+      if (!isUsablePlaybackUrl(absolute.href) || absolute.href === pageUrl || !isCatalogContentUrl(absolute.href)) continue
       if (pageOrigin && originOf(absolute.href) !== pageOrigin) continue
-      if (!PLAYBACK_PATH_PATTERN.test(absolute.pathname + absolute.search + absolute.hash)) continue
+      const explicitControl = isPlaybackControlAnchor(anchor)
+      if (!explicitControl && !PLAYBACK_PATH_PATTERN.test(absolute.pathname + absolute.search + absolute.hash)) continue
+      const episode = episodeIdentity(absolute.href)
+      if (episode && selectedEpisode && (episode.content !== selectedEpisode.content || episode.episode !== selectedEpisode.episode)) continue
+      if (episode && !selectedEpisode) selectedEpisode = episode
       urls.push(absolute.href)
-    } catch {
-      // 忽略无效链接
-    }
+    } catch { /* Invalid links must not enter a browser navigation queue. */ }
   }
   const seen = new Set<string>()
   const result: string[] = []
@@ -194,7 +212,8 @@ export function planSniffTargets(input: {
   const secondary = input.html
     ? secondaryPlaybackUrlsInHtml(input.html, input.pageUrl)
     : []
-  const playbackTargets = uniqueUrls([...iframeUrls, ...cmsUrls, ...secondary])
+  const declared = input.html ? playerDeclarationsInHtml(input.html, input.pageUrl).filter(item => !item.observation).map(item => item.url) : []
+  const playbackTargets = uniqueUrls([...declared, ...iframeUrls, ...cmsUrls, ...secondary])
   if (playbackTargets.length) {
     return playbackTargets.map((url) => ({
       url,

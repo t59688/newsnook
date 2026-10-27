@@ -127,7 +127,7 @@ export function admitSessionObservation(
         observation.mediaKind ? { mediaKind: observation.mediaKind } : undefined,
       )
       if (format === 'hls' || format === 'dash') return true
-      if (observation.source === 'static' && format === 'progressive') return true
+      if ((observation.source === 'static' || observation.source === 'player-config') && format === 'progressive') return true
     }
     return Boolean(url && networkUrls.has(url))
   }
@@ -150,7 +150,8 @@ function observationScore(observation: MediaObservation, format: MediaFormat): n
   else if (mime.startsWith('audio/')) score += 60
   else if (MANIFEST_MIMES.has(mime)) score += 80
 
-  if (observation.source === 'dom') score += 100
+  if (observation.source === 'player-config') score += 120
+  else if (observation.source === 'dom') score += 100
   else if (observation.source === 'mse') score += 80
   else if (observation.source === 'fetch' || observation.source === 'xhr') score += 35
   else if (observation.source === 'network') score += 25
@@ -393,6 +394,7 @@ function emptyAsset(id: string, pageUrl: string): GraphAsset {
 
 const STRONG_OBSERVATION_SOURCES = new Set<MediaObservation['source']>([
   'network',
+  'player-config',
   'dom',
   'fetch',
   'xhr',
@@ -453,6 +455,7 @@ function toDescriptorTracks(tracks: MediaAssetTrack[], kind: MediaTrack['kind'])
     height: track.height,
     codecs: track.codecs,
     language: track.language,
+    quality: track.quality,
   }))
 }
 
@@ -488,6 +491,8 @@ export function buildMediaGraph(
       if (observation.hasAudio !== undefined) asset.hasAudio = observation.hasAudio
       if (observation.hasVideo !== undefined) asset.hasVideo = observation.hasVideo
       if (observation.mimeType) asset.mimeType = observation.mimeType
+      if (observation.quality) asset.quality = observation.quality
+      if (observation.sourceLabel) asset.sourceLabel = observation.sourceLabel
       if (observation.requestHeaders) asset.requestHeaders = observation.requestHeaders
       if (observation.drmKeySystem && !asset.drmKeySystems.includes(observation.drmKeySystem)) {
         asset.drmKeySystems.push(observation.drmKeySystem)

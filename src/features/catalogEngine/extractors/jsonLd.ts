@@ -1,4 +1,5 @@
 import type { CatalogItem } from '../types'
+import { isCatalogContentUrl, isPlaybackControlTitle } from '../linkRoles'
 import { absoluteUrl, parseIsoDate, stripTags } from '../normalize'
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
@@ -85,7 +86,7 @@ function mediaItemToCatalog(
     absoluteUrl(text(node.url), pageUrl) ||
     absoluteUrl(text(node['@id']), pageUrl) ||
     absoluteUrl(text(node.mainEntityOfPage), pageUrl)
-  if (!name || !originUrl) return undefined
+  if (!name || !originUrl || !isCatalogContentUrl(originUrl) || isPlaybackControlTitle(name)) return undefined
 
   const image =
     imageUrl(node.thumbnailUrl, pageUrl) ||
@@ -127,7 +128,7 @@ function listItemToCatalogItem(
     text(itemNode?.name) ||
     text(itemNode?.headline) ||
     ''
-  if (!originUrl || !title) return undefined
+  if (!originUrl || !title || !isCatalogContentUrl(originUrl) || isPlaybackControlTitle(title)) return undefined
 
   const image =
     imageUrl(listItem.image, pageUrl) ||

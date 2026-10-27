@@ -760,7 +760,7 @@ video/1080.m3u8`
       return [{ url: 'https://cdn.example/preview.mp4', pageUrl: url, source: 'network', mimeType: 'video/mp4' }]
     },
   })
-  assert.ok(calls.some((item) => item.includes('/ad')))
+  assert.equal(calls.some((item) => item.includes('/ad')), false, 'Known advertising frames must not consume the playback probe budget')
   assert.ok(calls.some((item) => item.includes('/real')))
   assert.ok(calls.some((item) => item === pageUrl || item.includes('articles/42')))
 }
@@ -906,7 +906,6 @@ const maccmsDetailHtml = `<!DOCTYPE html>
     secondaryPlaybackUrlsInHtml(maccmsDetailHtml, maccmsDetailUrl),
     [
       'https://vod.example/vodplay/42-1-1.html',
-      'https://vod.example/vodplay/42-1-2.html',
     ],
     'JSON-LD embedUrl/WatchAction 优先且去重，正文同站 generic playback path 链接兜底，外站不跟随',
   )
@@ -920,11 +919,10 @@ const maccmsDetailHtml = `<!DOCTYPE html>
     targets.map((target) => target.url),
     [
       'https://vod.example/vodplay/42-1-1.html',
-      'https://vod.example/vodplay/42-1-2.html',
     ],
   )
   assert.equal(targets[0]?.budgetMs, 9000, '首个播放目标应获得完整探测预算')
-  assert.equal(targets[1]?.budgetMs, 9000, '后续目标由编排层按剩余时间动态截断')
+  assert.equal(targets.length, 1, '不得把下一集当成当前集的备用线路')
   const observations = observeMediaInHtml(maccmsDetailHtml, maccmsDetailUrl)
   assert.equal(
     buildMediaDescriptor(observations),
@@ -951,7 +949,7 @@ const maccmsDetailHtml = `<!DOCTYPE html>
       return [observation]
     },
   })
-  assert.equal(probed.length, 2, '详情页自身无媒体时按队列探测同站播放页，不再浪费窗口加载无播放器的详情页')
+  assert.equal(probed.length, 1, '详情页仅探测所选集，不用下一集充当备用线路')
   assert.equal(probed[0]?.url, 'https://vod.example/vodplay/42-1-1.html')
   assert.equal(probed[0]?.timeoutMs, 9000, '首个播放目标应获得完整嗅探预算')
   assert.equal(probed[0]?.referrer, maccmsDetailUrl, '播放页请求应携带详情页作为 Referer')
@@ -1034,7 +1032,6 @@ const maccmsDetailHtml = `<!DOCTYPE html>
     [
       'https://vod.example/Player/ec?episode=1-1-1',
       'https://canonical.example/vodplay/1-1-1.html',
-      'https://vod.example/vodplay/1-1-2.html',
     ],
     '存在 iframe 播放器时必须优先探测 iframe；模板占位链接不能污染嗅探队列',
   )

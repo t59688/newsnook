@@ -1,4 +1,6 @@
+import { episodeIdentity } from './episodeIdentity'
 import { mediaFormatFor } from './classifier'
+import { playerDeclarationsInHtml } from './playerConfig'
 
 export type CmsPlayerHint = {
   cms: 'maccms' | 'generic-player'
@@ -76,32 +78,9 @@ function walkPlayerConfig(
   if (url) pushHint(out, url, pageUrl, cms, label)
   for (const [key, child] of Object.entries(record)) {
     if (/^(?:url|src|link|embedurl|contenturl|playerurl|player_url|playurl|play_url|sourceurl|source_url|iframeurl|iframe_url)$/i.test(key)) continue
+    if (/^(?:url_next|next|nextUrl|playlist|related|recommendations?|ads?)$/i.test(key)) continue
     walkPlayerConfig(child, pageUrl, out, cms, allowGenericUrl, depth + 1, seen)
   }
-}
-
-function parseBalancedJson(html: string, start: number): unknown | undefined {
-  if (html[start] !== '{' && html[start] !== '[') return undefined
-  const open = html[start]
-  const close = open === '{' ? '}' : ']'
-  let depth = 0
-  let quote = ''
-  let escaped = false
-  for (let index = start; index < html.length; index += 1) {
-    const ch = html[index]
-    if (quote) {
-      if (escaped) escaped = false
-      else if (ch === '\\') escaped = true
-      else if (ch === quote) quote = ''
-      continue
-    }
-    if (ch === '"' || ch === "'") { quote = ch; continue }
-    if (ch === open) depth += 1
-    else if (ch === close) depth -= 1
-    if (depth !== 0) continue
-    try { return JSON.parse(html.slice(start, index + 1)) } catch { return undefined }
-  }
-  return undefined
 }
 
 function assignedString(html: string, pattern: RegExp): string | undefined {
@@ -116,7 +95,9 @@ function discoverMacCmsPlayUrls(html: string, pageUrl: string, out: CmsPlayerHin
   const lineLabels = (fromValue || '').split('$$$').map((item) => item.trim())
   for (const [lineIndex, line] of playValue.split('$$$').entries()) {
     const lineLabel = lineLabels[lineIndex] || undefined
-    for (const episode of line.split('#')) {
+    const episodes = line.split('#')
+    const selected = episodeIdentity(pageUrl)?.episode || 1
+    for (const episode of episodes.slice(selected - 1, selected)) {
       const parts = episode.split('$')
       const value = parts.length > 1 ? parts[parts.length - 1] : episode
       const urls = value.match(/https?:\/\/[^\s"'<>\\]+/gi) || []
@@ -130,7 +111,9 @@ function discoverMacCmsPlayUrls(html: string, pageUrl: string, out: CmsPlayerHin
 
 /** Discover player pages from common CMS configuration without executing site scripts. */
 export function discoverCmsPlayerHints(html: string, pageUrl: string): CmsPlayerHint[] {
-  const out: CmsPlayerHint[] = []
+  const out: CmsPlayerHint[] = playerDeclarationsInHtml(html, pageUrl)
+    .filter(item => !item.observation && safeTarget(item.url, pageUrl))
+    .map(item => ({ cms: item.framework === 'maccms' ? 'maccms' : 'generic-player', url: item.url, label: item.sourceLabel }))
   const isMacCms = /MacPlayer\s*\.|vod_play_(?:from|url)|player_data|maccms/i.test(html)
   const cms: CmsPlayerHint['cms'] = isMacCms ? 'maccms' : 'generic-player'
   discoverMacCmsPlayUrls(html, pageUrl, out)
@@ -151,12 +134,6 @@ export function discoverCmsPlayerHints(html: string, pageUrl: string): CmsPlayer
     }
   }
 
-  // Some templates assign player_data as an object rather than a JSON script.
-  for (const match of html.matchAll(/\b(player_data|playerData|player_aaaa)\s*[:=]\s*/gi)) {
-    const start = match.index! + match[0].length
-    const parsed = parseBalancedJson(html, start)
-    if (parsed !== undefined) walkPlayerConfig(parsed, pageUrl, out, 'maccms', true)
-  }
   for (const match of html.matchAll(/\b(?:data-player-url|data-play-url|data-iframe-url)\s*=\s*(["'])(.*?)\1/gi)) {
     pushHint(out, match[2], pageUrl, cms, '播放器')
   }

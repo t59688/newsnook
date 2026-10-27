@@ -8,8 +8,10 @@ export function withQualityVariants(descriptor: MediaDescriptor): MediaDescripto
   const resources = descriptor.resources?.length ? descriptor.resources : [descriptor]
   const expanded: MediaResourceDescriptor[] = []
   for (const resource of resources) {
-    expanded.push(resource)
-    if (resource.type !== 'hls' && resource.type !== 'dash') continue
+    if (!expanded.some(item => item.url === resource.url && item.type === resource.type)) expanded.push(resource)
+    // A DASH Representation is not an MPD. An HLS variant may also require
+    // external audio/subtitles from its master; preserve those relationships.
+    if (resource.type !== 'hls' || resource.drm || resource.audioTracks.length || resource.subtitles.length) continue
     for (const track of resource.videoTracks) {
       if (!track.url || track.url === resource.url) continue
       const label = track.height ? `${track.height}P` : track.quality

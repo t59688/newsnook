@@ -38,6 +38,8 @@ Capacitor.isNativePlatform = () => nativeMode
 Capacitor.getPlatform = () => nativeMode ? 'android' : 'web'
 const listeners = new Set<(event: { sessionId: string; observation: MediaObservation }) => void>()
 let liveSessionId = ''
+let liveStarts = 0
+const assistedCalls: boolean[] = []
 let prepares = 0
 let preparedOptions: { origins?: string[] } | undefined
 let prepareGate: Promise<void> | undefined
@@ -46,8 +48,9 @@ const nativeMock = {
     listeners.add(fn)
     return { remove: async () => { listeners.delete(fn) } }
   },
-  async startLiveSession(options: { sessionId: string }) { liveSessionId = options.sessionId },
+  async startLiveSession(options: { sessionId: string }) { liveSessionId = options.sessionId; liveStarts++ },
   async stopLiveSession() {}, async setLiveSessionBounds() {}, async setLiveSessionVisible() {},
+  async setLiveSessionInteractive(options: { interactive: boolean }) { assistedCalls.push(options.interactive) },
   async preparePlayback(options: { origins?: string[] }) { prepares++; preparedOptions = options; await prepareGate },
   async getStreamProxyPort() { return { port: 9999 } },
 }
@@ -108,6 +111,25 @@ function ZhihuVideoFixture() {
 
 type Render = (element: React.ReactNode) => Promise<void>
 const cases: Array<[string, (render: Render) => Promise<void>]> = [
+  ['manual assistance is immediately available without waiting for sniff timeout', async render => {
+    nativeMode = true
+    await render(<OriginPlayerSurface pageUrl="https://example.com/watch/early" title="Early" />)
+    const action = [...document.querySelectorAll('button')].find(button => button.textContent?.includes('手动辅助识别'))
+    assert.ok(action, 'manual assistance must be offered while automatic discovery is still running')
+    assert.equal(action.disabled, false, 'the entry must be usable once the native session is ready')
+    const starts = liveStarts
+    await act(async () => action.click())
+    assert.equal(assistedCalls.at(-1), true, 'assistance must expose the existing native page')
+    assert.equal(liveStarts, starts, 'manual assistance must not reload the page or create a new WebView')
+    assert.ok(document.body.textContent?.includes('手动辅助识别中'))
+  }],
+  ['embedded video also exposes immediate manual assistance', async render => {
+    nativeMode = true
+    await render(<OriginPlayerSurface pageUrl="https://example.com/watch/embedded" title="Embedded" embedded />)
+    assert.ok([...document.querySelectorAll('button')].some(button => button.textContent?.includes('手动辅助识别')),
+      'embedded layouts must not hide the only recovery action')
+  }],
+
   ['manual origin handoff starts playback once when the stream is ready', async render => {
     nativeMode = true
     await render(<OriginPlayerSurface pageUrl="https://example.com/watch/1" title="One" />)

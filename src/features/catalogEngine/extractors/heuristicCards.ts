@@ -1,4 +1,6 @@
+import { isVideoDocumentUrl } from '../../../lib/videoDocumentUrl'
 import type { CatalogItem } from '../types'
+import { isCatalogContentUrl, isPlaybackControlTitle } from '../linkRoles'
 import {
   absoluteUrl,
   isLikelyBadgeTitle,
@@ -124,7 +126,7 @@ function extractAnchorBlocks(html: string, pageUrl: string): RawCard[] {
     if (!href) continue
 
     const originUrl = absoluteUrl(href, pageUrl)
-    if (!originUrl || !sameOrigin(originUrl, pageUrl)) continue
+    if (!originUrl || !sameOrigin(originUrl, pageUrl) || !isCatalogContentUrl(originUrl)) continue
 
     const key = originUrl
     if (isUtilityPath(originUrl)) continue
@@ -139,6 +141,7 @@ function extractAnchorBlocks(html: string, pageUrl: string): RawCard[] {
     }
 
     const title = extractAnchorTitle(attrs, inner)
+    if (isPlaybackControlTitle(title)) continue
     const image = pickImage(inner, originUrl)
     if (isLikelyNavTitle(title)) continue
     if (isLikelyBadgeTitle(title) && !image) continue
@@ -218,6 +221,6 @@ export function extractHeuristicCardCatalog(html: string, pageUrl: string): Cata
     originUrl: card.originUrl,
     image: card.image,
     summary: card.title.slice(0, 220),
-    contentType: /\/(?:v|watch|video|voddetail|vodplay|dianying|dianshiju)\//i.test(card.originUrl) ? 'video' : undefined,
+    contentType: isVideoDocumentUrl(card.originUrl) ? 'video' : undefined,
   }))
 }

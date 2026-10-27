@@ -58,7 +58,7 @@
     "test:browser-ui": "node scripts/browser-dialog-focus.test.mjs",
     "test:reader-images": "node --import tsx scripts/image-gallery.test.ts && node --import tsx scripts/image-lightbox-view.test.tsx && rolldown scripts/reader-image-role.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/reader-image-role.test.mjs && node node_modules/.cache/newsnook/reader-image-role.test.mjs",
     "test:inline-video": "rolldown scripts/inline-video.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/inline-video.test.mjs && node node_modules/.cache/newsnook/inline-video.test.mjs",
-    "test:media-sniffer": "rolldown scripts/media-sniffer.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/media-sniffer.test.mjs && node node_modules/.cache/newsnook/media-sniffer.test.mjs",
+    "test:media-sniffer": "rolldown scripts/media-sniffer.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/media-sniffer.test.mjs && node node_modules/.cache/newsnook/media-sniffer.test.mjs && node --import tsx scripts/media-root-fixes.test.ts && node --import tsx scripts/media-native-session.test.ts && node scripts/media-probe-runtime.test.mjs",
     "test:dlna-cast": "npx tsx scripts/dlna-cast-lifecycle.test.ts",
     "test:origin-player-live-sniff": "npx tsx scripts/origin-player-live-sniff.test.ts",
     "test:ink-video-lifecycle": "tsx scripts/ink-video-lifecycle.test.tsx",
