@@ -16,6 +16,7 @@ interface NativeMediaSnifferPlugin {
   startLiveSession(options: { url: string; referrer?: string; sessionId: string }): Promise<void>
   stopLiveSession(options: { sessionId: string }): Promise<void>
   setLiveSessionVisible(options: { visible: boolean; sessionId?: string }): Promise<void>
+  setLiveSessionInteractive(options: { interactive: boolean; sessionId?: string }): Promise<void>
   setLiveSurfaceSuppressed(options: { suppressed: boolean }): Promise<void>
   setLiveSessionBounds(options: {
     x: number
@@ -272,6 +273,15 @@ export async function startNativeLiveSniffSession(options: {
 export async function setNativeLiveSessionVisible(visible: boolean, sessionId?: string): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return
   await NativeMediaSniffer.setLiveSessionVisible({ visible, sessionId }).catch(() => undefined)
+}
+
+/** Keep the origin page loaded for sniffing, but expose touch/visuals only in assisted mode. */
+export async function setNativeLiveSessionInteractive(
+  interactive: boolean,
+  sessionId?: string,
+): Promise<void> {
+  if (Capacitor.getPlatform() !== 'android') return
+  await NativeMediaSniffer.setLiveSessionInteractive({ interactive, sessionId }).catch(() => undefined)
 }
 
 export async function setNativeLiveSessionBounds(bounds: {

@@ -31,9 +31,18 @@ export function MediaResourcePageProvider({
 }
 
 function resourceLabel(resource: MediaResourceDescriptor): string {
-  if (resource.type === 'hls') return 'HLS'
-  if (resource.type === 'dash') return 'DASH'
-  return 'MP4'
+  if ((resource.type === 'hls' || resource.type === 'dash') && resource.videoTracks.filter((track) => track.url).length > 1) return '自动画质'
+  const track = resource.videoTracks.find((item) => item.height || item.quality)
+  if (track?.height) return `${track.height}P`
+  if (track?.quality) return track.quality.toUpperCase()
+  if (resource.sourceLabel) return resource.sourceLabel
+  if (resource.type === 'hls') return 'HLS 自适应'
+  if (resource.type === 'dash') return 'DASH 自适应'
+  return '视频文件'
+}
+
+function resourceHost(resource: MediaResourceDescriptor): string {
+  try { return new URL(resource.url).hostname } catch { return '媒体资源' }
 }
 
 function isSameResource(
@@ -77,10 +86,11 @@ function MediaResourceRow({
           {resource.isAd && (
             <span className="rounded bg-cinnabar/20 px-1 text-[9px] text-cinnabar-soft">广告</span>
           )}
-          {detail && (
-            <span className="text-paper/50">
-              {detail.width || '?'}×{detail.height || '?'}
-            </span>
+          {detail?.height && (
+            <span className="text-paper/50">{detail.width ? `${detail.width}×${detail.height}` : `${detail.height}P`}</span>
+          )}
+          {resource.sourceLabel && resource.sourceLabel.toLowerCase() !== resourceLabel(resource).toLowerCase() && (
+            <span className="rounded bg-paper/8 px-1 text-[10px] text-paper/55">{resource.sourceLabel}</span>
           )}
           {active && (
             <span className="rounded-full border border-paper/25 px-1.5 py-0.5 text-[9px] leading-none text-paper/85">
@@ -88,7 +98,7 @@ function MediaResourceRow({
             </span>
           )}
         </span>
-        <span className="mt-0.5 block truncate text-[11px] text-paper/50">{resource.url}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-paper/50">{resourceHost(resource)} · {resource.type.toUpperCase()}</span>
       </span>
     </button>
   )
@@ -283,7 +293,7 @@ export function MediaResourceScreen({
           <div className="sticky top-0 z-[1] flex items-end justify-between gap-3 border-b border-haze/60 bg-ink-raised/95 px-5 py-3 backdrop-blur-md">
             <div>
               <h2 className="font-display text-[15px] font-medium text-paper">嗅探资源</h2>
-              <p className="mt-0.5 text-[10px] text-paper/45">点选资源即可切换播放</p>
+              <p className="mt-0.5 text-[10px] text-paper/45">优先显示已确认画质；候选线路会标明待确认</p>
             </div>
             <span className="font-mono text-[10px] text-paper/45">{resources.length}</span>
           </div>

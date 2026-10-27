@@ -1,4 +1,5 @@
 import { collectMediaCandidates } from './core'
+import { discoverCmsPlayerHints } from './cmsAdapters'
 import { isHttpUrl } from './classifier'
 import { originOf } from './originHeaders'
 import type { MediaObservation } from './types'
@@ -13,6 +14,8 @@ export type SniffTarget = {
   url: string
   referrer?: string
   budgetMs: number
+  /** Optional CMS playback-line label; never interpreted as verified resolution. */
+  label?: string
 }
 
 function uniqueUrls(urls: string[]): string[] {
@@ -168,15 +171,19 @@ export function planSniffTargets(input: {
 }): SniffTarget[] {
   const totalTimeoutMs = input.totalTimeoutMs ?? 6000
   const iframeUrls = input.html ? embeddedPageUrlsInHtml(input.html, input.pageUrl) : []
+  const cmsHints = input.html ? discoverCmsPlayerHints(input.html, input.pageUrl) : []
+  const cmsUrls = cmsHints.map((hint) => hint.url)
+  const cmsLabelFor = (url: string) => cmsHints.find((hint) => hint.url === url)?.label
   const hasDirectMedia = collectMediaCandidates(input.staticObservations).some(
     (candidate) => candidate.format !== 'segment',
   )
 
   if (hasDirectMedia) {
-    const urls = uniqueUrls([...iframeUrls, input.pageUrl])
+    const urls = uniqueUrls([...iframeUrls, ...cmsUrls, input.pageUrl])
     return urls.map((url) => ({
       url,
       referrer: url === input.pageUrl ? undefined : input.pageUrl,
+      ...(cmsLabelFor(url) ? { label: cmsLabelFor(url) } : {}),
       // The service owns the global deadline and truncates fallback targets
       // after an earlier target consumes time. Keeping the full budget here
       // avoids starving the first, highest-confidence player page.
@@ -187,12 +194,13 @@ export function planSniffTargets(input: {
   const secondary = input.html
     ? secondaryPlaybackUrlsInHtml(input.html, input.pageUrl)
     : []
-  const playbackTargets = uniqueUrls([...iframeUrls, ...secondary])
+  const playbackTargets = uniqueUrls([...iframeUrls, ...cmsUrls, ...secondary])
   if (playbackTargets.length) {
     return playbackTargets.map((url) => ({
       url,
       referrer: input.pageUrl,
       budgetMs: totalTimeoutMs,
+      ...(cmsLabelFor(url) ? { label: cmsLabelFor(url) } : {}),
     }))
   }
 

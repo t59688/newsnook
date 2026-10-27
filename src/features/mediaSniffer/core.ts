@@ -165,6 +165,7 @@ export function parseHlsManifest(text: string, manifestUrl: string): Pick<MediaD
         bandwidth: Number(attrs.BANDWIDTH) || undefined,
         width: resolution ? Number(resolution[1]) : undefined,
         height: resolution ? Number(resolution[2]) : undefined,
+        quality: attrs.NAME || (resolution ? `${resolution[2]}p` : undefined),
         codecs: attrs.CODECS,
         groupId: attrs.AUDIO,
       })
@@ -295,7 +296,7 @@ function addStaticObservation(
   pageUrl: string,
   mimeType?: string,
   mediaKind?: MediaObservation['mediaKind'],
-  hints?: Pick<MediaObservation, 'hasAudio' | 'hasVideo' | 'width' | 'height' | 'bitrate' | 'codecs'>,
+  hints?: Pick<MediaObservation, 'hasAudio' | 'hasVideo' | 'width' | 'height' | 'bitrate' | 'codecs' | 'quality'>,
 ): void {
   const url = resolvedUrl(value, pageUrl)
   if (!url) return
@@ -364,6 +365,7 @@ function addStructuredPayloadObservation(
     height,
     bitrate,
     codecs: typeof value.codecs === 'string' && value.codecs.trim() ? value.codecs : undefined,
+    quality: [value.qualityLabel, value.quality, value.definition].find((item): item is string => typeof item === 'string' && Boolean(item.trim()))?.trim(),
   })
 }
 

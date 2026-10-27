@@ -37,6 +37,8 @@ export interface MediaObservation {
   height?: number
   bitrate?: number
   quality?: string
+  /** Source/line label declared by a CMS player, not a verified resolution. */
+  sourceLabel?: string
   bodyText?: string
   codecs?: string
   fromIframe?: boolean
@@ -94,6 +96,7 @@ export interface MediaTrack {
   height?: number
   codecs?: string
   language?: string
+  quality?: string
   groupId?: string
 }
 
@@ -133,6 +136,8 @@ export interface MediaResourceDescriptor {
   origins?: string[]
   /** Stable graph id used by the resource picker. */
   id?: string
+  /** Quality/line label declared by the source player, distinct from verified resolution. */
+  sourceLabel?: string
   /** True when the URL has strong advertising/preroll markers. */
   isAd?: boolean
 }

@@ -29,6 +29,8 @@ interface GraphAsset extends MediaAsset {
   hasAudio?: boolean
   hasVideo?: boolean
   mimeType?: string
+  quality?: string
+  sourceLabel?: string
   requestHeaders?: Record<string, string>
   descriptorVideoTracks: MediaTrack[]
   descriptorAudioTracks: MediaTrack[]
@@ -199,6 +201,7 @@ function mergeObservation(target: MediaObservation, incoming: MediaObservation):
     assetGroup: incoming.assetGroup || target.assetGroup,
     codecs: incoming.codecs || target.codecs,
     quality: incoming.quality || target.quality,
+    sourceLabel: incoming.sourceLabel || target.sourceLabel,
     mediaSessionId: incoming.mediaSessionId || target.mediaSessionId,
     initializationRange: incoming.initializationRange || target.initializationRange,
     indexRange: incoming.indexRange || target.indexRange,
@@ -575,6 +578,7 @@ export function descriptorFromAsset(
     pageUrl: asset.pageUrl,
     score: asset.score,
     mimeType: graphAsset.mimeType,
+    sourceLabel: graphAsset.sourceLabel || graphAsset.quality,
     hasAudio: graphAsset.hasAudio,
     videoTracks,
     audioTracks,

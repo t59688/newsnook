@@ -41,7 +41,11 @@ export function PlayerSourceSheet({
         <div className="ink-player-panel-items">
           {resources.map((resource, index) => {
             const active = playbackIdentity(resource.url, resource.type) === activeKey
-            const track = resource.videoTracks.find(item => item.width || item.height)
+            const track = resource.videoTracks.find(item => item.width || item.height || item.quality)
+            const hasVariants = (resource.type === 'hls' || resource.type === 'dash') && resource.videoTracks.filter(item => item.url).length > 1
+            const quality = hasVariants ? '自动画质' : track?.height ? `${track.height}P` : track?.quality || resource.sourceLabel || (resource.type === 'hls' ? 'HLS 自适应' : resource.type === 'dash' ? 'DASH 自适应' : '视频文件')
+            let host = '媒体资源'
+            try { host = new URL(resource.url).hostname } catch { /* Keep the generic label for opaque or malformed URLs. */ }
             return <button type="button" key={resource.id || resource.url + index} aria-current={active ? 'true' : undefined}
               className="ink-player-source-row" data-active={active || undefined} onClick={() => {
                 onSelect(resource)
@@ -49,8 +53,8 @@ export function PlayerSourceSheet({
               }}>
               <span className="ink-player-source-icon">{resource.type === 'hls' ? 'HLS' : resource.type === 'dash' ? 'DASH' : 'MP4'}</span>
               <span className="ink-player-source-copy">
-                <strong>{track?.height ? `${track.height}P` : `视频源 ${index + 1}`}{resource.isAd ? ' · 广告' : ''}</strong>
-                <small>{resource.url}</small>
+                <strong>{quality}{resource.isAd ? ' · 广告' : ''}</strong>
+                <small>{resource.sourceLabel ? `${resource.sourceLabel} · ` : ''}{host} · {resource.type.toUpperCase()}</small>
               </span>
               {active && <Check size={17} className="ink-player-source-selected" strokeWidth={2} />}
             </button>

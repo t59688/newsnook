@@ -131,14 +131,16 @@ export async function discoverMediaDescriptor(options: {
         targetTimeoutMs,
         target.referrer ?? options.referrer,
         (observation) => {
-          const admitted = admitObservation(observation)
+          const labeled = target.label ? { ...observation, sourceLabel: observation.sourceLabel || target.label } : observation
+          const admitted = admitObservation(labeled)
           if (!admitted) return
           runtimeObservations.push(admitted)
           emitAvailableDescriptor(false)
         },
       ).catch(() => [])
       for (const observation of observations) {
-        const admitted = admitObservation(observation)
+        const labeled = target.label ? { ...observation, sourceLabel: observation.sourceLabel || target.label } : observation
+        const admitted = admitObservation(labeled)
         if (admitted) runtimeObservations.push(admitted)
       }
       emitAvailableDescriptor(false)
@@ -161,6 +163,16 @@ export async function discoverMediaDescriptor(options: {
     }
   }
   return descriptor
+}
+
+/** Enrich an already observed live session with bounded HLS/DASH manifest metadata. */
+export async function enrichMediaDescriptorFromObservations(
+  observations: MediaObservation[],
+  signal?: AbortSignal,
+): Promise<MediaDescriptor | null> {
+  if (!observations.length) return null
+  const manifests = await manifestBodies(observations, signal)
+  return buildMediaDescriptor(observations, manifests)
 }
 
 function descriptorSignature(descriptor: MediaDescriptor): string {

@@ -39,8 +39,34 @@ import {
   secondaryPlaybackUrlsInHtml,
 } from '../src/features/mediaSniffer/targetPlanner'
 import { nnyyPlayApiUrls } from '../src/features/mediaSniffer/nnyyPlay'
+import { detectPlayerFrameworks, discoverCmsPlayerHints } from '../src/features/mediaSniffer/cmsAdapters'
 
 const pageUrl = 'https://news.example/articles/42'
+
+
+{
+  const html = `<script>MacPlayer.PlayUrl = "https://player.example/player/episode-8";</script>
+    <script src="/static/player/DPlayer.min.js"></script>`
+  const hints = discoverCmsPlayerHints(html, 'https://cms.example/vod/detail/8.html')
+  assert.ok(hints.some((hint) => hint.url === 'https://player.example/player/episode-8' && hint.cms === 'maccms'),
+    'MacCMS player config should become an explicit runtime probe target')
+  assert.deepEqual(detectPlayerFrameworks(html), ['DPlayer', 'MacCMS'])
+  const multiLine = discoverCmsPlayerHints(
+    `MacPlayer.PlayFrom="云播$$$高清线路"; MacPlayer.PlayUrl="第1集$https://player.example/player/one.html$$$第1集$https://player.example/player/two.html";`,
+    'https://cms.example/vod/detail/8.html',
+  )
+  assert.equal(multiLine.find((hint) => hint.url.endsWith('/one.html'))?.label, '云播')
+  assert.equal(multiLine.find((hint) => hint.url.endsWith('/two.html'))?.label, '高清线路')
+  const labeledTargets = planSniffTargets({
+    pageUrl: 'https://cms.example/vod/detail/8.html',
+    html: `MacPlayer.PlayFrom="云播$$$高清线路"; MacPlayer.PlayUrl="第1集$https://player.example/player/one.html$$$第1集$https://player.example/player/two.html";`,
+    staticObservations: [],
+  })
+  assert.equal(labeledTargets.find((target) => target.url.endsWith('/two.html'))?.label, '高清线路',
+    'CMS line labels should travel with their runtime probe targets')
+  assert.deepEqual(discoverCmsPlayerHints('<script>MacPlayer.PlayUrl="https://ads.example/preroll/player.html"</script>', 'https://cms.example/vod/8.html'), [],
+    'obvious advertising routes must not be promoted to CMS player targets')
+}
 
 {
   assert.deepEqual(
@@ -353,6 +379,7 @@ video/1080.m3u8`
     bandwidth: 3200000,
     width: 1920,
     height: 1080,
+    quality: '1080p',
     codecs: 'avc1.640028,mp4a.40.2',
     groupId: 'aac',
   })

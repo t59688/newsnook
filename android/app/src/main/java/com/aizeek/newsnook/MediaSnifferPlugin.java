@@ -6,6 +6,7 @@ import android.graphics.Outline;
 import android.net.Uri;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
@@ -105,6 +106,8 @@ public class MediaSnifferPlugin extends Plugin {
     private boolean liveSuspended;
     private boolean liveSurfaceSuppressed;
     private boolean liveSurfaceRequestedVisible = true;
+    /** The origin page is observed invisibly until the user explicitly enters assisted mode. */
+    private boolean liveSurfaceInteractive = false;
     /** True when hide had to navigate to about:blank (no WebView-level mute). */
     private boolean liveBlanked;
 
@@ -177,37 +180,6 @@ public class MediaSnifferPlugin extends Plugin {
             if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return false;
             return /"(?:url|playurl|play_url|manifestUrl|hlsmanifesturl|dashmanifesturl|manifest_url|video_url|media_url|backupUrl|backup_url|file)"\\s*:/i.test(trimmed)
               || /"(?:video|audio|stream|streams|playinfo|player)"\\s*:/i.test(trimmed);
-          };
-          const triggerPlayback = () => {
-            if (window.__newsnookPlaybackTriggered) return;
-            try {
-              const playPattern = /play|watch|观看|播放/i;
-              const candidates = [];
-              document.querySelectorAll('button,[role="button"]').forEach((el) => {
-                const text = (el.textContent || '').trim();
-                const label = [text, el.getAttribute('aria-label') || '', el.getAttribute('title') || ''].join(' ');
-                if (playPattern.test(label)) candidates.push({ priority: 0, element: el });
-              });
-              document.querySelectorAll('a[href]').forEach((el) => {
-                const href = el.getAttribute('href') || '';
-                try {
-                  const target = new URL(href, location.href);
-                  if (target.origin !== location.origin) return;
-                  if (/\\/(?:play|watch|vodplay|player|embed|video\\/play)(?:[/?#]|$)/i.test(target.pathname + target.search + target.hash)) candidates.push({ priority: 1, element: el });
-                } catch (_) {}
-              });
-              document.querySelectorAll('iframe[src],iframe[data-src]').forEach((el) => {
-                const raw = el.getAttribute('src') || el.getAttribute('data-src') || '';
-                try {
-                  const target = new URL(raw, location.href);
-                  if (/\\/(?:player|embed|play|watch)(?:[/?#]|$)/i.test(target.pathname + target.search + target.hash)) candidates.push({ priority: 2, element: el });
-                } catch (_) {}
-              });
-              const candidate = candidates.sort((left, right) => left.priority - right.priority)[0];
-              if (!candidate) return;
-              window.__newsnookPlaybackTriggered = true;
-              try { candidate.element.click(); } catch (_) {}
-            } catch (_) {}
           };
           const positiveNumber = (value) => {
             const number = Number(value);
@@ -320,10 +292,6 @@ public class MediaSnifferPlugin extends Plugin {
           };
           const startDom = () => {
             scan();
-            if (!passive) {
-              setTimeout(triggerPlayback, 400);
-              setTimeout(triggerPlayback, 1200);
-            }
             try {
               new MutationObserver((records) => records.forEach((record) => {
                 inspect(record.target);
@@ -600,6 +568,24 @@ public class MediaSnifferPlugin extends Plugin {
             if (sessionId != null && !sessionId.equals(liveSessionId)) { call.resolve(); return; }
             liveSurfaceRequestedVisible = visible;
             setLiveSessionVisibleOnUi(visible && !liveSurfaceSuppressed);
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
+    public void setLiveSessionInteractive(PluginCall call) {
+        boolean interactive = call.getBoolean("interactive", false);
+        String sessionId = call.getString("sessionId");
+        getActivity().runOnUiThread(() -> {
+            if (sessionId != null && !sessionId.equals(liveSessionId)) { call.resolve(); return; }
+            liveSurfaceInteractive = interactive;
+            WebView webView = liveWebView;
+            if (webView != null) {
+                webView.setAlpha(interactive ? 1f : 0f);
+                webView.setImportantForAccessibility(interactive
+                    ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            }
             call.resolve();
         });
     }
@@ -1100,6 +1086,23 @@ public class MediaSnifferPlugin extends Plugin {
         }
     }
 
+    private static boolean isLikelyAdvertisingNavigation(String value) {
+        if (value == null || value.isEmpty()) return false;
+        try {
+            Uri uri = Uri.parse(value);
+            String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(Locale.ROOT);
+            String path = uri.getPath() == null ? "" : uri.getPath().toLowerCase(Locale.ROOT);
+            String query = uri.getQuery() == null ? "" : uri.getQuery().toLowerCase(Locale.ROOT);
+            String joined = host + path + "?" + query;
+            // Deliberately require an advertising token or a known ad-delivery host;
+            // generic words such as "click" or "track" alone are not sufficient.
+            return host.matches(".*(?:^|\\.)(?:doubleclick\\.net|googlesyndication\\.com|adservice\\.google\\.com|adnxs\\.com|adsrvr\\.org|taboola\\.com|outbrain\\.com)$")
+                || joined.matches(".*(?:^|[/._?&=])(?:adserver|advertising|adservice|adsbygoogle|doubleclick|vast|preroll|midroll|postroll)(?:[/._?&=]|$).*");
+        } catch (RuntimeException ignored) {
+            return false;
+        }
+    }
+
     private static boolean isAllowedPageUrl(String value) {
         if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value);
@@ -1127,9 +1130,16 @@ public class MediaSnifferPlugin extends Plugin {
         }
         stopLiveSessionOnUi(null);
 
-        WebView webView = new WebView(getActivity());
+        WebView webView = new WebView(getActivity()) {
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent event) {
+                // Returning false lets the underlying Reader WebView receive scroll/tap
+                // gestures until assisted mode is explicitly enabled.
+                return liveSurfaceInteractive && super.dispatchTouchEvent(event);
+            }
+        };
         webView.setBackgroundColor(Color.BLACK);
-        webView.setAlpha(1f);
+        webView.setAlpha(0f);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
@@ -1162,7 +1172,27 @@ public class MediaSnifferPlugin extends Plugin {
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null || request.getUrl() == null) return false;
+                String target = request.getUrl().toString();
+                if (isLikelyAdvertisingNavigation(target)) return true;
+                return false;
+            }
+
+            @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (!initialUrl.equals(url) && isLikelyAdvertisingNavigation(url)) {
+                    // Stop JS/meta-refresh redirects even on WebView versions that do not
+                    // route every server redirect through shouldOverrideUrlLoading.
+                    String safeUrl = pageUrl.get();
+                    view.stopLoading();
+                    if (safeUrl != null && !safeUrl.equals(initialUrl) && !safeUrl.equals(url)) {
+                        view.post(() -> {
+                            if (liveActive.get() && liveWebView == view) view.loadUrl(safeUrl);
+                        });
+                    }
+                    return;
+                }
                 pageUrl.set(url);
                 if (scriptHandler == null) view.evaluateJavascript(probeScript, null);
             }
@@ -1186,6 +1216,8 @@ public class MediaSnifferPlugin extends Plugin {
         params.leftMargin = -10000;
         params.topMargin = 0;
         webView.setVisibility(View.INVISIBLE);
+        webView.setAlpha(0f);
+        webView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         root.addView(webView, params);
 
         liveSessionId = sessionId;
@@ -1204,6 +1236,7 @@ public class MediaSnifferPlugin extends Plugin {
         liveReferrer = referrer;
         liveSuspended = false;
         liveSurfaceRequestedVisible = true;
+        liveSurfaceInteractive = false;
         liveBlanked = false;
         liveActive.set(true);
 
@@ -1267,6 +1300,7 @@ public class MediaSnifferPlugin extends Plugin {
 
         if (!liveSurfaceSuppressed && liveSurfaceRequestedVisible && webView.getVisibility() != View.GONE) {
             webView.setVisibility(onScreen ? View.VISIBLE : View.INVISIBLE);
+            webView.setAlpha(liveSurfaceInteractive ? 1f : 0f);
         }
     }
 
@@ -1300,6 +1334,8 @@ public class MediaSnifferPlugin extends Plugin {
         liveEntryUrl = null;
         liveReferrer = null;
         liveSuspended = false;
+        liveSurfaceInteractive = false;
+        liveSurfaceRequestedVisible = true;
         liveBlanked = false;
         if (probes != null) {
             new Thread(probes::closeAndAwait, "newsnook-live-stop").start();

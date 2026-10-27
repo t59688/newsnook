@@ -1761,6 +1761,7 @@ export function ReaderScreen({
                 openOriginal={() => void openOriginal()}
                 closeHandleRef={originPlayerCloseRef}
                 suppressResourceFab={speedReadOpen}
+                autoUseReader
               />
             )}
 
