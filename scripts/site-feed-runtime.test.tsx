@@ -52,5 +52,19 @@ try {
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 80)) })
   assert.equal(loadCachedList(source.id)?.cachedAt, oldAt, 'migration does not freshen stale data')
   await act(async () => { restoredRoot.unmount() })
+  // Existing v3 caches must receive the new per-item type repair offline.
+  const person = { ...historical, id: 'custom_runtime:person', originUrl: 'https://example.test/actor/editor', contentType: 'video' }
+  const originalVideo = { ...historical, id: 'custom_runtime:film', originUrl: 'https://example.test/video/film', contentType: 'video' }
+  data.set('newsnook:'+LIST_CACHE_PREFIX+source.id, JSON.stringify({ at: oldAt, items: [person, originalVideo], paging: { sourceVersion: 'catalog-v3:' } }))
+  const requestsBeforeRepair = requests.length
+  const typedRoot = createRoot(document.getElementById('root')!)
+  await act(async () => { typedRoot.render(<Harness />) })
+  assert.equal(result!.articles.find(item => item.id === person.id)?.contentType, 'article', 'already-versioned person cache must be repaired offline')
+  assert.equal(result!.articles.find(item => item.id === originalVideo.id)?.contentType, 'video', 'actual video remains video')
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 80)) })
+  assert.equal(requests.length, requestsBeforeRepair, 'type repair must not fetch the network')
+  assert.equal(loadCachedList(source.id)?.cachedAt, oldAt, 'type repair preserves original timestamp')
+  assert.equal(loadCachedList(source.id)?.paging?.sourceVersion, `${CATALOG_LIST_VERSION}:`)
+  await act(async () => { typedRoot.unmount() })
 } finally { globalThis.fetch = originalFetch }
 console.log('site catalog feed runtime and prestore: ok')

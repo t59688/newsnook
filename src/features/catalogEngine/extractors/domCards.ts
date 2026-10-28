@@ -1,4 +1,6 @@
 import { collectionCards, rankedTextCards, NON_CONTENT_REGIONS } from './collectionStructure'
+import { isPersonDocumentUrl } from '../itemSemantics'
+import { rankOf, undecoratedText } from './itemMetadata'
 import { isVideoDocumentUrl } from '../../../lib/videoDocumentUrl'
 import { parseHTML } from 'linkedom'
 import { isCatalogContentUrl, isPlaybackControlAnchor, isPlaybackControlTitle, PLAYBACK_CONTROL_CONTAINERS } from '../linkRoles'
@@ -73,7 +75,7 @@ export function extractDomCards(html: string, pageUrl: string, document?: Docume
     const originUrl = rawHref && absoluteUrl(rawHref, baseUrl)
     if (!originUrl || new URL(originUrl).origin !== new URL(pageUrl).origin || isUtilityPath(originUrl)) continue
     if (originUrl === pageUrl || /\/(?:categories|tags|vodtype|type)\//i.test(new URL(originUrl).pathname)) continue
-    const title = normalizeCatalogTitle(stripTags(heading?.textContent || anchor?.getAttribute('title') || card.querySelector('img')?.getAttribute('alt') || anchor?.textContent || ''))
+    const title = normalizeCatalogTitle(stripTags(undecoratedText(heading) || anchor?.getAttribute('title') || card.querySelector('img')?.getAttribute('alt') || undecoratedText(anchor)))
     if (isPlaybackControlTitle(title)) continue
     if (title.length < 2 || title.length > 200 || /^(?:首页|更多|下一页|上一页|登录|注册|搜索|高清|标清|立即播放|\d+)$/.test(title)) continue
     const image = imageIn(card, baseUrl)
@@ -83,8 +85,13 @@ export function extractDomCards(html: string, pageUrl: string, document?: Docume
     const publishedAt = parseIsoDate(date?.getAttribute('datetime') || date?.getAttribute('content') || date?.textContent || undefined)
     const videoEvidence = isVideoDocumentUrl(originUrl) || searchCard || /\/(?:v|watch|video|voddetail|vodplay|dianying|dianshiju|vod\/(?:detail|play)(?:\/id)?)\//i.test(new URL(originUrl).pathname) || card.getAttribute('itemtype')?.includes('VideoObject') || card.closest('.stui-vodlist, .myui-vodlist, .vod-item') || card.querySelector('.video-info, a.video-pic .player, video, .video-duration, [data-video-id]')
     const articleRoute = /\/(?:art\/(?:detail|read)|articles?|posts?|news)\//i.test(new URL(originUrl).pathname)
-    const contentType = articleRoute ? 'article' : videoEvidence ? 'video' : card.tagName.toLowerCase() === 'article' || card.matches('.post, .entry, [itemtype*="Article"]') ? 'article' : undefined
-    const item: CatalogItem = { id: `dom-${count++}`, originUrl, title, image, summary, publishedAt, contentType }
+    const person = /(?:\/|\s|^)Person(?:\s|$)/.test(card.getAttribute('itemtype') || '') || isPersonDocumentUrl(originUrl)
+    const contentType = person || articleRoute ? 'article' : videoEvidence ? 'video' : card.tagName.toLowerCase() === 'article' || card.matches('.post, .entry, [itemtype*="Article"]') ? 'article' : undefined
+    const entityType = person ? 'person' : contentType ?? 'unknown'
+    const rating = card.querySelector('[itemprop="ratingValue"]')
+    const rawScore = rating?.getAttribute('content') || rating?.textContent?.trim()
+    const score = rawScore && /^\d+(?:\.\d+)?$/.test(rawScore) ? Number(rawScore) : undefined
+    const item: CatalogItem = { id: `dom-${count++}`, originUrl, title, image, summary, publishedAt, contentType, entityType, rank: rankOf(card), ...(score != null && Number.isFinite(score) ? { score } : {}) }
     const parent = collectionParent(card)
     if (!parent) continue
     const items = groups.get(parent) ?? []

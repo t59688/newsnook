@@ -2,7 +2,7 @@ import { absoluteUrl, isUtilityPath } from '../normalize'
 import { isCatalogContentUrl, isPlaybackControlAnchor, PLAYBACK_CONTROL_CONTAINERS } from '../linkRoles'
 
 /** Shared exclusions for primary extraction and its heuristic fallback. */
-export const NON_CONTENT_REGIONS = 'nav, header, footer, aside, [role="navigation"], .rank-group, .panel-aside, .sidebar, .post-meta, .entry-meta, .article-meta, .byline, .author-info, .author-box, .author-bio, .entry-author, [itemprop="author"], .pagination, .breadcrumbs, .breadcrumb, .related, .related-posts, .related-articles, .recommendations, .recommended, .box-title-nav, .subnav, .sub-nav, .secondary-nav, .section-nav, .sub-menu, .submenu'
+export const NON_CONTENT_REGIONS = '[data-newsnook-catalog-control], nav, header, footer, aside, [role="navigation"], .rank-group, .panel-aside, .sidebar, .post-meta, .entry-meta, .article-meta, .byline, .author-info, .author-box, .author-bio, .entry-author, [itemprop="author"], .pagination, .breadcrumbs, .breadcrumb, .related, .related-posts, .related-articles, .recommendations, .recommended, .box-title-nav, .subnav, .sub-nav, .secondary-nav, .section-nav, .sub-menu, .submenu'
 const CARD_SELECTORS = 'article, li, .card, .post, .entry, .thumbnail, .vod-item, .module-item, .public-list-box, .views-row, .blog-item, .com-content-category-blog__item, .details-info-min, [itemprop="itemListElement"]'
 
 /** Infer the smallest owner of a matching title + poster pair, never a whole page. */

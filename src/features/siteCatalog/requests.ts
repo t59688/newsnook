@@ -1,6 +1,6 @@
-import type { CatalogProfile, CatalogRequest } from './types'
+import type { CatalogRequest } from './types'
 
-export function catalogSearchRequest(profile: CatalogProfile, query: string): CatalogRequest | undefined {
+export function catalogSearchRequest(profile: { search?: CatalogRequest }, query: string): CatalogRequest | undefined {
   if (!profile.search || !query.trim()) return undefined
   const raw = profile.search
   const url = raw.url.replaceAll('{query}', encodeURIComponent(query.trim()))

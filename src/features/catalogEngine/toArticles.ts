@@ -68,7 +68,9 @@ export function catalogItemsToArticles(source: NewsSource, items: CatalogItem[],
       sourceLabel: source.label,
       sourceGroup: source.group,
       originUrl: item.originUrl,
-      contentType: item.contentType ?? (/^(maccms|seacms|fyfcms|zanpian|nnyy)$/.test(source.catalogProfile?.engine ?? source.frameworkHint?.framework ?? '') ? 'video' : 'article'),
+      // The CMS identity cannot turn a person, an article or an unknown document
+      // into a playable video. Detail extraction can promote actual player evidence.
+      contentType: item.contentType ?? 'article',
     })
   }
 

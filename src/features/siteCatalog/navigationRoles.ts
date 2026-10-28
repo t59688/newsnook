@@ -1,3 +1,5 @@
+import { fieldRole, labelSemantic } from './abilities/semantics'
+
 /** Pagination is a navigation role, not a category name or a specific CMS class. */
 const NEXT = /^(?:下一页|下页|后一页|后页|next(?:\s+page)?)(?:\s*[›»>→▶►])?$|^[›»>→▶►]$/i
 const PREVIOUS = /^(?:上一页|上页|前一页|前页|previous(?:\s+page)?|prev)(?:\s*[‹«<←◀◄])?$|^[‹«<←◀◄]$/i
@@ -28,6 +30,21 @@ function isPagerContainer(node: Element): boolean {
   const controls = [...node.querySelectorAll(':scope > a[href], :scope > li > a[href]')]
   const numeric = controls.filter(anchor => paginationNumber(paginationLabel(anchor)) != null)
   if (numeric.length < 2) return false
+  // Numeric filters (notably years) also have an active option and repeated URLs.
+  // Their explicit label/field meaning outranks the generic numeric-pager heuristic.
+  const caption = node.tagName === 'DD' && node.previousElementSibling?.tagName === 'DT'
+    ? node.previousElementSibling.textContent || ''
+    : node.getAttribute('aria-label') || node.querySelector(':scope > dt, :scope > legend, :scope > label, :scope > strong, :scope > span')?.textContent || ''
+  if (labelSemantic(caption)) return false
+  const urls = numeric.flatMap(anchor => {
+    try { return [new URL(anchor.getAttribute('href') || '', 'https://catalog.invalid/')] } catch { return [] }
+  })
+  const fields = new Set(urls.flatMap(url => [...url.searchParams.keys()]))
+  if ([...fields].some(key => {
+    const role = fieldRole(key)
+    return role && role !== 'pagination' && role !== 'search'
+      && new Set(urls.map(url => JSON.stringify(url.searchParams.getAll(key)))).size > 1
+  })) return false
   const current = controls.some(anchor => anchor.hasAttribute('aria-current') || anchor.matches('.current, .active') || anchor.parentElement?.matches('.current, .active'))
   const direction = controls.some(anchor => NEXT.test(paginationLabel(anchor)) || PREVIOUS.test(paginationLabel(anchor)))
   if (!current && !direction) return false
@@ -35,9 +52,15 @@ function isPagerContainer(node: Element): boolean {
   return families.every(family => family === families[0])
 }
 
-export function isPaginationNode(node: Element): boolean {
+export function isPaginationNode(node: Element, cache?: WeakMap<Element, boolean>): boolean {
+  if (node.closest('[data-newsnook-catalog-control]')) return false
   for (let parent = node.parentElement, depth = 0; parent && depth < 4; parent = parent.parentElement, depth++) {
-    if (isPagerContainer(parent)) return true
+    let pager = cache?.get(parent)
+    if (pager == null) {
+      pager = isPagerContainer(parent)
+      cache?.set(parent, pager)
+    }
+    if (pager) return true
     if (parent.matches('body, main, article, section')) break
   }
   return false

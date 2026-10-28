@@ -6,7 +6,7 @@ import type { CatalogLink, CatalogNavigation, CatalogNavigationGroup } from './t
 
 const PRIMARY = 'nav a[href], [role="navigation"] a[href], .navbar a[href], .menu a[href], .panel-heading h3 a[href], .categories a[href], .category-list a[href]'
 const SECONDARY = '.box-title-nav, .subnav, .sub-nav, .secondary-nav, .section-nav, .sub-menu, .submenu, [data-navigation="secondary"]'
-const EXCLUDED = 'footer, aside, .sidebar, .panel-aside, .breadcrumbs, .breadcrumb, [aria-label="breadcrumb"], .sort, .sorting, .sort-list, [data-sort], .filter, .filters, .screen-list, .filter-list, .playlist, .play-list, .player-controls'
+const EXCLUDED = '[data-newsnook-catalog-control], footer, aside, .sidebar, .panel-aside, .breadcrumbs, .breadcrumb, [aria-label="breadcrumb"], .sort, .sorting, .sort-list, [data-sort], .filter, .filters, .screen-list, .filter-list, .playlist, .play-list, .player-controls'
 
 function linkFor(node: Element, baseUrl: string): CatalogLink | undefined {
   const url = siteUrl(node.getAttribute('href') || '', baseUrl)

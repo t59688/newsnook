@@ -515,6 +515,7 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         registerPlugin(ZhihuSessionPlugin.class);
         registerPlugin(LinuxDoSessionPlugin.class);
         registerPlugin(SyncNotificationPlugin.class);
+        registerPlugin(CatalogSnapshotPlugin.class);
         bridgeBuilder.addWebViewListener(mainWebViewListener);
         traceStartup("plugins-registered");
         super.onCreate(savedInstanceState);

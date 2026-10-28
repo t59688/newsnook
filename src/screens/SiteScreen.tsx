@@ -23,6 +23,7 @@ import type { Article } from '../lib/types'
 import { useCatalogSession } from '../features/siteCatalog/useCatalogSession'
 import { catalogProfileFor } from '../features/siteCatalog/profile'
 import { catalogSearchRequest } from '../features/siteCatalog/requests'
+import { CatalogControls } from '../features/siteCatalog/CatalogControls'
 import {
   formatSiteBrandName,
   getSiteFrameworkInfo,
@@ -88,6 +89,9 @@ export const SiteScreen = memo(function SiteScreen({
   const sheetTitleId = useId()
 
   const profile = state.page?.profile ?? (source ? catalogProfileFor(source) : undefined)
+  const capabilities = state.page?.capabilities
+  const searchCapability = capabilities ?? profile
+  const rootNavigation = profile?.categories.find(link => link.url === source?.url)
   const loadedUrl = state.page?.url ?? selectedUrl
   const activePrimaryUrl = state.page?.navigation?.activePrimaryUrl ?? loadedUrl
   const childGroups = state.page?.navigation?.groups ?? []
@@ -133,8 +137,8 @@ export const SiteScreen = memo(function SiteScreen({
 
   const handleSearch = () => {
     const trimmed = query.trim()
-    if (!trimmed || !profile) return
-    const request = catalogSearchRequest(profile, trimmed)
+    if (!trimmed || !searchCapability || state.loading) return
+    const request = catalogSearchRequest(searchCapability, trimmed)
     if (request) {
       setSearchActive(true)
       void session?.open(request)
@@ -253,7 +257,7 @@ export const SiteScreen = memo(function SiteScreen({
 
           {/* 右侧：功能按钮（搜索 / 视图 / 刷新 / 外链） */}
           <div className="flex shrink-0 items-center gap-0.5">
-            {profile?.search && (
+            {searchCapability?.search && (
               <button
                 type="button"
                 onClick={() => {
@@ -372,15 +376,16 @@ export const SiteScreen = memo(function SiteScreen({
             <button
               type="button"
               onClick={() => openUrl(source.url)}
+              aria-current={loadedUrl === source.url && !searchActive ? 'page' : undefined}
               className={`shrink-0 rounded-full px-3.5 py-1 text-[12px] font-medium transition-all active:scale-95 ${
                 loadedUrl === source.url && !searchActive
                   ? 'bg-cinnabar text-white shadow-xs shadow-cinnabar/20'
                   : 'text-paper-muted hover:text-paper hover:bg-paper/6'
               }`}
             >
-              全部
+              {rootNavigation?.title || '全部'}
             </button>
-            {profile.categories.map((link) => {
+            {profile.categories.filter(link => link.url !== source.url).map((link) => {
               const active = activePrimaryUrl === link.url && !searchActive
               return (
                 <button
@@ -423,44 +428,14 @@ export const SiteScreen = memo(function SiteScreen({
           </nav>
         ))}
 
-        {/* 排序与过滤栏（若站点提供） */}
-        {(!!profile?.sorts?.length || !!profile?.filters?.length) && (
-          <div className="page-x flex flex-col gap-1 border-t border-haze/25 py-1.5">
-            {!!profile?.sorts?.length && (
-              <div className="flex items-center gap-1.5 overflow-x-auto scroll-hidden">
-                <span className="shrink-0 text-[11px] text-paper-faint">排序：</span>
-                {profile.sorts.map((link) => (
-                  <button
-                    key={link.url}
-                    type="button"
-                    onClick={() => openUrl(link.url)}
-                    className={`shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      loadedUrl === link.url ? 'bg-cinnabar/15 text-cinnabar' : 'text-paper-muted hover:text-paper'
-                    }`}
-                  >
-                    {link.title}
-                  </button>
-                ))}
-              </div>
-            )}
-            {profile?.filters?.map((group) => (
-              <div key={group.title} className="flex items-center gap-1.5 overflow-x-auto scroll-hidden">
-                <span className="shrink-0 text-[11px] text-paper-faint">{group.title}：</span>
-                {group.options.map((link) => (
-                  <button
-                    key={link.url}
-                    type="button"
-                    onClick={() => openUrl(link.url)}
-                    className={`shrink-0 rounded-lg px-2 py-0.5 text-[11px] font-medium transition-colors ${
-                      loadedUrl === link.url ? 'bg-cinnabar/15 text-cinnabar' : 'text-paper-muted hover:text-paper'
-                    }`}
-                  >
-                    {link.title}
-                  </button>
-                ))}
-              </div>
-            ))}
-          </div>
+        {capabilities && (
+          <CatalogControls
+            key={source.id}
+            capabilities={capabilities}
+            loading={state.loading}
+            onChoose={(controlId, choiceId) => { void session?.choose(controlId, choiceId) }}
+            onOpenOriginal={handleOpenExternal}
+          />
         )}
       </header>
 
@@ -539,6 +514,8 @@ export const SiteScreen = memo(function SiteScreen({
               const isRead = readIds.has(article.id)
               const isVideo = isLikelyVideoArticle(article, fwInfo.isVideo)
               const posterMeta = parseArticlePosterMeta(article.title)
+              const itemMeta = state.page?.itemMetadata?.[article.originUrl]
+              const itemBadge = itemMeta?.entityType === 'person' ? '人物' : isVideo ? '影视' : '文章'
 
               if (viewMode === 'list') {
                 return (
@@ -576,6 +553,7 @@ export const SiteScreen = memo(function SiteScreen({
                             isRead ? 'text-paper-faint' : 'text-paper'
                           }`}
                         >
+                          {itemMeta?.rank != null && <span className="mr-1.5 font-mono text-cinnabar" aria-label={`排名 ${itemMeta.rank}`}>{itemMeta.rank}.</span>}
                           {posterMeta.cleanTitle}
                         </h3>
                         {article.summary && article.summary !== article.title && (
@@ -592,7 +570,7 @@ export const SiteScreen = memo(function SiteScreen({
                           </span>
                         )}
                         <span className="rounded bg-paper/6 px-1.5 py-0.2 text-[9.5px] text-paper-muted">
-                          {fwInfo.categoryBadge}
+                          {itemBadge}
                         </span>
                         {isRead && <span className="ml-auto text-[9.5px] text-paper-faint">已读</span>}
                       </div>
@@ -652,7 +630,7 @@ export const SiteScreen = memo(function SiteScreen({
                       <div className="absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-black/80 via-black/30 to-transparent px-1.5 py-1 text-white">
                         <span className="flex items-center gap-0.5 text-[9px] font-medium opacity-90">
                           <Film size={9} />
-                          <span>{fwInfo.categoryBadge}</span>
+                          <span>{itemBadge}</span>
                         </span>
                       </div>
                     )}
@@ -666,10 +644,11 @@ export const SiteScreen = memo(function SiteScreen({
                       }`}
                       title={article.title}
                     >
+                      {itemMeta?.rank != null && <span className="mr-1.5 font-mono text-cinnabar" aria-label={`排名 ${itemMeta.rank}`}>{itemMeta.rank}.</span>}
                       {posterMeta.cleanTitle}
                     </h3>
                     <div className="mt-1 flex items-center justify-between text-[9.5px] text-paper-faint">
-                      <span className="truncate">{posterMeta.year || fwInfo.categoryBadge}</span>
+                      <span className="truncate">{posterMeta.year || itemBadge}</span>
                       {isRead && <span className="shrink-0 text-[8.5px] text-paper-faint">已读</span>}
                     </div>
                   </div>

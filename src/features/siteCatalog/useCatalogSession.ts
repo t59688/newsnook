@@ -4,7 +4,7 @@ import type { CatalogSnapshot } from './session'
 import { CatalogSession } from './session'
 
 export function useCatalogSession(source?: NewsSource) {
-  const session = useMemo(() => source ? new CatalogSession(source) : undefined, [source])
+  const session = useMemo(() => source ? new CatalogSession(source, undefined, { allowRendered: true }) : undefined, [source])
   const state = useSyncExternalStore(session?.subscribe ?? (() => () => {}), () => session?.snapshot ?? EMPTY)
   useEffect(() => () => session?.cancel(), [session])
   return { session, state }
