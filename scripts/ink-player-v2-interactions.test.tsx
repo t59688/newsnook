@@ -69,5 +69,46 @@ try {
   assert.ok(document.querySelector('[data-video-fullscreen="true"]'),'orientation selection must not close fullscreen')
   await click('退出全屏')
   assert.equal(document.querySelector('[data-video-fullscreen="true"]'),null)
+
+  // Wait for orientation change HUD to dismiss
+  await act(async () => { await new Promise(r => setTimeout(r, 950)) })
+
+  // Verify tap to toggle controls and center play button when paused
+  const surface = document.querySelector<HTMLElement>('[data-video-gesture-surface]')!
+  assert.ok(surface, 'gesture surface exists')
+  const capture = new Set<number>()
+  Object.assign(surface, {
+    getBoundingClientRect: () => ({ left: 0, top: 0, right: 400, bottom: 800, x: 0, y: 0, width: 400, height: 800 }),
+    setPointerCapture(id: number) { capture.add(id) },
+    hasPointerCapture(id: number) { return capture.has(id) },
+    releasePointerCapture(id: number) { capture.delete(id) },
+  })
+
+  const tap = async () => {
+    const down = new window.Event('pointerdown', { bubbles: true, cancelable: true })
+    Object.assign(down, { pointerId: 1, clientX: 200, clientY: 400, pointerType: 'touch', button: 0, buttons: 1, isPrimary: true })
+    await act(async () => { surface.dispatchEvent(down); await Promise.resolve() })
+    const up = new window.Event('pointerup', { bubbles: true, cancelable: true })
+    Object.assign(up, { pointerId: 1, clientX: 200, clientY: 400, pointerType: 'touch', button: 0, buttons: 0, isPrimary: true })
+    await act(async () => { surface.dispatchEvent(up); await Promise.resolve() })
+    await act(async () => { await new Promise(r => setTimeout(r, 320)) })
+  }
+
+  assert.equal(video.paused, true)
+  assert.ok(document.querySelector('.ink-video-top-chrome')?.classList.contains('opacity-100'), 'top chrome visible initially')
+  assert.ok(document.querySelector('.ink-video-bottom-chrome')?.classList.contains('opacity-100'), 'bottom chrome visible initially')
+  assert.ok(document.querySelector('.ink-video-abs-center'), 'center play button visible initially')
+
+  // Tap to hide controls while paused
+  await tap()
+  assert.ok(document.querySelector('.ink-video-top-chrome')?.classList.contains('opacity-0'), 'top chrome hidden on tap when paused')
+  assert.ok(document.querySelector('.ink-video-bottom-chrome')?.classList.contains('opacity-0'), 'bottom chrome hidden on tap when paused')
+  assert.equal(document.querySelector('.ink-video-abs-center'), null, 'center play button hidden on tap when paused')
+
+  // Tap to reveal controls again while paused
+  await tap()
+  assert.ok(document.querySelector('.ink-video-top-chrome')?.classList.contains('opacity-100'), 'top chrome restored on tap when paused')
+  assert.ok(document.querySelector('.ink-video-bottom-chrome')?.classList.contains('opacity-100'), 'bottom chrome restored on tap when paused')
+  assert.ok(document.querySelector('.ink-video-abs-center'), 'center play button restored on tap when paused')
 }finally{await act(async()=>root.unmount())}
 console.log('ink-player-v2-interactions: ok')
