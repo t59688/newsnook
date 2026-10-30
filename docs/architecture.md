@@ -558,6 +558,14 @@ Provider 可用性由可选的 `isAvailable()` 声明，来源选择器只显示
 
 百科设置保留原有 `newsnook.wiki.settings.v1` 键与 JSON 格式，作为历史前缀例外接入原生 Preferences 镜像和启动水合；查询面板切源也会保存默认提供商。此处不改变云同步范围。
 
+### 8.10 用户脚本与 iframe 执行边界
+
+Android 内置浏览器通过 AndroidX WebKit 文档开始注入机制运行本地用户脚本。脚本的 `@match` / `@include` 规则分别在每个文档 URL 上求值；默认允许匹配的子 frame 执行，`@noframes` 可显式禁止子 frame。这样播放器页面可以在自身 document-start 阶段运行脚本，而不依赖跨源父页面访问 iframe DOM。
+
+权限边界：子 frame 仅允许 `@grant none` / `unsafeWindow` 这类 page-world、无原生 GM 能力的脚本。子 frame 的启动消息只用于执行状态统计；原生存储、网络请求、下载、菜单等 GM 操作仍仅接受主框架消息。带原生 GM grant 的脚本继续只在主框架执行。`@noframes` 从脚本源码元数据解析并随原生快照传递，旧安装项由源码重新解析得到默认值。
+
+关键实现：`src/features/browser/scripts.ts`、`android/app/src/main/assets/newsnook-userscript-runtime.js`、`android/app/src/main/java/com/aizeek/newsnook/UserscriptRuntime.java`。回归覆盖位于 `scripts/browser-userscripts.test.ts` 与 `UserscriptRuntimeLifecycleTest`。
+
 ### 8.11 内置浏览器 Agent
 
 `features/browser/agent/` 将任务面板、执行运行时、模型协议分离。`BrowserAgentPanel` 只消费真实步骤、文件与接管状态；`agentRuntime.ts` 拥有暂停/恢复/停止 ACK、元素引用、审批、未知结果和完成检查；`browserAgent.ts` 负责模型 transport、工具协议以及模型所见上下文版本。手动接管、文件终态变化或恢复后的新页面必须先交给模型，不把旧编号套到新目标。

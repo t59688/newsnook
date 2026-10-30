@@ -330,6 +330,50 @@ public class UserscriptRuntimeLifecycleTest {
         } finally { runtime.close(); cache.delete(); view.destroy(); }
     }
 
+    @Test public void matchingGrantNoneFrameMayReportStartButCannotUseNativeBridge() throws Exception {
+        DocumentWebView view = new DocumentWebView();
+        UserscriptRuntime runtime = new UserscriptRuntime(view.getContext(), view);
+        String id = "us-frame-none";
+        String frameUrl = "https://player.example/embed";
+        try {
+            org.json.JSONObject entry = script(id, "none").put("matches",
+                new org.json.JSONArray().put("https://player.example/*"));
+            runtime.prepare(new org.json.JSONArray().put(entry));
+            runtime.onNavigation(PAGE);
+            org.json.JSONObject started = message(runtime, id, "started", "2000").put("documentUrl", frameUrl);
+            receive(runtime, started, "https://player.example", "page", null, false);
+            assertEquals("a matching no-grant iframe contributes to the executed-script count", 1, runtime.getActiveScriptCount());
+            org.json.JSONObject forgedWrite = message(runtime, id, "set", "2000").put("documentUrl", frameUrl)
+                .put("key", "x").put("value", "true");
+            receive(runtime, forgedWrite, "https://player.example", "page", null, false);
+            assertFalse("iframe messages cannot reach native storage operations", ((android.content.SharedPreferences) field(runtime, "storage")).contains(id));
+        } finally { runtime.close(); view.destroy(); }
+    }
+
+    @Test public void noFramesAndNativeGrantScriptsCannotStartInsideFrames() throws Exception {
+        DocumentWebView view = new DocumentWebView();
+        UserscriptRuntime runtime = new UserscriptRuntime(view.getContext(), view);
+        try {
+            runtime.prepare(new org.json.JSONArray()
+                .put(script("us-frame-optout", "none").put("noFrames", true).put("matches", new org.json.JSONArray().put("https://player.example/*")))
+                .put(script("us-frame-privileged", "GM_getValue").put("matches", new org.json.JSONArray().put("https://player.example/*"))));
+            runtime.onNavigation(PAGE);
+            receive(runtime, message(runtime, "us-frame-optout", "started", "2001").put("documentUrl", "https://player.example/embed"),
+                "https://player.example", "page", null, false);
+            receive(runtime, message(runtime, "us-frame-privileged", "started", "2002").put("documentUrl", "https://player.example/embed"),
+                "https://player.example", "isolated", null, false);
+            assertEquals("frame opt-outs and native-grant scripts cannot become active from child frames", 0, runtime.getActiveScriptCount());
+        } finally { runtime.close(); view.destroy(); }
+    }
+
+    private static void receive(UserscriptRuntime runtime, org.json.JSONObject payload, String origin, String world,
+                                androidx.webkit.JavaScriptReplyProxy proxy, boolean mainFrame) throws Exception {
+        java.lang.reflect.Method receive = UserscriptRuntime.class.getDeclaredMethod("receive",
+            org.json.JSONObject.class, String.class, androidx.webkit.JavaScriptReplyProxy.class, String.class, boolean.class);
+        receive.setAccessible(true);
+        receive.invoke(runtime, payload, origin, proxy, world, mainFrame);
+    }
+
     @Test public void noRecordModeRetainsExplicitDownloadGrantChecks() throws Exception {
         DocumentWebView view = new DocumentWebView();
         UserscriptRuntime runtime = new UserscriptRuntime(view.getContext(), view, true);

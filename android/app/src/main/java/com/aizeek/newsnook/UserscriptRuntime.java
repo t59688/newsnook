@@ -330,12 +330,12 @@ final class UserscriptRuntime {
 
     private void onWebMessage(WebView view, WebMessageCompat message, Uri sourceOrigin,
                               boolean isMainFrame, JavaScriptReplyProxy replyProxy, String runtimeWorld) {
-        if (closed || view != webView || !isMainFrame || message.getType() != WebMessageCompat.TYPE_STRING) return;
+        if (closed || view != webView || message.getType() != WebMessageCompat.TYPE_STRING) return;
         String scheme = sourceOrigin.getScheme();
         if (!"https".equalsIgnoreCase(scheme) && !"http".equalsIgnoreCase(scheme)) return;
         String text = message.getData();
         if (text == null || text.length() > 220000) return;
-        try { receive(new JSONObject(text), sourceOrigin.toString(), replyProxy, runtimeWorld); }
+        try { receive(new JSONObject(text), sourceOrigin.toString(), replyProxy, runtimeWorld, isMainFrame); }
         catch (Exception failed) {
             try {
                 JSONObject payload = new JSONObject(text);
@@ -351,6 +351,16 @@ final class UserscriptRuntime {
         for (int i=0; i<grants.length(); i++) {
             String grant = grants.optString(i);
             if ("unsafeWindow".equals(grant) || "none".equals(grant)) return true;
+        }
+        return false;
+    }
+
+    private static boolean hasNativeGrants(InstalledScript script) {
+        JSONArray grants = script.metadata.optJSONArray("grants");
+        if (grants == null) return false;
+        for (int i = 0; i < grants.length(); i++) {
+            String grant = grants.optString(i);
+            if (!"none".equals(grant) && !"unsafeWindow".equals(grant)) return true;
         }
         return false;
     }
@@ -452,6 +462,7 @@ final class UserscriptRuntime {
         opts.put("excludes", script.metadata.optJSONArray("excludes") != null ? script.metadata.optJSONArray("excludes") : new JSONArray());
         opts.put("excludeMatches", script.metadata.optJSONArray("excludeMatches") != null ? script.metadata.optJSONArray("excludeMatches") : new JSONArray());
         opts.put("runAt", script.metadata.optString("runAt", "document-end"));
+        opts.put("noFrames", script.metadata.optBoolean("noFrames", false));
         opts.put("executionWorld", runsInPage(script) ? "page" : "isolated");
         opts.put("grants", script.metadata.optJSONArray("grants") != null ? script.metadata.optJSONArray("grants") : new JSONArray());
         synchronized (storageLock) {
@@ -548,15 +559,30 @@ final class UserscriptRuntime {
     }
 
     private void receive(JSONObject payload, String sourceOrigin, JavaScriptReplyProxy proxy, String runtimeWorld) throws Exception {
+        receive(payload, sourceOrigin, proxy, runtimeWorld, true);
+    }
 
+    private void receive(JSONObject payload, String sourceOrigin, JavaScriptReplyProxy proxy,
+                         String runtimeWorld, boolean isMainFrame) throws Exception {
         if (closed) return;
-        String id=payload.optString("id"), secret=payload.optString("token"), op=payload.optString("op");
+        String id = payload.optString("id"), secret = payload.optString("token"), op = payload.optString("op");
         InstalledScript script = scripts.get(id);
-        if(script==null || !script.secret.equals(secret) || !matchesScript(script,webView.getUrl())) return;
+        if (script == null || !script.secret.equals(secret)) return;
         if (runsInPage(script) != "page".equals(runtimeWorld)) return;
-        if(!sameOrigin(sourceOrigin, webView.getUrl())) return;
         String documentId = payload.optString("documentId");
-        if (!validDocumentId(documentId) || !payload.optString("documentUrl").equals(webView.getUrl())) return;
+        String documentUrl = payload.optString("documentUrl");
+        if (!validDocumentId(documentId) || !matchesScript(script, documentUrl)
+                || !sameOrigin(sourceOrigin, documentUrl)) return;
+
+        if (!isMainFrame) {
+            // Frames may report execution for UI state, but never receive native GM authority.
+            if (script.metadata.optBoolean("noFrames", false) || hasNativeGrants(script)
+                    || !"started".equals(op) || navigationUrl == null || !navigationUrl.equals(webView.getUrl())) return;
+            if (activeScriptIds.add(script.id)) notifyState();
+            return;
+        }
+
+        if (!documentUrl.equals(webView.getUrl())) return;
         if (confirmedDocumentId != null && !confirmedDocumentId.equals(documentId)) return;
         if ("started".equals(op)) {
             recordStarted(script, payload, proxy);
