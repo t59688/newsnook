@@ -206,6 +206,14 @@ assert.equal(withHls?.url, 'https://cdn.example/index.m3u8')
     /ink-player-resource-dialog[^\n]*bg-black\/40/,
     'resource sheet keeps its backing scrim restrained so the video remains visible',
   )
+  assert.match(overlaySource, /mediaResourceTitle\(resource/, 'article resource rows must render the shared resolved media title')
+  assert.match(overlaySource, /mediaResourceDetails\(resource/, 'article resource rows must expose source and format context')
+  assert.match(overlaySource, /mediaResourceTracks\(resource/, 'article resource rows must expose quality and track metadata')
+  assert.doesNotMatch(overlaySource, /\{resource\.url\}/, 'signed media URLs must not be shown as resource names')
+
+  const sourceSheet = readFileSync(join(process.cwd(), 'src/components/inkVideoPlayer/PlayerSourceSheet.tsx'), 'utf8')
+  assert.match(sourceSheet, /mediaResourceTitle\(resource/, 'fullscreen source sheet must use the same resolved title')
+  assert.doesNotMatch(sourceSheet, /\{resource\.url\}/, 'fullscreen source sheet must not expose signed media URLs')
 }
 
 console.log('origin-player-live-sniff tests passed')

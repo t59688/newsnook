@@ -239,6 +239,11 @@ HTML / JSON / iframe 嵌入页 / Android 短生命周期 WebView
 关键约束：
 
 - **Classifier Gate**（`classifier.admitObservation`）：任意 observation 入库前统一 URL-first 门控；图片/CSS/JS/字体扩展名、无 MIME/codec/清单扩展名的 `static` 弱信号、非媒体形态的 `performance` 条目会被丢弃；`selectPlayableAsset` 进一步排除仅含 `static` 源的弱候选。
+- **资源名称与元数据**：`MediaMetadata` 的可选字段沿 observation → graph asset → descriptor 传递，兼容旧观察/描述符。`titleSource` 优先级为 `player`（同一播放配置或 API 内容对象）→ `structured`（JSON-LD VideoObject 的 URL 关联名称）→ `filename`（pathname 的可读名称）→ `page`（og:title / twitter:title / document.title，仅作明确标注的弱回退）→ `generated`（按稳定 asset identity 排序生成“视频资源 01/02…”）；页面标题不会覆盖媒体标题，也不能用于归组。页面上下文取 og:title → twitter:title → document.title。较低可信标题不能覆盖播放器名称。
+- **关联边界**：标题只向 sources/streams/video/audio/dash/data 等当前媒体子树传递，其他推荐、广告、兄弟内容对象独立取名；YouTube 只在同一播放响应中将 videoDetails 关联至 streamingData。Android DOM 标题来自对应 video/player 元素，iframe 继续经过 nonce 和已加载文档/网络来源校验，原生验证后才标记 `provenanceVerified`；晚到名称、画质和清单响应可更新已有观察。
+- **安全展示与预算**：文件名仅从 URL pathname 安全解码，清除 UUID、长随机串与纯数字名称；签名 query、完整 URL、请求头与 Cookie 不进入名称/辅助信息或新日志，原始播放 URL 与鉴权上下文保持原样。显示文本最长 160 字；JSON 文本最多 256 KiB、深度 12、节点 4096、候选 512；静态 HTML 扫描最多 1 MiB，清单最多 512 KiB/512 轨。浏览器只消费站点已经请求的 fetch/XHR 响应，不为名称/封面新增 HEAD/GET；正文发现服务保留原有最多两个清单增强请求，已有清单响应直接复用。
+- **可靠归组与降级**：同一 manifest 内的 variants 显示为同一视频的清晰度选项，子清单仅在父清单明确引用时收拢。其他资源只按显式 API 音视频容器、mediaSession 或可信内容 ID 关联；页面/host/目录/时间邻近和相同标题本身均不能归组，广告标记参与分组隔离。无依据则保持独立候选，不拼接未知音视频；签名刷新及评分重排不改变已发现候选的 fallback 序号。
+- **资源面板**：浏览器媒体面板、文章内嵌播放器嗅探抽屉、独立媒体页和全屏来源选择器共用 `mediaSniffer/presentation.ts`。主行显示媒体名/文件名/稳定序号，单一未命名资源允许用明确标注的文章标题兜底；副行显示页面/iframe host、媒体 CDN host、格式和标题来源，不显示完整 URL 或签名 query；清晰度、码率、编码、音轨语言及字幕可换行展示。广告启发式及显式广告标记默认从浏览器普通播放列表剔除，与 DRM 资源一起保留在折叠诊断列表，不提供普通播放入口。未知来源候选保留，广告标记不保证识别所有广告，DRM 仍要求原站授权。
 - **Target Planner**（`targetPlanner.planSniffTargets`）：静态扫描未发现 direct media 时，按 JSON-LD embedUrl/WatchAction → 同站通用播放路径链接 → iframe 嵌入页的优先级规划 secondary 播放页；首个目标使用完整预算，编排层以全局 deadline 截断后续目标，避免均分后每个播放器只剩短窗口。
 - 静态 HTML / payload 已发现可播放资源时，不再启动 Android 运行时探测；否则由 `MediaSnifferPlugin` 在隔离 WebView（360×640，屏外）中观察网络、DOM、MSE 与 EME 信号；probe 队列跳过常见 tracker 域并提高无扩展名 URL 探针配额（24/会话）。
 - 正文 iframe 不直接绕过发现层：最多取 3 个嵌入页作为独立探测目标。已加载 iframe 文档中的 inline 强媒体配置可作为静态观察进入 Graph，但普通跨文档消息仍需对应媒体 URL 的网络观察。YouTube 组件先探测公开、非 DRM 且可完整播放的资源，成功后交给 `InkVideoPlayer`；只有未得到完整资源、只得到分片/无声自适应轨、检测到 DRM 或加载失败时，才回退原站 iframe。
@@ -247,6 +252,10 @@ HTML / JSON / iframe 嵌入页 / Android 短生命周期 WebView
 - `MediaDescriptor` 只向播放器交付 `progressive`、`hls`、`dash`；`blob:`/MSE 是发现信号而非可移交 URL；DRM 进入原站授权边界，不尝试绕过。
 - Android 播放会话短时登记来源页、Cookie、必要请求头与用户代理路由。公开 progressive 优先使用 WebView 原生 Range 请求；显式请求头、隧道、DASH 或 progressive 直连失败时才启用 `MediaPlaybackWebViewClient` 流式桥接。
 - 播放失败后的“重新探测”通过 `ReaderScreen.retryToken` 重新执行正文解析与原页发现，不生成或逆向签名。
+- 内置浏览器媒体资源面板复用实际标签页 WebView 的 `BrowserMediaCapture` 被动探测，不创建第二个页面、不自动播放；观察到的播放器 JSON / DOM / HLS / DASH 信息沿带 nonce 的 observation 通道进入 `MediaObservation`。页面标题只作为弱上下文，`titleSource` 的可信级别依次区分 `player`、`structured`、`filename`、`page`、`generated`；播放器标题只随其所在配置对象及相关 URL 传播，JSON 遍历有深度、节点、数组和响应体大小上限。
+- `MediaMetadata` 在 observation、GraphAsset 与 descriptor 之间保持一致。展示名称优先使用播放器标题、结构化 VideoObject 标题、URL pathname 文件名、页面标题，最后使用按稳定 asset identity 排序生成的“视频资源 NN”；文件名只解码 pathname，剔除 UUID、长随机串和数字占位名，任何 query、签名、token、Cookie、Authorization 均不参与 UI 名称。
+- HLS 轨道提取 `NAME`、分辨率、带宽、编码及音频/字幕组；DASH 提取 Representation id/label、分辨率、带宽、编码、语言与字幕。只有同一 manifest 的明确 variant URL、显式 assetGroup / mediaSessionId 或可信 contentId 才用于关联，不以相同 host、目录或时间接近推断同一视频。原始播放 URL、headers、Referer 和授权上下文不因展示元数据而改变。
+- 浏览器资源列表默认排除明确标记的广告候选和 DRM 项，诊断区保留已排除项；广告识别仍是 URL / 播放器信号启发式，未识别的候选会保留并以来源信息辅助判断。名称、来源和轨道元数据不触发额外封面下载或对媒体 URL 的 HEAD/GET 请求。
 
 `InkVideoPlayer` 统一处理 HLS/dash.js/HTMLMediaElement、播放控制、双击播放/暂停、长按临时倍速、进度/亮度/音量手势、捏合缩放、平移和还原。Android 横向视频进入全屏时优先锁定 Activity 横屏，系统导航栏和四向安全区随屏幕一起旋转；退出全屏或卸载播放器时恢复原方向。方向锁定不可用时才旋转播放器交互平面，确保视频与控件仍处于同一坐标系。
 

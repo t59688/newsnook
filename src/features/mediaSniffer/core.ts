@@ -1,4 +1,7 @@
 import { XMLParser } from 'fast-xml-parser'
+import { parseMediaApiBody, observeMediaApiPayload } from './apiParser'
+import { mediaDisplayText } from './metadata'
+import { parseHTML } from 'linkedom'
 
 import {
   DIRECT_MEDIA_EXT,
@@ -146,15 +149,17 @@ function hlsAttributeMap(line: string): Record<string, string> {
   return attributes
 }
 
-export function parseHlsManifest(text: string, manifestUrl: string): Pick<MediaDescriptor, 'videoTracks' | 'audioTracks' | 'subtitles' | 'drm'> {
-  const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
+export function parseHlsManifest(text: string, manifestUrl: string): Pick<MediaDescriptor, 'videoTracks' | 'audioTracks' | 'subtitles' | 'drm' | 'drmKeySystems'> {
+  const lines = text.slice(0, 524288).split(/\r?\n/).slice(0, 8192).map((line) => line.trim()).filter(Boolean)
   const videoTracks: MediaTrack[] = []
   const audioTracks: MediaTrack[] = []
   const subtitles: MediaTrack[] = []
   let drm = false
+  const drmKeySystems = new Set<string>()
 
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]
+    if (videoTracks.length + audioTracks.length + subtitles.length >= 512) break
     if (line.startsWith('#EXT-X-STREAM-INF:')) {
       const attrs = hlsAttributeMap(line)
       const resolution = attrs.RESOLUTION?.match(/(\d+)x(\d+)/i)
@@ -162,11 +167,13 @@ export function parseHlsManifest(text: string, manifestUrl: string): Pick<MediaD
       videoTracks.push({
         kind: 'video',
         url,
-        bandwidth: Number(attrs.BANDWIDTH) || undefined,
+        bandwidth: numberValue(attrs.BANDWIDTH),
         width: resolution ? Number(resolution[1]) : undefined,
         height: resolution ? Number(resolution[2]) : undefined,
         codecs: attrs.CODECS,
         groupId: attrs.AUDIO,
+        ...(attrs.NAME ? { label: mediaDisplayText(attrs.NAME) } : {}),
+        ...(attrs.SUBTITLES ? { subtitleGroupId: attrs.SUBTITLES } : {}),
       })
     } else if (line.startsWith('#EXT-X-MEDIA:')) {
       const attrs = hlsAttributeMap(line)
@@ -175,17 +182,18 @@ export function parseHlsManifest(text: string, manifestUrl: string): Pick<MediaD
         url: absoluteUrl(attrs.URI, manifestUrl),
         language: attrs.LANGUAGE,
         groupId: attrs['GROUP-ID'],
+        ...(attrs.NAME ? { label: mediaDisplayText(attrs.NAME) } : {}),
       }
       if (track.kind === 'subtitle') subtitles.push(track)
       else if (attrs.TYPE === 'AUDIO') audioTracks.push(track)
     } else if (line.startsWith('#EXT-X-KEY:') || line.startsWith('#EXT-X-SESSION-KEY:')) {
       const attrs = hlsAttributeMap(line)
       const keyFormat = attrs.KEYFORMAT?.toLowerCase()
-      if (keyFormat && keyFormat !== 'identity') drm = true
+      if (keyFormat && keyFormat !== 'identity') { drm = true; drmKeySystems.add(keyFormat) }
     }
   }
 
-  return { videoTracks, audioTracks, subtitles, drm }
+  return { videoTracks, audioTracks, subtitles, drm, drmKeySystems: [...drmKeySystems] }
 }
 
 function arrayOf<T>(value: T | T[] | undefined): T[] {
@@ -193,13 +201,20 @@ function arrayOf<T>(value: T | T[] | undefined): T[] {
   return Array.isArray(value) ? value : [value]
 }
 
+function xmlText(value: unknown): string {
+  if (typeof value === 'string' || typeof value === 'number') return String(value)
+  if (value && typeof value === 'object' && '#text' in value) return String(value['#text'])
+  return ''
+}
+
 function numberValue(value: unknown): number | undefined {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined
 }
 
-export function parseDashManifest(text: string, manifestUrl: string): Pick<MediaDescriptor, 'videoTracks' | 'audioTracks' | 'subtitles' | 'drm'> {
+export function parseDashManifest(text: string, manifestUrl: string): Pick<MediaDescriptor, 'videoTracks' | 'audioTracks' | 'subtitles' | 'drm' | 'drmKeySystems'> {
   const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@_' })
+  if (text.length > 524288) return { videoTracks: [], audioTracks: [], subtitles: [], drm: false, drmKeySystems: [] }
   const root = parser.parse(text) as Record<string, unknown>
   const mpd = root.MPD as Record<string, unknown> | undefined
   const periods = arrayOf(mpd?.Period as Record<string, unknown> | Record<string, unknown>[] | undefined)
@@ -207,31 +222,55 @@ export function parseDashManifest(text: string, manifestUrl: string): Pick<Media
   const audioTracks: MediaTrack[] = []
   const subtitles: MediaTrack[] = []
   let drm = false
+  const drmKeySystems = new Set<string>()
 
-  for (const period of periods) {
+  for (const period of periods.slice(0, 32)) {
     const sets = arrayOf(period.AdaptationSet as Record<string, unknown> | Record<string, unknown>[] | undefined)
-    for (const set of sets) {
-      if (set.ContentProtection) drm = true
+    for (const set of sets.slice(0, 128)) {
+      if (set.ContentProtection) {
+        drm = true
+        for (const protection of arrayOf(set.ContentProtection as Record<string, unknown> | Record<string, unknown>[])) {
+          const scheme = protection['@_schemeIdUri']
+          if (typeof scheme === 'string' && scheme.length <= 128) drmKeySystems.add(scheme)
+        }
+      }
       const mime = String(set['@_mimeType'] ?? '')
       const contentType = String(set['@_contentType'] ?? '')
-      const kind: MediaTrack['kind'] =
+      const defaultKind: MediaTrack['kind'] =
         contentType === 'audio' || mime.startsWith('audio/')
           ? 'audio'
-          : contentType === 'text' || mime.startsWith('text/') || mime.includes('ttml')
+          : contentType === 'text' || contentType === 'subtitle' || mime.startsWith('text/') || mime.includes('ttml') || /stpp|wvtt/i.test(String(set['@_codecs'] || ''))
             ? 'subtitle'
             : 'video'
       const representations = arrayOf(set.Representation as Record<string, unknown> | Record<string, unknown>[] | undefined)
-      for (const representation of representations) {
-        if (representation.ContentProtection) drm = true
-        const base = String(representation.BaseURL ?? set.BaseURL ?? mpd?.BaseURL ?? '')
+      for (const representation of representations.slice(0, 256)) {
+        if (videoTracks.length + audioTracks.length + subtitles.length >= 512) break
+        if (representation.ContentProtection) {
+          drm = true
+          for (const protection of arrayOf(representation.ContentProtection as Record<string, unknown> | Record<string, unknown>[])) {
+            const scheme = protection['@_schemeIdUri']
+            if (typeof scheme === 'string' && scheme.length <= 128) drmKeySystems.add(scheme)
+          }
+        }
+        const repMime = String(representation['@_mimeType'] ?? mime)
+        const repCodecs = String(representation['@_codecs'] ?? set['@_codecs'] ?? '')
+        const kind = repMime.startsWith('audio/') ? 'audio'
+          : repMime.startsWith('text/') || /ttml|vtt/i.test(repMime) || /stpp|wvtt/i.test(repCodecs) ? 'subtitle' : defaultKind
+        let base = manifestUrl
+        for (const node of [mpd, period, set, representation]) {
+          const value = xmlText(node?.BaseURL)
+          if (value) base = absoluteUrl(value, base) || base
+        }
         const track: MediaTrack = {
           kind,
           url: absoluteUrl(base, manifestUrl),
           bandwidth: numberValue(representation['@_bandwidth']),
-          width: numberValue(representation['@_width']),
-          height: numberValue(representation['@_height']),
+          width: numberValue(representation['@_width'] ?? set['@_width']),
+          height: numberValue(representation['@_height'] ?? set['@_height']),
           codecs: String(representation['@_codecs'] ?? set['@_codecs'] ?? '') || undefined,
-          language: String(set['@_lang'] ?? '') || undefined,
+          language: mediaDisplayText(String(representation['@_lang'] ?? set['@_lang'] ?? '')),
+          id: mediaDisplayText(String(representation['@_id'] ?? '')),
+          label: mediaDisplayText(xmlText(representation.Label) || String(representation['@_label'] ?? '') || xmlText(set.Label) || String(set['@_label'] ?? '')),
         }
         if (kind === 'video') videoTracks.push(track)
         else if (kind === 'audio') audioTracks.push(track)
@@ -239,7 +278,7 @@ export function parseDashManifest(text: string, manifestUrl: string): Pick<Media
       }
     }
   }
-  return { videoTracks, audioTracks, subtitles, drm }
+  return { videoTracks, audioTracks, subtitles, drm, drmKeySystems: [...drmKeySystems] }
 }
 
 export function buildMediaDescriptor(
@@ -367,8 +406,8 @@ function addStructuredPayloadObservation(
   })
 }
 
-function walkPayload(value: unknown, pageUrl: string, observations: MediaObservation[], seen: Set<object>, depth: number): void {
-  if (depth > 12 || observations.length >= 512) return
+function walkPayload(value: unknown, pageUrl: string, observations: MediaObservation[], seen: Set<object>, depth: number, budget: { nodes: number }): void {
+  if (++budget.nodes > 4096 || depth > 12 || observations.length >= 512 || seen.size >= 4096) return
   if (typeof value === 'string') {
     // A raw HTML/JSON string is a container, not a media URL. Treating the
     // whole string as an observation turns the document into an encoded URL
@@ -379,7 +418,7 @@ function walkPayload(value: unknown, pageUrl: string, observations: MediaObserva
     if (isHttpUrl(directValue) && mediaFormatFor(directValue) !== 'unknown') {
       addStaticObservation(observations, directValue, pageUrl)
     }
-    for (const match of value.matchAll(/https?:\\?\/\\?\/[^\s"'<>]+/gi)) {
+    for (const match of value.slice(0, 1048576).matchAll(/https?:\\?\/\\?\/[^\s"'<>]+/gi)) {
       addStaticObservation(observations, match[0].replace(/\\\//g, '/'), pageUrl)
     }
     return
@@ -387,18 +426,19 @@ function walkPayload(value: unknown, pageUrl: string, observations: MediaObserva
   if (!value || typeof value !== 'object' || seen.has(value)) return
   seen.add(value)
   if (Array.isArray(value)) {
-    for (const item of value) walkPayload(item, pageUrl, observations, seen, depth + 1)
+    for (const item of value.slice(0, 512)) walkPayload(item, pageUrl, observations, seen, depth + 1, budget)
   } else {
     addStructuredPayloadObservation(value as Record<string, unknown>, pageUrl, observations)
-    for (const item of Object.values(value as Record<string, unknown>)) {
-      walkPayload(item, pageUrl, observations, seen, depth + 1)
+    for (const item of Object.values(value as Record<string, unknown>).slice(0, 512)) {
+      walkPayload(item, pageUrl, observations, seen, depth + 1, budget)
     }
   }
 }
 
 export function observeMediaInPayload(payload: unknown, pageUrl: string): MediaObservation[] {
-  const observations: MediaObservation[] = []
-  walkPayload(payload, pageUrl, observations, new Set(), 0)
+  if (typeof payload !== 'string') return observeMediaApiPayload(payload, pageUrl, 'static')
+  const observations = parseMediaApiBody(payload, pageUrl, 'static')
+  walkPayload(payload, pageUrl, observations, new Set(), 0, { nodes: 0 })
   return observations
 }
 
@@ -476,6 +516,7 @@ function macCmsPlaybackUrl(payload: unknown): string | undefined {
 }
 
 export function observeMediaInHtml(html: string, pageUrl: string): MediaObservation[] {
+  html = html.slice(0, 1048576)
   const observations = observeMediaInPayload(html, pageUrl)
   const attribute = (tag: string, name: string): string | undefined =>
     tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))
@@ -507,9 +548,19 @@ export function observeMediaInHtml(html: string, pageUrl: string): MediaObservat
   }
   for (const payload of jsonObjectsAfterAssignment(html, 'player_aaaa')) {
     const value = macCmsPlaybackUrl(payload)
-    if (value) addStaticObservation(observations, value, pageUrl)
+    if (value) {
+      addStaticObservation(observations, value, pageUrl)
+      if (payload && typeof payload === 'object') {
+        const record = payload as Record<string, unknown>
+        observations.push(...parseMediaApiBody(JSON.stringify({ ...record, url: value }), pageUrl, 'static'))
+      }
+    }
   }
-  return observations
+  const { document } = parseHTML(html)
+  const pageTitle = mediaDisplayText(document.querySelector('meta[property="og:title"]')?.getAttribute('content'))
+    || mediaDisplayText(document.querySelector('meta[name="twitter:title"]')?.getAttribute('content'))
+    || mediaDisplayText(document.title || document.querySelector('title')?.textContent)
+  return observations.slice(0, 512).map(observation => ({ ...observation, pageTitle }))
 }
 
 export function bestMediaUrlInPayload(payload: unknown, pageUrl: string): string | undefined {

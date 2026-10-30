@@ -1,3 +1,4 @@
+import './media-sniffer-probe.test'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import assert from 'node:assert/strict'
@@ -41,6 +42,65 @@ import {
 import { nnyyPlayApiUrls } from '../src/features/mediaSniffer/nnyyPlay'
 
 const pageUrl = 'https://news.example/articles/42'
+
+// Metadata must travel through the production observation -> graph -> descriptor path.
+{
+  const payload = { items: [
+    { title: '山海纪行', sources: [{ url: 'https://cdn.example/a.mp4?token=private', height: 1080, bitrate: 3200000 }] },
+    { video_title: '城市夜色', url: 'https://cdn.example/b.mp4' },
+  ] }
+  const observations = parseMediaApiBody(JSON.stringify(payload), pageUrl, 'fetch')
+  const resources = buildMediaDescriptor(observations)?.resources ?? []
+  assert.equal(resources.find(r => r.url.includes('/a.mp4'))?.title, '山海纪行', 'player title is associated with its own nested sources')
+  assert.equal(resources.find(r => r.url.includes('/b.mp4'))?.title, '城市夜色', 'sibling titles cannot bleed into each other')
+  assert.equal(resources[0].titleSource, 'player')
+  const html = `<title>页面栏目</title><meta property="og:title" content="页面介绍"><meta name="twitter:title" content="分享标题">
+    <video src="https://cdn.example/untitled.mp4"></video>
+    <script type="application/ld+json">{"@type":"VideoObject","name":"专属视频","contentUrl":"https://cdn.example/structured.mp4"}</script>`
+  const staticResources = buildMediaDescriptor(observeMediaInHtml(html, pageUrl))?.resources ?? []
+  assert.equal(staticResources.find(r => r.url.includes('structured'))?.title, '专属视频')
+  assert.equal(staticResources.find(r => r.url.includes('structured'))?.titleSource, 'structured')
+  const untitled = staticResources.find(r => r.url.includes('untitled'))!
+  assert.equal(untitled.pageTitle, '页面介绍')
+  assert.notEqual(untitled.title, '页面介绍', 'page title stays contextual, never becomes media title')
+  const merged = buildMediaDescriptor([
+    ...observations,
+    { url: 'https://cdn.example/a.mp4?token=private', pageUrl, source: 'dom', title: '页面栏目', titleSource: 'page' },
+  ])
+  assert.equal(merged?.resources?.find(r => r.url.includes('/a.mp4'))?.title, '山海纪行', 'lower title confidence cannot overwrite player metadata')
+}
+{
+  const hls = '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="中文",LANGUAGE="zh"\n#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="s",NAME="English",LANGUAGE="en",URI="en.vtt"\n#EXT-X-STREAM-INF:BANDWIDTH=3200000,RESOLUTION=1920x1080,CODECS="avc1.640028",NAME="高清",AUDIO="a",SUBTITLES="s"\n1080.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1600000,RESOLUTION=1280x720\n720.m3u8'
+  const manifest = 'https://cdn.example/master.m3u8?token=keep'
+  const descriptor = buildMediaDescriptor([{ pageUrl, source: 'fetch', url: manifest, bodyText: hls },
+    { pageUrl, source: 'network', url: 'https://cdn.example/1080.m3u8' }])!
+  assert.equal(descriptor.videoTracks.length, 2, 'captured manifest bodies enrich the descriptor without another request')
+  assert.equal(descriptor.resources?.length, 1, 'a child manifest belongs to the master resource')
+  assert.equal(descriptor.videoTracks[0].label, '高清')
+  assert.equal(descriptor.videoTracks[0].subtitleGroupId, 's')
+  assert.equal(descriptor.audioTracks[0].label, '中文')
+  assert.equal(descriptor.subtitles[0].language, 'en')
+  assert.equal(descriptor.url, manifest)
+  const dash = parseDashManifest('<MPD><Period><AdaptationSet contentType="video" width="1920" height="1080"><Label>主画面</Label><Representation id="v1" bandwidth="4000000" codecs="avc1"/></AdaptationSet><AdaptationSet mimeType="application/mp4" codecs="stpp" lang="zh"><Representation id="s1"/></AdaptationSet></Period></MPD>', manifest)
+  assert.equal(dash.videoTracks[0].id, 'v1')
+  assert.equal(dash.videoTracks[0].label, '主画面')
+  assert.equal(dash.videoTracks[0].height, 1080)
+  assert.equal(dash.subtitles[0].language, 'zh')
+}
+{
+  const sameDirectory: MediaObservation[] = [
+    { pageUrl, source: 'network', url: 'https://cdn.example/v1.m4s', mimeType: 'video/mp4', timestamp: 1000 },
+    { pageUrl, source: 'network', url: 'https://cdn.example/a2.m4s', mimeType: 'audio/mp4', timestamp: 1001 },
+    { pageUrl, source: 'mse', mseMimeType: 'video/mp4', timestamp: 1000 },
+  ]
+  assert.equal(buildMediaGraph(sameDirectory).length, 2, 'directory and timing alone cannot pair unrelated videos')
+  const session = sameDirectory.slice(0, 2).map(o => ({ ...o, mediaSessionId: 'player-1' }))
+  assert.equal(buildMediaGraph(session).length, 1, 'explicit player session can pair audio and video')
+  assert.equal(buildMediaGraph(session.map((o,i) => ({ ...o, isAd: i === 1 }))).length, 2, 'ads and content never share an asset')
+}
+
+
+
 
 {
   assert.deepEqual(
@@ -214,6 +274,9 @@ const pageUrl = 'https://news.example/articles/42'
   // covered by playbackHeadersForTarget — Cookie/Authorization stay on exact origin;
   // captured Range is never copied into playback headers.
   const pageUrl = 'https://news.example/articles/42'
+
+
+
   const videoOrigin = 'https://v1.cdn.example'
   const captured = {
     'https://news.example': {
@@ -355,6 +418,7 @@ video/1080.m3u8`
     height: 1080,
     codecs: 'avc1.640028,mp4a.40.2',
     groupId: 'aac',
+    subtitleGroupId: 'subs',
   })
   assert.equal(parsed.audioTracks[0].url, 'https://cdn.example/audio/index.m3u8')
   assert.equal(parsed.subtitles[0].language, 'en')
@@ -691,10 +755,10 @@ video/1080.m3u8`
   const youtubeVideo = 'https://r1---sn.googlevideo.com/videoplayback?id=v&itag=137&mime=video%2Fmp4&rn=1&rbuf=0&range=0-524287&expire=1800000000&sig=keep-video'
   const youtubeAudio = 'https://r1---sn.googlevideo.com/videoplayback?id=a&itag=140&mime=audio%2Fmp4&rn=2&rbuf=0&range=0-524287&expire=1800000000&sig=keep-audio'
   const assets = buildMediaGraph([
-    { url: youtubeVideo, pageUrl, source: 'network', mimeType: 'video/mp4' },
-    { url: youtubeVideo.replace('rn=1', 'rn=3').replace('range=0-524287', 'range=524288-1048575'), pageUrl, source: 'network', mimeType: 'video/mp4' },
-    { url: youtubeAudio, pageUrl, source: 'network', mimeType: 'audio/mp4' },
-    { url: youtubeAudio.replace('rn=2', 'rn=4').replace('range=0-524287', 'range=524288-1048575'), pageUrl, source: 'network', mimeType: 'audio/mp4' },
+    { url: youtubeVideo, pageUrl, source: 'network', mediaSessionId: 'youtube-player-1', mimeType: 'video/mp4' },
+    { url: youtubeVideo.replace('rn=1', 'rn=3').replace('range=0-524287', 'range=524288-1048575'), pageUrl, source: 'network', mediaSessionId: 'youtube-player-1', mimeType: 'video/mp4' },
+    { url: youtubeAudio, pageUrl, source: 'network', mediaSessionId: 'youtube-player-1', mimeType: 'audio/mp4' },
+    { url: youtubeAudio.replace('rn=2', 'rn=4').replace('range=0-524287', 'range=524288-1048575'), pageUrl, source: 'network', mediaSessionId: 'youtube-player-1', mimeType: 'audio/mp4' },
   ])
   assert.equal(assets.length, 1, 'YouTube 分段请求应按 transport 参数归并成一个音视频资产')
   assert.equal(assets[0].videos.length, 1)
@@ -706,8 +770,8 @@ video/1080.m3u8`
   const youtubeVideo = 'https://r1---sn.googlevideo.com/videoplayback?id=v&itag=137&mime=video%2Fmp4&range=0-524287&expire=1800000000&sig=keep-video'
   const youtubeAudio = 'https://r1---sn.googlevideo.com/videoplayback?id=a&itag=140&mime=audio%2Fmp4&range=0-524287&expire=1800000000&sig=keep-audio'
   const descriptor = buildMediaDescriptor([
-    { url: youtubeVideo, pageUrl, source: 'network', mimeType: 'video/mp4' },
-    { url: youtubeAudio, pageUrl, source: 'network', mimeType: 'audio/mp4' },
+    { url: youtubeVideo, pageUrl, source: 'network', mediaSessionId: 'youtube-player-1', mimeType: 'video/mp4' },
+    { url: youtubeAudio, pageUrl, source: 'network', mediaSessionId: 'youtube-player-1', mimeType: 'audio/mp4' },
   ])
   assert.equal(descriptor?.type, 'dash', '真机安静窗口可能每条自适应轨只看到一个 range 请求，也应形成可播放资产')
   assert.match(descriptor?.relatedUrls?.join('|') || '', /expire=1800000000/)
@@ -1023,3 +1087,21 @@ const maccmsDetailHtml = `<!DOCTYPE html>
 }
 
 console.log('media-sniffer tests passed')
+
+{
+  const parsed = parseMediaApiBody(JSON.stringify({ title: '正片', sources: [{ url: 'https://cdn.example/main.mp4' }],
+    recommendations: [{ url: 'https://cdn.example/other.mp4' }], ads: [{ url: 'https://cdn.example/spot.mp4', isAd: true }] }), pageUrl, 'fetch')
+  assert.equal(parsed.find(o => o.url?.includes('main'))?.title, '正片')
+  assert.equal(parsed.find(o => o.url?.includes('other'))?.title, undefined, 'unrelated recommendation objects do not inherit the first title')
+  assert.equal(parsed.find(o => o.url?.includes('spot'))?.title, undefined)
+  assert.equal(parsed.find(o => o.url?.includes('spot'))?.isAd, true)
+  for (const key of ['title', 'video_title', 'vod_name', 'videoName', 'fileName']) {
+    assert.equal(parseMediaApiBody(JSON.stringify({ [key]: '具体名称', url: 'https://cdn.example/video.mp4' }), pageUrl, 'fetch')[0].title, '具体名称')
+  }
+  const yt = parseMediaApiBody(JSON.stringify({ videoDetails: { title: '相关播放响应', videoId: '123' }, streamingData: { formats: [{ url: 'https://cdn.example/youtube.mp4' }] } }), pageUrl, 'fetch')
+  assert.equal(yt[0].title, '相关播放响应')
+  assert.equal(yt[0].contentId, '123')
+  assert.deepEqual(parseMediaApiBody(' '.repeat(262145), pageUrl, 'fetch'), [])
+  assert.equal(observeMediaInHtml('<title>文档标题</title><video src="https://cdn.example/test.mp4"></video>', pageUrl)[0].pageTitle, '文档标题')
+  assert.equal(observeMediaInHtml('<meta name="twitter:title" content="分享标题"><video src="https://cdn.example/test.mp4"></video>', pageUrl)[0].pageTitle, '分享标题')
+}

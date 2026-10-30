@@ -117,8 +117,9 @@ public class MediaSnifferPlugin extends Plugin {
           const passive = __NEWSNOOK_PASSIVE_MODE__;
           if (window.__newsnookLastHighValueAt == null) window.__newsnookLastHighValueAt = 0;
           const events = window.__newsnookMediaEvents = [];
-          const seen = new Set();
-          const inspectedPayloads = new WeakSet();
+          const seen = new Map();
+          let inspectedPayloads = new WeakSet();
+          let inspectedNodes = 0;
           const inspectedScripts = new WeakSet();
           const isHighValue = (event) => {
             // Progressive mp4/webm often arrives as preroll. Arming quiet-exit on
@@ -134,12 +135,52 @@ public class MediaSnifferPlugin extends Plugin {
             if (event.source === 'static' && event.url && /\\.(?:m3u8|mpd)(?:[?#]|$)/i.test(String(event.url))) return true;
             return false;
           };
+          const displayText = (value) => {
+            if (typeof value !== 'string' || value.length > 512) return undefined;
+            let normalized = '';
+            let pendingSpace = false;
+            for (const character of value) {
+              const code = character.codePointAt(0) || 0;
+              const control = code <= 0x1f || (code >= 0x7f && code <= 0x9f);
+              const bidi = (code >= 0x202a && code <= 0x202e) || (code >= 0x2066 && code <= 0x2069);
+              const whitespace = control || code === 0x20 || code === 0xa0 || code === 0x1680
+                || (code >= 0x2000 && code <= 0x200a) || code === 0x2028 || code === 0x2029
+                || code === 0x202f || code === 0x205f || code === 0x3000;
+              if (control || bidi || whitespace) {
+                pendingSpace = normalized.length > 0;
+                continue;
+              }
+              if (pendingSpace) normalized += ' ';
+              normalized += character;
+              pendingSpace = false;
+            }
+            const text = normalized.trim();
+            const lower = text.toLowerCase();
+            const unsafe = lower.includes('http:') || lower.includes('https:') || lower.includes('blob:')
+              || lower.includes('data:') || lower.includes('www.') || text.includes('?')
+              || text.includes('#') || text.includes('=')
+              || lower.includes('token:') || lower.includes('signature:')
+              || lower.includes('cookie:') || lower.includes('authorization:') || lower.includes('bearer ');
+            return text && !unsafe ? text.slice(0, 160) : undefined;
+          };
+          const pageTitle = () => {
+            try {
+              const og = document.querySelector('meta[property="og:title"]');
+              const twitter = document.querySelector('meta[name="twitter:title"]');
+              return displayText(og ? og.getAttribute('content') : '')
+                || displayText(twitter ? twitter.getAttribute('content') : '') || displayText(document.title);
+            } catch (_) { return undefined; }
+          };
           const push = (event) => {
             try {
-              const key = [event.source, event.url || '', event.mimeType || '', event.drmKeySystem || '', event.bodyText ? 'body' : ''].join('|');
-              if (seen.has(key)) return;
-              seen.add(key);
-              const observation = { pageUrl: location.href, timestamp: Date.now(), sessionNonce: nonce, ...event };
+              const key = [event.pageUrl || location.href, event.source, event.url || '', event.mimeType || '', event.drmKeySystem || '', event.bodyText ? 'body' : ''].join('|');
+              const observation = { pageUrl: location.href, pageTitle: pageTitle(), playerSource: location.hostname, timestamp: Date.now(), sessionNonce: nonce, ...event };
+              const signature = JSON.stringify([observation.title, observation.titleSource, observation.pageTitle, observation.width, observation.height, observation.bitrate, observation.codecs, observation.mediaSessionId, observation.isAd, observation.bodyText]);
+              if (seen.get(key) === signature) return;
+              if (seen.size >= 512 && !seen.has(key)) return;
+              seen.set(key, signature);
+              const existingIndex = events.findIndex(item => item.pageUrl === observation.pageUrl && item.source === observation.source && item.url === observation.url && item.mimeType === observation.mimeType && item.drmKeySystem === observation.drmKeySystem);
+              if (existingIndex >= 0) events.splice(existingIndex, 1);
               const priority = (item) => {
                 const mime = String(item.mimeType || item.mseMimeType || '').toLowerCase();
                 const url = String(item.url || '').toLowerCase();
@@ -213,65 +254,83 @@ public class MediaSnifferPlugin extends Plugin {
             const number = Number(value);
             return Number.isFinite(number) && number > 0 ? number : undefined;
           };
-          const inspectPayload = (value, depth = 0) => {
-            if (!value || typeof value !== 'object' || depth > 12 || inspectedPayloads.has(value)) return;
+          const inspectPayload = (value, depth = 0, inherited = {}) => {
+            if (++inspectedNodes > 4096 || !value || typeof value !== 'object' || depth > 12 || inspectedPayloads.has(value)) return;
             inspectedPayloads.add(value);
             if (Array.isArray(value)) {
-              value.forEach((item) => inspectPayload(item, depth + 1));
+              value.slice(0, 512).forEach(item => inspectPayload(item, depth + 1, inherited));
               return;
             }
             try {
-              const url = [value.url, value.contentUrl, value.playbackUrl, value.src, value.baseUrl, value.base_url, value.playurl, value.play_url, value.backupUrl, value.backup_url, value.manifestUrl]
-                .find((item) => typeof item === 'string' && item);
-              const mimeType = [value.mimeType, value.contentType, value.mime]
-                .find((item) => typeof item === 'string');
-              // 图片 URL（favicon/logo/海报）不是可播放媒体，宽度高度不构成视频信号
-              const pathOnly = String(url).split('?')[0].split('#')[0];
-              const isImagePath = /\\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?)$/i.test(pathOnly);
-              if (url && !isImagePath) {
-                const codecText = `${mimeType || ''} ${typeof value.codecs === 'string' ? value.codecs : ''}`;
-                const width = positiveNumber(value.width);
-                const height = positiveNumber(value.height);
-                const hasVideo = Boolean(value.qualityLabel || /^video\\//i.test(mimeType || '') || /(?:avc1|av01|hvc1|hev1|vp0?9|vp8)/i.test(codecText));
-                const hasAudio = Boolean(value.audioQuality || value.audioSampleRate || value.audioChannels || /^audio\\//i.test(mimeType || '') || /(?:mp4a|aac|opus|vorbis|ac-3|ec-3)/i.test(codecText));
-                if (looksMediaUrl(url) || mimeType || hasVideo || hasAudio) {
-                  push({
-                    source: 'static',
-                    url,
-                    mimeType,
-                    codecs: typeof value.codecs === 'string' ? value.codecs : undefined,
-                    mediaKind: /^audio\\//i.test(mimeType || '') ? 'audio' : hasVideo ? 'video' : undefined,
-                    hasAudio: hasAudio ? true : hasVideo && value.qualityLabel ? false : undefined,
-                    hasVideo: hasVideo || undefined,
-                    width,
-                    height,
-                    bitrate: positiveNumber(value.bitrate),
-                  });
-                }
+              const rawType = value['@type'];
+              const structured = rawType === 'VideoObject' || (Array.isArray(rawType) && rawType.indexOf('VideoObject') >= 0);
+              const ownTitle = (structured ? [value.name, value.headline] : [value.title, value.video_title, value.vod_name, value.videoName, value.fileName]).map(displayText).find(Boolean);
+              const metadata = { ...inherited };
+              const contentId = displayText(value.contentId || value.videoId || value.vod_id);
+              if (contentId) metadata.contentId = contentId;
+              if (ownTitle) {
+                metadata.title = ownTitle;
+                metadata.titleSource = structured ? 'structured' : 'player';
+              }
+              if (inherited.isAd || value.isAd === true || value.is_ad === true || value.advertisement === true) metadata.isAd = true;
+              if (Array.isArray(value.video) && Array.isArray(value.audio)) {
+                const first = value.video.find(item => item && (typeof item === 'string' || item.baseUrl || item.base_url || item.url));
+                const raw = typeof first === 'string' ? first : first ? (first.baseUrl || first.base_url || first.url) : undefined;
+                if (typeof raw === 'string') metadata.assetGroup = `dash-${new URL(raw, location.href).href}`;
+              }
+              const urls = ['url', 'contentUrl', 'playbackUrl', 'src', 'baseUrl', 'base_url', 'playurl', 'play_url', 'play_data', 'backupUrl', 'backup_url', 'backup_urls', 'manifestUrl', 'manifest_url', 'video_url', 'media_url', 'file'];
+              const mimeType = [value.mimeType, value.contentType, value.mime].find(item => typeof item === 'string');
+              const codecText = `${mimeType || ''} ${typeof value.codecs === 'string' ? value.codecs : ''}`;
+              const hasVideo = Boolean(value.qualityLabel || /^video\\//i.test(mimeType || '') || /avc1|av01|hvc1|hev1|vp0?9|vp8/i.test(codecText));
+              const hasAudio = Boolean(value.audioQuality || value.audioSampleRate || value.audioChannels || /^audio\\//i.test(mimeType || '') || /mp4a|aac|opus|vorbis|ac-3|ec-3/i.test(codecText));
+              for (const key of urls) for (const raw of (Array.isArray(value[key]) ? value[key].slice(0, 64) : [value[key]])) {
+                if (typeof raw !== 'string' || raw.length > 8192) continue;
+                let url; try { url = new URL(raw, location.href).href; } catch (_) { continue; }
+                if (/\\.(?:png|jpe?g|gif|webp|svg|ico)(?:[?#]|$)/i.test(url)) continue;
+                if (looksMediaUrl(url) || mimeType || hasVideo || hasAudio) push({
+                  source: 'static', url, mimeType, ...metadata,
+                  codecs: typeof value.codecs === 'string' ? value.codecs : undefined,
+                  quality: displayText(value.qualityLabel || value.quality),
+                  mediaKind: /^audio\\//i.test(mimeType || '') ? 'audio' : hasVideo ? 'video' : inherited.mediaKind,
+                  hasAudio: hasAudio ? true : hasVideo && value.qualityLabel ? false : undefined,
+                  hasVideo: hasVideo || undefined,
+                  width: positiveNumber(value.width), height: positiveNumber(value.height), bitrate: positiveNumber(value.bitrate || value.bandwidth),
+                });
+              }
+              for (const [key, child] of Object.entries(value).slice(0, 512)) {
+                const related = /^(?:sources?|streams?|video|audio|dash|data|playinfo|playback|streamingData|formats|adaptiveFormats)$/i.test(key);
+                const videoDetails = value.videoDetails && typeof value.videoDetails === 'object' ? value.videoDetails : null;
+                const youtubeTitle = videoDetails ? videoDetails.title : undefined;
+                const context = key === 'streamingData' && displayText(youtubeTitle)
+                  ? { title: displayText(youtubeTitle), titleSource: 'player', contentId: displayText(videoDetails ? videoDetails.videoId : undefined) }
+                  : related ? metadata : metadata.isAd ? { isAd: true } : {};
+                if (key === 'video' || key === 'audio') context.mediaKind = key;
+                inspectPayload(child, depth + 1, context);
               }
             } catch (_) {}
-            try { Object.values(value).forEach((item) => inspectPayload(item, depth + 1)); } catch (_) {}
           };
           const inspectPlayerState = () => {
             try { inspectPayload(window.ytInitialPlayerResponse); } catch (_) {}
             try { inspectPayload(window.__playinfo__); } catch (_) {}
+            try { inspectPayload(window.player_aaaa); } catch (_) {}
             // Embedded YouTube currently places the authoritative player
             // response under ytcfg.PLAYER_VARS rather than the older
             // ytplayer.config.args.player_response path.
             try {
-              const playerVars = window.ytcfg?.get?.('PLAYER_VARS');
-              const embeddedResponse = playerVars?.embedded_player_response || playerVars?.player_response;
+              const playerVars = window.ytcfg && typeof window.ytcfg.get === 'function' ? window.ytcfg.get('PLAYER_VARS') : undefined;
+              const embeddedResponse = playerVars ? (playerVars.embedded_player_response || playerVars.player_response) : undefined;
               if (typeof embeddedResponse === 'string') inspectPayload(JSON.parse(embeddedResponse));
               else inspectPayload(embeddedResponse);
             } catch (_) {}
             try {
-              const playerResponse = window.ytplayer?.config?.args?.player_response;
+              const playerResponse = window.ytplayer && window.ytplayer.config && window.ytplayer.config.args
+                ? window.ytplayer.config.args.player_response : undefined;
               if (typeof playerResponse === 'string') inspectPayload(JSON.parse(playerResponse));
               else inspectPayload(playerResponse);
             } catch (_) {}
             try {
               document.querySelectorAll('script[type="application/ld+json"],script[type="application/json"]').forEach((script) => {
-                try { inspectPayload(JSON.parse(script.textContent || '')); } catch (_) {}
+                try { inspectPayload(JSON.parse((script.textContent || '').slice(0, maxBodyText))); } catch (_) {}
               });
             } catch (_) {}
           };
@@ -279,14 +338,20 @@ public class MediaSnifferPlugin extends Plugin {
             if (!(node instanceof Element)) return;
             const nodes = node.matches('video,audio,source') ? [node] : node.querySelectorAll('video,audio,source');
             for (const media of nodes) {
-              const url = media.currentSrc || media.src || media.getAttribute('data-src') || media.getAttribute('data-video-src');
-              if (url) push({ source: 'dom', url, mimeType: media.getAttribute('type') || undefined, mediaKind: media.tagName === 'AUDIO' ? 'audio' : media.tagName === 'VIDEO' ? 'video' : undefined });
+              const url = media.currentSrc || media.src || media.getAttribute('src') || media.getAttribute('data-src') || media.getAttribute('data-video-src');
+              if (url) {
+                const player = media.tagName === 'SOURCE' ? media.parentElement : media;
+                const title = displayText(player ? (player.getAttribute('title') || player.getAttribute('data-title')) : '');
+                push({ source: 'dom', url, title, titleSource: title ? 'player' : undefined,
+                  height: positiveNumber(player ? player.videoHeight : undefined), width: positiveNumber(player ? player.videoWidth : undefined),
+                  mimeType: media.getAttribute('type') || undefined, mediaKind: media.tagName === 'AUDIO' ? 'audio' : 'video' });
+              }
               if (media.srcObject) push({ source: 'mse', url: media.currentSrc || 'blob:', mseMimeType: 'srcObject' });
               if (!passive && media instanceof HTMLMediaElement) {
                 try {
                   media.muted = true;
                   const playback = media.play();
-                  if (playback?.catch) playback.catch(() => {});
+                  if (playback && typeof playback.catch === 'function') playback.catch(() => {});
                 } catch (_) {}
               }
             }
@@ -298,7 +363,9 @@ public class MediaSnifferPlugin extends Plugin {
                 inspectedScripts.add(script);
                 const text = script.textContent || '';
                 if (!text || text.length > maxBodyText) return;
-                for (const match of text.matchAll(/https?:\\\\?\\/\\\\?\\/[^\\s"'<>]+/gi)) {
+                const urlPattern = /https?:\\\\?\\/\\\\?\\/[^\\s"'<>]+/gi;
+                let match;
+                while ((match = urlPattern.exec(text)) !== null) {
                   const url = match[0]
                     .replace(/\\\\\\//g, '/')
                     .replace(/\\\\u0026/gi, '&')
@@ -309,6 +376,7 @@ public class MediaSnifferPlugin extends Plugin {
             } catch (_) {}
           };
           const scan = () => {
+            inspectedPayloads = new WeakSet(); inspectedNodes = 0;
             inspect(document.documentElement);
             inspectPlayerState();
             inspectScriptPayloads();
@@ -327,9 +395,9 @@ public class MediaSnifferPlugin extends Plugin {
             try {
               new MutationObserver((records) => records.forEach((record) => {
                 inspect(record.target);
-                if (record.target?.tagName === 'SCRIPT') inspectScriptPayloads();
+                if (record.target && record.target.tagName === 'SCRIPT') inspectScriptPayloads();
                 record.addedNodes.forEach(inspect);
-                record.addedNodes.forEach((node) => { if (node?.tagName === 'SCRIPT') inspectScriptPayloads(); });
+                record.addedNodes.forEach((node) => { if (node && node.tagName === 'SCRIPT') inspectScriptPayloads(); });
               })).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['src', 'data-src', 'data-video-src'] });
               document.addEventListener('play', (event) => inspect(event.target), true);
               document.addEventListener('loadedmetadata', (event) => inspect(event.target), true);
@@ -339,6 +407,26 @@ public class MediaSnifferPlugin extends Plugin {
           if (document.documentElement) startDom();
           else document.addEventListener('DOMContentLoaded', startDom, { once: true });
 
+          const readBoundedText = async (response, reported) => {
+            const copy = response.clone();
+            if (!copy.body || !copy.body.getReader) {
+              if (!Number.isFinite(reported) || reported > maxBodyText) return undefined;
+              const text = await copy.text();
+              return text.length <= maxBodyText ? text : undefined;
+            }
+            const reader = copy.body.getReader();
+            const decoder = new TextDecoder();
+            let bytes = 0, text = '';
+            try {
+              while (true) {
+                const part = await reader.read();
+                if (part.done) return text + decoder.decode();
+                bytes += part.value.byteLength;
+                if (bytes > maxBodyText) { reader.cancel().catch(() => {}); return undefined; }
+                text += decoder.decode(part.value, { stream: true });
+              }
+            } finally { reader.releaseLock(); }
+          };
           try {
             const originalFetch = window.fetch;
             window.fetch = async function(...args) {
@@ -347,13 +435,13 @@ public class MediaSnifferPlugin extends Plugin {
                 const mimeType = response.headers.get('content-type') || undefined;
                 const event = { source: 'fetch', url: response.url || String(args[0]), mimeType, statusCode: response.status };
                 const mime = String(mimeType || '').toLowerCase();
-                if (/json|text\\/plain|javascript/.test(mime)) {
+                if (/json|text\\/plain|javascript|mpegurl|dash\\+xml/.test(mime)) {
                   const lengthHeader = response.headers.get('content-length');
                   const reported = lengthHeader == null || lengthHeader === '' ? NaN : Number(lengthHeader);
                   if (!Number.isFinite(reported) || reported <= maxBodyText) {
                     try {
-                      const text = await response.clone().text();
-                      if (text && text.length <= maxBodyText && looksLikePlayerJson(text)) event.bodyText = text;
+                      const text = await readBoundedText(response, reported);
+                      if (text && text.length <= maxBodyText && (looksLikePlayerJson(text) || /^#EXTM3U|<MPD[\\s>]|<\\?xml/.test(text.trim()))) event.bodyText = text;
                     } catch (_) {}
                   }
                 }
@@ -380,7 +468,7 @@ public class MediaSnifferPlugin extends Plugin {
                     } else {
                       text = this.responseText;
                     }
-                    if (typeof text === 'string' && text.length > 0 && text.length <= maxBodyText && looksLikePlayerJson(text)) event.bodyText = text;
+                    if (typeof text === 'string' && text.length > 0 && text.length <= maxBodyText && (looksLikePlayerJson(text) || /^#EXTM3U|<MPD[\\s>]|<\\?xml/.test(text.trim()))) event.bodyText = text;
                   }
                 } catch (_) {}
                 push(event);
@@ -397,7 +485,8 @@ public class MediaSnifferPlugin extends Plugin {
             };
           } catch (_) {}
           try {
-            const requestKeySystem = navigator.requestMediaKeySystemAccess?.bind(navigator);
+            const requestKeySystem = navigator.requestMediaKeySystemAccess
+              ? navigator.requestMediaKeySystemAccess.bind(navigator) : undefined;
             if (requestKeySystem) navigator.requestMediaKeySystemAccess = function(keySystem, configurations) {
               push({ source: 'mse', drmKeySystem: String(keySystem), mediaSessionId: `eme-${String(keySystem)}` });
               return requestKeySystem(keySystem, configurations);
@@ -1835,6 +1924,9 @@ public class MediaSnifferPlugin extends Plugin {
                 // document itself was loaded; progressive still needs static config
                 // or a real network hit.
                 if (url.isEmpty() || (!networkUrls.contains(url) && !(loadedFrame && (strongManifest || staticMedia)))) continue;
+            }
+            if (event.optBoolean("fromIframe", false)) {
+                try { event.put("provenanceVerified", true); } catch (JSONException ignored) {}
             }
             event.remove("sessionNonce");
             trusted.put(event);

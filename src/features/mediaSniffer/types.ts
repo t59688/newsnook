@@ -19,7 +19,21 @@ export type MediaObservationSource =
   | 'mse'
   | 'static'
 
-export interface MediaObservation {
+export type MediaTitleSource = 'player' | 'structured' | 'page' | 'filename' | 'generated'
+
+/** Display-only metadata. Playback URLs and request context remain untouched. */
+export interface MediaMetadata {
+  title?: string
+  titleSource?: MediaTitleSource
+  pageTitle?: string
+  fileName?: string
+  playerSource?: string
+  fromIframe?: boolean
+  contentId?: string
+  isAd?: boolean
+}
+
+export interface MediaObservation extends MediaMetadata {
   url?: string
   pageUrl: string
   source: MediaObservationSource
@@ -41,6 +55,8 @@ export interface MediaObservation {
   codecs?: string
   fromIframe?: boolean
   fromServiceWorker?: boolean
+  /** Set only after native nonce + loaded-frame/network provenance verification. */
+  provenanceVerified?: boolean
   sessionNonce?: string
   assetGroup?: string
   /** Runtime MSE/player correlation identifier. Native/JS may provide it. */
@@ -71,7 +87,7 @@ export interface MediaAssetTrack {
   requestContext: RequestContext
 }
 
-export interface MediaAsset {
+export interface MediaAsset extends MediaMetadata {
   id: string
   pageUrl: string
   score: number
@@ -95,6 +111,10 @@ export interface MediaTrack {
   codecs?: string
   language?: string
   groupId?: string
+  subtitleGroupId?: string
+  id?: string
+  label?: string
+  quality?: string
 }
 
 export interface MediaCandidate {
@@ -114,7 +134,7 @@ export interface MediaCandidate {
   requestHeaders?: Record<string, string>
 }
 
-export interface MediaResourceDescriptor {
+export interface MediaResourceDescriptor extends MediaMetadata {
   type: PlayableMediaFormat
   url: string
   pageUrl: string

@@ -1,13 +1,15 @@
 import { useEffect, useRef } from 'react'
 import { Check, ListVideo, X } from 'lucide-react'
 import type { MediaResourceDescriptor } from '../../features/mediaSniffer/types'
+import { mediaResourceDetails, mediaResourceFormatLabel, mediaResourceTitle, mediaResourceTracks } from '../../features/mediaSniffer/presentation'
 import { playbackIdentity } from './lifecycle'
 
 /** Video-stage sheet: works inside the browser fullscreen top layer and Android's fixed fullscreen. */
 export function PlayerSourceSheet({
-  resources, activeUrl, activeFormat, onClose, onSelect,
+  resources, fallbackTitle, activeUrl, activeFormat, onClose, onSelect,
 }: {
   resources: MediaResourceDescriptor[]
+  fallbackTitle?: string
   activeUrl: string
   activeFormat: MediaResourceDescriptor['type']
   onClose: () => void
@@ -41,16 +43,20 @@ export function PlayerSourceSheet({
         <div className="ink-player-panel-items">
           {resources.map((resource, index) => {
             const active = playbackIdentity(resource.url, resource.type) === activeKey
-            const track = resource.videoTracks.find(item => item.width || item.height)
-            return <button type="button" key={resource.id || resource.url + index} aria-current={active ? 'true' : undefined}
+            const rowFallbackTitle = resources.length === 1 ? fallbackTitle : undefined
+            const title = mediaResourceTitle(resource, index + 1, rowFallbackTitle)
+            const details = mediaResourceDetails(resource, rowFallbackTitle)
+            const tracks = mediaResourceTracks(resource)
+            return <button type="button" key={resource.id || resource.url + index} aria-label={`选择视频资源：${title}`} aria-current={active ? 'true' : undefined}
               className="ink-player-source-row" data-active={active || undefined} onClick={() => {
                 onSelect(resource)
                 onClose()
               }}>
-              <span className="ink-player-source-icon">{resource.type === 'hls' ? 'HLS' : resource.type === 'dash' ? 'DASH' : 'MP4'}</span>
+              <span className="ink-player-source-icon">{mediaResourceFormatLabel(resource)}</span>
               <span className="ink-player-source-copy">
-                <strong>{track?.height ? `${track.height}P` : `视频源 ${index + 1}`}{resource.isAd ? ' · 广告' : ''}</strong>
-                <small>{resource.url}</small>
+                <strong>{title}{resource.isAd ? ' · 疑似广告' : ''}</strong>
+                <small>{details.join(' · ')}</small>
+                {tracks.length > 0 && <small className="ink-player-source-track-details">{tracks.join('  /  ')}</small>}
               </span>
               {active && <Check size={17} className="ink-player-source-selected" strokeWidth={2} />}
             </button>

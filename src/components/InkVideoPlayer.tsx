@@ -2243,6 +2243,7 @@ function InkVideoPlayerReady({
         {gestureHud && <GestureHudOverlay hud={gestureHud} duration={duration} />}
         {integratedSourcePicker && resourceMenuOpen && onSelectResource && <PlayerSourceSheet
           resources={resourceOptions}
+          fallbackTitle={title}
           activeUrl={src}
           activeFormat={playableFormatForUrl(src, format)}
           onClose={() => setResourceMenuOpen(false)}
@@ -2499,6 +2500,7 @@ function InkVideoPlayerReady({
     {typeof document !== 'undefined' && createPortal(
       <MediaResourceOverlay
         resources={resourceOptions}
+        fallbackTitle={title}
         open={resourceMenuOpen}
         immersive={immersive}
         suppressFab={hideResourceFab}

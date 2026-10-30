@@ -34,11 +34,14 @@ async function manifestBodies(
   observations: MediaObservation[],
   signal?: AbortSignal,
 ): Promise<Map<string, string>> {
-  const manifests = collectMediaCandidates(observations)
-    .filter((candidate) => candidate.format === 'hls' || candidate.format === 'dash')
-    .slice(0, 2)
   const result = new Map<string, string>()
-
+  for (const observation of observations) {
+    if (observation.url && observation.bodyText && observation.bodyText.length <= MAX_MANIFEST_BYTES
+      && /^(?:#EXTM3U|<MPD|<\?xml)/.test(observation.bodyText.trim())) result.set(observation.url, observation.bodyText)
+  }
+  const manifests = collectMediaCandidates(observations)
+    .filter((candidate) => !result.has(candidate.originalUrl) && (candidate.format === 'hls' || candidate.format === 'dash'))
+    .slice(0, 2)
   await Promise.all(
     manifests.map(async (candidate) => {
       try {
@@ -169,14 +172,18 @@ function descriptorSignature(descriptor: MediaDescriptor): string {
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, value]) => [key, value])
   return JSON.stringify([
+    descriptor.title, descriptor.titleSource, descriptor.pageTitle, descriptor.fileName,
+    descriptor.playerSource, descriptor.contentId, descriptor.fromIframe, descriptor.isAd,
     descriptor.type,
     descriptor.url,
     descriptor.drm,
     headerSignature(descriptor.requestHeaders),
-    descriptor.videoTracks.map((track) => track.url || ''),
-    descriptor.audioTracks.map((track) => track.url || ''),
-    descriptor.subtitles.map((track) => track.url || ''),
+    descriptor.videoTracks,
+    descriptor.audioTracks,
+    descriptor.subtitles,
     descriptor.resources?.map((resource) => [
+      resource.title, resource.titleSource, resource.pageTitle, resource.fileName, resource.playerSource,
+      resource.contentId, resource.videoTracks, resource.audioTracks, resource.subtitles, resource.fromIframe, resource.isAd,
       resource.type,
       resource.url,
       resource.drm,

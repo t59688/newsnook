@@ -19,7 +19,7 @@ import {
   normalizeBrowserShortcuts, normalizeBrowserVisits, normalizeHiddenBrowserHosts,
   removeSiteHistory, saveBrowserVisit, type BrowserShortcut, type BrowserVisit,
 } from './browserHistory'
-import { browserMediaResources, browserResourceTitle } from './browserMedia'
+import { browserMediaResources, browserResourceTitle, browserResourceDetails, browserResourceTracks } from './browserMedia'
 import { loadBrowserBookmarks, saveBrowserBookmarks, toggleBrowserBookmark, type BookmarkScope } from './browserBookmarks'
 import {
   BROWSER_ENGINES, BROWSER_KEYS, browserHostLabel, readBrowserList, readBrowserPreference,
@@ -167,7 +167,10 @@ export function BrowserWorkspace({
   // Scope follows the current recording mode. A private save never changes a public star.
   const marked = (privateMode ? privateMarks : marks).some(item => item.url === current)
   const currentMedia = session.mediaTabs.get(session.state.tabId ?? -1)
-  const resources = useMemo(() => browserMediaResources(currentMedia?.observations ?? []), [currentMedia])
+  const mediaEntries = useMemo(() => browserMediaResources(currentMedia?.observations ?? [], { includeBlocked: true }), [currentMedia])
+  const resources = useMemo(() => mediaEntries.filter(item => !item.isAd && !item.drm), [mediaEntries])
+  const blockedResources = active && browserMediaMatchesPage(current, currentMedia?.pageUrl)
+    ? mediaEntries.filter(item => item.isAd || item.drm) : []
   const currentResources = active && browserMediaMatchesPage(current, currentMedia?.pageUrl) ? resources : []
   const discoveryCount = playing ? 0 : currentResources.length
   const recent = useMemo(() => compactRecentSites(history, hiddenHosts, 4), [history, hiddenHosts])
@@ -600,10 +603,15 @@ export function BrowserWorkspace({
       </div>
       {currentResources.length ? <ul className="divide-y divide-haze">{currentResources.map(resource => <li key={resource.id || resource.url} className="flex items-center gap-3 py-4">
         <Film size={21} className="shrink-0 text-paper-muted"/>
-        <div className="min-w-0 flex-1"><p className="text-[14px] font-medium">{browserResourceTitle(resource)}</p><p className="mt-1 truncate text-[12px] text-paper-muted">{browserHostLabel(resource.url) || browserHostLabel(resource.pageUrl || '')}</p></div>
+        <MediaResourceSummary resource={resource}/>
         <button type="button" aria-label={'播放 ' + browserResourceTitle(resource)} onClick={() => {setPlayError(''); setPlaying({resource, resources:currentResources, title, selection:++playbackSelection.current, tabId:session.state.tabId}); setPanel(null)}}
           className="browser-media-play" title="播放"><Play size={20} strokeWidth={1.9} aria-hidden="true"/></button>
       </li>)}</ul> : <div className="flex min-h-40 flex-col items-center justify-center text-paper-muted"><Film size={30} strokeWidth={1.4}/><p className="mt-4 text-[14px]">暂未发现可播放资源</p></div>}
+      {!!blockedResources.length && <details className="mt-3 border-t border-haze pt-3 text-[13px] text-paper-muted">
+        <summary className="min-h-11 cursor-pointer py-3">已排除 {blockedResources.length} 个疑似广告或受保护资源</summary>
+        <p className="mb-2 text-[12px] leading-relaxed">广告标记仅供参考，无法识别所有广告。</p>
+        <ul className="divide-y divide-haze">{blockedResources.map(resource => <li key={resource.id || resource.url} className="flex gap-3 py-4"><Film size={21} className="shrink-0"/><MediaResourceSummary resource={resource}/></li>)}</ul>
+      </details>}
     </BrowserSheet>}
 
     {placeAction && <BrowserSheet title={placeAction.kind === 'history' ? browserHostLabel(placeAction.entry.url) : shortcuts[placeAction.index]?.name || '快捷方式'} onClose={() => setPlaceAction(null)}>
@@ -676,4 +684,13 @@ function ActionRow({icon: Icon, label, onClick, disabled = false}: {icon: typeof
   return <button type="button" disabled={disabled} onClick={onClick} className="flex min-h-14 w-full items-center gap-3 rounded-lg px-1 py-3 text-left text-[14px] text-paper disabled:opacity-30 active:bg-haze">
     <Icon size={19} strokeWidth={1.7} className="text-paper-muted"/><span className="min-w-0 flex-1">{label}</span><ChevronRight size={17} className="text-paper-faint"/>
   </button>
+}
+
+function MediaResourceSummary({resource}: {resource: MediaResourceDescriptor}) {
+  const tracks = browserResourceTracks(resource)
+  return <div className="min-w-0 flex-1">
+    <p className="line-clamp-2 break-words text-[14px] font-medium leading-relaxed text-paper">{browserResourceTitle(resource)}</p>
+    <p className="mt-1 break-words text-[12px] leading-relaxed text-paper-muted">{browserResourceDetails(resource).join(' · ')}</p>
+    {!!tracks.length && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] leading-relaxed text-paper-muted" aria-label={resource.videoTracks.length > 1 ? '同一视频的清晰度选项' : '媒体轨道'}>{tracks.map((detail, index) => <span key={index}>{detail}</span>)}</div>}
+  </div>
 }

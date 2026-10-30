@@ -151,4 +151,25 @@ public class BrowserMediaCaptureLifecycleTest {
             view.destroy();
         }
     }
+    @Test public void lateMetadataUpdatesPublishWithoutRepeatingUnchangedSnapshots() throws Exception {
+        String pageUrl = "https://example.com/watch";
+        String url = "https://media.example.com/clip.mp4?signature=keep";
+        DeferredWebView view = new DeferredWebView(RuntimeEnvironment.getApplication());
+        List<JSONObject> observations = new ArrayList<>();
+        BrowserMediaCapture capture = new BrowserMediaCapture(view, pageUrl, observations::add, (page, reset) -> {});
+        try {
+            capture.scanNow();
+            view.pending.onReceiveValue(probeResult(pageUrl, url));
+            JSONObject rich = new JSONObject().put("source", "dom").put("url", url).put("pageUrl", pageUrl)
+                .put("mimeType", "video/mp4").put("title", "Actual video").put("titleSource", "player").put("height", 1080);
+            String response = JSONObject.quote(new JSONObject().put("url", pageUrl).put("events", new JSONArray().put(rich)).toString());
+            capture.scanNow(); view.pending.onReceiveValue(response);
+            assertEquals(2, observations.size());
+            assertEquals("Actual video", observations.get(1).getString("title"));
+            assertEquals(url, observations.get(1).getString("url"));
+            capture.scanNow(); view.pending.onReceiveValue(response);
+            assertEquals(2, observations.size());
+        } finally { capture.close(); view.destroy(); }
+    }
+
 }

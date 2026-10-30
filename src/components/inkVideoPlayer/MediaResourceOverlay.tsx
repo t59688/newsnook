@@ -7,6 +7,7 @@ import { createContext, useContext, useEffect, type ReactNode, type Ref } from '
 import { ChevronLeft, ListVideo } from 'lucide-react'
 
 import type { MediaResourceDescriptor } from '../../features/mediaSniffer/types'
+import { mediaResourceDetails, mediaResourceFormatLabel, mediaResourceTitle, mediaResourceTracks } from '../../features/mediaSniffer/presentation'
 import { lockBodyScroll } from '../../lib/bodyScrollLock'
 import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
 import { playbackIdentity } from './lifecycle'
@@ -30,12 +31,6 @@ export function MediaResourcePageProvider({
   )
 }
 
-function resourceLabel(resource: MediaResourceDescriptor): string {
-  if (resource.type === 'hls') return 'HLS'
-  if (resource.type === 'dash') return 'DASH'
-  return 'MP4'
-}
-
 function isSameResource(
   left: MediaResourceDescriptor,
   right: MediaResourceDescriptor,
@@ -47,17 +42,22 @@ function MediaResourceRow({
   resource,
   index,
   active = false,
+  fallbackTitle,
   onSelect,
 }: {
   resource: MediaResourceDescriptor
   index: number
   active?: boolean
+  fallbackTitle?: string
   onSelect: () => void
 }) {
-  const detail = resource.videoTracks.find((track) => track.width || track.height)
+  const title = mediaResourceTitle(resource, index + 1, fallbackTitle)
+  const details = mediaResourceDetails(resource, fallbackTitle)
+  const tracks = mediaResourceTracks(resource)
   return (
     <button
       type="button"
+      aria-label={`选择视频资源：${title}`}
       aria-current={active ? 'true' : undefined}
       onClick={onSelect}
       className={`ink-player-source-list-row flex w-full items-center gap-2.5 px-5 py-3.5 text-left text-paper transition-colors ${
@@ -72,15 +72,11 @@ function MediaResourceRow({
         {index + 1}
       </span>
       <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5 text-[13px]">
-          <span className="font-medium">{resourceLabel(resource)}</span>
+        <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px]">
+          <span className="min-w-0 break-words font-medium text-paper">{title}</span>
+          <span className="rounded border border-paper/15 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-paper/65">{mediaResourceFormatLabel(resource)}</span>
           {resource.isAd && (
-            <span className="rounded bg-cinnabar/20 px-1 text-[9px] text-cinnabar-soft">广告</span>
-          )}
-          {detail && (
-            <span className="text-paper/50">
-              {detail.width || '?'}×{detail.height || '?'}
-            </span>
+            <span className="rounded bg-cinnabar/20 px-1.5 py-0.5 text-[9px] text-cinnabar-soft">疑似广告</span>
           )}
           {active && (
             <span className="rounded-full border border-paper/25 px-1.5 py-0.5 text-[9px] leading-none text-paper/85">
@@ -88,7 +84,12 @@ function MediaResourceRow({
             </span>
           )}
         </span>
-        <span className="mt-0.5 block truncate text-[11px] text-paper/50">{resource.url}</span>
+        <span className="mt-1 block break-words text-[10px] leading-relaxed text-paper/50">{details.join(' · ')}</span>
+        {tracks.length > 0 && (
+          <span className="mt-1.5 flex flex-wrap gap-x-2 gap-y-1 text-[10px] leading-relaxed text-paper/70">
+            {tracks.map((track, trackIndex) => <span key={trackIndex}>{track}</span>)}
+          </span>
+        )}
       </span>
     </button>
   )
@@ -96,6 +97,7 @@ function MediaResourceRow({
 
 export function MediaResourceOverlay({
   resources,
+  fallbackTitle,
   open,
   immersive,
   suppressFab = false,
@@ -105,6 +107,7 @@ export function MediaResourceOverlay({
   onSelect,
 }: {
   resources: MediaResourceDescriptor[]
+  fallbackTitle?: string
   open: boolean
   immersive: boolean
   suppressFab?: boolean
@@ -207,6 +210,7 @@ export function MediaResourceOverlay({
                   <MediaResourceRow
                     resource={resource}
                     index={index}
+                    fallbackTitle={resources.length === 1 ? fallbackTitle : undefined}
                     onSelect={() => selectResource(resource)}
                   />
                 </li>
@@ -296,6 +300,7 @@ export function MediaResourceScreen({
                 <MediaResourceRow
                   resource={resource}
                   index={index}
+                  fallbackTitle={resources.length === 1 ? title : undefined}
                   active={isSameResource(resource, activeResource)}
                   onSelect={() => onSelect(resource)}
                 />

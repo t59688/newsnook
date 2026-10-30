@@ -122,6 +122,7 @@
 .ink-player-source-copy { display:flex; min-width:0; flex:1; flex-direction:column; gap:5px; }
 .ink-player-source-copy strong { font-size:13px; font-weight:550; }
 .ink-player-source-copy small { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; color:var(--ink-player-muted); }
+.ink-player-source-copy .ink-player-source-track-details { overflow:visible; white-space:normal; overflow-wrap:anywhere; line-height:1.5; color:rgba(246,244,240,.76); }
 .ink-player-source-selected { flex-shrink:0; color:var(--ink-player-accent); }
 /* HUD — audio/brightness feedback hugs the edges rather than covering the video. */
 .ink-gesture-notice {

@@ -9,8 +9,8 @@ import androidx.webkit.ScriptHandler;
 import androidx.webkit.WebViewCompat;
 import androidx.webkit.WebViewFeature;
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
@@ -33,7 +33,7 @@ final class BrowserMediaCapture {
 
     private static final class Page {
         final JSONArray networkEvents = new JSONArray();
-        final Set<String> seen = new HashSet<>();
+        final Map<String, String> seen = new HashMap<>();
         final MediaSnifferPlugin.LiveProbeQueue probes;
         volatile String url;
         int emitted;
@@ -183,7 +183,13 @@ final class BrowserMediaCapture {
             + "\u0001" + observation.optString("mimeType") + "\u0001"
             + observation.optString("mseMimeType") + "\u0001"
             + observation.optString("pageUrl") + "\u0001" + observation.optString("drmKeySystem");
-        if (!window.seen.add(key)) return;
+        // Timestamp changes every scan; compare only useful metadata/body content.
+        String signature = key + observation.optString("title") + observation.optString("titleSource")
+            + observation.optString("pageTitle") + observation.optString("height") + observation.optString("width")
+            + observation.optString("bitrate") + observation.optString("codecs") + observation.optString("isAd")
+            + observation.optString("bodyText");
+        if (signature.equals(window.seen.get(key))) return;
+        window.seen.put(key, signature);
         window.emitted++;
         onObservation.accept(observation);
     }
