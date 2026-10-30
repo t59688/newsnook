@@ -68,3 +68,12 @@
 - 逻辑 URI 和普通网站自动搜索仅使用默认公共实例；用户显式输入/绑定的自定义实例只在同一自定义信任组回退。带 token、cookie、未知查询字段等敏感路由必须绑定实例，不自动扇出到公共服务器。
 - 可用频道支持逐条勾选、一次批量订阅。App 层按当前预设复核及去重后，一次写入自定义订阅、分类和综合启用状态；失败不提交中间状态。已订阅来源保留原有实例更换、暂停、同步、备份及刷新路径。
 - 默认公共实例增加 OrigRead 引用的 Virworks、owo.nz 和无敌飞雪，仍属第三方，无法保证每个站点/地区都可访问；正式安装后的性能/网络需在 Android 真机及生产 Web 验收。所有检索与探测仍是客户端请求，不增加 NewsNook 服务端 RSS 抓取。
+
+## 2026-10-30：分享内容链接识别发布者 / 频道
+
+- 「通过网站订阅」支持粘贴帖子、视频和文章的分享 URL，不再只接受作者主页。采用独立的 `features/feedDiscovery/contentLink.ts` 解析注册层：只有 URL 明确包含发布者 ID/handle，才直接生成对应发布者的 RSSHub 逻辑路由（如 `weibo.com/7270676547/RoTHkdXwd` → `/weibo/user/7270676547`；`x.com/handle/status/<id>` → `/twitter/user/handle`）。帖子 ID 不会被当作用户 ID；未知链接不得推测作者。
+- 不能从 URL 中得知作者时，复用原站 RSS 检测已经拉取的 HTML，只从 `rel=author`、`article:author` 和 JSON-LD 中明确标识的文章/视频作者 URL 提取候选，再使用现有 RSSHub Radar 规则发现订阅路由。例如 B 站视频 HTML 若提供 `https://space.bilibili.com/<uid>` 作者链接，就可以发现 UP 主的 RSSHub 路由。未提供可信作者 URL 的 B 站视频、知乎回答等不会强行转换。
+- 元数据扫描只处理前 512KB HTML、最多 8 个 JSON-LD 块、最多 3 条作者链接；仅接受同站点/预定义官方同品牌域名的公开作者链接，排除 URL 凭据、异常端口、跨域链接和包含查询凭据的作者链接。仅解析文本/结构化 JSON，不执行网页脚本、不把 Cookie 传给公共 RSSHub。普通网站仍能发现原生 RSS、使用 Feedsearch 和 Radar；远端索引失败不隐藏从 URL/可信元数据独立确认的作者身份。
+- 发现页优先展示「从分享链接识别到的发布者 / 频道」，而后是「原站订阅与网址检测」和普通「RSSHub 转换」。最终 RSSHub 路由、原站 Feed URL 去重；自动探测仅验证候选，必须用户点击订阅后才持久化，保存格式和预设/分类/暂停/备份/同步流程不变。
+- 不新增新依赖、后台服务或长期搜索缓存。公共 RSSHub 实例是否支持微博、X 等受目标平台反爬与实例登录配置影响；预览失败时按现有规则重试、更换实例或明确选择未验证后保存。未能从网页元数据可靠确认作者时仅显示原网页的常规 RSS 发现结果。
+- 单元/集成测试：`scripts/content-link-discovery.test.ts` 验证微博/X 分享链接、B 站/知乎的作者元数据、假域名/恶意路径、重复结果、Radar/Feedsearch 失败后的回退、原生 RSS 兼容与取消；`scripts/rsshub-ui.test.tsx` 增加「微博分享链接 → 实例预览 → 订阅」全流程。并入 `npm run test:feed-discovery`。

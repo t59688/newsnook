@@ -138,3 +138,8 @@ const failedTwitter = await probeRssHubRoute('/twitter/user/Swang1', instances, 
 assert.equal(failedTwitter.state, 'unavailable')
 assert.match(failedTwitter.detail ?? '', /多个实例|已尝试/)
 assert.match(failedTwitter.detail ?? '', /登录凭据/)
+const failedWeibo = await probeRssHubRoute('/weibo/user/7270676547', instances, new AbortController().signal, undefined, async (url) => ({
+  ok: false, feedUrl: url, kind: 'unknown', message: 'HTTP 503', retryable: true, checkedAt: 123,
+}))
+assert.match(failedWeibo.detail ?? '', /微博内容/)
+assert.match(failedWeibo.detail ?? '', /登录凭据或 Cookie/)

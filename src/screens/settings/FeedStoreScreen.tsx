@@ -323,8 +323,15 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     return duplicate ? duplicate.kind === 'builtin' ? '已内置' : duplicate.source.paused ? '已暂停' : '已订阅' : null
   }
   const orderedResults = discoveryMode === 'website'
-    ? [...results.filter((item) => item.type === 'direct'), ...results.filter((item) => item.type === 'rsshub')]
+    ? [
+        ...results.filter((item) => item.discoveryContext === 'author-from-content'),
+        ...results.filter((item) => item.type === 'direct'),
+        ...results.filter((item) => item.type === 'rsshub' && item.discoveryContext !== 'author-from-content'),
+      ]
     : results
+  const resultGroup = (item: FeedDiscoveryEntry) => item.discoveryContext === 'author-from-content'
+    ? '从分享链接识别到的发布者 / 频道'
+    : item.type === 'rsshub' ? 'RSSHub 转换' : '原站订阅与网址检测'
   const websiteInputInvalid = discoveryMode === 'website' && query.trim().length > 4 && !isWebsiteUrl(query)
   const canSubscribe = Boolean(preview?.ok) && !previewing
   const canForceAdd = Boolean(preview && !preview.ok && preview.retryable && !previewing)
@@ -376,7 +383,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
         onSubmit={(event) => { event.preventDefault(); if (tab === 'discover') void search() }}
       >
         <label htmlFor="feed-store-search" className="block font-mono text-[10px] tracking-[0.12em] text-paper-faint">
-          {tab === 'subscribed' ? '搜索已订阅' : discoveryMode === 'website' ? '粘贴网站或作者主页链接' : '输入名称或关键词'}
+          {tab === 'subscribed' ? '搜索已订阅' : discoveryMode === 'website' ? '粘贴网站、内容或作者主页链接' : '输入名称或关键词'}
         </label>
         <div className="flex min-h-12 items-center gap-1 rounded-2xl border border-haze bg-ink-raised/80 px-2.5 shadow-[var(--shadow-lift)] focus-within:border-cinnabar/45">
           {tab === 'discover' && discoveryMode === 'website'
@@ -386,7 +393,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             id="feed-store-search"
             value={query}
             onChange={(event) => changeQuery(event.target.value)}
-            placeholder={tab === 'subscribed' ? '搜索已保存的订阅' : discoveryMode === 'website' ? '网站主页或 rsshub://bilibili/…' : '例如 Bilibili、人工智能、汽车'}
+            placeholder={tab === 'subscribed' ? '搜索已保存的订阅' : discoveryMode === 'website' ? '分享链接、网站或 rsshub://bilibili/…' : '例如 Bilibili、人工智能、汽车'}
             autoComplete="off"
             spellCheck={false}
             inputMode={tab === 'discover' && discoveryMode === 'website' ? 'url' : 'search'}
@@ -413,7 +420,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
           <>
             <p className="px-0.5 text-[11px] leading-relaxed text-paper-faint">
               {discoveryMode === 'website'
-                ? '粘贴网站、栏目或 UP 主的主页网址，自动查找原站 RSS 和 RSSHub 转换方式。'
+                ? '粘贴微博、文章、视频分享链接或作者主页，自动寻找可订阅的发布者、频道和原站 RSS。'
                 : '通过 Feedly 搜索已有 RSS 源；订阅具体网站或 UP 主，请选择「通过网站订阅」。'}
             </p>
             {websiteInputInvalid ? (
@@ -492,7 +499,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
               <div className="overflow-hidden rounded-2xl border border-haze bg-ink-raised/70 shadow-[var(--shadow-lift)]">
                 {orderedResults.map((item, index) => {
                   const badge = duplicateLabel(item)
-                  const firstOfGroup = discoveryMode === 'website' && (index === 0 || orderedResults[index - 1]?.type !== item.type)
+                  const group = resultGroup(item)
+                  const firstOfGroup = discoveryMode === 'website' && (index === 0 || resultGroup(orderedResults[index - 1]) !== group)
                   const hostname = candidateHost(item)
                   const check = item.routePath ? probes[item.routePath] : undefined
                   return (
@@ -500,10 +508,10 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                       {firstOfGroup ? (
                         <div className="flex items-center justify-between gap-3 border-b border-haze/70 bg-ink/20 px-4 py-2.5">
                           <span className="text-[11.5px] font-medium text-paper-muted">
-                            {item.type === 'rsshub' ? 'RSSHub 转换' : '原站订阅与网址检测'}
+                            {group}
                           </span>
                           <span className="font-mono text-[10.5px] text-paper-faint">
-                            {results.filter((entry) => entry.type === item.type).length} 项
+                            {orderedResults.filter((entry) => resultGroup(entry) === group).length} 项
                           </span>
                         </div>
                       ) : null}
@@ -527,7 +535,9 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                             ) : null}
                             {badge ? <span className="mt-0.5 shrink-0 rounded-full bg-cinnabar/10 px-2 py-0.5 text-[10px] text-cinnabar-soft">{badge}</span> : null}
                           </span>
-                          {item.description && item.type !== 'rsshub' ? (
+                          {item.discoveryContext === 'author-from-content' ? (
+                            <span className="mt-1 block text-[11px] leading-relaxed text-paper-muted">根据分享内容中的作者信息识别；订阅后持续获取该发布者的更新。</span>
+                          ) : item.description && item.type !== 'rsshub' ? (
                             <span className="mt-1 line-clamp-1 block text-[11.5px] leading-relaxed text-paper-muted">{item.description}</span>
                           ) : null}
                           <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[10.5px] text-paper-faint">

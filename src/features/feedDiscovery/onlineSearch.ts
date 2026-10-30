@@ -1,9 +1,9 @@
 import { fetchAbsoluteText } from '../../lib/http'
 import { validateFeedUrl } from './routeBuilder'
-import { discoverSiteFeeds } from './siteDiscovery'
-import { discoverRssHubRadar } from '../rsshub/radar'
+import { discoverSiteFeedsWithAuthors } from './siteDiscovery'
+import { resolveContentSubscriptionTarget, type ContentSubscriptionTarget } from './contentLink'
+import { loadRssHubRadarCatalog, matchRssHubRadar } from '../rsshub/radar'
 import { parseRssHubLogicalInput, describeRssHubRoute } from '../rsshub/input'
-import { twitterProfileRssHubRoute } from '../rsshub/twitter'
 import { DEFAULT_RSSHUB_INSTANCES, validateRssHubRoutePath, type RssHubInstance } from '../rsshub/instances'
 import type { FeedDiscoveryEntry } from './types'
 
@@ -12,6 +12,25 @@ export function websiteSearchUrl(query: string): string | null {
   if (/^https?:\/\//i.test(value)) return validateFeedUrl(value)
   if (/^[\w.-]+\.[a-z]{2,}(?:[/:?#].*)?$/i.test(value)) return validateFeedUrl('https://' + value)
   return null
+}
+
+function contentTargetEntry(target: ContentSubscriptionTarget, fromContent: boolean): FeedDiscoveryEntry {
+  return {
+    providerId: 'rsshub', entryId: 'rsshub:content:' + target.routePath,
+    type: 'rsshub', title: target.title, categories: [],
+    siteUrl: target.profileUrl, routeTemplate: target.routePath, routePath: target.routePath,
+    parameters: {}, missingParameters: [],
+    discoveryContext: fromContent ? 'author-from-content' : undefined,
+    statusNote: '由公开链接中的作者身份推导；订阅前必须检测 RSSHub 实际可用性',
+  }
+}
+
+function originalUrlCandidate(siteUrl: string): FeedDiscoveryEntry {
+  return {
+    providerId: 'direct-discovery', entryId: siteUrl, type: 'direct', title: '检测输入的网址',
+    categories: [], feedUrl: siteUrl, siteUrl,
+    statusNote: '原网页不一定提供 RSS，只有检测为有效订阅源时才可保存',
+  }
 }
 
 /** Query the remote index; retain only these bounded results in the caller's UI state. */
@@ -37,17 +56,14 @@ export async function searchOnlineFeeds(query: string, signal?: AbortSignal, ins
     }
     const siteUrl = websiteSearchUrl(value)
     if (siteUrl) {
-      // X has no native feed and its public page may require login. Resolve an
-      // explicit profile URL locally instead of treating its HTML as a feed.
-      const twitter = twitterProfileRssHubRoute(siteUrl)
-      if (twitter) {
-        return [{
-          providerId: 'rsshub', entryId: 'rsshub:twitter:' + twitter.handle.toLowerCase(),
-          type: 'rsshub', title: `X / Twitter · @${twitter.handle}`,
-          categories: [], siteUrl, routeTemplate: twitter.routePath,
-          routePath: twitter.routePath, parameters: {}, missingParameters: [],
-          statusNote: 'X 不提供官方 RSS；正在检测可用 RSSHub 服务',
-        }]
+      // Identity explicitly encoded in a profile/post URL requires no scraping
+      // or remote catalog. Never conflate the post id with the creator id.
+      const contentTarget = resolveContentSubscriptionTarget(siteUrl)
+      if (contentTarget) {
+        return deduplicateEntries([
+          contentTargetEntry(contentTarget, contentTarget.source === 'post'),
+          ...(contentTarget.source === 'post' ? [originalUrlCandidate(siteUrl)] : []),
+        ])
       }
       // A pasted feed link for a configured RSSHub instance already contains a
       // logical route. Do not download the Radar catalog or probe the service
@@ -69,23 +85,38 @@ export async function searchOnlineFeeds(query: string, signal?: AbortSignal, ins
           statusNote: instance.enabled ? '已识别 RSSHub 路由，订阅前仍需实际预览' : '对应实例当前已停用，请先在实例管理中启用',
         }]
       }
-      // Remote Feedsearch and RSSHub Radar fail independently. One unavailable
-      // service must not hide candidates discovered by the other.
+      // Fetch the source HTML and Radar catalog concurrently. The HTML is
+      // already fetched for native feed discovery; reuse it for structured
+      // author links instead of making an extra request to an untrusted page.
       const [direct, radar] = await Promise.allSettled([
-        discoverSiteFeeds(siteUrl, controller.signal),
-        discoverRssHubRadar(siteUrl, instances, controller.signal),
+        discoverSiteFeedsWithAuthors(siteUrl, controller.signal),
+        loadRssHubRadarCatalog(controller.signal),
       ])
       if (controller.signal.aborted) throw new DOMException('Aborted', 'AbortError')
-      const entries = direct.status === 'fulfilled' ? direct.value : []
-      const converted = radar.status === 'fulfilled' ? radar.value : []
-      const radarFailed = radar.status === 'rejected'
-      // The entered URL is only a detection candidate: never auto-subscribe HTML.
+      const entries = direct.status === 'fulfilled' ? direct.value.feeds : []
+      const authorUrls = direct.status === 'fulfilled' ? direct.value.authorUrls : []
+      const rules = radar.status === 'fulfilled' ? radar.value : null
+      const converted = rules ? matchRssHubRadar(siteUrl, rules, instances) : []
+      const authorFeeds: FeedDiscoveryEntry[] = []
+      // Content-page metadata is evidence of an author link, not an RSS URL.
+      // Resolve profiles through known identity resolvers or existing Radar
+      // declarations. Without either, do not manufacture a subscription.
+      for (const authorUrl of authorUrls) {
+        if (authorFeeds.length >= 8) break
+        const target = resolveContentSubscriptionTarget(authorUrl)
+        if (target?.routePath) authorFeeds.push(contentTargetEntry(target, true))
+        else if (rules) authorFeeds.push(...matchRssHubRadar(authorUrl, rules, instances)
+          .slice(0, 8 - authorFeeds.length)
+          .map((candidate) => ({ ...candidate, discoveryContext: 'author-from-content' as const })))
+      }
+      // Keep native feeds and the user's original URL ahead of broad Radar
+      // matches, even when one page declares many author-related routes.
+      // The original HTML remains a detection candidate, never an RSS feed.
       return deduplicateEntries([
-        ...entries.slice(0, 18), ...converted, {
-          providerId: 'direct-discovery', entryId: siteUrl, type: 'direct', title: '检测输入的网址',
-          categories: [], feedUrl: siteUrl, siteUrl,
-          statusNote: radarFailed ? 'RSSHub 规则服务暂不可用，仍可检测原始网址' : undefined,
-        }, ...entries.slice(18),
+        ...authorFeeds, ...entries.slice(0, 18),
+        { ...originalUrlCandidate(siteUrl),
+          statusNote: radar.status === 'rejected' ? 'RSSHub 规则服务暂不可用，仍可检测原始网址' : undefined },
+        ...converted, ...entries.slice(18),
       ])
     }
     const endpoint = new URL('https://cloud.feedly.com/v3/search/feeds')
@@ -123,7 +154,9 @@ export async function searchOnlineFeeds(query: string, signal?: AbortSignal, ins
 function deduplicateEntries(entries: FeedDiscoveryEntry[]): FeedDiscoveryEntry[] {
   const seen = new Set<string>()
   return entries.filter((entry) => {
-    const key = entry.type === 'rsshub' ? entry.entryId : entry.feedUrl
+    const key = entry.type === 'rsshub'
+      ? 'rsshub:' + (entry.routePath ?? entry.routeTemplate + ':' + JSON.stringify(entry.parameters ?? {}))
+      : entry.feedUrl
     if (!key || seen.has(key)) return false
     seen.add(key)
     return true

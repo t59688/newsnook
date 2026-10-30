@@ -149,6 +149,36 @@ try {
   await click(findButton('仍添加，稍后重试'))
   assert.equal((draft!.discovery as { verification: { status: string } }).verification.status, 'unverified')
   assert.equal((draft!.discovery as { routeKey: string }).routeKey, '/twitter/user/Swang1')
+
+  // A shared Weibo post must reveal its actual author, not treat the post id
+  // as a user id; the same preview/subscribe flow must remain in use.
+  const weiboPost = 'https://weibo.com/7270676547/RoTHkdXwd'
+  let weiboRequests = 0
+  globalThis.fetch = async (input) => {
+    const requested = String(input)
+    const wrapped = new URL(requested, 'https://news.example.net')
+    const target = wrapped.searchParams.get('url') ?? requested
+    if (target.includes('/weibo/user/7270676547')) {
+      weiboRequests++
+      return new Response('<rss version="2.0"><channel><title>微博博主动态</title><item><title>新微博</title><link>https://weibo.com/7270676547/RoTHkdXwd</link></item></channel></rss>')
+    }
+    throw new Error('Unexpected Weibo test request: ' + requested)
+  }
+  draft = undefined
+  await act(async () => { root.render(<FeedStoreScreen key="weibo-post-discovery" {...props} initialQuery={weiboPost} />) })
+  await click(findButton('查找订阅'))
+  assert.ok(document.body.textContent?.includes('从分享链接识别到的发布者 / 频道'))
+  assert.ok(document.body.textContent?.includes('微博博主 · 7270676547'))
+  const weiboResult = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes('微博博主 · 7270676547'))
+  assert.ok(weiboResult, 'post URL exposes a creator-subscription action')
+  await click(weiboResult as HTMLButtonElement)
+  assert.ok(document.body.textContent?.includes('https://rsshub.isrss.com/weibo/user/7270676547'))
+  await click(findButton('检测与预览'))
+  assert.ok(weiboRequests > 0)
+  assert.ok(document.body.textContent?.includes('本次检测成功'))
+  await click(findButton('订阅'))
+  assert.equal((draft!.discovery as { routeKey: string }).routeKey, '/weibo/user/7270676547')
+  assert.equal(draft!.siteUrl, 'https://weibo.com/u/7270676547')
 } finally {
   globalThis.fetch = originalFetch
   await act(async () => { root.unmount() })

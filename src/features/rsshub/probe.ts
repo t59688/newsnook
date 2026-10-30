@@ -93,10 +93,10 @@ export async function probeRssHubRoute(
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
     if (success) return success
     const detail = ctl.signal.aborted ? '检测超时，请重试或选择服务实例' : lastFailure.detail
-    const isTwitter = /^\/twitter\//.test(routePath)
+    const restrictedPlatform = /^\/twitter\//.test(routePath) ? 'X' : /^\/weibo\//.test(routePath) ? '微博' : null
     return { ...lastFailure, attempts,
-      detail: isTwitter && attempts > 1
-        ? `已尝试 ${attempts} 个实例，仍无法获取 X 内容（${detail}）。该路由可能需要 RSSHub 运营方配置 X 登录凭据`
+      detail: restrictedPlatform && attempts > 1
+        ? `已尝试 ${attempts} 个实例，仍无法获取${restrictedPlatform}内容（${detail}）。可能需要 RSSHub 实例配置平台登录凭据或 Cookie`
         : detail,
       ...(ctl.signal.aborted ? { failureKind: 'timeout' as const } : {}),
     }

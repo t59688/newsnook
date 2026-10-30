@@ -8,6 +8,8 @@ export interface FeedDiscoveryEntry {
   siteUrl?: string
   feedUrl?: string
   statusNote?: string
+  /** In-memory discovery provenance; never persisted as a subscription field. */
+  discoveryContext?: 'author-from-content'
   /** RSSHub Radar templates; missing values must be supplied before any HTTP request. */
   routeTemplate?: string
   routePath?: string
