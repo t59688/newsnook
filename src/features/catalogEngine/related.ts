@@ -1,6 +1,8 @@
 import { extractHeuristicCardCatalog } from './extractors/heuristicCards'
 import { extractJsonLdCatalog } from './extractors/jsonLd'
 import type { CatalogItem } from './types'
+import { catalogDocument } from './extractors/domCards'
+import { isCatalogContentUrl, isPlaybackControlAnchor, isPlaybackControlTitle } from './linkRoles'
 
 const DEFAULT_MAX_ITEMS = 12
 
@@ -26,6 +28,7 @@ function filterRelated(
   const seen = new Set<string>()
   const result: CatalogItem[] = []
   for (const item of items) {
+    if (!isCatalogContentUrl(item.originUrl) || isPlaybackControlTitle(item.title)) continue
     const key = canonicalUrl(item.originUrl)
     if (!key || excluded.has(key) || seen.has(key)) continue
     seen.add(key)
@@ -68,7 +71,13 @@ export function extractRelatedCatalog(
   const keep = (items: CatalogItem[]) =>
     items.filter((item) => isDetailRelatedItem(item, pageUrl)).slice(0, maxItems)
 
-  const heuristic = filterRelated(extractHeuristicCardCatalog(html, pageUrl), excluded)
+  // Remove controls before clustering: many episode links must not outvote real recommendations.
+  const document = catalogDocument(html)
+  for (const anchor of document.querySelectorAll('a[href]')) {
+    if (isPlaybackControlAnchor(anchor)) anchor.remove()
+  }
+  const contentHtml = document.toString()
+  const heuristic = filterRelated(extractHeuristicCardCatalog(contentHtml, pageUrl), excluded)
   if (heuristic.length >= 2) return keep(heuristic)
 
   const jsonLd = filterRelated(extractJsonLdCatalog(html, pageUrl), excluded)

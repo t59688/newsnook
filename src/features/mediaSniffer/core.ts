@@ -2,6 +2,8 @@ import { XMLParser } from 'fast-xml-parser'
 import { parseMediaApiBody, observeMediaApiPayload } from './apiParser'
 import { mediaDisplayText } from './metadata'
 import { parseHTML } from 'linkedom'
+import { playerDeclarationsInHtml } from './playerConfig'
+import { regexMatches } from '../../lib/regexMatches'
 
 import {
   DIRECT_MEDIA_EXT,
@@ -143,7 +145,7 @@ function absoluteUrl(value: string | undefined, baseUrl: string): string | undef
 function hlsAttributeMap(line: string): Record<string, string> {
   const attributes: Record<string, string> = {}
   const body = line.slice(line.indexOf(':') + 1)
-  for (const match of body.matchAll(/([A-Z0-9-]+)=("[^"]*"|[^,]*)/gi)) {
+  for (const match of regexMatches(body, /([A-Z0-9-]+)=("[^"]*"|[^,]*)/gi)) {
     attributes[match[1].toUpperCase()] = match[2].replace(/^"|"$/g, '')
   }
   return attributes
@@ -172,6 +174,7 @@ export function parseHlsManifest(text: string, manifestUrl: string): Pick<MediaD
         height: resolution ? Number(resolution[2]) : undefined,
         codecs: attrs.CODECS,
         groupId: attrs.AUDIO,
+        quality: attrs.NAME || (resolution ? `${resolution[2]}p` : undefined),
         ...(attrs.NAME ? { label: mediaDisplayText(attrs.NAME) } : {}),
         ...(attrs.SUBTITLES ? { subtitleGroupId: attrs.SUBTITLES } : {}),
       })
@@ -418,7 +421,7 @@ function walkPayload(value: unknown, pageUrl: string, observations: MediaObserva
     if (isHttpUrl(directValue) && mediaFormatFor(directValue) !== 'unknown') {
       addStaticObservation(observations, directValue, pageUrl)
     }
-    for (const match of value.slice(0, 1048576).matchAll(/https?:\\?\/\\?\/[^\s"'<>]+/gi)) {
+    for (const match of regexMatches(value.slice(0, 1048576), /https?:\\?\/\\?\/[^\s"'<>]+/gi)) {
       addStaticObservation(observations, match[0].replace(/\\\//g, '/'), pageUrl)
     }
     return
@@ -429,15 +432,17 @@ function walkPayload(value: unknown, pageUrl: string, observations: MediaObserva
     for (const item of value.slice(0, 512)) walkPayload(item, pageUrl, observations, seen, depth + 1, budget)
   } else {
     addStructuredPayloadObservation(value as Record<string, unknown>, pageUrl, observations)
-    for (const item of Object.values(value as Record<string, unknown>).slice(0, 512)) {
+    for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 512)) {
+      if (/^(?:url_next|next|nextUrl|next_url|playlist|related|recommendations?|ads?|advertising|poster|thumbnail|image|logo)$/i.test(key)) continue
       walkPayload(item, pageUrl, observations, seen, depth + 1, budget)
     }
   }
 }
 
 export function observeMediaInPayload(payload: unknown, pageUrl: string): MediaObservation[] {
-  if (typeof payload !== 'string') return observeMediaApiPayload(payload, pageUrl, 'static')
-  const observations = parseMediaApiBody(payload, pageUrl, 'static')
+  const observations = typeof payload === 'string'
+    ? parseMediaApiBody(payload, pageUrl, 'static')
+    : observeMediaApiPayload(payload, pageUrl, 'static')
   walkPayload(payload, pageUrl, observations, new Set(), 0, { nodes: 0 })
   return observations
 }
@@ -517,13 +522,14 @@ function macCmsPlaybackUrl(payload: unknown): string | undefined {
 
 export function observeMediaInHtml(html: string, pageUrl: string): MediaObservation[] {
   html = html.slice(0, 1048576)
-  const observations = observeMediaInPayload(html, pageUrl)
+  const observations = playerDeclarationsInHtml(html, pageUrl)
+    .flatMap(item => item.observation ? [item.observation] : [])
   const attribute = (tag: string, name: string): string | undefined =>
     tag.match(new RegExp(`\\b${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, 'i'))
       ?.slice(1)
       .find((value): value is string => value !== undefined)
 
-  for (const match of html.matchAll(/<(video|audio|source)\b[^>]*>/gi)) {
+  for (const match of regexMatches(html, /<(video|audio|source)\b[^>]*>/gi)) {
     const tag = match[0]
     const mimeType = attribute(tag, 'type')
     const mediaKind = match[1].toLowerCase() === 'audio' ? 'audio' : undefined
@@ -532,14 +538,14 @@ export function observeMediaInHtml(html: string, pageUrl: string): MediaObservat
       if (value) addStaticObservation(observations, value, pageUrl, mimeType, mediaKind)
     }
   }
-  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
+  for (const match of regexMatches(html, /<meta\b[^>]*>/gi)) {
     const tag = match[0]
     const property = (attribute(tag, 'property') || attribute(tag, 'name') || '').toLowerCase()
     if (!/^(?:og:video(?::url|:secure_url)?|twitter:player:stream)$/.test(property)) continue
     const value = attribute(tag, 'content')
     if (value) addStaticObservation(observations, value, pageUrl)
   }
-  for (const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+  for (const match of regexMatches(html, /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
       observations.push(...observeMediaInPayload(JSON.parse(match[1]), pageUrl))
     } catch {

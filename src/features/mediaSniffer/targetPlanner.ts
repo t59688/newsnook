@@ -1,7 +1,13 @@
+import { episodeIdentity } from './episodeIdentity'
+import { parseHTML } from 'linkedom'
+import { playerDeclarationsInHtml } from './playerConfig'
+import { isPlaybackControlAnchor, isCatalogContentUrl } from '../catalogEngine/linkRoles'
 import { collectMediaCandidates } from './core'
-import { isHttpUrl } from './classifier'
+import { discoverCmsPlayerHints } from './cmsAdapters'
+import { isHttpUrl, isLikelyAdMediaUrl } from './classifier'
 import { originOf } from './originHeaders'
 import type { MediaObservation } from './types'
+import { regexMatches } from '../../lib/regexMatches'
 
 const MAX_EMBEDDED_PAGES = 3
 const MAX_SECONDARY_TARGETS = 3
@@ -13,6 +19,8 @@ export type SniffTarget = {
   url: string
   referrer?: string
   budgetMs: number
+  /** Optional CMS playback-line label; never interpreted as verified resolution. */
+  label?: string
 }
 
 function uniqueUrls(urls: string[]): string[] {
@@ -33,11 +41,11 @@ function tagAttribute(tag: string, name: string): string | undefined {
 
 function effectivePageBaseUrl(html: string, pageUrl: string): string {
   const candidates: string[] = []
-  for (const match of html.matchAll(/<base\b[^>]*>/gi)) {
+  for (const match of regexMatches(html, /<base\b[^>]*>/gi)) {
     const href = tagAttribute(match[0], 'href')
     if (href) candidates.push(href)
   }
-  for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
+  for (const match of regexMatches(html, /<meta\b[^>]*>/gi)) {
     const tag = match[0]
     const property = (tagAttribute(tag, 'property') || tagAttribute(tag, 'name') || '').toLowerCase()
     if (property === 'og:url' || property === 'twitter:url') {
@@ -92,27 +100,34 @@ function collectJsonLdPlaybackUrls(payload: unknown, baseUrl: string, out: strin
 
 /** 从 HTML 提取 iframe 嵌入页作为独立嗅探目标。 */
 export function embeddedPageUrlsInHtml(html: string, pageUrl: string): string[] {
-  const urls: string[] = []
-  const seen = new Set<string>()
+  const { document } = parseHTML(html)
   const baseUrl = effectivePageBaseUrl(html, pageUrl)
-  for (const match of html.matchAll(/<iframe\b[^>]*>/gi)) {
-    const tag = match[0]
-    const value = tag
-      .match(/\b(?:src|data-src|data-video-src)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i)
-      ?.slice(1)
-      .find((item): item is string => item !== undefined)
-    if (!value) continue
-    try {
-      const url = new URL(value.replace(/&amp;/g, '&'), baseUrl)
-      if (!/^https?:$/.test(url.protocol) || seen.has(url.href)) continue
-      seen.add(url.href)
-      urls.push(url.href)
-      if (urls.length >= MAX_EMBEDDED_PAGES) break
-    } catch {
-      // A malformed embed cannot be loaded safely and is left to the fallback.
+  const candidates: Array<{ url: string; priority: number; index: number }> = []
+  const seen = new Set<string>()
+  for (const frame of document.querySelectorAll('iframe')) {
+    if (frame.closest('.advertising, .advertisement, .adsbygoogle, .ad-slot, [data-ad]')) continue
+    const identity = [frame.id, frame.getAttribute('name'), frame.getAttribute('class')].filter(Boolean).join(' ')
+    if (/(?:^|[\s_-])(?:ads?|advert|advertisement|tracking)(?:[\s_-]|$)/i.test(identity)) continue
+    if (frame.hasAttribute('width') && frame.hasAttribute('height')
+      && Number(frame.getAttribute('width')) <= 2 && Number(frame.getAttribute('height')) <= 2) continue
+    for (const attribute of ['src', 'data-src', 'data-video-src']) {
+      const value = frame.getAttribute(attribute)
+      if (!value) continue
+      try {
+        const url = new URL(value.replace(/&amp;/g, '&'), baseUrl)
+        if (!isUsablePlaybackUrl(url.href) || isLikelyAdMediaUrl(url.href)) continue
+        if (seen.has(url.href)) break
+        seen.add(url.href)
+        const priority = (frame.closest('#player, .player, .video-player, .dplayer, .artplayer-app') ? 40 : 0)
+          + (PLAYBACK_PATH_PATTERN.test(url.pathname) ? 20 : 0)
+          + (frame.hasAttribute('allowfullscreen') || attribute === 'data-video-src' ? 10 : 0)
+        candidates.push({ url: url.href, priority, index: candidates.length })
+        break
+      } catch { /* Lazy placeholders are not player documents; try the next attribute. */ }
     }
   }
-  return urls
+  return candidates.sort((left, right) => right.priority - left.priority || left.index - right.index)
+    .slice(0, MAX_EMBEDDED_PAGES).map(item => item.url)
 }
 
 /**
@@ -122,7 +137,7 @@ export function embeddedPageUrlsInHtml(html: string, pageUrl: string): string[] 
 export function secondaryPlaybackUrlsInHtml(html: string, pageUrl: string): string[] {
   const urls: string[] = []
   const baseUrl = effectivePageBaseUrl(html, pageUrl)
-  for (const match of html.matchAll(/<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
+  for (const match of regexMatches(html, /<script\b[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi)) {
     try {
       const payload: unknown = JSON.parse(match[1])
       const roots: unknown[] = Array.isArray(payload)
@@ -136,18 +151,34 @@ export function secondaryPlaybackUrlsInHtml(html: string, pageUrl: string): stri
     }
   }
   const pageOrigin = originOf(baseUrl)
-  for (const match of html.matchAll(/<a\b[^>]*\bhref\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/gi)) {
-    const value = match[1] ?? match[2] ?? match[3]
-    if (!value) continue
+  const { document } = parseHTML(html)
+  const currentEpisode = episodeIdentity(baseUrl) || episodeIdentity(pageUrl)
+  let selectedEpisode = currentEpisode
+  for (const anchor of document.querySelectorAll('a[href]')) {
+    const value = anchor.getAttribute('href')
+    const label = (anchor.textContent || '').trim()
+    if (/^(?:上一集|下一集|上一话|下一话|next(?: episode)?|previous(?: episode)?)$/i.test(label)) continue
+    if (!value || !value.trim() || value.trim().startsWith('#')
+      || anchor.closest('.related, .related-posts, .recommendations, .recommended, .guesslike')) continue
+    // A quality badge on a poster is not a playback-line control.
+    if (anchor.matches('.video-pic, .vod-pic, .thumbnail')
+      || anchor.querySelector('img, picture')
+      || /background-image\s*:/i.test(anchor.getAttribute('style') || '')) continue
     try {
       const absolute = new URL(value.replace(/&amp;/g, '&'), baseUrl)
-      if (!isUsablePlaybackUrl(absolute.href) || absolute.href === pageUrl) continue
+      const documentUrl = new URL(absolute.href)
+      documentUrl.hash = ''
+      const currentDocument = new URL(pageUrl)
+      currentDocument.hash = ''
+      if (!isUsablePlaybackUrl(absolute.href) || documentUrl.href === currentDocument.href || !isCatalogContentUrl(absolute.href)) continue
       if (pageOrigin && originOf(absolute.href) !== pageOrigin) continue
-      if (!PLAYBACK_PATH_PATTERN.test(absolute.pathname + absolute.search + absolute.hash)) continue
+      const explicitControl = isPlaybackControlAnchor(anchor)
+      if (!explicitControl && !PLAYBACK_PATH_PATTERN.test(absolute.pathname + absolute.search + absolute.hash)) continue
+      const episode = episodeIdentity(absolute.href)
+      if (episode && selectedEpisode && (episode.content !== selectedEpisode.content || episode.episode !== selectedEpisode.episode)) continue
+      if (episode && !selectedEpisode) selectedEpisode = episode
       urls.push(absolute.href)
-    } catch {
-      // 忽略无效链接
-    }
+    } catch { /* Invalid links must not enter a browser navigation queue. */ }
   }
   const seen = new Set<string>()
   const result: string[] = []
@@ -168,15 +199,19 @@ export function planSniffTargets(input: {
 }): SniffTarget[] {
   const totalTimeoutMs = input.totalTimeoutMs ?? 6000
   const iframeUrls = input.html ? embeddedPageUrlsInHtml(input.html, input.pageUrl) : []
+  const cmsHints = input.html ? discoverCmsPlayerHints(input.html, input.pageUrl) : []
+  const cmsUrls = cmsHints.map((hint) => hint.url)
+  const cmsLabelFor = (url: string) => cmsHints.find((hint) => hint.url === url)?.label
   const hasDirectMedia = collectMediaCandidates(input.staticObservations).some(
     (candidate) => candidate.format !== 'segment',
   )
 
   if (hasDirectMedia) {
-    const urls = uniqueUrls([...iframeUrls, input.pageUrl])
+    const urls = uniqueUrls([...iframeUrls, ...cmsUrls, input.pageUrl])
     return urls.map((url) => ({
       url,
       referrer: url === input.pageUrl ? undefined : input.pageUrl,
+      ...(cmsLabelFor(url) ? { label: cmsLabelFor(url) } : {}),
       // The service owns the global deadline and truncates fallback targets
       // after an earlier target consumes time. Keeping the full budget here
       // avoids starving the first, highest-confidence player page.
@@ -187,12 +222,14 @@ export function planSniffTargets(input: {
   const secondary = input.html
     ? secondaryPlaybackUrlsInHtml(input.html, input.pageUrl)
     : []
-  const playbackTargets = uniqueUrls([...iframeUrls, ...secondary])
+  const declared = input.html ? playerDeclarationsInHtml(input.html, input.pageUrl).filter(item => !item.observation).map(item => item.url) : []
+  const playbackTargets = uniqueUrls([...declared, ...iframeUrls, ...cmsUrls, ...secondary])
   if (playbackTargets.length) {
     return playbackTargets.map((url) => ({
       url,
       referrer: input.pageUrl,
       budgetMs: totalTimeoutMs,
+      ...(cmsLabelFor(url) ? { label: cmsLabelFor(url) } : {}),
     }))
   }
 

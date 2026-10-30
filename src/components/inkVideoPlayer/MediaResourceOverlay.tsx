@@ -287,7 +287,7 @@ export function MediaResourceScreen({
           <div className="sticky top-0 z-[1] flex items-end justify-between gap-3 border-b border-haze/60 bg-ink-raised/95 px-5 py-3 backdrop-blur-md">
             <div>
               <h2 className="font-display text-[15px] font-medium text-paper">嗅探资源</h2>
-              <p className="mt-0.5 text-[10px] text-paper/45">点选资源即可切换播放</p>
+              <p className="mt-0.5 text-[10px] text-paper/45">优先显示已确认画质；候选线路会标明待确认</p>
             </div>
             <span className="font-mono text-[10px] text-paper/45">{resources.length}</span>
           </div>

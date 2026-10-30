@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
-import { reduceLiveObservations } from '../src/features/mediaSniffer/liveCandidate'
+import { reduceLiveObservations, withQualityVariants } from '../src/features/mediaSniffer/liveCandidate'
 import {
   isFloatButtonEligible,
   shouldUseOriginPlayerSurface,
@@ -66,6 +66,19 @@ assert.equal(isFloatButtonEligible(ad), false)
 assert.equal(isFloatButtonEligible(hls), true)
 assert.equal(isFloatButtonEligible(unmarkedAdUrl), false)
 assert.equal(isFloatButtonEligible(drmHls), false)
+const qualityVariants = withQualityVariants(baseDescriptor({
+  type: 'hls',
+  url: 'https://cdn.example/master.m3u8',
+  videoTracks: [
+    { kind: 'video', url: 'https://cdn.example/1080.m3u8', height: 1080, width: 1920 },
+    { kind: 'video', url: 'https://cdn.example/720.m3u8', height: 720, width: 1280 },
+  ],
+}))
+assert.deepEqual(qualityVariants.resources?.map((resource) => resource.url), [
+  'https://cdn.example/master.m3u8',
+  'https://cdn.example/1080.m3u8',
+  'https://cdn.example/720.m3u8',
+], 'master playlist and verified quality variants should be selectable as separate resources')
 
 const withAdPrimaryResource = baseDescriptor({
   type: 'hls',
@@ -77,6 +90,14 @@ assert.equal(
   false,
   'resources[0] 为广告时不得亮浮钮',
 )
+const promotedCleanResource = reduceLiveObservations([
+  { url: 'https://cdn.example/ad/preroll.mp4', pageUrl: 'https://play.example/1', source: 'network', mimeType: 'video/mp4' },
+  { url: 'https://cdn.example/index.m3u8', pageUrl: 'https://play.example/1', source: 'network', mimeType: 'application/vnd.apple.mpegurl' },
+])
+assert.equal(promotedCleanResource?.url, 'https://cdn.example/index.m3u8',
+  'a clean manifest should be promoted over a preroll candidate when both are observed')
+assert.ok(!promotedCleanResource?.resources?.some((resource) => resource.isAd || /preroll/i.test(resource.url)),
+  'advertising candidates must not appear in the normal resource picker')
 
 assert.equal(
   reduceLiveObservations([
@@ -142,6 +163,14 @@ assert.equal(withHls?.url, 'https://cdn.example/index.m3u8')
     /visualViewport/,
     'must follow visualViewport shifts that move the media slot',
   )
+  assert.match(surface, /AUTOMATIC_DISCOVERY_BUDGET_MS/,
+    'automatic discovery must be bounded and expose assisted mode after timeout')
+  assert.match(surface, /手动辅助识别/,
+    'failed automatic discovery must offer explicit assisted playback')
+  assert.match(surface, /AUTOMATIC_DISCOVERY_BUDGET_MS/,
+    'automatic discovery must be bounded and expose assisted mode after timeout')
+  assert.match(surface, /手动辅助识别/,
+    'failed automatic discovery must offer explicit assisted playback')
 }
 
 {
@@ -181,6 +210,18 @@ assert.equal(withHls?.url, 'https://cdn.example/index.m3u8')
     /reloadLiveEntry/,
     'showing after blank-fallback must reload the origin entry URL',
   )
+  assert.match(plugin, /public void setLiveSessionInteractive/,
+    'origin page must stay hidden until explicit assisted mode')
+  assert.match(plugin, /isLikelyAdvertisingNavigation/,
+    'live origin navigation must reject obvious advertising destinations')
+  assert.doesNotMatch(plugin, /candidate\.element\.click\(\)/,
+    'automatic discovery must not click arbitrary play-labelled controls')
+  assert.match(plugin, /public void setLiveSessionInteractive/,
+    'origin page must stay hidden and touch-locked until the user explicitly requests assisted mode')
+  assert.match(plugin, /isLikelyAdvertisingNavigation/,
+    'live origin navigation must reject known advertising destinations')
+  assert.doesNotMatch(plugin, /candidate\.element\.click\(\)/,
+    'automatic discovery must never click arbitrary play-labelled controls that can trigger ad overlays')
 }
 
 {

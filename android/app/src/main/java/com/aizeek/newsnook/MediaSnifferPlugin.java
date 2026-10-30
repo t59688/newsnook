@@ -4,14 +4,18 @@ import android.annotation.SuppressLint;
 import android.graphics.Color;
 import android.graphics.Outline;
 import android.net.Uri;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.DisplayMetrics;
 import android.view.Gravity;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewOutlineProvider;
 import android.webkit.CookieManager;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebResourceResponse;
+import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -78,6 +82,8 @@ public class MediaSnifferPlugin extends Plugin {
     private static final int MAX_TIMEOUT_MS = 12000;
     private static final int QUIET_MS = 800;
     private static final int POLL_INTERVAL_MS = 200;
+    private static final int LIVE_POLL_INTERVAL_MS = 500;
+    private static final int MAX_LIVE_OBSERVATIONS = 320;
     private static final int MAX_NETWORK_EVENTS = 256;
     private static final int MAX_BODY_TEXT_BYTES = 262144;
     private static final long PLAYBACK_CONTEXT_TTL_MS = 10 * 60 * 1000L;
@@ -98,6 +104,13 @@ public class MediaSnifferPlugin extends Plugin {
     private ScriptHandler liveScriptHandler;
     private JSONArray liveNetworkEvents;
     private LiveProbeQueue liveProbeQueue;
+    private Handler livePollHandler;
+    private Runnable livePoll;
+    private boolean liveActivityPaused;
+    private final Map<String, Runnable> finiteSniffCancellations = new HashMap<>();
+    private LiveMediaObservationGate liveObservationGate;
+    private AtomicLong livePageEpoch;
+    private long liveSessionEpoch;
     private final AtomicBoolean liveActive = new AtomicBoolean(false);
     /** Entry URL/referrer; blank-fallback reload uses these when MUTE_AUDIO is unavailable. */
     private String liveEntryUrl;
@@ -105,6 +118,9 @@ public class MediaSnifferPlugin extends Plugin {
     private boolean liveSuspended;
     private boolean liveSurfaceSuppressed;
     private boolean liveSurfaceRequestedVisible = true;
+    /** The origin page is observed invisibly until the user explicitly enters assisted mode. */
+    private boolean liveSurfaceInteractive = false;
+    private boolean liveAutomaticActivationCancelled;
     /** True when hide had to navigate to about:blank (no WebView-level mute). */
     private boolean liveBlanked;
 
@@ -119,8 +135,30 @@ public class MediaSnifferPlugin extends Plugin {
           const events = window.__newsnookMediaEvents = [];
           const seen = new Map();
           let inspectedPayloads = new WeakSet();
-          let inspectedNodes = 0;
-          const inspectedScripts = new WeakSet();
+          let payloadVisits = 0;
+          const activatedMedia = new WeakSet();
+          const activatedPlayers = new WeakSet();
+          const activationBudget = 6;
+          const activationDeadline = Date.now() + 8000;
+          let activationActions = 0;
+          window.__newsnookAutomaticActivation = !passive;
+          let originalMediaPlay;
+          let wrappedMediaPlay;
+          if (!passive) {
+            try {
+              originalMediaPlay = HTMLMediaElement.prototype.play;
+              wrappedMediaPlay = function() {
+                if (window.__newsnookAutomaticActivation === true) {
+                  try {
+                    this.muted = true;
+                    this.__newsnookMutedByProbe = true;
+                  } catch (_) {}
+                }
+                return originalMediaPlay.apply(this, arguments);
+              };
+              HTMLMediaElement.prototype.play = wrappedMediaPlay;
+            } catch (_) {}
+          }
           const isHighValue = (event) => {
             // Progressive mp4/webm often arrives as preroll. Arming quiet-exit on
             // it ends the session before the real HLS/DASH request. Only
@@ -158,9 +196,9 @@ public class MediaSnifferPlugin extends Plugin {
             const lower = text.toLowerCase();
             const unsafe = lower.includes('http:') || lower.includes('https:') || lower.includes('blob:')
               || lower.includes('data:') || lower.includes('www.') || text.includes('?')
-              || text.includes('#') || text.includes('=')
-              || lower.includes('token:') || lower.includes('signature:')
-              || lower.includes('cookie:') || lower.includes('authorization:') || lower.includes('bearer ');
+              || text.includes('#') || text.includes('=') || lower.includes('token:')
+              || lower.includes('signature:') || lower.includes('cookie:') || lower.includes('authorization:')
+              || lower.includes('bearer ');
             return text && !unsafe ? text.slice(0, 160) : undefined;
           };
           const pageTitle = () => {
@@ -168,19 +206,30 @@ public class MediaSnifferPlugin extends Plugin {
               const og = document.querySelector('meta[property="og:title"]');
               const twitter = document.querySelector('meta[name="twitter:title"]');
               return displayText(og ? og.getAttribute('content') : '')
-                || displayText(twitter ? twitter.getAttribute('content') : '') || displayText(document.title);
+                || displayText(twitter ? twitter.getAttribute('content') : '')
+                || displayText(document.title);
             } catch (_) { return undefined; }
           };
           const push = (event) => {
+            event = Object.assign({ pageTitle: pageTitle(), playerSource: location.hostname }, event);
             try {
-              const key = [event.pageUrl || location.href, event.source, event.url || '', event.mimeType || '', event.drmKeySystem || '', event.bodyText ? 'body' : ''].join('|');
-              const observation = { pageUrl: location.href, pageTitle: pageTitle(), playerSource: location.hostname, timestamp: Date.now(), sessionNonce: nonce, ...event };
-              const signature = JSON.stringify([observation.title, observation.titleSource, observation.pageTitle, observation.width, observation.height, observation.bitrate, observation.codecs, observation.mediaSessionId, observation.isAd, observation.bodyText]);
-              if (seen.get(key) === signature) return;
-              if (seen.size >= 512 && !seen.has(key)) return;
-              seen.set(key, signature);
-              const existingIndex = events.findIndex(item => item.pageUrl === observation.pageUrl && item.source === observation.source && item.url === observation.url && item.mimeType === observation.mimeType && item.drmKeySystem === observation.drmKeySystem);
-              if (existingIndex >= 0) events.splice(existingIndex, 1);
+              const key = [event.source, event.url || '', event.drmKeySystem || '', event.mediaSessionId || '', event.bodyText ? 'body' : ''].join('|');
+              const prior = seen.get(key);
+              if (prior) {
+                let enriched = false;
+                Object.keys(event).forEach((name) => {
+                  if (event[name] != null && prior[name] !== event[name]) {
+                    prior[name] = event[name];
+                    enriched = true;
+                  }
+                });
+                if (!enriched) return;
+                prior.timestamp = Date.now();
+                if (isHighValue(prior)) window.__newsnookLastHighValueAt = Date.now();
+                if (window !== window.top) window.top.postMessage({ __newsnookMediaObservation: prior, nonce: nonce }, '*');
+                return prior;
+              }
+              const observation = Object.assign({ pageUrl: location.href, timestamp: Date.now(), sessionNonce: nonce }, event);
               const priority = (item) => {
                 const mime = String(item.mimeType || item.mseMimeType || '').toLowerCase();
                 const url = String(item.url || '').toLowerCase();
@@ -193,19 +242,26 @@ public class MediaSnifferPlugin extends Plugin {
                 let lowest = 4, lowestIndex = -1;
                 events.forEach((item, index) => { const value = priority(item); if (value < lowest) { lowest = value; lowestIndex = index; } });
                 if (lowestIndex < 0 || priority(observation) <= lowest) return;
-                events.splice(lowestIndex, 1);
+                const removed = events.splice(lowestIndex, 1)[0];
+                seen.forEach((value, oldKey) => { if (value === removed) seen.delete(oldKey); });
               }
               events.push(observation);
+              seen.set(key, observation);
               if (isHighValue(observation)) window.__newsnookLastHighValueAt = Date.now();
               if (window !== window.top) window.top.postMessage({ __newsnookMediaObservation: observation, nonce }, '*');
               return observation;
             } catch (_) { return undefined; }
           };
-          if (window === window.top) window.addEventListener('message', (message) => {
+          window.addEventListener('message', (message) => {
             try {
               if (!message.data || message.data.nonce !== nonce) return;
+              if (message.data.__newsnookAutomaticActivation === false) {
+                setAutomaticActivation(false, message.data.restoreAudio === true, false);
+                return;
+              }
+              if (window !== window.top) return;
               const observation = message.data.__newsnookMediaObservation;
-              if (observation && typeof observation === 'object') push({ ...observation, fromIframe: true });
+              if (observation && typeof observation === 'object') push(Object.assign({}, observation, { fromIframe: true }));
             } catch (_) {}
           });
           const looksMediaUrl = (value) => {
@@ -219,53 +275,26 @@ public class MediaSnifferPlugin extends Plugin {
             return /"(?:url|playurl|play_url|manifestUrl|hlsmanifesturl|dashmanifesturl|manifest_url|video_url|media_url|backupUrl|backup_url|file)"\\s*:/i.test(trimmed)
               || /"(?:video|audio|stream|streams|playinfo|player)"\\s*:/i.test(trimmed);
           };
-          const triggerPlayback = () => {
-            if (window.__newsnookPlaybackTriggered) return;
-            try {
-              const playPattern = /play|watch|观看|播放/i;
-              const candidates = [];
-              document.querySelectorAll('button,[role="button"]').forEach((el) => {
-                const text = (el.textContent || '').trim();
-                const label = [text, el.getAttribute('aria-label') || '', el.getAttribute('title') || ''].join(' ');
-                if (playPattern.test(label)) candidates.push({ priority: 0, element: el });
-              });
-              document.querySelectorAll('a[href]').forEach((el) => {
-                const href = el.getAttribute('href') || '';
-                try {
-                  const target = new URL(href, location.href);
-                  if (target.origin !== location.origin) return;
-                  if (/\\/(?:play|watch|vodplay|player|embed|video\\/play)(?:[/?#]|$)/i.test(target.pathname + target.search + target.hash)) candidates.push({ priority: 1, element: el });
-                } catch (_) {}
-              });
-              document.querySelectorAll('iframe[src],iframe[data-src]').forEach((el) => {
-                const raw = el.getAttribute('src') || el.getAttribute('data-src') || '';
-                try {
-                  const target = new URL(raw, location.href);
-                  if (/\\/(?:player|embed|play|watch)(?:[/?#]|$)/i.test(target.pathname + target.search + target.hash)) candidates.push({ priority: 2, element: el });
-                } catch (_) {}
-              });
-              const candidate = candidates.sort((left, right) => left.priority - right.priority)[0];
-              if (!candidate) return;
-              window.__newsnookPlaybackTriggered = true;
-              try { candidate.element.click(); } catch (_) {}
-            } catch (_) {}
-          };
           const positiveNumber = (value) => {
             const number = Number(value);
             return Number.isFinite(number) && number > 0 ? number : undefined;
           };
-          const inspectPayload = (value, depth = 0, inherited = {}) => {
-            if (++inspectedNodes > 4096 || !value || typeof value !== 'object' || depth > 12 || inspectedPayloads.has(value)) return;
+          const inspectPayload = (value, depth, sourceName, sourceLabel, inherited) => {
+            if (depth == null) depth = 0;
+            if (!sourceName) sourceName = 'static';
+            if (!inherited) inherited = {};
+            if (!value || typeof value !== 'object' || depth > 12 || ++payloadVisits > 2048 || inspectedPayloads.has(value)) return;
             inspectedPayloads.add(value);
+            let metadata = Object.assign({}, inherited);
             if (Array.isArray(value)) {
-              value.slice(0, 512).forEach(item => inspectPayload(item, depth + 1, inherited));
+              value.slice(0, 512).forEach((item) => inspectPayload(item, depth + 1, sourceName, sourceLabel, inherited));
               return;
             }
             try {
               const rawType = value['@type'];
               const structured = rawType === 'VideoObject' || (Array.isArray(rawType) && rawType.indexOf('VideoObject') >= 0);
-              const ownTitle = (structured ? [value.name, value.headline] : [value.title, value.video_title, value.vod_name, value.videoName, value.fileName]).map(displayText).find(Boolean);
-              const metadata = { ...inherited };
+              const ownTitle = (structured ? [value.name, value.headline] : [value.title, value.video_title, value.vod_name, value.videoName, value.fileName])
+                .map(displayText).filter(Boolean)[0];
               const contentId = displayText(value.contentId || value.videoId || value.vod_id);
               if (contentId) metadata.contentId = contentId;
               if (ownTitle) {
@@ -274,112 +303,264 @@ public class MediaSnifferPlugin extends Plugin {
               }
               if (inherited.isAd || value.isAd === true || value.is_ad === true || value.advertisement === true) metadata.isAd = true;
               if (Array.isArray(value.video) && Array.isArray(value.audio)) {
-                const first = value.video.find(item => item && (typeof item === 'string' || item.baseUrl || item.base_url || item.url));
-                const raw = typeof first === 'string' ? first : first ? (first.baseUrl || first.base_url || first.url) : undefined;
-                if (typeof raw === 'string') metadata.assetGroup = `dash-${new URL(raw, location.href).href}`;
+                const firstVideo = value.video[0];
+                const rawVideo = typeof firstVideo === 'string' ? firstVideo
+                  : firstVideo && typeof firstVideo === 'object' ? (firstVideo.baseUrl || firstVideo.base_url || firstVideo.url) : undefined;
+                if (typeof rawVideo === 'string') {
+                  try { metadata.assetGroup = 'dash-' + new URL(rawVideo, location.href).href; } catch (_) {}
+                }
               }
-              const urls = ['url', 'contentUrl', 'playbackUrl', 'src', 'baseUrl', 'base_url', 'playurl', 'play_url', 'play_data', 'backupUrl', 'backup_url', 'backup_urls', 'manifestUrl', 'manifest_url', 'video_url', 'media_url', 'file'];
-              const mimeType = [value.mimeType, value.contentType, value.mime].find(item => typeof item === 'string');
+              const urls = ['url', 'contentUrl', 'playbackUrl', 'src', 'baseUrl', 'base_url', 'playurl', 'play_url',
+                'play_data', 'backupUrl', 'backup_url', 'backup_urls', 'manifestUrl', 'manifest_url', 'video_url', 'media_url', 'file'];
+              const mimeType = [value.mimeType, value.contentType, value.mime].find((item) => typeof item === 'string');
               const codecText = `${mimeType || ''} ${typeof value.codecs === 'string' ? value.codecs : ''}`;
-              const hasVideo = Boolean(value.qualityLabel || /^video\\//i.test(mimeType || '') || /avc1|av01|hvc1|hev1|vp0?9|vp8/i.test(codecText));
-              const hasAudio = Boolean(value.audioQuality || value.audioSampleRate || value.audioChannels || /^audio\\//i.test(mimeType || '') || /mp4a|aac|opus|vorbis|ac-3|ec-3/i.test(codecText));
-              for (const key of urls) for (const raw of (Array.isArray(value[key]) ? value[key].slice(0, 64) : [value[key]])) {
-                if (typeof raw !== 'string' || raw.length > 8192) continue;
-                let url; try { url = new URL(raw, location.href).href; } catch (_) { continue; }
-                if (/\\.(?:png|jpe?g|gif|webp|svg|ico)(?:[?#]|$)/i.test(url)) continue;
-                if (looksMediaUrl(url) || mimeType || hasVideo || hasAudio) push({
-                  source: 'static', url, mimeType, ...metadata,
-                  codecs: typeof value.codecs === 'string' ? value.codecs : undefined,
-                  quality: displayText(value.qualityLabel || value.quality),
-                  mediaKind: /^audio\\//i.test(mimeType || '') ? 'audio' : hasVideo ? 'video' : inherited.mediaKind,
-                  hasAudio: hasAudio ? true : hasVideo && value.qualityLabel ? false : undefined,
-                  hasVideo: hasVideo || undefined,
-                  width: positiveNumber(value.width), height: positiveNumber(value.height), bitrate: positiveNumber(value.bitrate || value.bandwidth),
+              const width = positiveNumber(value.width);
+              const height = positiveNumber(value.height);
+              const hasVideo = Boolean(value.qualityLabel || /^video\\//i.test(mimeType || '') || /(?:avc1|av01|hvc1|hev1|vp0?9|vp8)/i.test(codecText));
+              const hasAudio = Boolean(value.audioQuality || value.audioSampleRate || value.audioChannels || /^audio\\//i.test(mimeType || '') || /(?:mp4a|aac|opus|vorbis|ac-3|ec-3)/i.test(codecText));
+              const quality = displayText(value.qualityLabel || value.quality || value.definition);
+              const variantLabel = displayText(value.label || value.qualityLabel || value.resolution) || quality;
+              urls.forEach((key) => {
+                const values = Array.isArray(value[key]) ? value[key].slice(0, 64) : [value[key]];
+                values.forEach((raw) => {
+                  if (typeof raw !== 'string' || raw.length > 8192) return;
+                  let url;
+                  try { url = new URL(raw, location.href).href; } catch (_) { return; }
+                  const pathOnly = url.split('?')[0].split('#')[0];
+                  if (/\\.(?:png|jpe?g|gif|webp|avif|svg|ico|bmp|tiff?)$/i.test(pathOnly)) return;
+                  if (!looksMediaUrl(url) && !mimeType && !hasVideo && !hasAudio) return;
+                  push(Object.assign({
+                    source: sourceName,
+                    sourceLabel: variantLabel || sourceLabel,
+                    url,
+                    mimeType,
+                    codecs: typeof value.codecs === 'string' ? value.codecs : undefined,
+                    quality,
+                    mediaKind: /^audio\\//i.test(mimeType || '') ? 'audio' : hasVideo ? 'video' : inherited.mediaKind,
+                    hasAudio: hasAudio ? true : hasVideo && value.qualityLabel ? false : undefined,
+                    hasVideo: hasVideo || undefined,
+                    width,
+                    height,
+                    bitrate: positiveNumber(value.bitrate || value.bandwidth),
+                  }, metadata));
                 });
-              }
-              for (const [key, child] of Object.entries(value).slice(0, 512)) {
+              });
+            } catch (_) {}
+            try {
+              Object.keys(value).slice(0, 128).forEach((key) => {
+                if (/^(?:url_next|next|nextUrl|next_url|playlist|related|recommendations?|ads?|advertising|poster|thumbnail|image|logo)$/i.test(key)) return;
                 const related = /^(?:sources?|streams?|video|audio|dash|data|playinfo|playback|streamingData|formats|adaptiveFormats)$/i.test(key);
-                const videoDetails = value.videoDetails && typeof value.videoDetails === 'object' ? value.videoDetails : null;
-                const youtubeTitle = videoDetails ? videoDetails.title : undefined;
-                const context = key === 'streamingData' && displayText(youtubeTitle)
-                  ? { title: displayText(youtubeTitle), titleSource: 'player', contentId: displayText(videoDetails ? videoDetails.videoId : undefined) }
+                const details = value.videoDetails && typeof value.videoDetails === 'object' ? value.videoDetails : null;
+                const youtubeTitle = details ? displayText(details.title) : undefined;
+                const context = key === 'streamingData' && youtubeTitle
+                  ? Object.assign({}, metadata, { title: youtubeTitle, titleSource: 'player', contentId: displayText(details.videoId) })
                   : related ? metadata : metadata.isAd ? { isAd: true } : {};
                 if (key === 'video' || key === 'audio') context.mediaKind = key;
-                inspectPayload(child, depth + 1, context);
-              }
+                inspectPayload(value[key], depth + 1, sourceName, sourceLabel, context);
+              });
             } catch (_) {}
           };
+          const decodeMacCmsUrl = (config) => {
+            if (!config || typeof config.url !== 'string' || !config.url) return '';
+            try {
+              if (Number(config.encrypt) === 1) return decodeURIComponent(config.url);
+              if (Number(config.encrypt) === 2) return decodeURIComponent(atob(config.url));
+            } catch (_) { return ''; }
+            return config.url;
+          };
+          const inspectCommonPlayerConfigs = () => {
+            try {
+              [window.player_aaaa, window.player_data, window.playerData].forEach((config) => {
+                const url = decodeMacCmsUrl(config);
+                const label = config && typeof config.from === 'string' ? config.from : 'maccms-player';
+                if (url && looksMediaUrl(url)) push({ source: 'player-config', sourceLabel: label, url: url });
+                if (config && typeof config === 'object') {
+                  inspectPayload(url ? Object.assign({}, config, { url: url }) : config, 0, 'player-config', label);
+                }
+              });
+              const mac = window.MacPlayer;
+              if (mac && typeof mac.PlayUrl === 'string' && looksMediaUrl(mac.PlayUrl) && mac.PlayUrl.indexOf('$$$') < 0) {
+                push({ source: 'player-config', sourceLabel: typeof mac.PlayFrom === 'string' ? mac.PlayFrom : 'maccms-player', url: mac.PlayUrl });
+                inspectPayload(mac, 0, 'player-config', typeof mac.PlayFrom === 'string' ? mac.PlayFrom : 'maccms-player');
+              }
+              if (window.HR_P2P && looksMediaUrl(window.HR_P2P.channel_key)) {
+                push({ source: 'player-config', url: window.HR_P2P.channel_key });
+              }
+            } catch (_) {}
+            const configs = [
+              ['player-config', window.playerConfig],
+              ['video-config', window.videoConfig],
+              ['__PLAYER_CONFIG__', window.__PLAYER_CONFIG__],
+            ];
+            configs.forEach((entry) => {
+              try { inspectPayload(entry[1], 0, 'player-config', entry[0]); } catch (_) {}
+            });
+          };
           const inspectPlayerState = () => {
-            try { inspectPayload(window.ytInitialPlayerResponse); } catch (_) {}
-            try { inspectPayload(window.__playinfo__); } catch (_) {}
-            try { inspectPayload(window.player_aaaa); } catch (_) {}
+            inspectedPayloads = new WeakSet();
+            payloadVisits = 0;
+            try { inspectPayload(window.ytInitialPlayerResponse, 0, 'player-config', 'youtube-initial'); } catch (_) {}
+            try { inspectPayload(window.__playinfo__, 0, 'player-config', '__playinfo__'); } catch (_) {}
             // Embedded YouTube currently places the authoritative player
             // response under ytcfg.PLAYER_VARS rather than the older
             // ytplayer.config.args.player_response path.
             try {
-              const playerVars = window.ytcfg && typeof window.ytcfg.get === 'function' ? window.ytcfg.get('PLAYER_VARS') : undefined;
-              const embeddedResponse = playerVars ? (playerVars.embedded_player_response || playerVars.player_response) : undefined;
-              if (typeof embeddedResponse === 'string') inspectPayload(JSON.parse(embeddedResponse));
-              else inspectPayload(embeddedResponse);
+              const playerVars = window.ytcfg && typeof window.ytcfg.get === 'function'
+                ? window.ytcfg.get('PLAYER_VARS') : undefined;
+              const embeddedResponse = playerVars
+                ? playerVars.embedded_player_response || playerVars.player_response : undefined;
+              if (typeof embeddedResponse === 'string') inspectPayload(JSON.parse(embeddedResponse), 0, 'player-config', 'youtube-embedded');
+              else inspectPayload(embeddedResponse, 0, 'player-config', 'youtube-embedded');
             } catch (_) {}
             try {
-              const playerResponse = window.ytplayer && window.ytplayer.config && window.ytplayer.config.args
-                ? window.ytplayer.config.args.player_response : undefined;
-              if (typeof playerResponse === 'string') inspectPayload(JSON.parse(playerResponse));
-              else inspectPayload(playerResponse);
+              const ytConfig = window.ytplayer && window.ytplayer.config;
+              const playerResponse = ytConfig && ytConfig.args ? ytConfig.args.player_response : undefined;
+              if (typeof playerResponse === 'string') inspectPayload(JSON.parse(playerResponse), 0, 'player-config', 'youtube-player');
+              else inspectPayload(playerResponse, 0, 'player-config', 'youtube-player');
             } catch (_) {}
             try {
               document.querySelectorAll('script[type="application/ld+json"],script[type="application/json"]').forEach((script) => {
-                try { inspectPayload(JSON.parse((script.textContent || '').slice(0, maxBodyText))); } catch (_) {}
+                try {
+                  const parsed = JSON.parse((script.textContent || '').slice(0, maxBodyText));
+                  const type = parsed && parsed['@type'];
+                  const structuredMedia = type === 'VideoObject' || type === 'AudioObject'
+                    || (Array.isArray(type) && (type.indexOf('VideoObject') >= 0 || type.indexOf('AudioObject') >= 0));
+                  if (structuredMedia) inspectPayload(parsed, 0, 'static', 'inline-json');
+                  else if (script.type === 'application/json' && /player|playinfo/i.test(script.id || '')) inspectPayload(parsed, 0, 'player-config', 'inline-json');
+                } catch (_) {}
               });
             } catch (_) {}
+            inspectCommonPlayerConfigs();
+          };
+          const automaticActivationEnabled = () => !passive
+            && window.__newsnookAutomaticActivation === true
+            && activationActions < activationBudget && Date.now() < activationDeadline;
+          const activateMedia = (media) => {
+            if (!automaticActivationEnabled() || activatedMedia.has(media)) return;
+            activatedMedia.add(media);
+            activationActions += 1;
+            try {
+              media.muted = true;
+              media.__newsnookMutedByProbe = true;
+              const playback = media.play();
+              if (playback && typeof playback.catch === 'function') playback.catch(() => {});
+            } catch (_) {}
+          };
+          const activatePlayer = (player, element) => {
+            if (!automaticActivationEnabled() || !player || activatedPlayers.has(player)) return;
+            if (element && document.documentElement && !document.documentElement.contains(element)) return;
+            activatedPlayers.add(player);
+            activationActions += 1;
+            try {
+              if (element && element instanceof HTMLMediaElement) {
+                element.muted = true;
+                element.__newsnookMutedByProbe = true;
+              } else if (typeof player.muted === 'function') {
+                player.muted(true);
+              } else if ('muted' in player) {
+                player.muted = true;
+              }
+              if (typeof player.play === 'function') {
+                const playback = player.play();
+                if (playback && typeof playback.catch === 'function') playback.catch(() => {});
+              }
+            } catch (_) {}
+          };
+          const activateFrameworkPlayers = () => {
+            if (!automaticActivationEnabled()) return;
+            try {
+              const players = window.videojs && typeof window.videojs.getPlayers === 'function'
+                ? window.videojs.getPlayers() : null;
+              if (players) Object.keys(players).forEach((key) => {
+                const player = players[key];
+                let element;
+                try { element = player && typeof player.el === 'function' ? player.el() : null; } catch (_) {}
+                activatePlayer(player, element);
+              });
+            } catch (_) {}
+            try {
+              const players = window.mejs && window.mejs.players;
+              if (players) Object.keys(players).forEach((key) => {
+                const player = players[key];
+                activatePlayer(player, player ? player.media : null);
+              });
+            } catch (_) {}
+          };
+          const setAutomaticActivation = (enabled, restoreAudio, broadcast) => {
+            if (passive) return false;
+            window.__newsnookAutomaticActivation = enabled === true;
+            if (!window.__newsnookAutomaticActivation && originalMediaPlay) {
+              try {
+                if (HTMLMediaElement.prototype.play === wrappedMediaPlay) {
+                  HTMLMediaElement.prototype.play = originalMediaPlay;
+                }
+              } catch (_) {}
+            }
+            if (!window.__newsnookAutomaticActivation && restoreAudio) {
+              try {
+                document.querySelectorAll('video,audio').forEach((media) => {
+                  if (!media.__newsnookMutedByProbe) return;
+                  media.__newsnookMutedByProbe = false;
+                  media.muted = false;
+                });
+              } catch (_) {}
+            }
+            if (broadcast && window === window.top) {
+              try {
+                document.querySelectorAll('iframe').forEach((frame) => {
+                  try {
+                    if (frame.contentWindow) frame.contentWindow.postMessage({
+                      __newsnookAutomaticActivation: false,
+                      restoreAudio: restoreAudio === true,
+                      nonce: nonce,
+                    }, '*');
+                  } catch (_) {}
+                });
+              } catch (_) {}
+            }
+            return window.__newsnookAutomaticActivation;
+          };
+          window.__newsnookSetAutomaticActivation = (enabled, restoreAudio) =>
+            setAutomaticActivation(enabled, restoreAudio, true);
+          const mediaSourceUrl = (media) => {
+            // IDL media.src turns an empty src attribute into the document URL.
+            // Use explicit source attributes and the browser-selected currentSrc only.
+            const candidates = [media.currentSrc, media.getAttribute('src'),
+              media.getAttribute('data-src'), media.getAttribute('data-video-src')];
+            for (const value of candidates) {
+              if (typeof value !== 'string' || !value.trim() || value.trim().charAt(0) === '#') continue;
+              try {
+                const target = new URL(value, location.href);
+                const page = new URL(location.href);
+                target.hash = ''; page.hash = '';
+                if (target.href === page.href && !looksMediaUrl(target.href)) continue;
+                return new URL(value, location.href).href;
+              } catch (_) {}
+            }
+            return '';
           };
           const inspect = (node) => {
             if (!(node instanceof Element)) return;
             const nodes = node.matches('video,audio,source') ? [node] : node.querySelectorAll('video,audio,source');
             for (const media of nodes) {
-              const url = media.currentSrc || media.src || media.getAttribute('src') || media.getAttribute('data-src') || media.getAttribute('data-video-src');
+              const url = mediaSourceUrl(media);
               if (url) {
                 const player = media.tagName === 'SOURCE' ? media.parentElement : media;
                 const title = displayText(player ? (player.getAttribute('title') || player.getAttribute('data-title')) : '');
                 push({ source: 'dom', url, title, titleSource: title ? 'player' : undefined,
-                  height: positiveNumber(player ? player.videoHeight : undefined), width: positiveNumber(player ? player.videoWidth : undefined),
-                  mimeType: media.getAttribute('type') || undefined, mediaKind: media.tagName === 'AUDIO' ? 'audio' : 'video' });
+                  mimeType: media.getAttribute('type') || undefined,
+                  mediaKind: media.tagName === 'AUDIO' ? 'audio' : media.tagName === 'VIDEO' ? 'video' : undefined,
+                  width: positiveNumber(player ? player.videoWidth : undefined),
+                  height: positiveNumber(player ? player.videoHeight : undefined) });
               }
               if (media.srcObject) push({ source: 'mse', url: media.currentSrc || 'blob:', mseMimeType: 'srcObject' });
-              if (!passive && media instanceof HTMLMediaElement) {
-                try {
-                  media.muted = true;
-                  const playback = media.play();
-                  if (playback && typeof playback.catch === 'function') playback.catch(() => {});
-                } catch (_) {}
-              }
+              if (media instanceof HTMLMediaElement) activateMedia(media);
             }
-          };
-          const inspectScriptPayloads = () => {
-            try {
-              document.querySelectorAll('script').forEach((script) => {
-                if (inspectedScripts.has(script)) return;
-                inspectedScripts.add(script);
-                const text = script.textContent || '';
-                if (!text || text.length > maxBodyText) return;
-                const urlPattern = /https?:\\\\?\\/\\\\?\\/[^\\s"'<>]+/gi;
-                let match;
-                while ((match = urlPattern.exec(text)) !== null) {
-                  const url = match[0]
-                    .replace(/\\\\\\//g, '/')
-                    .replace(/\\\\u0026/gi, '&')
-                    .replace(/[),;]+$/g, '');
-                  if (looksMediaUrl(url)) push({ source: 'static', url });
-                }
-              });
-            } catch (_) {}
+            activateFrameworkPlayers();
           };
           const scan = () => {
-            inspectedPayloads = new WeakSet(); inspectedNodes = 0;
             inspect(document.documentElement);
             inspectPlayerState();
-            inspectScriptPayloads();
             try {
               for (const entry of performance.getEntriesByType('resource')) {
                 if (looksMediaUrl(entry.name)) push({ source: 'performance', url: entry.name });
@@ -388,16 +569,12 @@ public class MediaSnifferPlugin extends Plugin {
           };
           const startDom = () => {
             scan();
-            if (!passive) {
-              setTimeout(triggerPlayback, 400);
-              setTimeout(triggerPlayback, 1200);
-            }
             try {
               new MutationObserver((records) => records.forEach((record) => {
                 inspect(record.target);
-                if (record.target && record.target.tagName === 'SCRIPT') inspectScriptPayloads();
+                if (record.target && record.target.tagName === 'SCRIPT') inspectPlayerState();
                 record.addedNodes.forEach(inspect);
-                record.addedNodes.forEach((node) => { if (node && node.tagName === 'SCRIPT') inspectScriptPayloads(); });
+                record.addedNodes.forEach((node) => { if (node && node.tagName === 'SCRIPT') inspectPlayerState(); });
               })).observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ['src', 'data-src', 'data-video-src'] });
               document.addEventListener('play', (event) => inspect(event.target), true);
               document.addEventListener('loadedmetadata', (event) => inspect(event.target), true);
@@ -407,26 +584,6 @@ public class MediaSnifferPlugin extends Plugin {
           if (document.documentElement) startDom();
           else document.addEventListener('DOMContentLoaded', startDom, { once: true });
 
-          const readBoundedText = async (response, reported) => {
-            const copy = response.clone();
-            if (!copy.body || !copy.body.getReader) {
-              if (!Number.isFinite(reported) || reported > maxBodyText) return undefined;
-              const text = await copy.text();
-              return text.length <= maxBodyText ? text : undefined;
-            }
-            const reader = copy.body.getReader();
-            const decoder = new TextDecoder();
-            let bytes = 0, text = '';
-            try {
-              while (true) {
-                const part = await reader.read();
-                if (part.done) return text + decoder.decode();
-                bytes += part.value.byteLength;
-                if (bytes > maxBodyText) { reader.cancel().catch(() => {}); return undefined; }
-                text += decoder.decode(part.value, { stream: true });
-              }
-            } finally { reader.releaseLock(); }
-          };
           try {
             const originalFetch = window.fetch;
             window.fetch = async function(...args) {
@@ -435,13 +592,13 @@ public class MediaSnifferPlugin extends Plugin {
                 const mimeType = response.headers.get('content-type') || undefined;
                 const event = { source: 'fetch', url: response.url || String(args[0]), mimeType, statusCode: response.status };
                 const mime = String(mimeType || '').toLowerCase();
-                if (/json|text\\/plain|javascript|mpegurl|dash\\+xml/.test(mime)) {
+                if (/json|text\\/plain|javascript/.test(mime)) {
                   const lengthHeader = response.headers.get('content-length');
                   const reported = lengthHeader == null || lengthHeader === '' ? NaN : Number(lengthHeader);
                   if (!Number.isFinite(reported) || reported <= maxBodyText) {
                     try {
-                      const text = await readBoundedText(response, reported);
-                      if (text && text.length <= maxBodyText && (looksLikePlayerJson(text) || /^#EXTM3U|<MPD[\\s>]|<\\?xml/.test(text.trim()))) event.bodyText = text;
+                      const text = await response.clone().text();
+                      if (text && text.length <= maxBodyText && looksLikePlayerJson(text)) event.bodyText = text;
                     } catch (_) {}
                   }
                 }
@@ -468,7 +625,7 @@ public class MediaSnifferPlugin extends Plugin {
                     } else {
                       text = this.responseText;
                     }
-                    if (typeof text === 'string' && text.length > 0 && text.length <= maxBodyText && (looksLikePlayerJson(text) || /^#EXTM3U|<MPD[\\s>]|<\\?xml/.test(text.trim()))) event.bodyText = text;
+                    if (typeof text === 'string' && text.length > 0 && text.length <= maxBodyText && looksLikePlayerJson(text)) event.bodyText = text;
                   }
                 } catch (_) {}
                 push(event);
@@ -486,7 +643,7 @@ public class MediaSnifferPlugin extends Plugin {
           } catch (_) {}
           try {
             const requestKeySystem = navigator.requestMediaKeySystemAccess
-              ? navigator.requestMediaKeySystemAccess.bind(navigator) : undefined;
+              ? navigator.requestMediaKeySystemAccess.bind(navigator) : null;
             if (requestKeySystem) navigator.requestMediaKeySystemAccess = function(keySystem, configurations) {
               push({ source: 'mse', drmKeySystem: String(keySystem), mediaSessionId: `eme-${String(keySystem)}` });
               return requestKeySystem(keySystem, configurations);
@@ -637,8 +794,48 @@ public class MediaSnifferPlugin extends Plugin {
         closeUnusedPlaybackClients(removed);
     }
 
+    @PluginMethod
+    public void cancelSniff(PluginCall call) {
+        String sessionId = call.getString("sessionId");
+        getActivity().runOnUiThread(() -> {
+            Runnable cancellation = finiteSniffCancellations.get(sessionId);
+            if (cancellation != null) cancellation.run();
+            call.resolve();
+        });
+    }
+
+    private void cancelFiniteSniffs() {
+        for (Runnable cancellation : new ArrayList<>(finiteSniffCancellations.values())) cancellation.run();
+    }
+
+    @Override
+    protected void handleOnPause() {
+        cancelFiniteSniffs();
+        liveActivityPaused = true;
+        if (livePollHandler != null && livePoll != null) livePollHandler.removeCallbacks(livePoll);
+        if (liveWebView != null) setLiveSessionVisibleOnUi(false);
+        super.handleOnPause();
+    }
+
+    @Override
+    protected void handleOnResume() {
+        super.handleOnResume();
+        liveActivityPaused = false;
+        if (liveWebView != null) setLiveSessionVisibleOnUi(liveSurfaceRequestedVisible && !liveSurfaceSuppressed);
+        scheduleLivePoll(0);
+    }
+
+    private void scheduleLivePoll(long delay) {
+        Handler handler = livePollHandler;
+        Runnable poll = livePoll;
+        if (handler == null || poll == null) return;
+        handler.removeCallbacks(poll);
+        if (!liveActivityPaused && !liveSuspended && liveActive.get()) handler.postDelayed(poll, delay);
+    }
+
     @Override
     protected void handleOnDestroy() {
+        cancelFiniteSniffs();
         stopLiveSessionOnUi(null);
         LocalStreamProxy.getInstance().close();
         clearPlaybackContexts();
@@ -694,10 +891,39 @@ public class MediaSnifferPlugin extends Plugin {
     }
 
     @PluginMethod
+    public void setLiveSessionInteractive(PluginCall call) {
+        boolean interactive = call.getBoolean("interactive", false);
+        String sessionId = call.getString("sessionId");
+        getActivity().runOnUiThread(() -> {
+            if (sessionId != null && !sessionId.equals(liveSessionId)) { call.resolve(); return; }
+            liveSurfaceInteractive = interactive;
+            WebView webView = liveWebView;
+            if (webView != null) {
+                boolean effectiveInteractive = interactive
+                    && !liveSurfaceSuppressed
+                    && liveSurfaceRequestedVisible;
+                cancelLiveAutomaticActivation(webView, effectiveInteractive);
+                if (effectiveInteractive) {
+                    setLiveWebViewAudioMuted(webView, false);
+                } else {
+                    pauseLiveSessionMedia(webView);
+                    setLiveWebViewAudioMuted(webView, true);
+                }
+                webView.setAlpha(effectiveInteractive ? 1f : 0f);
+                webView.setImportantForAccessibility(effectiveInteractive
+                    ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                    : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            }
+            call.resolve();
+        });
+    }
+
+    @PluginMethod
     public void setLiveSurfaceSuppressed(PluginCall call) {
         boolean suppressed = call.getBoolean("suppressed", false);
         getActivity().runOnUiThread(() -> {
             liveSurfaceSuppressed = suppressed;
+            if (suppressed && liveWebView != null) cancelLiveAutomaticActivation(liveWebView, false);
             setLiveSessionVisibleOnUi(liveSurfaceRequestedVisible && !suppressed);
             call.resolve();
         });
@@ -714,15 +940,22 @@ public class MediaSnifferPlugin extends Plugin {
             if (liveSuspended) {
                 liveSuspended = false;
                 webView.onResume();
-                setLiveWebViewAudioMuted(webView, false);
+                setLiveWebViewAudioMuted(webView, !liveSurfaceInteractive);
                 if (liveBlanked) {
                     liveBlanked = false;
                     reloadLiveEntry(webView);
                 }
             }
             webView.setVisibility(View.VISIBLE);
+            webView.setAlpha(liveSurfaceInteractive ? 1f : 0f);
+            webView.setImportantForAccessibility(liveSurfaceInteractive
+                ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
+                : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
+            scheduleLivePoll(0);
             return;
         }
+        if (livePollHandler != null && livePoll != null) livePollHandler.removeCallbacks(livePoll);
+        cancelLiveAutomaticActivation(webView, false);
         if (liveFullscreen != null) liveFullscreen.onHideCustomView();
         pauseLiveSessionMedia(webView);
         liveSuspended = true;
@@ -775,6 +1008,18 @@ public class MediaSnifferPlugin extends Plugin {
                 + "document.querySelectorAll('iframe').forEach(function(frame){"
                 + "try{pauseAll(frame.contentDocument)}catch(e){}"
                 + "});"
+                + "}catch(e){}})();",
+            null
+        );
+    }
+
+    private void cancelLiveAutomaticActivation(WebView webView, boolean restoreAudio) {
+        liveAutomaticActivationCancelled = true;
+        webView.evaluateJavascript(
+            "(function(){try{"
+                + "if(window.__newsnookSetAutomaticActivation)"
+                + "window.__newsnookSetAutomaticActivation(false," + (restoreAudio ? "true" : "false") + ");"
+                + "else window.__newsnookAutomaticActivation=false;"
                 + "}catch(e){}})();",
             null
         );
@@ -1189,6 +1434,10 @@ public class MediaSnifferPlugin extends Plugin {
         }
     }
 
+    private static boolean isLikelyAdvertisingNavigation(String value) {
+        return OwnedMediaNavigationPolicy.isAdvertising(value);
+    }
+
     private static boolean isAllowedPageUrl(String value) {
         if (value == null || value.trim().isEmpty()) return false;
         Uri uri = Uri.parse(value);
@@ -1215,18 +1464,30 @@ public class MediaSnifferPlugin extends Plugin {
             return;
         }
         stopLiveSessionOnUi(null);
+        final long sessionEpoch = ++liveSessionEpoch;
+        final AtomicLong pageEpoch = new AtomicLong(0L);
+        final AtomicBoolean rollbackUsed = new AtomicBoolean(false);
+        final LiveMediaObservationGate observationGate =
+            new LiveMediaObservationGate(MAX_LIVE_OBSERVATIONS);
 
-        WebView webView = new WebView(getActivity());
+        WebView webView = new WebView(getActivity()) {
+            @Override
+            public boolean dispatchTouchEvent(MotionEvent event) {
+                // Returning false lets the underlying Reader WebView receive scroll/tap
+                // gestures until assisted mode is explicitly enabled.
+                return liveSurfaceInteractive && super.dispatchTouchEvent(event);
+            }
+        };
         webView.setBackgroundColor(Color.BLACK);
-        webView.setAlpha(1f);
+        webView.setAlpha(0f);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
-        settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setSupportMultipleWindows(false);
+        // Route target=_blank playback links through this surface's guarded WebViewClient.
+        OriginVideoFullscreen.configureSameWindowPlaybackLinks(settings);
 
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
@@ -1239,34 +1500,82 @@ public class MediaSnifferPlugin extends Plugin {
         LiveProbeQueue liveProbes = new LiveProbeQueue(
             createProbeClient(settings.getUserAgentString()),
             nativeLastHighValueAt,
-            event -> emitMediaObservation(sessionId, event)
+            event -> publishLiveObservation(sessionEpoch, sessionId, event)
         );
         ScriptHandler scriptHandler = installDocumentStartProbe(webView, probeScript);
         ServiceWorkerSniffer.install(
             networkEvents,
             pageUrl,
             nativeLastHighValueAt,
-            event -> handleNetworkObservation(event, liveProbes, sessionId)
+            event -> handleLiveNetworkObservation(event, liveProbes, sessionEpoch, sessionId)
         );
 
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (request == null || request.getUrl() == null) return false;
+                String target = request.getUrl().toString();
+                return OwnedMediaNavigationPolicy.shouldBlock(
+                    target, request.isForMainFrame(), request.getMethod(), pageUrl.get());
+            }
+
+            @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (!ownsLiveSession(sessionEpoch, view)) return;
+                if (!initialUrl.equals(url)
+                    && OwnedMediaNavigationPolicy.shouldBlock(url, true, "GET", pageUrl.get())) {
+                    String safeUrl = pageUrl.get();
+                    view.stopLoading();
+                    if (rollbackUsed.compareAndSet(false, true)
+                        && isAllowedPageUrl(safeUrl)
+                        && !safeUrl.equals(url)) {
+                        view.post(() -> {
+                            if (ownsLiveSession(sessionEpoch, view)) view.loadUrl(safeUrl);
+                        });
+                    }
+                    return;
+                }
+                pageEpoch.incrementAndGet();
+                observationGate.clear();
+                synchronized (networkEvents) { while (networkEvents.length() > 0) networkEvents.remove(networkEvents.length() - 1); }
                 pageUrl.set(url);
+                // Internal about:blank suspension must not invalidate the handoff that caused it.
+                if (isAllowedPageUrl(url)) {
+                    JSObject document = new JSObject();
+                    document.put("sessionId", sessionId);
+                    document.put("documentEpoch", pageEpoch.get());
+                    document.put("pageUrl", url);
+                    notifyListeners("mediaDocument", document);
+                }
                 if (scriptHandler == null) view.evaluateJavascript(probeScript, null);
+                if (liveAutomaticActivationCancelled) {
+                    view.post(() -> {
+                        if (ownsLiveSession(sessionEpoch, view)) cancelLiveAutomaticActivation(view, false);
+                    });
+                }
             }
 
             @Override
             public void onPageFinished(WebView view, String url) {
+                if (!ownsLiveSession(sessionEpoch, view)) return;
                 pageUrl.set(url);
                 view.evaluateJavascript(probeScript, null);
+                if (liveAutomaticActivationCancelled) cancelLiveAutomaticActivation(view, false);
             }
 
             @Override
             public WebResourceResponse shouldInterceptRequest(WebView view, WebResourceRequest request) {
+                if (!ownsLiveSession(sessionEpoch, view)) return null;
                 JSONObject event = recordNetworkEvent(networkEvents, pageUrl.get(), request, nativeLastHighValueAt);
-                handleNetworkObservation(event, liveProbes, sessionId);
+                handleLiveNetworkObservation(event, liveProbes, sessionEpoch, sessionId);
                 return null;
+            }
+
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                if (!ownsLiveSession(sessionEpoch, view)) return false;
+                stopLiveSessionOnUi(sessionId, true);
+                return true;
             }
         });
 
@@ -1275,6 +1584,8 @@ public class MediaSnifferPlugin extends Plugin {
         params.leftMargin = -10000;
         params.topMargin = 0;
         webView.setVisibility(View.INVISIBLE);
+        webView.setAlpha(0f);
+        webView.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);
         root.addView(webView, params);
 
         liveSessionId = sessionId;
@@ -1289,12 +1600,18 @@ public class MediaSnifferPlugin extends Plugin {
         liveScriptHandler = scriptHandler;
         liveNetworkEvents = networkEvents;
         liveProbeQueue = liveProbes;
+        liveObservationGate = observationGate;
+        livePageEpoch = pageEpoch;
         liveEntryUrl = initialUrl;
         liveReferrer = referrer;
         liveSuspended = false;
         liveSurfaceRequestedVisible = true;
+        liveSurfaceInteractive = false;
+        liveAutomaticActivationCancelled = false;
         liveBlanked = false;
         liveActive.set(true);
+        setLiveWebViewAudioMuted(webView, true);
+        startLivePolling(webView, sessionEpoch, sessionId, sessionNonce, pageEpoch);
 
         if (referrer == null) {
             webView.loadUrl(initialUrl);
@@ -1305,6 +1622,91 @@ public class MediaSnifferPlugin extends Plugin {
         }
         if (liveSurfaceSuppressed) setLiveSessionVisibleOnUi(false);
         call.resolve();
+    }
+
+    private boolean ownsLiveSession(long epoch, WebView webView) {
+        return liveActive.get() && liveSessionEpoch == epoch && liveWebView == webView;
+    }
+
+    private void handleLiveNetworkObservation(
+        JSONObject event,
+        LiveProbeQueue probes,
+        long epoch,
+        String sessionId
+    ) {
+        if (event == null || !ownsLiveSession(epoch, liveWebView)) return;
+        try { event.put("documentEpoch", livePageEpoch == null ? 0 : livePageEpoch.get()); }
+        catch (JSONException ignored) { return; }
+        if (isImmediatelyPlayable(event)) {
+            publishLiveObservation(epoch, sessionId, event);
+            return;
+        }
+        JSONObject nested = nestedPlayableObservation(event);
+        if (nested != null) publishLiveObservation(epoch, sessionId, nested);
+        probes.offer(event);
+    }
+
+    private void publishLiveObservation(long epoch, String sessionId, JSONObject observation) {
+        WebView webView = liveWebView;
+        LiveMediaObservationGate gate = liveObservationGate;
+        if (!ownsLiveSession(epoch, webView) || gate == null) return;
+        long documentEpoch = livePageEpoch == null ? 0 : livePageEpoch.get();
+        if (observation.has("documentEpoch") && observation.optLong("documentEpoch") != documentEpoch) return;
+        JSONObject accepted = gate.accept(observation);
+        if (accepted == null) return;
+        Runnable emit = () -> {
+            if (!ownsLiveSession(epoch, webView) || !sessionId.equals(liveSessionId)
+                || livePageEpoch == null || livePageEpoch.get() != documentEpoch) return;
+            JSObject payload = new JSObject();
+            payload.put("sessionId", sessionId);
+            payload.put("documentEpoch", documentEpoch);
+            payload.put("observation", accepted);
+            notifyListeners("mediaObservation", payload);
+        };
+        android.app.Activity activity = getActivity();
+        if (activity != null) activity.runOnUiThread(emit);
+        else emit.run();
+    }
+
+    private void startLivePolling(
+        WebView webView,
+        long sessionEpoch,
+        String sessionId,
+        String nonce,
+        AtomicLong pageEpoch
+    ) {
+        Handler handler = new Handler(Looper.getMainLooper());
+        livePollHandler = handler;
+        AtomicBoolean collecting = new AtomicBoolean(false);
+        Runnable poll = new Runnable() {
+            @Override public void run() {
+                if (!ownsLiveSession(sessionEpoch, webView) || liveActivityPaused || liveSuspended) return;
+                if (!collecting.compareAndSet(false, true)) { scheduleLivePoll(LIVE_POLL_INTERVAL_MS); return; }
+                long evaluatedPageEpoch = pageEpoch.get();
+                webView.evaluateJavascript(
+                    "window.__newsnookCollectMedia ? JSON.stringify(window.__newsnookCollectMedia()) : '[]'",
+                    value -> {
+                        collecting.set(false);
+                        if (!ownsLiveSession(sessionEpoch, webView) || liveActivityPaused || liveSuspended) return;
+                        if (evaluatedPageEpoch != pageEpoch.get()) {
+                            scheduleLivePoll(LIVE_POLL_INTERVAL_MS);
+                            return;
+                        }
+                        JSONArray combined = browserPageObservations(liveNetworkEvents, value, nonce);
+                        for (int index = 0; index < combined.length(); index += 1) {
+                            JSONObject event = combined.optJSONObject(index);
+                            if (event == null) continue;
+                            if ("network".equals(event.optString("source"))
+                                && !isImmediatelyPlayable(event)) continue;
+                            publishLiveObservation(sessionEpoch, sessionId, event);
+                        }
+                        if (ownsLiveSession(sessionEpoch, webView)) scheduleLivePoll(LIVE_POLL_INTERVAL_MS);
+                    }
+                );
+            }
+        };
+        livePoll = poll;
+        handler.postDelayed(poll, POLL_INTERVAL_MS);
     }
 
     private void applyLiveSessionBoundsOnUi(
@@ -1356,6 +1758,7 @@ public class MediaSnifferPlugin extends Plugin {
 
         if (!liveSurfaceSuppressed && liveSurfaceRequestedVisible && webView.getVisibility() != View.GONE) {
             webView.setVisibility(onScreen ? View.VISIBLE : View.INVISIBLE);
+            webView.setAlpha(liveSurfaceInteractive ? 1f : 0f);
         }
     }
 
@@ -1365,6 +1768,10 @@ public class MediaSnifferPlugin extends Plugin {
     }
 
     private void stopLiveSessionOnUi(String sessionId) {
+        stopLiveSessionOnUi(sessionId, false);
+    }
+
+    private void stopLiveSessionOnUi(String sessionId, boolean rendererGone) {
         if (!liveActive.get() && liveWebView == null) return;
         if (sessionId != null
             && liveSessionId != null
@@ -1372,6 +1779,13 @@ public class MediaSnifferPlugin extends Plugin {
             && !sessionId.equals(liveSessionId)) {
             return;
         }
+        liveSessionEpoch += 1;
+        if (livePageEpoch != null) livePageEpoch.incrementAndGet();
+        Handler pollHandler = livePollHandler;
+        Runnable poll = livePoll;
+        if (pollHandler != null && poll != null) pollHandler.removeCallbacks(poll);
+        livePollHandler = null;
+        livePoll = null;
         if (liveFullscreen != null) liveFullscreen.onHideCustomView();
         liveFullscreen = null;
         liveActive.set(false);
@@ -1380,21 +1794,34 @@ public class MediaSnifferPlugin extends Plugin {
         ScriptHandler scriptHandler = liveScriptHandler;
         JSONArray networkEvents = liveNetworkEvents;
         LiveProbeQueue probes = liveProbeQueue;
+        LiveMediaObservationGate observationGate = liveObservationGate;
         liveWebView = null;
         liveHost = null;
         liveScriptHandler = null;
         liveNetworkEvents = null;
         liveProbeQueue = null;
+        liveObservationGate = null;
+        livePageEpoch = null;
         liveSessionId = null;
         liveEntryUrl = null;
         liveReferrer = null;
         liveSuspended = false;
+        liveSurfaceInteractive = false;
+        liveAutomaticActivationCancelled = true;
+        liveSurfaceRequestedVisible = true;
         liveBlanked = false;
         if (probes != null) {
             new Thread(probes::closeAndAwait, "newsnook-live-stop").start();
         }
+        if (observationGate != null) observationGate.clear();
         if (webView != null && host != null) {
-            cleanup(webView, host, scriptHandler, networkEvents != null ? networkEvents : new JSONArray());
+            cleanup(
+                webView,
+                host,
+                scriptHandler,
+                networkEvents != null ? networkEvents : new JSONArray(),
+                !rendererGone
+            );
         }
     }
 
@@ -1422,7 +1849,7 @@ public class MediaSnifferPlugin extends Plugin {
         settings.setAllowFileAccess(false);
         settings.setAllowContentAccess(false);
         settings.setJavaScriptCanOpenWindowsAutomatically(false);
-        settings.setSupportMultipleWindows(false);
+        settings.setSupportMultipleWindows(true);
 
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
@@ -1449,9 +1876,19 @@ public class MediaSnifferPlugin extends Plugin {
             event -> handleNetworkObservation(event, liveProbes, sessionId)
         );
 
+        webView.setWebChromeClient(new android.webkit.WebChromeClient());
         webView.setWebViewClient(new WebViewClient() {
             @Override
+            public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                return OwnedMediaNavigationPolicy.shouldBlock(request.getUrl().toString(), request.isForMainFrame(), request.getMethod(), pageUrl.get());
+            }
+
+            @Override
             public void onPageStarted(WebView view, String url, android.graphics.Bitmap favicon) {
+                if (finished.get()) return;
+                if (!initialUrl.equals(url) && OwnedMediaNavigationPolicy.shouldBlock(url, true, "GET", pageUrl.get())) {
+                    view.stopLoading(); return;
+                }
                 pageUrl.set(url);
                 if (scriptHandler == null) view.evaluateJavascript(probeScript, null);
             }
@@ -1480,7 +1917,7 @@ public class MediaSnifferPlugin extends Plugin {
             if (finished.get()) return;
             long now = System.currentTimeMillis();
             if (now - startMs >= timeoutMs) {
-                finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes);
+                finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes, sessionId);
                 return;
             }
             webView.evaluateJavascript(
@@ -1490,22 +1927,33 @@ public class MediaSnifferPlugin extends Plugin {
                     long lastHigh = Math.max(parseJsMillis(value), nativeLastHighValueAt.get());
                     long innerNow = System.currentTimeMillis();
                     if (innerNow - startMs >= timeoutMs) {
-                        finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes);
+                        finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes, sessionId);
                         return;
                     }
                     if (innerNow - startMs >= MIN_TIMEOUT_MS && lastHigh > 0 && innerNow - lastHigh >= QUIET_MS) {
-                        finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes);
+                        finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes, sessionId);
                         return;
                     }
                     webView.postDelayed(pollHolder[0], POLL_INTERVAL_MS);
                 }
             );
         };
+        Runnable timeout = () -> finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes, sessionId);
+        Runnable cancellation = () -> {
+            if (!finished.compareAndSet(false, true)) return;
+            finiteSniffCancellations.remove(sessionId);
+            webView.removeCallbacks(pollHolder[0]);
+            webView.removeCallbacks(timeout);
+            cleanup(webView, root, scriptHandler, networkEvents);
+            new Thread(liveProbes::closeAndAwait, "newsnook-sniff-cancel").start();
+            JSObject result = new JSObject();
+            result.put("pageUrl", initialUrl);
+            result.put("observations", new JSONArray());
+            call.resolve(result);
+        };
+        finiteSniffCancellations.put(sessionId, cancellation);
         webView.postDelayed(pollHolder[0], POLL_INTERVAL_MS);
-        webView.postDelayed(
-            () -> finishSniff(call, webView, root, scriptHandler, networkEvents, initialUrl, finished, sessionNonce, liveProbes),
-            timeoutMs
-        );
+        webView.postDelayed(timeout, timeoutMs);
 
         if (referrer == null) {
             webView.loadUrl(initialUrl);
@@ -1864,9 +2312,11 @@ public class MediaSnifferPlugin extends Plugin {
         String pageUrl,
         AtomicBoolean finished,
         String sessionNonce,
-        LiveProbeQueue liveProbes
+        LiveProbeQueue liveProbes,
+        String sessionId
     ) {
         if (!finished.compareAndSet(false, true)) return;
+        if (sessionId != null) finiteSniffCancellations.remove(sessionId);
         webView.evaluateJavascript(
             "window.__newsnookCollectMedia ? JSON.stringify(window.__newsnookCollectMedia()) : '[]'",
             value -> {
@@ -1918,15 +2368,13 @@ public class MediaSnifferPlugin extends Plugin {
                 String inferred = inferredMimeType(url);
                 boolean strongManifest = inferred != null
                     && (inferred.contains("mpegurl") || inferred.contains("dash+xml"));
-                boolean staticMedia = "static".equals(source) && inferred != null;
+                boolean staticMedia = ("static".equals(source) || "player-config".equals(source))
+                    && inferred != null;
                 // A player may publish its manifest in inline configuration / DOM
                 // and only request it after preroll. Trust HLS/DASH when the iframe
                 // document itself was loaded; progressive still needs static config
                 // or a real network hit.
                 if (url.isEmpty() || (!networkUrls.contains(url) && !(loadedFrame && (strongManifest || staticMedia)))) continue;
-            }
-            if (event.optBoolean("fromIframe", false)) {
-                try { event.put("provenanceVerified", true); } catch (JSONException ignored) {}
             }
             event.remove("sessionNonce");
             trusted.put(event);
@@ -2001,11 +2449,25 @@ public class MediaSnifferPlugin extends Plugin {
     }
 
     private static void cleanup(WebView webView, ViewGroup root, ScriptHandler scriptHandler, JSONArray networkEvents) {
+        cleanup(webView, root, scriptHandler, networkEvents, true);
+    }
+
+    private static void cleanup(
+        WebView webView,
+        ViewGroup root,
+        ScriptHandler scriptHandler,
+        JSONArray networkEvents,
+        boolean blankBeforeDestroy
+    ) {
         ServiceWorkerSniffer.uninstall(networkEvents);
-        if (scriptHandler != null) scriptHandler.remove();
-        webView.stopLoading();
+        if (scriptHandler != null) {
+            try { scriptHandler.remove(); } catch (RuntimeException ignored) {}
+        }
+        try { webView.stopLoading(); } catch (RuntimeException ignored) {}
         root.removeView(webView);
-        webView.loadUrl("about:blank");
-        webView.destroy();
+        if (blankBeforeDestroy) {
+            try { webView.loadUrl("about:blank"); } catch (RuntimeException ignored) {}
+        }
+        try { webView.destroy(); } catch (RuntimeException ignored) {}
     }
 }

@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { X } from 'lucide-react'
+import { fetchAbsoluteText } from '../lib/http'
+import { catalogRequestOptions } from '../features/siteCatalog/requestIdentity'
 
 import {
   prepareNativeMediaPlayback,
   setNativeLiveSessionBounds,
+  setNativeLiveSessionInteractive,
   setNativeLiveSessionVisible,
   startNativeLiveSniffSession,
 } from '../features/mediaSniffer/native'
 import { reduceLiveObservations } from '../features/mediaSniffer/liveCandidate'
+import { discoverMediaDescriptor, enrichMediaDescriptorFromObservations } from '../features/mediaSniffer/service'
+import { appendReaderObservation, mergeReaderDescriptors } from '../features/mediaSniffer/readerCandidates'
 import type { MediaDescriptor, MediaObservation } from '../features/mediaSniffer/types'
 import { InkVideoPlayer, type InkVideoPlayerFullscreenHandle } from './InkVideoPlayer'
 import { useHasGlobalVideoSurface } from '../features/floatingVideo/context'
@@ -16,6 +21,7 @@ type Mode = 'origin' | 'custom'
 
 /** Match Tailwind `rounded-xl` used by Reader cover / related cards. */
 const SLOT_CORNER_RADIUS_PX = 12
+const AUTOMATIC_DISCOVERY_BUDGET_MS = 8_000
 
 export type OriginPlayerCloseHandle = {
   /** Returns true when the custom layer was closed. */
@@ -25,6 +31,7 @@ export type OriginPlayerCloseHandle = {
 interface Props {
   pageUrl: string
   referrer?: string
+  userAgent?: string
   title: string
   poster?: string
   openOriginal?: () => void
@@ -93,6 +100,7 @@ function pushLiveSessionBounds(
 export function OriginPlayerSurface({
   pageUrl,
   referrer,
+  userAgent,
   title,
   poster,
   openOriginal,
@@ -109,6 +117,10 @@ export function OriginPlayerSurface({
   const handoffVersionRef = useRef<object>({})
   const preparingRef = useRef(false)
   const [sessionError, setSessionError] = useState<string | null>(null)
+  const [automaticFinished, setAutomaticFinished] = useState(false)
+  const [nativeReady, setNativeReady] = useState(false)
+  const [retryGeneration, setRetryGeneration] = useState(0)
+  const [assistMode, setAssistMode] = useState(false)
   const observationsRef = useRef<MediaObservation[]>([])
   const slotRef = useRef<HTMLDivElement | null>(null)
   const lastBoundsKeyRef = useRef('')
@@ -116,6 +128,9 @@ export function OriginPlayerSurface({
   const sessionIdRef = useRef<string | undefined>(undefined)
   const playerFullscreenRef = useRef<InkVideoPlayerFullscreenHandle | null>(null)
   const autoSwitchedRef = useRef(false)
+  const manualOriginRef = useRef(false)
+  const surfaceIntentRef = useRef<'automatic' | 'assisted' | 'custom'>('automatic')
+  const discoveryAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!closeHandleRef) return
@@ -127,11 +142,18 @@ export function OriginPlayerSurface({
           return true
         }
         if (mode !== 'custom') return false
+        manualOriginRef.current = true
+        surfaceIntentRef.current = 'assisted'
+        discoveryAbortRef.current?.abort()
         handoffVersionRef.current = {}
         preparingRef.current = false
         setActiveCandidate(null)
         setMode('origin')
-        if (sessionIdRef.current) void setNativeLiveSessionVisible(true, sessionIdRef.current)
+        if (sessionIdRef.current) {
+          void setNativeLiveSessionVisible(true, sessionIdRef.current)
+          void setNativeLiveSessionInteractive(true, sessionIdRef.current)
+        }
+        setAssistMode(true)
         lastBoundsKeyRef.current = ''
         const el = slotRef.current
         if (el && sessionReadyRef.current) {
@@ -151,11 +173,16 @@ export function OriginPlayerSurface({
     const lateTimers: number[] = []
     observationsRef.current = []
     autoSwitchedRef.current = false
+    manualOriginRef.current = false
+    surfaceIntentRef.current = 'automatic'
     handoffVersionRef.current = {}
     preparingRef.current = false
     setActiveCandidate(null)
     setCandidate(null)
     setSessionError(null)
+    setAutomaticFinished(false)
+    setNativeReady(false)
+    setAssistMode(false)
     setMode('origin')
     sessionReadyRef.current = false
     sessionIdRef.current = undefined
@@ -170,11 +197,20 @@ export function OriginPlayerSurface({
     void startNativeLiveSniffSession({
       url: pageUrl,
       referrer,
+      onDocumentChanged: () => {
+        if (stopped) return
+        discoveryAbortRef.current?.abort()
+        observationsRef.current = []
+        handoffVersionRef.current = {}
+        preparingRef.current = false
+        // Native about:blank restoration is navigation, not renewed user consent.
+        setCandidate(null)
+      },
       onObservation: (observation) => {
         if (stopped) return
-        observationsRef.current.push(observation)
+        appendReaderObservation(observationsRef.current, observation)
         const next = reduceLiveObservations(observationsRef.current)
-        if (next) setCandidate(next)
+        if (next) setCandidate(previous => mergeReaderDescriptors(previous, next))
       },
     })
       .then((session) => {
@@ -184,8 +220,10 @@ export function OriginPlayerSurface({
         }
         stopSession = session.stop
         sessionIdRef.current = session.sessionId
+        void setNativeLiveSessionInteractive(false, session.sessionId)
         // Native WebView starts off-screen; bounds calls before this are no-ops.
         sessionReadyRef.current = true
+        setNativeReady(true)
         syncAfterNativeReady()
         requestAnimationFrame(() => {
           syncAfterNativeReady()
@@ -196,7 +234,10 @@ export function OriginPlayerSurface({
         lateTimers.push(window.setTimeout(syncAfterNativeReady, 400))
       })
       .catch(() => {
-        if (!stopped) setSessionError('原站播放器未能启动')
+        if (!stopped) {
+          setSessionError('原站播放器未能启动')
+          setNativeReady(false)
+        }
       })
 
     return () => {
@@ -208,7 +249,54 @@ export function OriginPlayerSurface({
       for (const id of lateTimers) window.clearTimeout(id)
       void stopSession?.()
     }
-  }, [pageUrl, referrer])
+  }, [pageUrl, referrer, retryGeneration])
+
+  useEffect(() => {
+    const controller = new AbortController()
+    discoveryAbortRef.current = controller
+    let stopped = false
+    const acceptDescriptor = (descriptor: MediaDescriptor) => {
+      if (stopped || controller.signal.aborted) return
+      setCandidate(previous => mergeReaderDescriptors(previous, descriptor))
+    }
+    void fetchAbsoluteText(pageUrl, {
+      ...catalogRequestOptions(userAgent),
+      signal: controller.signal,
+      headers: referrer ? { Referer: referrer } : undefined,
+      accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+      maxBytes: 2 * 1024 * 1024,
+    }).then((html) => {
+      if (stopped || controller.signal.aborted || !html) return
+      return discoverMediaDescriptor({
+        pageUrl,
+        html,
+        referrer,
+        runtime: true,
+        excludeRuntimeUrls: [pageUrl],
+        timeoutMs: AUTOMATIC_DISCOVERY_BUDGET_MS,
+        signal: controller.signal,
+        onDescriptor: acceptDescriptor,
+      })
+    }).then((descriptor) => {
+      if (descriptor && !stopped) acceptDescriptor(descriptor)
+    }).catch(() => undefined)
+    return () => {
+      stopped = true
+      controller.abort()
+      if (discoveryAbortRef.current === controller) discoveryAbortRef.current = null
+    }
+  }, [pageUrl, referrer, retryGeneration, userAgent])
+
+  useEffect(() => {
+    if (mode !== 'origin' || candidate || sessionError) return
+    const timer = window.setTimeout(() => setAutomaticFinished(true), AUTOMATIC_DISCOVERY_BUDGET_MS)
+    return () => window.clearTimeout(timer)
+  }, [mode, candidate, sessionError, pageUrl])
+
+  useEffect(() => {
+    if (mode !== 'origin' || !assistMode || !sessionIdRef.current) return
+    void setNativeLiveSessionInteractive(true, sessionIdRef.current)
+  }, [mode, assistMode])
 
   useEffect(() => {
     if (mode !== 'origin') return
@@ -241,13 +329,22 @@ export function OriginPlayerSurface({
       vv?.removeEventListener('resize', syncBounds)
       vv?.removeEventListener('scroll', syncBounds)
     }
-  }, [mode, pageUrl])
+  }, [mode, pageUrl, assistMode])
 
   const openCustom = useCallback(async () => {
     if (!candidate || preparingRef.current) return
     const chosen = candidate
     const version = handoffVersionRef.current
+    const sessionId = sessionIdRef.current
+    surfaceIntentRef.current = 'custom'
     preparingRef.current = true
+    const restoreManualSurface = async () => {
+      if (!sessionId || sessionId !== sessionIdRef.current || surfaceIntentRef.current !== 'assisted') return
+      await setNativeLiveSessionVisible(true, sessionId)
+      if (sessionId === sessionIdRef.current && surfaceIntentRef.current === 'assisted') {
+        await setNativeLiveSessionInteractive(true, sessionId)
+      }
+    }
     try {
       await prepareNativeMediaPlayback({
         url: chosen.url,
@@ -256,29 +353,69 @@ export function OriginPlayerSurface({
         headers: chosen.requestHeaders,
         origins: chosen.origins,
         extraUrls: chosen.relatedUrls,
-      }).catch(() => undefined)
+      })
       if (version !== handoffVersionRef.current) return
-      if (sessionIdRef.current) await setNativeLiveSessionVisible(false, sessionIdRef.current)
+      if (sessionId) {
+        await setNativeLiveSessionInteractive(false, sessionId)
+        if (version !== handoffVersionRef.current) {
+          await restoreManualSurface()
+          return
+        }
+        await setNativeLiveSessionVisible(false, sessionId)
+        if (version !== handoffVersionRef.current) {
+          await restoreManualSurface()
+          return
+        }
+      }
       if (version !== handoffVersionRef.current) return
       setActiveCandidate(chosen)
       setMode('custom')
+    } catch {
+      if (version === handoffVersionRef.current) setSessionError('播放器准备失败，请重试或使用手动辅助')
     } finally {
       if (version === handoffVersionRef.current) preparingRef.current = false
     }
   }, [candidate])
 
+  const candidateManifestUrl = candidate?.url
+  const candidateManifestType = candidate?.type
   useEffect(() => {
-    if (!autoUseReader || !candidate || mode !== 'origin' || autoSwitchedRef.current) return
+    if (!candidateManifestUrl || (candidateManifestType !== 'hls' && candidateManifestType !== 'dash')) return
+    const controller = new AbortController()
+    const version = handoffVersionRef.current
+    // Enrichment uses only the selected manifest, never flattened Representation URLs.
+    const observation: MediaObservation = {
+      url: candidateManifestUrl, pageUrl, source: 'static',
+      mimeType: candidateManifestType === 'hls' ? 'application/vnd.apple.mpegurl' : 'application/dash+xml',
+    }
+    const snapshot = observationsRef.current.slice()
+    if (!snapshot.some(item => item.url === candidateManifestUrl)) snapshot.push(observation)
+    void enrichMediaDescriptorFromObservations(snapshot, controller.signal).then(enriched => {
+      if (controller.signal.aborted || version !== handoffVersionRef.current || !enriched) return
+      setCandidate(current => current?.url === candidateManifestUrl ? mergeReaderDescriptors(current, enriched) : current)
+    }).catch(() => undefined)
+    return () => controller.abort()
+  }, [candidateManifestUrl, candidateManifestType, pageUrl])
+
+  useEffect(() => {
+    if (!autoUseReader || !candidate || !nativeReady || mode !== 'origin' || autoSwitchedRef.current || manualOriginRef.current) return
     autoSwitchedRef.current = true
     void openCustom()
-  }, [autoUseReader, candidate, mode, openCustom])
+  }, [autoUseReader, candidate, mode, nativeReady, openCustom])
 
   const backToOrigin = () => {
+    manualOriginRef.current = true
+    surfaceIntentRef.current = 'assisted'
     handoffVersionRef.current = {}
     preparingRef.current = false
     setActiveCandidate(null)
     setMode('origin')
-    if (sessionIdRef.current) void setNativeLiveSessionVisible(true, sessionIdRef.current)
+    if (sessionIdRef.current) {
+      void setNativeLiveSessionVisible(true, sessionIdRef.current)
+      void setNativeLiveSessionInteractive(true, sessionIdRef.current)
+    }
+    discoveryAbortRef.current?.abort()
+    setAssistMode(true)
     lastBoundsKeyRef.current = ''
     const el = slotRef.current
     if (el && sessionReadyRef.current) {
@@ -291,9 +428,17 @@ export function OriginPlayerSurface({
       <div className="overflow-hidden rounded-xl border border-haze bg-ink-raised/80">
         <div
           ref={slotRef}
-          className={`relative w-full bg-[#0c0d10] ${mode === 'origin' ? 'reader-video-aspect' : ''}`}
+          className={`relative w-full bg-[#0c0d10] ${mode === 'origin' && !assistMode ? 'reader-video-aspect' : ''}`}
+          style={mode === 'origin' && assistMode ? { height: '58vh', maxHeight: 540, minHeight: 280 } : undefined}
         >
           {mode === 'origin' && globalVideoSurface && <div className="reader-video-aspect flex items-center justify-center px-6 text-center text-[12px] text-paper-muted">关闭悬浮后可使用原站播放器</div>}
+          {mode === 'origin' && !globalVideoSurface && !assistMode && !sessionError && (
+            <div className="reader-video-aspect flex flex-col items-center justify-center gap-2 px-6 text-center text-paper-muted" aria-live="polite">
+              <span className={`size-2 rounded-full bg-cinnabar-soft ${automaticFinished ? '' : 'animate-pulse'}`} />
+              <span className="text-[13px]">{automaticFinished ? '暂未识别到播放地址' : '正在自动识别视频资源'}</span>
+              <span className="text-[11px]">{automaticFinished ? '可直接手动播放，系统会继续识别' : '也可立即进入原站辅助识别，无需等待'}</span>
+            </div>
+          )}
           {mode === 'custom' && activeCandidate ? (
             <InkVideoPlayer
               autoPlay={!autoUseReader}
@@ -312,13 +457,15 @@ export function OriginPlayerSurface({
           ) : null}
         </div>
 
-        {mode === 'origin' && (!embedded || sessionError) && (
+        {mode === 'origin' && (
           <div className="flex items-center gap-2 px-2.5 py-2.5">
             {sessionError ? (
               <>
                 <p className="min-w-0 flex-1 text-[12px] leading-snug text-paper-muted" role="alert">
                   {sessionError}
                 </p>
+                <button type="button" onClick={() => setRetryGeneration(value => value + 1)}
+                  className="shrink-0 rounded-lg border border-haze px-3 py-2 text-[12px] text-paper">重新识别</button>
                 {openOriginal && (
                   <button
                     type="button"
@@ -335,7 +482,7 @@ export function OriginPlayerSurface({
                   {candidate ? null : (
                     <span className="size-1.5 shrink-0 rounded-full bg-cinnabar-soft animate-pulse" />
                   )}
-                  <span className="truncate">{candidate ? '已识别正片' : '原站播放中'}</span>
+                  <span className="truncate">{assistMode ? '手动辅助识别中' : candidate ? '已发现视频资源' : automaticFinished ? '可手动播放后继续识别' : '正在自动识别视频'}</span>
                 </span>
                 {candidate ? (
                   <>
@@ -357,6 +504,32 @@ export function OriginPlayerSurface({
                     </button>
                   </>
                 ) : null}
+                {assistMode ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      surfaceIntentRef.current = 'automatic'
+                      setAssistMode(false)
+                      void setNativeLiveSessionInteractive(false, sessionIdRef.current)
+                    }}
+                    className="shrink-0 rounded-lg border border-haze px-3 py-2 text-[12px] text-paper-muted hover:text-paper"
+                  >隐藏原站</button>
+                ) : (
+                  <button
+                    type="button"
+                    disabled={!nativeReady || globalVideoSurface}
+                    onClick={() => {
+                      manualOriginRef.current = true
+                      surfaceIntentRef.current = 'assisted'
+                      handoffVersionRef.current = {}
+                      preparingRef.current = false
+                      discoveryAbortRef.current?.abort()
+                      setAssistMode(true)
+                      if (sessionIdRef.current) void setNativeLiveSessionInteractive(true, sessionIdRef.current)
+                    }}
+                    className="shrink-0 rounded-lg border border-haze px-3 py-2 text-[12px] text-paper hover:bg-haze disabled:opacity-40"
+                  >手动辅助识别</button>
+                )}
               </>
             )}
           </div>

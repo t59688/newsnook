@@ -13,9 +13,11 @@ interface NativeMediaSnifferPlugin {
     observations: MediaObservation[]
     pageUrl?: string
   }>
+  cancelSniff(options: { sessionId: string }): Promise<void>
   startLiveSession(options: { url: string; referrer?: string; sessionId: string }): Promise<void>
   stopLiveSession(options: { sessionId: string }): Promise<void>
   setLiveSessionVisible(options: { visible: boolean; sessionId?: string }): Promise<void>
+  setLiveSessionInteractive(options: { interactive: boolean; sessionId?: string }): Promise<void>
   setLiveSurfaceSuppressed(options: { suppressed: boolean }): Promise<void>
   setLiveSessionBounds(options: {
     x: number
@@ -26,8 +28,8 @@ interface NativeMediaSnifferPlugin {
     sessionId?: string
   }): Promise<void>
   addListener(
-    eventName: 'mediaObservation',
-    listener: (event: { sessionId?: string; observation?: MediaObservation }) => void,
+    eventName: 'mediaObservation' | 'mediaDocument',
+    listener: (event: { sessionId?: string; documentEpoch?: number; pageUrl?: string; observation?: MediaObservation }) => void,
   ): Promise<PluginListenerHandle>
   preparePlayback(options: {
     sessionId?: string
@@ -198,17 +200,19 @@ export async function observeMediaInNativePage(
   timeoutMs = 6000,
   referrer?: string,
   onObservation?: (observation: MediaObservation) => void,
+  signal?: AbortSignal,
 ): Promise<MediaObservation[]> {
-  if (!Capacitor.isNativePlatform()) return []
+  if (!Capacitor.isNativePlatform() || signal?.aborted) return []
   const sessionId = typeof globalThis.crypto?.randomUUID === 'function'
     ? globalThis.crypto.randomUUID()
     : `media-${Date.now()}-${Math.random().toString(36).slice(2)}`
   const streamed: MediaObservation[] = []
   let listener: PluginListenerHandle | undefined
+  let abortSniff: (() => void) | undefined
   try {
     try {
       listener = await NativeMediaSniffer.addListener('mediaObservation', (event) => {
-        if (event.sessionId !== sessionId || !event.observation) return
+        if (signal?.aborted || event.sessionId !== sessionId || !event.observation) return
         const [observation] = observationsWithoutSessionNonce([event.observation])
         streamed.push(observation)
         onObservation?.(observation)
@@ -217,7 +221,19 @@ export async function observeMediaInNativePage(
       // Older installed native shells may not expose the incremental event;
       // the final sniff result remains a compatible fallback.
     }
-    const result = await NativeMediaSniffer.sniff({ url, timeoutMs, referrer, sessionId })
+    if (signal?.aborted) return []
+    const aborted = new Promise<{ observations: MediaObservation[] }>(resolve => {
+      abortSniff = () => {
+        void NativeMediaSniffer.cancelSniff({ sessionId }).catch(() => undefined)
+        resolve({ observations: [] })
+      }
+      signal?.addEventListener('abort', abortSniff, { once: true })
+    })
+    const result = await Promise.race([
+      NativeMediaSniffer.sniff({ url, timeoutMs, referrer, sessionId }),
+      aborted,
+    ])
+    if (signal?.aborted) return []
     const final = Array.isArray(result.observations)
       ? observationsWithoutSessionNonce(result.observations)
       : []
@@ -228,6 +244,7 @@ export async function observeMediaInNativePage(
     }
     return final
   } finally {
+    if (abortSniff) signal?.removeEventListener('abort', abortSniff)
     await listener?.remove().catch(() => undefined)
   }
 }
@@ -236,6 +253,7 @@ export async function startNativeLiveSniffSession(options: {
   url: string
   referrer?: string
   onObservation: (observation: MediaObservation) => void
+  onDocumentChanged?: (epoch: number) => void
 }): Promise<{ sessionId: string; stop: () => Promise<void> }> {
   if (Capacitor.getPlatform() !== 'android') {
     throw new Error('Live sniff session is Android-only')
@@ -244,9 +262,21 @@ export async function startNativeLiveSniffSession(options: {
     ? globalThis.crypto.randomUUID()
     : `live-${Date.now()}-${Math.random().toString(36).slice(2)}`
   let listener: PluginListenerHandle | undefined
+  let documentListener: PluginListenerHandle | undefined
+  let documentEpoch: number | undefined
+  const acceptDocument = (epoch: number | undefined) => {
+    if (typeof epoch !== 'number' || epoch === documentEpoch) return
+    const previous = documentEpoch
+    documentEpoch = epoch
+    if (previous !== undefined) options.onDocumentChanged?.(epoch)
+  }
   try {
+    documentListener = await NativeMediaSniffer.addListener('mediaDocument', event => {
+      if (event.sessionId === sessionId && event.pageUrl) acceptDocument(event.documentEpoch)
+    })
     listener = await NativeMediaSniffer.addListener('mediaObservation', (event) => {
       if (event.sessionId !== sessionId || !event.observation) return
+      acceptDocument(event.documentEpoch)
       const [observation] = observationsWithoutSessionNonce([event.observation])
       options.onObservation(observation)
     })
@@ -254,16 +284,23 @@ export async function startNativeLiveSniffSession(options: {
     // Older shells without the event still start the visible WebView;
     // candidates then only appear after a future plugin upgrade.
   }
-  await NativeMediaSniffer.startLiveSession({
-    url: options.url,
-    referrer: options.referrer,
-    sessionId,
-  })
+  try {
+    await NativeMediaSniffer.startLiveSession({
+      url: options.url,
+      referrer: options.referrer,
+      sessionId,
+    })
+  } catch (error) {
+    await listener?.remove().catch(() => undefined)
+    await documentListener?.remove().catch(() => undefined)
+    throw error
+  }
   let stopped = false
   const stop = async () => {
     if (stopped) return
     stopped = true
     await listener?.remove().catch(() => undefined)
+    await documentListener?.remove().catch(() => undefined)
     await NativeMediaSniffer.stopLiveSession({ sessionId }).catch(() => undefined)
   }
   return { sessionId, stop }
@@ -272,6 +309,15 @@ export async function startNativeLiveSniffSession(options: {
 export async function setNativeLiveSessionVisible(visible: boolean, sessionId?: string): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return
   await NativeMediaSniffer.setLiveSessionVisible({ visible, sessionId }).catch(() => undefined)
+}
+
+/** Keep the origin page loaded for sniffing, but expose touch/visuals only in assisted mode. */
+export async function setNativeLiveSessionInteractive(
+  interactive: boolean,
+  sessionId?: string,
+): Promise<void> {
+  if (Capacitor.getPlatform() !== 'android') return
+  await NativeMediaSniffer.setLiveSessionInteractive({ interactive, sessionId }).catch(() => undefined)
 }
 
 export async function setNativeLiveSessionBounds(bounds: {

@@ -30,6 +30,8 @@ interface GraphAsset extends MediaAsset {
   hasAudio?: boolean
   hasVideo?: boolean
   mimeType?: string
+  quality?: string
+  sourceLabel?: string
   requestHeaders?: Record<string, string>
   descriptorVideoTracks: MediaTrack[]
   descriptorAudioTracks: MediaTrack[]
@@ -128,7 +130,7 @@ export function admitSessionObservation(
         observation.mediaKind ? { mediaKind: observation.mediaKind } : undefined,
       )
       if (format === 'hls' || format === 'dash') return true
-      if (observation.source === 'static' && format === 'progressive') return true
+      if ((observation.source === 'static' || observation.source === 'player-config') && format === 'progressive') return true
     }
     return Boolean(url && networkUrls.has(url))
   }
@@ -151,7 +153,8 @@ function observationScore(observation: MediaObservation, format: MediaFormat): n
   else if (mime.startsWith('audio/')) score += 60
   else if (MANIFEST_MIMES.has(mime)) score += 80
 
-  if (observation.source === 'dom') score += 100
+  if (observation.source === 'player-config') score += 120
+  else if (observation.source === 'dom') score += 100
   else if (observation.source === 'mse') score += 80
   else if (observation.source === 'fetch' || observation.source === 'xhr') score += 35
   else if (observation.source === 'network') score += 25
@@ -206,6 +209,7 @@ function mergeObservation(target: MediaObservation, incoming: MediaObservation):
     assetGroup: incoming.assetGroup || target.assetGroup,
     codecs: incoming.codecs || target.codecs,
     quality: incoming.quality || target.quality,
+    sourceLabel: incoming.sourceLabel || target.sourceLabel,
     mediaSessionId: incoming.mediaSessionId || target.mediaSessionId,
     initializationRange: incoming.initializationRange || target.initializationRange,
     indexRange: incoming.indexRange || target.indexRange,
@@ -319,7 +323,7 @@ function bestTrack(tracks: MediaAssetTrack[]): MediaAssetTrack | undefined {
   })[0]
 }
 
-function assetGroupKey(item: GroupedObservation): string {
+function assetGroupKey(item: GroupedObservation, mseObservations: MediaObservation[]): string {
   const observation = item.observation
   const scope = `${observation.pageUrl}:${Boolean(observation.isAd || isLikelyAdMediaUrl(item.url))}`
   // A manifest is the authoritative variant boundary. Titles alone are not unique IDs.
@@ -328,6 +332,22 @@ function assetGroupKey(item: GroupedObservation): string {
   if (observation.mediaSessionId) return `session:${scope}:${observation.mediaSessionId}`
   if (observation.contentId && (observation.titleSource === 'player' || observation.titleSource === 'structured')) {
     return `content:${scope}:${observation.contentId}`
+  }
+  // Network audio/video tracks can be tied to an MSE SourceBuffer only when
+  // exactly one explicit media session exists for this page/ad scope and time
+  // window. A nearby timestamp or shared CDN directory alone is never enough.
+  if (item.format === 'video-track' || item.format === 'audio-track') {
+    const timestamp = observation.timestamp
+    if (timestamp) {
+      const sessions = new Set(mseObservations
+        .filter(candidate => candidate.pageUrl === observation.pageUrl
+          && Boolean(candidate.isAd || (candidate.url && isLikelyAdMediaUrl(candidate.url))) === Boolean(observation.isAd || isLikelyAdMediaUrl(item.url))
+          && candidate.mediaSessionId
+          && candidate.timestamp
+          && Math.abs(candidate.timestamp - timestamp) <= 10_000)
+        .map(candidate => candidate.mediaSessionId as string))
+      if (sessions.size === 1) return `session:${scope}:${Array.from(sessions)[0]}`
+    }
   }
   return `file:${scope}:${mediaFingerprint(item.url)}`
 }
@@ -374,6 +394,7 @@ function emptyAsset(id: string, pageUrl: string): GraphAsset {
 
 const STRONG_OBSERVATION_SOURCES = new Set<MediaObservation['source']>([
   'network',
+  'player-config',
   'dom',
   'fetch',
   'xhr',
@@ -456,9 +477,10 @@ export function buildMediaGraph(
     .filter((item): item is MediaObservation => item !== null)
     .filter((item) => admitSessionObservation(item, undefined, networkUrls))
   const grouped = groupRangeObservations(admitted)
+  const mseObservations = admitted.filter(item => item.source === 'mse' && Boolean(item.mediaSessionId))
   const buckets = new Map<string, GroupedObservation[]>()
   for (const item of grouped) {
-    const key = assetGroupKey(item)
+    const key = assetGroupKey(item, mseObservations)
     const bucket = buckets.get(key)
     if (bucket) bucket.push(item)
     else buckets.set(key, [item])
@@ -478,6 +500,8 @@ export function buildMediaGraph(
       if (observation.hasAudio !== undefined) asset.hasAudio = observation.hasAudio
       if (observation.hasVideo !== undefined) asset.hasVideo = observation.hasVideo
       if (observation.mimeType) asset.mimeType = observation.mimeType
+      if (observation.quality) asset.quality = observation.quality
+      if (observation.sourceLabel) asset.sourceLabel = observation.sourceLabel
       if (observation.requestHeaders) asset.requestHeaders = observation.requestHeaders
       if (observation.drmKeySystem && !asset.drmKeySystems.includes(observation.drmKeySystem)) {
         asset.drmKeySystems.push(observation.drmKeySystem)
@@ -598,6 +622,7 @@ export function descriptorFromAsset(
     pageUrl: asset.pageUrl,
     score: asset.score,
     mimeType: graphAsset.mimeType,
+    sourceLabel: graphAsset.sourceLabel || graphAsset.quality,
     hasAudio: graphAsset.hasAudio,
     videoTracks,
     audioTracks,

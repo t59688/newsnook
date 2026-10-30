@@ -17,6 +17,7 @@ const location = { href: 'https://watch.example/film', origin: 'https://watch.ex
 runInNewContext(script, { window, document, location, URL, Element: dom.Element, HTMLMediaElement: class {}, navigator: {},
   performance: { getEntriesByType: () => [] }, MutationObserver: class { observe() {} } })
 const events = window.__newsnookCollectMedia()
+
 assert.equal(events.find((e: any) => e.url?.includes('main.m3u8'))?.title, '正片名称', 'probe carries player-scoped titles')
 assert.equal(events.find((e: any) => e.url?.includes('structured.mp4'))?.titleSource, 'structured')
 assert.equal(events.find((e: any) => e.url?.includes('plain.mp4'))?.title, undefined)

@@ -18,6 +18,7 @@ export type MediaObservationSource =
   | 'performance'
   | 'mse'
   | 'static'
+  | 'player-config'
 
 export type MediaTitleSource = 'player' | 'structured' | 'page' | 'filename' | 'generated'
 
@@ -51,6 +52,8 @@ export interface MediaObservation extends MediaMetadata {
   height?: number
   bitrate?: number
   quality?: string
+  /** Source/line label declared by a CMS player, not a verified resolution. */
+  sourceLabel?: string
   bodyText?: string
   codecs?: string
   fromIframe?: boolean
@@ -110,11 +113,11 @@ export interface MediaTrack {
   height?: number
   codecs?: string
   language?: string
+  quality?: string
   groupId?: string
   subtitleGroupId?: string
   id?: string
   label?: string
-  quality?: string
 }
 
 export interface MediaCandidate {
@@ -153,6 +156,8 @@ export interface MediaResourceDescriptor extends MediaMetadata {
   origins?: string[]
   /** Stable graph id used by the resource picker. */
   id?: string
+  /** Quality/line label declared by the source player, distinct from verified resolution. */
+  sourceLabel?: string
   /** True when the URL has strong advertising/preroll markers. */
   isAd?: boolean
 }

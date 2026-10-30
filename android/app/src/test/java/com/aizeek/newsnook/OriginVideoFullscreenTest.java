@@ -2,6 +2,8 @@ package com.aizeek.newsnook;
 
 import static org.junit.Assert.*;
 import android.content.pm.ActivityInfo;
+import android.os.Message;
+import android.webkit.WebView;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
@@ -75,5 +77,27 @@ public class OriginVideoFullscreenTest {
             client.onHideCustomView();
             assertEquals(original, activity.getRequestedOrientation());
         }
+    }
+
+    @Test public void ownedOriginSurfaceRejectsPopupWindows() {
+        ComponentActivity activity = Robolectric.buildActivity(ComponentActivity.class).setup().get();
+        FrameLayout host = new FrameLayout(activity);
+        activity.setContentView(host);
+        OriginVideoFullscreen client = new OriginVideoFullscreen(activity, host, active -> {});
+        assertFalse(client.onCreateWindow(null, false, true, Message.obtain()));
+    }
+
+    @Test public void playbackLinksOpenInOwnedWebViewWithoutGrantingPopupWindows() {
+        ComponentActivity activity = Robolectric.buildActivity(ComponentActivity.class).setup().get();
+        WebView origin = new WebView(activity);
+        // CMS playback links frequently use target=_blank. With multiple windows
+        // enabled and onCreateWindow() rejecting popups, their taps become no-ops.
+        origin.getSettings().setSupportMultipleWindows(true);
+        OriginVideoFullscreen.configureSameWindowPlaybackLinks(origin.getSettings());
+        assertFalse(origin.getSettings().supportMultipleWindows());
+        assertFalse(origin.getSettings().getJavaScriptCanOpenWindowsAutomatically());
+        FrameLayout host = new FrameLayout(activity);
+        OriginVideoFullscreen client = new OriginVideoFullscreen(activity, host, active -> {});
+        assertFalse(client.onCreateWindow(origin, false, true, Message.obtain()));
     }
 }

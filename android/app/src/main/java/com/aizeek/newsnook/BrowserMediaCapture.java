@@ -184,10 +184,14 @@ final class BrowserMediaCapture {
             + observation.optString("mseMimeType") + "\u0001"
             + observation.optString("pageUrl") + "\u0001" + observation.optString("drmKeySystem");
         // Timestamp changes every scan; compare only useful metadata/body content.
+        String bodyText = observation.optString("bodyText", "");
+        String bodySignature = bodyText.isEmpty() ? "" : bodyText.length() + ":" + bodyText.hashCode();
         String signature = key + observation.optString("title") + observation.optString("titleSource")
-            + observation.optString("pageTitle") + observation.optString("height") + observation.optString("width")
-            + observation.optString("bitrate") + observation.optString("codecs") + observation.optString("isAd")
-            + observation.optString("bodyText");
+            + observation.optString("pageTitle") + observation.optString("playerSource") + observation.optString("sourceLabel")
+            + observation.optString("contentId") + observation.optString("assetGroup") + observation.optString("quality")
+            + observation.optString("height") + observation.optString("width") + observation.optString("bitrate")
+            + observation.optString("codecs") + observation.optString("hasAudio") + observation.optString("hasVideo")
+            + observation.optString("isAd") + observation.optString("drm") + bodySignature;
         if (signature.equals(window.seen.get(key))) return;
         window.seen.put(key, signature);
         window.emitted++;

@@ -158,9 +158,10 @@ console.info('Browser media lifecycle, same-URL reset versus visibility/scan, de
 
 {
   const [resource] = browserMediaResources([{ ...obs('https://cdn.example/v.mp4?token=hidden'), title: '播放器名称', titleSource: 'player', fromIframe: true,
-    height: 1080, bitrate: 3200000, codecs: 'avc1.640028', hasAudio: true }])
+    playerSource: 'player.example', sourceLabel: '云播', height: 1080, bitrate: 3200000, codecs: 'avc1.640028', hasAudio: true }])
   assert.equal(browserResourceTitle(resource), '播放器名称')
   assert.ok(browserResourceDetails(resource).join(' ').includes('iframe'))
+  assert.ok(browserResourceDetails(resource).join(' ').includes('线路 · 云播'))
   assert.ok(browserResourceTracks(resource).join(' ').includes('1080p · 3.2 Mbps'))
   assert.doesNotMatch([...browserResourceDetails(resource), ...browserResourceTracks(resource), browserResourceTitle(resource)].join(' '), /token|hidden|https:|\?/)
 }

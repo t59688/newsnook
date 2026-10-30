@@ -1,5 +1,8 @@
 import type { CatalogItem } from '../types'
+import { positiveRank } from '../itemSemantics'
+import { isCatalogContentUrl, isPlaybackControlTitle } from '../linkRoles'
 import { absoluteUrl, parseIsoDate, stripTags } from '../normalize'
+import { regexMatches } from '../../../lib/regexMatches'
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue }
 
@@ -8,6 +11,9 @@ const JSON_LD_RE =
 
 const LISTABLE_TYPES = new Set([
   'VideoObject',
+  'Movie',
+  'TVSeries',
+  'TVEpisode',
   'Article',
   'NewsArticle',
   'BlogPosting',
@@ -85,7 +91,7 @@ function mediaItemToCatalog(
     absoluteUrl(text(node.url), pageUrl) ||
     absoluteUrl(text(node['@id']), pageUrl) ||
     absoluteUrl(text(node.mainEntityOfPage), pageUrl)
-  if (!name || !originUrl) return undefined
+  if (!name || !originUrl || !isCatalogContentUrl(originUrl) || isPlaybackControlTitle(name)) return undefined
 
   const image =
     imageUrl(node.thumbnailUrl, pageUrl) ||
@@ -104,7 +110,8 @@ function mediaItemToCatalog(
     image,
     summary: (description || name).slice(0, 220),
     publishedAt,
-    contentType: types.includes('VideoObject') ? 'video' : 'article',
+    contentType: types.some(type => ['VideoObject', 'Movie', 'TVSeries', 'TVEpisode'].includes(type)) ? 'video' : 'article',
+    entityType: types.some(type => ['VideoObject', 'Movie', 'TVSeries', 'TVEpisode'].includes(type)) ? 'video' : 'article',
   }
 }
 
@@ -127,7 +134,7 @@ function listItemToCatalogItem(
     text(itemNode?.name) ||
     text(itemNode?.headline) ||
     ''
-  if (!originUrl || !title) return undefined
+  if (!originUrl || !title || !isCatalogContentUrl(originUrl) || isPlaybackControlTitle(title)) return undefined
 
   const image =
     imageUrl(listItem.image, pageUrl) ||
@@ -139,6 +146,7 @@ function listItemToCatalogItem(
     originUrl,
     image,
     summary: title.slice(0, 220),
+    ...(itemNode && isType(itemNode, 'Person') ? { entityType: 'person' as const, contentType: 'article' as const } : {}),
     publishedAt:
       parseIsoDate(text(listItem.datePublished)) ||
       parseIsoDate(text(itemNode?.datePublished)) ||
@@ -152,7 +160,7 @@ function collectFromItemList(node: Record<string, JsonValue>, pageUrl: string, i
     const listItem = asRecord(entry)
     if (!listItem) continue
     const item = listItemToCatalogItem(listItem, pageUrl, index++)
-    if (item) items.push(item)
+    if (item) items.push({ ...item, rank: positiveRank(listItem.position) })
   }
 }
 
@@ -172,7 +180,7 @@ function dedupeItems(items: CatalogItem[]): CatalogItem[] {
 export function extractJsonLdCatalog(html: string, pageUrl: string, listsOnly = false): CatalogItem[] {
   const items: CatalogItem[] = []
 
-  for (const match of html.matchAll(JSON_LD_RE)) {
+  for (const match of regexMatches(html, JSON_LD_RE)) {
     const raw = match[1]?.trim()
     if (!raw) continue
 

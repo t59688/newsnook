@@ -21,6 +21,7 @@ export function isFloatButtonEligible(descriptor: MediaDescriptor | null | undef
   if (!descriptor || descriptor.drm) return false
   const primary = descriptor.resources?.[0] ?? descriptor
   if (primary.isAd || isLikelyAdMediaUrl(primary.url)) return false
+  if (primary.drm) return false
   if (primary.type === 'hls' || primary.type === 'dash') return true
   if (primary.type === 'progressive') return true
   return false

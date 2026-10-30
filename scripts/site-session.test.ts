@@ -70,5 +70,7 @@ assert.equal(parseCatalogPage(source, { method: 'GET', url: source.url }, '<link
 assert.equal(parseCatalogPage(source, { method: 'GET', url: 'https://example.test/list/' }, '<base href="./assets/">'+card(3)).articles[0].originUrl, 'https://example.test/list/assets/post/3', 'relative base is resolved once')
 const knownVideo = { ...source, catalogProfile: { version: 1 as const, rulesRevision: 1 as const, siteRoot: source.url, engine: 'fyfcms' as const, categories: [] } }
 const genericCard = '<main><li><h3><a href="/detail/one">资源标题</a></h3></li></main>'
-assert.equal(parseCatalogPage(knownVideo, { method: 'GET', url: 'https://example.test/list/2' }, genericCard).articles[0].contentType, 'video', 'pages without identity markers retain validated source identity')
+const inheritedIdentity = parseCatalogPage(knownVideo, { method: 'GET', url: 'https://example.test/list/2' }, genericCard)
+assert.equal(inheritedIdentity.profile.engine, 'fyfcms', 'pages without identity markers retain validated source identity')
+assert.equal(inheritedIdentity.articles[0].contentType, 'article', 'identity alone cannot promote an unknown document to a playable video')
 assert.equal(parseCatalogPage(knownVideo, { method: 'GET', url: 'https://example.test/list/2' }, '<meta name="generator" content="WordPress Typecho">'+genericCard).profile.engine, 'generic', 'explicit identity conflict does not inherit an older engine')

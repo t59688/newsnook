@@ -59,7 +59,7 @@ import {
   usableShareTitle,
   withResolvedShareTitle,
 } from '../lib/shareLink'
-import { resolveArticleBody, type BodySource } from '../lib/resolveBody'
+import { resolveArticleBody, pageUserAgentForArticle, type BodySource } from '../lib/resolveBody'
 import { articleCoverUrl } from '../lib/articleAudio'
 import { isExcerptUpgrade, shouldRecheckCachedExcerpt, shouldReplaceCachedBody } from '../lib/feedBodyEvidence'
 import { shouldRenderStandaloneCover } from '../lib/articlePreview'
@@ -88,7 +88,8 @@ import type { ReadAloudPrefs } from '../features/readAloud/types'
 import { fetchCommentCount, supportsComments } from '../features/comments/service'
 import { CommentsDrawer } from '../features/comments/components/CommentsDrawer'
 import { articleFromRelatedLink } from '../features/catalogEngine/toArticles'
-import type { NewsSource } from '../sources/registry'
+import { isCustomSourceId, type NewsSource } from '../sources/registry'
+import { isVideoDocumentUrl } from '../lib/videoDocumentUrl'
 import type { InkVideoPlayerFullscreenHandle } from '../components/InkVideoPlayer'
 
 interface Props {
@@ -150,10 +151,8 @@ export function ReaderScreen({
   const prevEinkRef = useRef(einkMode)
   const videoFullscreenRef = useRef<InkVideoPlayerFullscreenHandle | null>(null)
   const originPlayerCloseRef = useRef<OriginPlayerCloseHandle | null>(null)
-  const useOriginSurface = shouldUseOriginPlayerSurface({
-    sourceId: article.sourceId,
-    contentType: article.contentType,
-  })
+
+  const isVideoDocument = article.contentType === 'video' || (isCustomSourceId(article.sourceId) && isVideoDocumentUrl(article.originUrl))
   const feedEmbeddedPlayerUrl = useMemo(
     () => article.contentType === 'video' ? extractEmbeddedVideoPageUrl(article.contentHtml) : undefined,
     [article.contentHtml, article.contentType],
@@ -161,6 +160,10 @@ export function ReaderScreen({
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [html, setHtml] = useState('')
   const [bodySource, setBodySource] = useState<BodySource | null>(null)
+  const useOriginSurface = !article.videoUrl && shouldUseOriginPlayerSurface({
+    sourceId: article.sourceId,
+    contentType: bodySource === 'video' || isVideoDocument ? 'video' : article.contentType,
+  })
   const [resolvedOriginUrl, setResolvedOriginUrl] = useState<string | undefined>()
   const [resolvedTitle, setResolvedTitle] = useState<string | undefined>()
   const [error, setError] = useState<string | null>(null)
@@ -171,7 +174,7 @@ export function ReaderScreen({
   const excerptAttemptRef = useRef<{ id: string; at: number } | null>(null)
   const [retryToken, setRetryToken] = useState(0)
   const [localBodyRestoredFor, setLocalBodyRestoredFor] = useState<string | null>(null)
-  const localBodyRestorePending = retryToken === 0 && article.contentType !== 'video' &&
+  const localBodyRestorePending = retryToken === 0 && !isVideoDocument &&
     localBodyRestoredFor !== article.id
   useStartupBlocker(startupVisible && localBodyRestorePending)
   const [unlockedMediaUrls, setUnlockedMediaUrls] = useState<string[]>([])
@@ -620,7 +623,7 @@ export function ReaderScreen({
     }
 
     // 正文内容是静态的，命中缓存直接出，断网也能重读；重新抽取时才绕过
-    if (retryToken === 0 && article.contentType !== 'video') {
+    if (retryToken === 0 && !isVideoDocument) {
       const cached = loadCachedBody(article.id)
       if (cached && !shouldReplaceCachedBody(article, cached)) {
         setHtml(cached.html)
@@ -701,7 +704,7 @@ export function ReaderScreen({
     }
 
     // 普通正文热缓存优先保持同步首屏；未命中时再读持久预存，最后才联网。
-    if (retryToken === 0 && article.contentType !== 'video') {
+    if (retryToken === 0 && !isVideoDocument) {
       void loadPrestoredBody(article.id).then((prestored) => {
         if (controller.signal.aborted) return
         if (prestored && !shouldReplaceCachedBody(article, prestored)) {
@@ -730,7 +733,7 @@ export function ReaderScreen({
     }
 
     return () => controller.abort()
-  }, [article, customSources, onCacheChange, retryToken])
+  }, [article, customSources, onCacheChange, retryToken, isVideoDocument])
 
   // Offline-first: show a cached, unconfirmed excerpt immediately. Retry it
   // quietly when stale or on reconnection; never turn a transient failure into
@@ -1397,7 +1400,7 @@ export function ReaderScreen({
 
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col"
+      className="absolute inset-0 z-30 flex flex-col bg-ink"
       style={{
         paddingTop: 'var(--sat)',
         paddingBottom: 'var(--sab)',
@@ -1755,12 +1758,14 @@ export function ReaderScreen({
             {useOriginSurface && (feedEmbeddedPlayerUrl || resolvedOriginUrl || article.originUrl) && (
               <OriginPlayerSurface
                 pageUrl={feedEmbeddedPlayerUrl || resolvedOriginUrl || article.originUrl!}
+                userAgent={pageUserAgentForArticle(article, customSources)}
                 referrer={resolvedOriginUrl || article.originUrl || feedEmbeddedPlayerUrl}
                 title={article.title}
                 poster={article.image}
                 openOriginal={() => void openOriginal()}
                 closeHandleRef={originPlayerCloseRef}
                 suppressResourceFab={speedReadOpen}
+                autoUseReader
               />
             )}
 

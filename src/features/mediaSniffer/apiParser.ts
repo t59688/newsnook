@@ -28,6 +28,8 @@ const MAX_DEPTH = 12
 const MAX_OBSERVATIONS = 512
 const MAX_NODES = 4096
 const MAX_BODY_LENGTH = 262144
+const AUDIO_CODEC = /(?:^|[\s,"'])(?:mp4a|aac|opus|vorbis|ac-3|ec-3)(?:[.\s,"']|$)/i
+const VIDEO_CODEC = /(?:^|[\s,"'])(?:avc1|av01|hvc1|hev1|vp0?9|vp8)(?:[.\s,"']|$)/i
 
 function resolvedUrl(value: string, pageUrl: string): string | undefined {
   const trimmed = value
@@ -125,6 +127,9 @@ function trackHints(value: Record<string, unknown>, mediaKind?: MediaObservation
   const width = positiveNumber(value.width)
   const height = positiveNumber(value.height)
   const bitrate = positiveNumber(value.bitrate) ?? positiveNumber(value.bandwidth)
+  const codecs = stringField(value, 'codecs') || mimeType?.match(/codecs\s*=\s*"?([^";]+)"?/i)?.[1]
+  const hasAudioCodec = AUDIO_CODEC.test(codecs || '')
+  const hasVideoCodec = VIDEO_CODEC.test(codecs || '')
   const segmentBase = value.segment_base && typeof value.segment_base === 'object'
     ? value.segment_base as Record<string, unknown>
     : value.segmentBase && typeof value.segmentBase === 'object'
@@ -140,10 +145,10 @@ function trackHints(value: Record<string, unknown>, mediaKind?: MediaObservation
     width,
     height,
     bitrate,
-    codecs: stringField(value, 'codecs'),
+    codecs,
     quality: stringField(value, 'qualityLabel', 'quality', 'quality_label'),
-    hasAudio: kind === 'audio' ? true : undefined,
-    hasVideo: kind === 'video' ? true : undefined,
+    hasAudio: kind === 'audio' || hasAudioCodec ? true : kind === 'video' && hasVideoCodec ? false : undefined,
+    hasVideo: kind === 'video' || hasVideoCodec ? true : undefined,
     initializationRange,
     indexRange,
   }

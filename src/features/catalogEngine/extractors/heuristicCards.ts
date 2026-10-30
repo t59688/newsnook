@@ -1,4 +1,7 @@
+import { isVideoDocumentUrl } from '../../../lib/videoDocumentUrl'
+import { regexMatches } from '../../../lib/regexMatches'
 import type { CatalogItem } from '../types'
+import { isCatalogContentUrl, isPlaybackControlTitle } from '../linkRoles'
 import {
   absoluteUrl,
   isLikelyBadgeTitle,
@@ -41,7 +44,7 @@ function isPlaceholderImageSrc(src: string): boolean {
 }
 
 function pickImage(inner: string, baseUrl: string): string | undefined {
-  for (const match of inner.matchAll(/<img\b[^>]*>/gi)) {
+  for (const match of regexMatches(inner, /<img\b[^>]*>/gi)) {
     const tag = match[0]
     // Prefer lazy-load attrs over src: many CMS pages put a data: GIF in src.
     const candidates = [
@@ -58,7 +61,7 @@ function pickImage(inner: string, baseUrl: string): string | undefined {
     }
   }
 
-  for (const match of inner.matchAll(/background-image:\s*url\((['"]?)([^'")]+)\1\)/gi)) {
+  for (const match of regexMatches(inner, /background-image:\s*url\((['"]?)([^'")]+)\1\)/gi)) {
     const raw = match[2] ?? ''
     if (isPlaceholderImageSrc(raw)) continue
     const abs = absoluteUrl(raw, baseUrl)
@@ -117,14 +120,14 @@ function extractAnchorBlocks(html: string, pageUrl: string): RawCard[] {
   const cards = new Map<string, RawCard>()
   let order = 0
 
-  for (const match of html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
+  for (const match of regexMatches(html, /<a\b([^>]*)>([\s\S]*?)<\/a>/gi)) {
     const attrs = match[1] ?? ''
     const inner = match[2] ?? ''
     const href = attrValue(attrs, 'href')
     if (!href) continue
 
     const originUrl = absoluteUrl(href, pageUrl)
-    if (!originUrl || !sameOrigin(originUrl, pageUrl)) continue
+    if (!originUrl || !sameOrigin(originUrl, pageUrl) || !isCatalogContentUrl(originUrl)) continue
 
     const key = originUrl
     if (isUtilityPath(originUrl)) continue
@@ -139,6 +142,7 @@ function extractAnchorBlocks(html: string, pageUrl: string): RawCard[] {
     }
 
     const title = extractAnchorTitle(attrs, inner)
+    if (isPlaybackControlTitle(title)) continue
     const image = pickImage(inner, originUrl)
     if (isLikelyNavTitle(title)) continue
     if (isLikelyBadgeTitle(title) && !image) continue
@@ -218,6 +222,6 @@ export function extractHeuristicCardCatalog(html: string, pageUrl: string): Cata
     originUrl: card.originUrl,
     image: card.image,
     summary: card.title.slice(0, 220),
-    contentType: /\/(?:v|watch|video|voddetail|vodplay|dianying|dianshiju)\//i.test(card.originUrl) ? 'video' : undefined,
+    contentType: isVideoDocumentUrl(card.originUrl) ? 'video' : undefined,
   }))
 }

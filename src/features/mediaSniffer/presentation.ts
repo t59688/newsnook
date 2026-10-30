@@ -45,8 +45,12 @@ export function mediaResourceDetails(resource: MediaResourceDescriptor, fallback
   const mediaHost = hostname(resource.url) || hostname(resource.relatedUrls?.[0])
   const pageHost = hostname(resource.pageUrl)
   const playerHost = mediaDisplayText(resource.playerSource) || pageHost
+  const sourceLabel = mediaDisplayText(resource.sourceLabel)
   const result = [mediaResourceFormatLabel(resource)]
+  const variantCount = resource.videoTracks.filter(track => track.url && track.url !== resource.url).length
+  if ((resource.type === 'hls' || resource.type === 'dash') && variantCount > 1) result.push(`自动画质 · ${variantCount} 档`)
   if (pageHost) result.push(resource.fromIframe ? `播放器 iframe · ${playerHost || pageHost}` : `来源 · ${pageHost}`)
+  if (sourceLabel && sourceLabel !== playerHost && sourceLabel !== mediaHost) result.push(`线路 · ${sourceLabel}`)
   if (mediaHost && mediaHost !== pageHost) result.push(`媒体源 · ${mediaHost}`)
   const fileName = mediaDisplayText(resource.fileName)
   if (fileName && fileName !== mediaResourceTitle(resource)) result.push(`文件 · ${fileName}`)

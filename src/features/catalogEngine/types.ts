@@ -1,3 +1,5 @@
+import type { CatalogEntityType } from './itemSemantics'
+
 /** 目录解析输出的统一条目（Feed Reflow 中间模型） */
 export interface CatalogItem {
   id: string
@@ -7,6 +9,9 @@ export interface CatalogItem {
   summary?: string
   publishedAt?: number
   contentType?: 'article' | 'video'
+  entityType?: CatalogEntityType
+  rank?: number
+  score?: number
 }
 
 /** 抽取信号来源 */

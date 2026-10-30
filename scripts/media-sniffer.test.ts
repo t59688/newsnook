@@ -40,8 +40,33 @@ import {
   secondaryPlaybackUrlsInHtml,
 } from '../src/features/mediaSniffer/targetPlanner'
 import { nnyyPlayApiUrls } from '../src/features/mediaSniffer/nnyyPlay'
+import { detectPlayerFrameworks, discoverCmsPlayerHints } from '../src/features/mediaSniffer/cmsAdapters'
 
 const pageUrl = 'https://news.example/articles/42'
+
+{
+  const html = `<script>MacPlayer.PlayUrl = "https://player.example/player/episode-8";</script>
+    <script src="/static/player/DPlayer.min.js"></script>`
+  const hints = discoverCmsPlayerHints(html, 'https://cms.example/vod/detail/8.html')
+  assert.ok(hints.some((hint) => hint.url === 'https://player.example/player/episode-8' && hint.cms === 'maccms'),
+    'MacCMS player config should become an explicit runtime probe target')
+  assert.deepEqual(detectPlayerFrameworks(html), ['DPlayer', 'MacCMS'])
+  const multiLine = discoverCmsPlayerHints(
+    `MacPlayer.PlayFrom="云播$$$高清线路"; MacPlayer.PlayUrl="第1集$https://player.example/player/one.html$$$第1集$https://player.example/player/two.html";`,
+    'https://cms.example/vod/detail/8.html',
+  )
+  assert.equal(multiLine.find((hint) => hint.url.endsWith('/one.html'))?.label, '云播')
+  assert.equal(multiLine.find((hint) => hint.url.endsWith('/two.html'))?.label, '高清线路')
+  const labeledTargets = planSniffTargets({
+    pageUrl: 'https://cms.example/vod/detail/8.html',
+    html: `MacPlayer.PlayFrom="云播$$$高清线路"; MacPlayer.PlayUrl="第1集$https://player.example/player/one.html$$$第1集$https://player.example/player/two.html";`,
+    staticObservations: [],
+  })
+  assert.equal(labeledTargets.find((target) => target.url.endsWith('/two.html'))?.label, '高清线路',
+    'CMS line labels should travel with their runtime probe targets')
+  assert.deepEqual(discoverCmsPlayerHints('<script>MacPlayer.PlayUrl="https://ads.example/preroll/player.html"</script>', 'https://cms.example/vod/8.html'), [],
+    'obvious advertising routes must not be promoted to CMS player targets')
+}
 
 // Metadata must travel through the production observation -> graph -> descriptor path.
 {
@@ -77,6 +102,7 @@ const pageUrl = 'https://news.example/articles/42'
   assert.equal(descriptor.videoTracks.length, 2, 'captured manifest bodies enrich the descriptor without another request')
   assert.equal(descriptor.resources?.length, 1, 'a child manifest belongs to the master resource')
   assert.equal(descriptor.videoTracks[0].label, '高清')
+  assert.equal(descriptor.videoTracks[0].quality, '高清')
   assert.equal(descriptor.videoTracks[0].subtitleGroupId, 's')
   assert.equal(descriptor.audioTracks[0].label, '中文')
   assert.equal(descriptor.subtitles[0].language, 'en')
@@ -96,6 +122,11 @@ const pageUrl = 'https://news.example/articles/42'
   assert.equal(buildMediaGraph(sameDirectory).length, 2, 'directory and timing alone cannot pair unrelated videos')
   const session = sameDirectory.slice(0, 2).map(o => ({ ...o, mediaSessionId: 'player-1' }))
   assert.equal(buildMediaGraph(session).length, 1, 'explicit player session can pair audio and video')
+  const mseCorrelated = [
+    ...sameDirectory.slice(0, 2),
+    { pageUrl, source: 'mse' as const, mseMimeType: 'video/mp4', mediaSessionId: 'mse-player-1', timestamp: 1000 },
+  ]
+  assert.equal(buildMediaGraph(mseCorrelated).length, 1, 'a unique explicit MSE SourceBuffer session can correlate its audio/video network tracks')
   assert.equal(buildMediaGraph(session.map((o,i) => ({ ...o, isAd: i === 1 }))).length, 2, 'ads and content never share an asset')
 }
 
@@ -417,6 +448,7 @@ video/1080.m3u8`
     width: 1920,
     height: 1080,
     codecs: 'avc1.640028,mp4a.40.2',
+    quality: '1080p',
     groupId: 'aac',
     subtitleGroupId: 'subs',
   })
@@ -797,7 +829,7 @@ video/1080.m3u8`
       return [{ url: 'https://cdn.example/preview.mp4', pageUrl: url, source: 'network', mimeType: 'video/mp4' }]
     },
   })
-  assert.ok(calls.some((item) => item.includes('/ad')))
+  assert.equal(calls.some((item) => item.includes('/ad')), false, 'Known advertising frames must not consume the playback probe budget')
   assert.ok(calls.some((item) => item.includes('/real')))
   assert.ok(calls.some((item) => item === pageUrl || item.includes('articles/42')))
 }
@@ -943,9 +975,8 @@ const maccmsDetailHtml = `<!DOCTYPE html>
     secondaryPlaybackUrlsInHtml(maccmsDetailHtml, maccmsDetailUrl),
     [
       'https://vod.example/vodplay/42-1-1.html',
-      'https://vod.example/vodplay/42-1-2.html',
     ],
-    'JSON-LD embedUrl/WatchAction 优先且去重，正文同站 generic playback path 链接兜底，外站不跟随',
+    'JSON-LD embedUrl/WatchAction identifies the selected episode; the next episode is not a fallback line',
   )
   const targets = planSniffTargets({
     pageUrl: maccmsDetailUrl,
@@ -957,11 +988,10 @@ const maccmsDetailHtml = `<!DOCTYPE html>
     targets.map((target) => target.url),
     [
       'https://vod.example/vodplay/42-1-1.html',
-      'https://vod.example/vodplay/42-1-2.html',
     ],
   )
   assert.equal(targets[0]?.budgetMs, 9000, '首个播放目标应获得完整探测预算')
-  assert.equal(targets[1]?.budgetMs, 9000, '后续目标由编排层按剩余时间动态截断')
+  assert.equal(targets.length, 1, '不得把下一集当成当前集的备用线路')
   const observations = observeMediaInHtml(maccmsDetailHtml, maccmsDetailUrl)
   assert.equal(
     buildMediaDescriptor(observations),
@@ -988,7 +1018,7 @@ const maccmsDetailHtml = `<!DOCTYPE html>
       return [observation]
     },
   })
-  assert.equal(probed.length, 2, '详情页自身无媒体时按队列探测同站播放页，不再浪费窗口加载无播放器的详情页')
+  assert.equal(probed.length, 1, '详情页仅探测所选集，不用下一集充当备用线路')
   assert.equal(probed[0]?.url, 'https://vod.example/vodplay/42-1-1.html')
   assert.equal(probed[0]?.timeoutMs, 9000, '首个播放目标应获得完整嗅探预算')
   assert.equal(probed[0]?.referrer, maccmsDetailUrl, '播放页请求应携带详情页作为 Referer')
@@ -1071,7 +1101,6 @@ const maccmsDetailHtml = `<!DOCTYPE html>
     [
       'https://vod.example/Player/ec?episode=1-1-1',
       'https://canonical.example/vodplay/1-1-1.html',
-      'https://vod.example/vodplay/1-1-2.html',
     ],
     '存在 iframe 播放器时必须优先探测 iframe；模板占位链接不能污染嗅探队列',
   )
