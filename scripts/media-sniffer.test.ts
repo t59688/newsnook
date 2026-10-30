@@ -94,6 +94,33 @@ const pageUrl = 'https://news.example/articles/42'
   ])
   assert.equal(merged?.resources?.find(r => r.url.includes('/a.mp4'))?.title, '山海纪行', 'lower title confidence cannot overwrite player metadata')
 }
+
+{
+  const payload = JSON.stringify({
+    title: '统一解析正片',
+    sources: [{ url: 'https://cdn.example/unified.mp4', mimeType: 'video/mp4', qualityLabel: '1080p', width: 1920, height: 1080, bitrate: 4200000 }],
+    opaqueConfig: 'fallback=https://cdn.example/opaque.m3u8',
+    ads: [{ url: 'https://ads.example/preroll/ad.mp4', mimeType: 'video/mp4' }],
+  })
+  const observations = observeMediaInPayload(payload, pageUrl)
+  const primary = observations.filter(item => item.url === 'https://cdn.example/unified.mp4')
+  assert.equal(primary.length, 1, 'the structured parser owns URL-bearing objects; fallback scanning must not duplicate them')
+  assert.equal(primary[0].title, '统一解析正片')
+  assert.equal(primary[0].quality, '1080p', 'qualityLabel must survive the canonical structured parser')
+  assert.ok(observations.some(item => item.url === 'https://cdn.example/opaque.m3u8'),
+    'unstructured embedded URLs remain covered by the fallback scanner')
+  assert.equal(observations.some(item => item.url.includes('ads.example')), false,
+    'known recommendation/ad branches remain excluded from the fallback scan')
+
+  const extensionOnly = observeMediaInPayload({
+    title: '扩展名识别',
+    sources: [{ url: 'https://cdn.example/extension-only.mp4', qualityLabel: '720p' }],
+  }, pageUrl).find(item => item.url.includes('extension-only'))
+  assert.equal(extensionOnly?.hasVideo, true, 'URL extension still supplies the video signal when MIME and codecs are absent')
+  assert.equal(extensionOnly?.hasAudio, false, 'quality-labelled video-only sources retain their no-audio signal')
+  assert.equal(extensionOnly?.quality, '720p')
+}
+
 {
   const hls = '#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="中文",LANGUAGE="zh"\n#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="s",NAME="English",LANGUAGE="en",URI="en.vtt"\n#EXT-X-STREAM-INF:BANDWIDTH=3200000,RESOLUTION=1920x1080,CODECS="avc1.640028",NAME="高清",AUDIO="a",SUBTITLES="s"\n1080.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=1600000,RESOLUTION=1280x720\n720.m3u8'
   const manifest = 'https://cdn.example/master.m3u8?token=keep'

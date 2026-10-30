@@ -1,4 +1,4 @@
-import { admitObservation, isHttpUrl, mediaFormatFor, normalizedMime } from './classifier'
+import { admitObservation, DIRECT_MEDIA_EXT, isHttpUrl, mediaFormatFor, normalizedMime } from './classifier'
 import { mediaDisplayText } from './metadata'
 import type { MediaMetadata, MediaObservation } from './types'
 
@@ -28,8 +28,11 @@ const MAX_DEPTH = 12
 const MAX_OBSERVATIONS = 512
 const MAX_NODES = 4096
 const MAX_BODY_LENGTH = 262144
+const SKIPPED_PAYLOAD_KEYS = /^(?:url_next|next|nextUrl|next_url|playlist|related|recommendations?|ads?|advertising|poster|thumbnail|image|logo)$/i
 const AUDIO_CODEC = /(?:^|[\s,"'])(?:mp4a|aac|opus|vorbis|ac-3|ec-3)(?:[.\s,"']|$)/i
 const VIDEO_CODEC = /(?:^|[\s,"'])(?:avc1|av01|hvc1|hev1|vp0?9|vp8)(?:[.\s,"']|$)/i
+const AUDIO_URL = /\.(?:m4a|aac|mp3|ogg|opus)(?:$|[?#])/i
+const VIDEO_URL = /\.(?:m3u8|mpd)(?:$|[?#])/i
 
 function resolvedUrl(value: string, pageUrl: string): string | undefined {
   const trimmed = value
@@ -119,11 +122,17 @@ function trackHints(value: Record<string, unknown>, mediaKind?: MediaObservation
   const declaredKind = /^(?:video|audio)$/i.test(declaredFormat || '')
     ? declaredFormat?.toLowerCase() as MediaObservation['mediaKind']
     : undefined
+  const mediaUrl = urlFieldValues(value).find(item => typeof item === 'string') || ''
+  const hasVideoUrl = VIDEO_URL.test(mediaUrl) || DIRECT_MEDIA_EXT.test(mediaUrl)
+  const hasAudioUrl = AUDIO_URL.test(mediaUrl)
+  const hasVideoMetadata = Boolean(value.qualityLabel)
+  const hasAudioMetadata = Boolean(value.audioQuality || value.audioSampleRate || value.audioChannels)
   const kind = mediaKind
     || declaredKind
     || (value.isVideo === true || value.video === true ? 'video' : undefined)
     || (value.isAudio === true || value.audio === true ? 'audio' : undefined)
     || (mime.startsWith('audio/') ? 'audio' : mime.startsWith('video/') ? 'video' : undefined)
+    || (hasAudioUrl ? 'audio' : hasVideoUrl || hasVideoMetadata ? 'video' : hasAudioMetadata ? 'audio' : undefined)
   const width = positiveNumber(value.width)
   const height = positiveNumber(value.height)
   const bitrate = positiveNumber(value.bitrate) ?? positiveNumber(value.bandwidth)
@@ -147,8 +156,8 @@ function trackHints(value: Record<string, unknown>, mediaKind?: MediaObservation
     bitrate,
     codecs,
     quality: stringField(value, 'qualityLabel', 'quality', 'quality_label'),
-    hasAudio: kind === 'audio' || hasAudioCodec ? true : kind === 'video' && hasVideoCodec ? false : undefined,
-    hasVideo: kind === 'video' || hasVideoCodec ? true : undefined,
+    hasAudio: kind === 'audio' || hasAudioCodec || hasAudioMetadata ? true : kind === 'video' && hasVideoMetadata ? false : undefined,
+    hasVideo: kind === 'video' || hasVideoCodec || hasVideoMetadata ? true : undefined,
     initializationRange,
     indexRange,
   }
@@ -233,7 +242,7 @@ function childMetadata(record: Record<string, unknown>, key: string, metadata: M
     const title = mediaDisplayText(details.title)
     if (title) return { title, titleSource: 'player', contentId: mediaDisplayText(details.videoId) }
   }
-  return /^(?:sources?|streams?|video|audio|dash|data|playinfo|playback|streamingData|formats|adaptiveFormats)$/i.test(key)
+  return /^(?:sources?|streams?|video|audio|dash|data|result|response|payload|vod|movie|episode|item|mainEntity|itemListElement|@graph|videoInfo|video_info|mediaInfo|media_info|playinfo|play_info|playback|playData|play_data|playFrom|play_from|sourceList|source_list|streamingData|formats|adaptiveFormats|qualities|representations|media)$/i.test(key)
     ? metadata : metadata.isAd ? { isAd: true } : {}
 }
 
@@ -258,7 +267,8 @@ function walk(
   }
 
   const record = value as Record<string, unknown>
-  const structured = [record['@type']].flat().includes('VideoObject')
+  const rawType = record['@type']
+  const structured = rawType === 'VideoObject' || (Array.isArray(rawType) && rawType.includes('VideoObject'))
   const ownTitle = mediaDisplayText(stringField(record, ...(structured ? ['name', 'headline'] : ['title', 'video_title', 'vod_name', 'videoName', 'fileName'])))
   // A new named object starts a new content scope. Never copy a sibling's title.
   const metadata: MediaMetadata = { ...inherited }
@@ -274,7 +284,7 @@ function walk(
     emitDashTracks(record.video as unknown[], 'video', assetGroup, pageUrl, source, observations, metadata)
     emitDashTracks(record.audio as unknown[], 'audio', assetGroup, pageUrl, source, observations, metadata)
     for (const [key, child] of Object.entries(record).slice(0, 512)) {
-      if (key === 'video' || key === 'audio') continue
+      if (key === 'video' || key === 'audio' || SKIPPED_PAYLOAD_KEYS.test(key)) continue
       walk(child, pageUrl, source, observations, seen, depth + 1, budget, childMetadata(record, key, metadata))
     }
     return
@@ -282,7 +292,21 @@ function walk(
 
   emitUrlFields(record, pageUrl, source, observations, metadata)
   for (const [key, child] of Object.entries(record).slice(0, 512)) {
+    if (SKIPPED_PAYLOAD_KEYS.test(key)) continue
     walk(child, pageUrl, source, observations, seen, depth + 1, budget, childMetadata(record, key, metadata))
+  }
+}
+
+export type ParsedMediaApiBody =
+  | { parsed: true; value: unknown }
+  | { parsed: false }
+
+export function parseMediaApiBodyValue(bodyText: string): ParsedMediaApiBody {
+  if (bodyText.length > MAX_BODY_LENGTH) return { parsed: false }
+  try {
+    return { parsed: true, value: JSON.parse(bodyText) as unknown }
+  } catch {
+    return { parsed: false }
   }
 }
 
@@ -291,13 +315,8 @@ export function parseMediaApiBody(
   pageUrl: string,
   source: 'fetch' | 'xhr' | 'static',
 ): MediaObservation[] {
-  if (bodyText.length > MAX_BODY_LENGTH) return []
-  try {
-    const parsed: unknown = JSON.parse(bodyText)
-    return observeMediaApiPayload(parsed, pageUrl, source)
-  } catch {
-    return []
-  }
+  const result = parseMediaApiBodyValue(bodyText)
+  return result.parsed ? observeMediaApiPayload(result.value, pageUrl, source) : []
 }
 
 export function observeMediaApiPayload(payload: unknown, pageUrl: string, source: 'fetch' | 'xhr' | 'static'): MediaObservation[] {

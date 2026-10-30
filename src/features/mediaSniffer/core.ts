@@ -1,5 +1,5 @@
 import { XMLParser } from 'fast-xml-parser'
-import { parseMediaApiBody, observeMediaApiPayload } from './apiParser'
+import { parseMediaApiBodyValue, observeMediaApiPayload } from './apiParser'
 import { mediaDisplayText } from './metadata'
 import { parseHTML } from 'linkedom'
 import { playerDeclarationsInHtml } from './playerConfig'
@@ -10,7 +10,6 @@ import {
   MANIFEST_MIMES,
   admitObservation,
   isHttpUrl,
-  isImageUrl,
   mediaFingerprint,
   mediaFormatFor,
   mimeFromUrl,
@@ -36,8 +35,6 @@ export {
 } from './classifier'
 
 const AUDIO_EXT = /\.(?:m4a|aac|mp3|ogg|opus)(?:$|[?#])/i
-const AUDIO_CODEC = /(?:^|[\s,"'])(?:mp4a|aac|opus|vorbis|ac-3|ec-3)(?:[.\s,"']|$)/i
-const VIDEO_CODEC = /(?:^|[\s,"'])(?:avc1|av01|hvc1|hev1|vp0?9|vp8)(?:[.\s,"']|$)/i
 
 function observationScore(observation: MediaObservation, format: MediaFormat): number {
   const mime = normalizedMime(observation.mimeType) || mimeFromUrl(observation.url || '')
@@ -346,77 +343,21 @@ function addStaticObservation(
   observations.push({ url, pageUrl, source: 'static', mimeType, mediaKind, ...hints })
 }
 
-function positiveNumber(value: unknown): number | undefined {
-  const number = Number(value)
-  return Number.isFinite(number) && number > 0 ? number : undefined
-}
-
-function addStructuredPayloadObservation(
-  value: Record<string, unknown>,
+/**
+ * Compatibility fallback for URLs embedded in otherwise unsupported strings.
+ * Structured objects are deliberately handled only by apiParser.ts; this walker
+ * must never emit a second, lower-fidelity observation for the same object.
+ */
+function walkUnstructuredUrlStrings(
+  value: unknown,
   pageUrl: string,
   observations: MediaObservation[],
+  seen: Set<object>,
+  depth: number,
+  budget: { nodes: number },
 ): void {
-  const mediaUrl = [
-    value.url,
-    value.contentUrl,
-    value.playbackUrl,
-    value.src,
-    value.baseUrl,
-    value.base_url,
-    value.playurl,
-    value.play_url,
-    value.backupUrl,
-    value.backup_url,
-    value.manifestUrl,
-  ]
-    .find((item): item is string => typeof item === 'string' && item.trim().length > 0)
-  if (!mediaUrl) return
-  if (isImageUrl(mediaUrl)) return
-
-  const mimeType = [value.mimeType, value.contentType, value.mime]
-    .find((item): item is string => typeof item === 'string')
-  const codecText = `${mimeType || ''} ${typeof value.codecs === 'string' ? value.codecs : ''}`
-  const width = positiveNumber(value.width)
-  const height = positiveNumber(value.height)
-  const bitrate = positiveNumber(value.bitrate)
-  const hasVideoSignal = Boolean(
-    value.qualityLabel
-    || normalizedMime(mimeType).startsWith('video/')
-    || VIDEO_CODEC.test(codecText)
-    || (typeof mediaUrl === 'string' && (
-      /\.m3u8(?:$|[?#])/i.test(mediaUrl)
-      || /\.mpd(?:$|[?#])/i.test(mediaUrl)
-      || DIRECT_MEDIA_EXT.test(mediaUrl)
-    )),
-  )
-  const hasAudioSignal = Boolean(
-    value.audioQuality || value.audioSampleRate || value.audioChannels ||
-    normalizedMime(mimeType).startsWith('audio/') || AUDIO_CODEC.test(codecText),
-  )
-  const mediaKind = normalizedMime(mimeType).startsWith('audio/')
-    ? 'audio'
-    : hasVideoSignal
-      ? 'video'
-      : undefined
-
-  addStaticObservation(observations, mediaUrl, pageUrl, mimeType, mediaKind, {
-    hasAudio: hasAudioSignal ? true : hasVideoSignal && value.qualityLabel ? false : undefined,
-    hasVideo: hasVideoSignal || undefined,
-    width,
-    height,
-    bitrate,
-    codecs: typeof value.codecs === 'string' && value.codecs.trim() ? value.codecs : undefined,
-  })
-}
-
-function walkPayload(value: unknown, pageUrl: string, observations: MediaObservation[], seen: Set<object>, depth: number, budget: { nodes: number }): void {
   if (++budget.nodes > 4096 || depth > 12 || observations.length >= 512 || seen.size >= 4096) return
   if (typeof value === 'string') {
-    // A raw HTML/JSON string is a container, not a media URL. Treating the
-    // whole string as an observation turns the document into an encoded URL
-    // (for example `https://page/%3C!DOCTYPE...`) and can win candidate
-    // selection before the real video source is seen. Keep direct media URL
-    // payloads working, but only admit container strings through URL matches.
     const directValue = value.trim()
     if (isHttpUrl(directValue) && mediaFormatFor(directValue) !== 'unknown') {
       addStaticObservation(observations, directValue, pageUrl)
@@ -429,22 +370,54 @@ function walkPayload(value: unknown, pageUrl: string, observations: MediaObserva
   if (!value || typeof value !== 'object' || seen.has(value)) return
   seen.add(value)
   if (Array.isArray(value)) {
-    for (const item of value.slice(0, 512)) walkPayload(item, pageUrl, observations, seen, depth + 1, budget)
-  } else {
-    addStructuredPayloadObservation(value as Record<string, unknown>, pageUrl, observations)
-    for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 512)) {
-      if (/^(?:url_next|next|nextUrl|next_url|playlist|related|recommendations?|ads?|advertising|poster|thumbnail|image|logo)$/i.test(key)) continue
-      walkPayload(item, pageUrl, observations, seen, depth + 1, budget)
+    for (const item of value.slice(0, 512)) {
+      walkUnstructuredUrlStrings(item, pageUrl, observations, seen, depth + 1, budget)
     }
+    return
+  }
+  for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 512)) {
+    if (/^(?:url_next|next|nextUrl|next_url|playlist|related|recommendations?|ads?|advertising|poster|thumbnail|image|logo)$/i.test(key)) continue
+    walkUnstructuredUrlStrings(item, pageUrl, observations, seen, depth + 1, budget)
   }
 }
 
+function mergePayloadObservations(
+  structured: MediaObservation[],
+  fallback: MediaObservation[],
+): MediaObservation[] {
+  const seenUrls = new Set(structured.map(item => item.url))
+  const result = structured.slice(0, 512)
+  for (const item of fallback) {
+    if (result.length >= 512) break
+    if (seenUrls.has(item.url)) continue
+    seenUrls.add(item.url)
+    result.push(item)
+  }
+  return result
+}
+
 export function observeMediaInPayload(payload: unknown, pageUrl: string): MediaObservation[] {
-  const observations = typeof payload === 'string'
-    ? parseMediaApiBody(payload, pageUrl, 'static')
-    : observeMediaApiPayload(payload, pageUrl, 'static')
-  walkPayload(payload, pageUrl, observations, new Set(), 0, { nodes: 0 })
-  return observations
+  let structured: MediaObservation[]
+  let fallbackInput = payload
+  if (typeof payload === 'string') {
+    const parsed = parseMediaApiBodyValue(payload)
+    if (parsed.parsed) {
+      fallbackInput = parsed.value
+      structured = observeMediaApiPayload(parsed.value, pageUrl, 'static')
+    } else {
+      structured = []
+      // Large JSON bodies exceed the structured parser budget, but parsing a
+      // bounded copy still lets the URL-only fallback honor excluded branches.
+      if (payload.length <= 1048576) {
+        try { fallbackInput = JSON.parse(payload) as unknown } catch { /* Keep raw-string URL fallback. */ }
+      }
+    }
+  } else {
+    structured = observeMediaApiPayload(payload, pageUrl, 'static')
+  }
+  const fallback: MediaObservation[] = []
+  walkUnstructuredUrlStrings(fallbackInput, pageUrl, fallback, new Set(), 0, { nodes: 0 })
+  return mergePayloadObservations(structured, fallback)
 }
 
 function jsonObjectsAfterAssignment(html: string, name: string): unknown[] {
@@ -558,7 +531,7 @@ export function observeMediaInHtml(html: string, pageUrl: string): MediaObservat
       addStaticObservation(observations, value, pageUrl)
       if (payload && typeof payload === 'object') {
         const record = payload as Record<string, unknown>
-        observations.push(...parseMediaApiBody(JSON.stringify({ ...record, url: value }), pageUrl, 'static'))
+        observations.push(...observeMediaApiPayload({ ...record, url: value }, pageUrl, 'static'))
       }
     }
   }
