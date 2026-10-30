@@ -37,9 +37,10 @@ assert.match(inlineVideoPages, /reader-video-aspect/)
 assert.match(inkVideoPlayer, /reader-video-aspect/)
 assert.match(originPlayerSurface, /reader-video-aspect/)
 
-// The generic fallback still uses matchAll/globalThis by design. Keep these
-// assertions so removing the startup polyfills cannot silently break the fallback.
-assert.match(mediaSnifferCore, /\.matchAll\(/)
+// Media sniffer core must stay on the Chrome-69-safe regex helper (not String#matchAll).
+// Native session ids still use globalThis.crypto, so the startup polyfills remain required.
+assert.match(mediaSnifferCore, /from ['"]\.\.\/\.\.\/lib\/regexMatches['"]/)
+assert.doesNotMatch(mediaSnifferCore, /\.matchAll\(/)
 assert.match(mediaSnifferNative, /globalThis\.crypto/)
 
 console.log('webview-runtime-compat: ok')
