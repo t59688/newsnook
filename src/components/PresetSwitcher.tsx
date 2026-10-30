@@ -593,8 +593,8 @@ export function PresetSwitcher({
           onClick={openSwitcher}
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-label={`布局，当前：${activeName}，点击切换`}
-          title={`当前布局：${activeName}`}
+          aria-label={`场景，当前：${activeName}，点击切换`}
+          title={`当前场景：${activeName}`}
           data-tour="preset-switcher"
           className="group relative -mt-2 flex h-[62px] w-full flex-col items-center justify-start gap-0.5 pt-0 text-paper-muted transition-colors duration-200 active:scale-[0.98]"
         >
@@ -607,7 +607,7 @@ export function PresetSwitcher({
             />
           </span>
           <span className="font-mono text-[10.5px] font-medium tracking-[0.14em] text-paper-muted transition-colors group-hover:text-cinnabar">
-            布局
+            场景
           </span>
         </button>
         {sheet}
@@ -624,8 +624,8 @@ export function PresetSwitcher({
           onClick={openSwitcher}
           aria-haspopup="dialog"
           aria-expanded={open}
-          aria-label={`布局，当前：${activeName}，点击切换`}
-          title={`当前布局：${activeName}`}
+          aria-label={`场景，当前：${activeName}，点击切换`}
+          title={`当前场景：${activeName}`}
           data-tour="desktop-preset-switcher"
           className="group flex w-full items-center justify-between rounded-xl px-3 py-2 text-left text-paper-muted transition-all duration-200 hover:bg-ink-raised/50 hover:text-paper"
         >
@@ -635,7 +635,7 @@ export function PresetSwitcher({
               strokeWidth={1.7}
               className="shrink-0 text-cinnabar-soft transition-colors group-hover:text-cinnabar"
             />
-            <span className="text-[13.5px] tracking-wide">布局</span>
+            <span className="text-[13.5px] tracking-wide">场景</span>
           </span>
           <span className="max-w-[104px] truncate font-mono text-[9.5px] text-paper-faint transition-colors group-hover:text-paper-muted">
             {activeName}

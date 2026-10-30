@@ -140,7 +140,7 @@ html[data-scheme='buer'][data-theme='dark'] [data-surface="tabbar"] button[aria-
   font-weight: 750 !important;
 }
 
-/* 中央「布局」切换按钮 (TabBar PresetSwitcher)
+/* 中央「场景」切换按钮 (TabBar PresetSwitcher)
    - 彻底告别沉闷死板的黑块：昼读采用极具不二先锋特色的高能电光绿信号光盘 (#C8F008) + 纯黑高反差图标 (#000000)，拥有 17:1 极清视觉对比，与 LinuxDO 底部发布钮完美呼应
    - 夜读模式：玄黑质感底座 (#17191D) + 纯正电光绿边界与辉光图标 */
 html[data-scheme='buer'] [data-tour="preset-switcher"] > span:first-child {
