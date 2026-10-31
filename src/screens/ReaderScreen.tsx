@@ -1400,11 +1400,17 @@ export function ReaderScreen({
 
   return (
     <div
-      className="absolute inset-0 z-30 flex flex-col bg-ink"
+      ref={shellRef}
+      className="reader-swipe-surface absolute inset-0 z-30 flex flex-col bg-ink"
       style={{
         paddingTop: 'var(--sat)',
         paddingBottom: 'var(--sab)',
         animation: reduced ? undefined : 'reader-in 360ms var(--ease-ink) both',
+      }}
+      onAnimationEnd={(e) => {
+        if (e.target === shellRef.current && e.animationName === 'reader-in') {
+          e.currentTarget.style.animation = 'none'
+        }
       }}
     >
       <style>{`@keyframes reader-in { from { opacity: 0; transform: translateY(24px) } to { opacity: 1; transform: none } }`}</style>
@@ -1420,8 +1426,7 @@ export function ReaderScreen({
       )}
 
       <div
-        ref={shellRef}
-        className="reader-swipe-surface flex min-h-0 flex-1 flex-col bg-ink"
+        className="flex min-h-0 flex-1 flex-col bg-ink"
       >
         <header
           data-surface="reader-chrome"
