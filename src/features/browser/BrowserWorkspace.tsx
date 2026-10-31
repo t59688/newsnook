@@ -115,6 +115,7 @@ export function BrowserWorkspace({
   const [privateMarks, setPrivateMarks] = useState(() => loadBrowserBookmarks('private'))
   const [hiddenHosts, setHiddenHosts] = useState(() => normalizeHiddenBrowserHosts(readBrowserList(BROWSER_KEYS.hiddenHosts)))
   const [shortcuts, setShortcuts] = useState(() => normalizeBrowserShortcuts(readBrowserList(BROWSER_KEYS.shortcuts)))
+  const [hideRecent, setHideRecent] = useState(() => readBrowserPreference(BROWSER_KEYS.hideRecent) === 'true')
   const [bottomAddress, setBottomAddress] = useState(() => readBrowserPreference(BROWSER_KEYS.addressPosition) !== 'top')
   const [search, setSearch] = useState<BrowserSearchChoice>(() => {
     const saved = readBrowserPreference(BROWSER_KEYS.search)
@@ -383,6 +384,8 @@ export function BrowserWorkspace({
     persist(BROWSER_KEYS.search, value, () => {searchRef.current=value;setSearch(value)}, true)
   const saveAddressPosition = (value: 'top'|'bottom'): boolean =>
     persist(BROWSER_KEYS.addressPosition,value,()=>{bottomAddressRef.current=value==='bottom';setBottomAddress(value==='bottom')},true)
+  const toggleHideRecent = (): boolean =>
+    persist(BROWSER_KEYS.hideRecent, !hideRecent ? 'true' : 'false', () => setHideRecent(!hideRecent), true)
   if (!agentConfigRef.current) agentConfigRef.current = createBrowserConfigController({
     getPreferences:()=>preferencesRef.current,
     setPreferences:next=>updatePreferences(next),
@@ -483,6 +486,7 @@ export function BrowserWorkspace({
     {!bottomAddress && toolbar}
     <div ref={viewport} data-browser-viewport className="relative min-h-0 flex-1 overflow-hidden bg-ink">
       {!active && !playing && <BrowserStartPage privateMode={privateMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
+        hideRecent={hideRecent} onToggleHideRecent={toggleHideRecent}
         onOpen={url => {void openAddress(url)}} onAddShortcut={() => editShortcut({name:'',url:''})}
         onShortcutOptions={index => setPlaceAction({kind:'shortcut', index})}
         onHistoryOptions={entry => setPlaceAction({kind:'history', entry})} onPanel={openPanel}/>}

@@ -28,6 +28,7 @@ export const BROWSER_KEYS = {
   hiddenHosts: 'newsnook:browser:hidden-hosts:v1',
   shortcuts: 'newsnook:browser:shortcuts:v1',
   preferences: 'newsnook:browser:preferences:v1',
+  hideRecent: 'newsnook:browser:hide-recent:v1',
 } as const
 
 export const DEFAULT_BROWSER_PREFERENCES: Readonly<BrowserPreferences> = Object.freeze({
@@ -142,4 +143,8 @@ export function resolveBrowserAddress(text: string, engine: BrowserSearchChoice)
   const searchOperator = /^(?:site|intitle|allintitle|inurl|allinurl|intext|allintext|filetype|ext|related|cache|define|before|after):/i.test(input)
   if (!searchOperator && /^[a-z][a-z\d+.-]*:/i.test(input)) return null
   return BROWSER_ENGINES[engine].url + encodeURIComponent(input)
+}
+
+export function readHideRecentPreference(): boolean {
+  return readBrowserPreference(BROWSER_KEYS.hideRecent) === 'true'
 }

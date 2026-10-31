@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
   BROWSER_ENGINES, BROWSER_KEYS, DEFAULT_BROWSER_PREFERENCES, browserHostLabel, readBrowserList,
-  loadBrowserPreferences, normalizeBrowserPreferences, readBrowserPreference, resolveBrowserAddress,
+  loadBrowserPreferences, normalizeBrowserPreferences, readBrowserPreference, readHideRecentPreference, resolveBrowserAddress,
   saveBrowserPreferences, toggleBrowserDesktopMode, validateBrowserUserAgent, writeBrowserPreference,
 } from '../src/features/browser/browserPreferences'
 
@@ -57,6 +57,11 @@ test('browser preferences round-trip raw options and complete local payloads', (
   assert.equal(readBrowserList('missing'), null)
   stored.set(BROWSER_KEYS.bookmarks, '{broken JSON')
   assert.equal(readBrowserList(BROWSER_KEYS.bookmarks), null, 'malformed local payloads use the caller fallback')
+  assert.equal(readHideRecentPreference(), false, 'default hide recent preference is false (visible)')
+  writeBrowserPreference(BROWSER_KEYS.hideRecent, 'true', true)
+  assert.equal(readHideRecentPreference(), true, 'hide recent preference toggles to true')
+  writeBrowserPreference(BROWSER_KEYS.hideRecent, 'false', true)
+  assert.equal(readHideRecentPreference(), false, 'hide recent preference toggles to false')
 })
 
 test('storage read failures fall back and write failures preserve the previous payload', () => {

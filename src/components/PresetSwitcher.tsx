@@ -250,7 +250,7 @@ export function PresetSwitcher({
               </div>
               <div className="min-w-0">
                 <h2 id={titleId} className="font-display text-[18px] font-semibold leading-none text-paper">
-                  切换布局
+                  切换场景
                 </h2>
                 <p className="mt-1 truncate text-[11px] text-paper-faint">
                   当前：<span className="font-medium text-cinnabar">{activeName}</span>

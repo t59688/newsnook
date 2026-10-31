@@ -215,6 +215,12 @@ html[data-scheme='buer'] .browser-workspace svg.lucide[fill='none'] { fill: none
 .browser-start-section { margin-top: 22px; }
 .browser-section-heading { display: flex; align-items: center; justify-content: space-between; min-height: 44px; margin-bottom: 5px; }
 .browser-section-heading h2 { margin: 0; color: var(--color-paper); font-size: 15px; font-weight: 600; line-height: 1.5; }
+.browser-section-title-wrap { display: flex; align-items: center; gap: 8px; }
+.browser-icon-toggle-button { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px; padding: 0; border: 0; border-radius: 8px; background: transparent; color: var(--color-paper-muted); cursor: pointer; transition: color 140ms ease, background-color 140ms ease; }
+.browser-icon-toggle-button:hover, .browser-icon-toggle-button:focus-visible { color: var(--color-paper); }
+.browser-icon-toggle-button:active { background: var(--color-haze); color: var(--color-paper); }
+.browser-recent-collapsed { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 46px; padding: 10px 14px; margin-top: 4px; border-radius: 12px; border: 1px dashed var(--color-haze); background: var(--color-ink-raised); color: var(--color-paper-muted); font-size: 13px; line-height: 1.5; text-align: center; cursor: pointer; transition: background-color 140ms ease, color 140ms ease, border-color 140ms ease; }
+.browser-recent-collapsed:active { background: var(--color-haze); color: var(--color-paper); border-color: var(--color-paper-faint); }
 .browser-shortcut-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-gap: 10px 8px; }
 .browser-shortcut { position: relative; display: flex; flex-direction: column; align-items: center; min-width: 0; min-height: 92px; padding: 8px 2px; border-radius: 13px; color: var(--color-paper); transition: background-color 140ms ease; }
 .browser-shortcut:active { background: var(--color-haze); }
@@ -449,3 +455,4 @@ html[data-scheme='buer'] .browser-workspace svg.lucide[fill='none'] { fill: none
 [data-eink] .browser-sheet, [data-eink] .browser-panel, [data-eink] .browser-start,
 [data-eink] .browser-user-agent-editor, [data-eink] .browser-loading-icon, [data-eink] .browser-loading-stop-border { animation: none; }
 [data-eink] .browser-loading-stop-border { stroke-dasharray: none; opacity: 0.75; }
+[data-eink] .browser-recent-collapsed { border-style: solid; }

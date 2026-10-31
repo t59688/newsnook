@@ -143,6 +143,22 @@ function renderGitHubSvg(size: number) {
   )
 }
 
+function renderWeChatSvg(size: number) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 28 28" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect width="28" height="28" rx="6" fill="#07C160"/>
+      <svg x="2" y="2" width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M9.5 4C5.358 4 2 6.91 2 10.5c0 1.95.992 3.708 2.584 4.887l-.656 2.373a.4.4 0 00.518.484l2.772-1.018C8.04 17.15 8.756 17.2 9.5 17.2c.28 0 .553-.01.824-.033A6.16 6.16 0 0110 15.5c0-3.314 3.134-6 7-6 .347 0 .686.024 1.018.068C17.38 6.427 13.784 4 9.5 4z" fill="#FFFFFF"/>
+        <circle cx="6.5" cy="9.2" r="1.1" fill="#07C160"/>
+        <circle cx="11.5" cy="9.2" r="1.1" fill="#07C160"/>
+        <path d="M17 10.5c-3.314 0-6 2.239-6 5s2.686 5 6 5c.608 0 1.196-.076 1.748-.216l2.124.78a.35.35 0 00.453-.424l-.502-1.815C21.984 17.844 23 16.51 23 15.5c0-2.761-2.686-5-6-5z" fill="#FFFFFF"/>
+        <circle cx="14.8" cy="14.3" r="0.95" fill="#07C160"/>
+        <circle cx="18.8" cy="14.3" r="0.95" fill="#07C160"/>
+      </svg>
+    </svg>
+  )
+}
+
 /**
  * Returns a fast local SVG brand icon if the host/url/name matches a known provider or preset.
  */
@@ -150,6 +166,10 @@ export function getBrowserBrandIcon(address: string, name?: string, size: 'small
   const host = normalizeBrowserHost(address).toLowerCase()
   const label = name?.trim().toLowerCase() ?? ''
   const dimension = size === 'small' ? 20 : 25
+
+  if (host === 'mp.weixin.qq.com' || host === 'weixin.qq.com' || host.endsWith('.weixin.qq.com') || label.includes('微信') || label.includes('公众号')) {
+    return renderWeChatSvg(dimension)
+  }
 
   if (host === 'google.com' || host.endsWith('.google.com') || host === 'google.cn' || label.includes('google')) {
     return renderGoogleSvg(dimension)

@@ -1,18 +1,37 @@
 import { useState } from 'react'
-import { ArrowRight, Bookmark, Check, ChevronRight, Clock3, MoreHorizontal, Plus, Search, ShieldCheck } from 'lucide-react'
+import { ArrowRight, Bookmark, Check, ChevronRight, Clock3, Eye, EyeOff, MoreHorizontal, Plus, Search, ShieldCheck } from 'lucide-react'
 import type { BrowserShortcut, BrowserVisit } from './browserHistory'
-import { browserHostLabel } from './browserPreferences'
+import { BROWSER_KEYS, browserHostLabel, readHideRecentPreference, writeBrowserPreference } from './browserPreferences'
 import { BrowserIconButton, BrowserSiteIcon } from './BrowserPrimitives'
 
 export function BrowserStartPage({
-  shortcuts, recent, onSearch, onOpen, onAddShortcut, onShortcutOptions, onHistoryOptions, onPanel, privateMode = false,
+  shortcuts, recent, onSearch, onOpen, onAddShortcut, onShortcutOptions, onHistoryOptions, onPanel,
+  privateMode = false, hideRecent, onToggleHideRecent,
 }: {
   shortcuts: BrowserShortcut[]; recent: BrowserVisit[]
   onSearch: () => void; onOpen: (url: string) => void; onAddShortcut: () => void
   onShortcutOptions: (index: number) => void; onHistoryOptions: (visit: BrowserVisit) => void
-  onPanel: (panel: 'history' | 'bookmarks' | 'scripts') => void; privateMode?: boolean
+  onPanel: (panel: 'history' | 'bookmarks' | 'scripts') => void
+  privateMode?: boolean; hideRecent?: boolean; onToggleHideRecent?: () => void
 }) {
   const [managing, setManaging] = useState(false)
+  const [internalHide, setInternalHide] = useState(() => readHideRecentPreference())
+  const isRecentHidden = hideRecent ?? internalHide
+
+  const handleToggleHide = () => {
+    if (onToggleHideRecent) {
+      onToggleHideRecent()
+    } else {
+      const next = !internalHide
+      try {
+        writeBrowserPreference(BROWSER_KEYS.hideRecent, next ? 'true' : 'false', true)
+        setInternalHide(next)
+      } catch {
+        // fallback
+      }
+    }
+  }
+
   const canManage = managing
   return <div className="browser-start">
     <div className="browser-start-brand">
@@ -57,23 +76,49 @@ export function BrowserStartPage({
 
     {!privateMode && <section className="browser-start-section" aria-labelledby="browser-recent-title">
       <div className="browser-section-heading">
-        <h2 id="browser-recent-title">最近访问</h2>
+        <div className="browser-section-title-wrap">
+          <h2 id="browser-recent-title">最近访问</h2>
+          <button
+            type="button"
+            className="browser-icon-toggle-button"
+            onClick={handleToggleHide}
+            aria-label={isRecentHidden ? '显示最近访问' : '隐藏最近访问'}
+            aria-pressed={!isRecentHidden}
+            title={isRecentHidden ? '显示最近访问' : '隐藏最近访问'}
+          >
+            {isRecentHidden ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
+          </button>
+        </div>
         <button type="button" onClick={() => onPanel('history')} className="browser-text-button">全部<ChevronRight size={16} aria-hidden="true"/></button>
       </div>
-      {recent.length ? <ul className="browser-recent-list">
-        {recent.map(item => <li key={item.url}>
-          <button type="button" title={item.title || item.url} onClick={() => onOpen(item.url)}
-            onContextMenu={event => {event.preventDefault(); onHistoryOptions(item)}} className="browser-recent-link">
-            <BrowserSiteIcon url={item.url} name={item.title} size="small"/>
-            <span><span className="browser-list-title">{item.title || browserHostLabel(item.url)}</span>
-              <span className="browser-list-detail">{browserHostLabel(item.url)}</span></span>
-          </button>
-          <BrowserIconButton label={'管理历史 ' + browserHostLabel(item.url)} onClick={() => onHistoryOptions(item)}><MoreHorizontal size={19}/></BrowserIconButton>
-        </li>)}
-      </ul> : <div className="browser-start-empty">
-        <Clock3 size={19} strokeWidth={1.7} aria-hidden="true"/>
-        <div><p>暂无浏览记录</p><span>访问过的网页会显示在这里。</span></div>
-      </div>}
+      {isRecentHidden ? (
+        <button
+          type="button"
+          onClick={handleToggleHide}
+          className="browser-recent-collapsed"
+          aria-label="最近访问已隐藏，点击展开"
+        >
+          <EyeOff size={15} strokeWidth={1.8} aria-hidden="true" />
+          <span>最近访问已隐藏 · 点击展开</span>
+        </button>
+      ) : recent.length ? (
+        <ul className="browser-recent-list">
+          {recent.map(item => <li key={item.url}>
+            <button type="button" title={item.title || item.url} onClick={() => onOpen(item.url)}
+              onContextMenu={event => {event.preventDefault(); onHistoryOptions(item)}} className="browser-recent-link">
+              <BrowserSiteIcon url={item.url} name={item.title} size="small"/>
+              <span><span className="browser-list-title">{item.title || browserHostLabel(item.url)}</span>
+                <span className="browser-list-detail">{browserHostLabel(item.url)}</span></span>
+            </button>
+            <BrowserIconButton label={'管理历史 ' + browserHostLabel(item.url)} onClick={() => onHistoryOptions(item)}><MoreHorizontal size={19}/></BrowserIconButton>
+          </li>)}
+        </ul>
+      ) : (
+        <div className="browser-start-empty">
+          <Clock3 size={19} strokeWidth={1.7} aria-hidden="true"/>
+          <div><p>暂无浏览记录</p><span>访问过的网页会显示在这里。</span></div>
+        </div>
+      )}
     </section>}
   </div>
 }

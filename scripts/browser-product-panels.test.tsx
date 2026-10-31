@@ -483,6 +483,32 @@ try {
   for (const label of ['历史', '书签', '用户脚本']) assert.ok(button(label), 'privacy keeps explicit browser tools available')
   assert.equal(window.document.querySelectorAll('img[src^="https:"]').length, 0, 'private start does not fetch favicons')
 
+  // Normal start page recent-visit eye visibility toggle & persistence
+  let normalHideRecent = false
+  const renderNormalStart = async () => {
+    await act(async () => root.render(<BrowserStartPage
+      shortcuts={[{name:'GitHub', url:'https://github.com/'}]}
+      recent={entries}
+      hideRecent={normalHideRecent}
+      onToggleHideRecent={() => { normalHideRecent = !normalHideRecent }}
+      onSearch={() => {}} onOpen={() => {}} onAddShortcut={() => {}} onShortcutOptions={() => {}}
+      onHistoryOptions={() => {}} onPanel={() => {}}/>))
+  }
+  await renderNormalStart()
+  assert.ok(window.document.body.textContent?.includes('最近访问'))
+  assert.ok(window.document.body.textContent?.includes(entries[0].title), 'recent visits are visible by default')
+  const eyeBtn = window.document.querySelector('button[aria-label="隐藏最近访问"]') as HTMLButtonElement
+  assert.ok(eyeBtn, 'eye toggle button is rendered beside recent visits title')
+  await click(eyeBtn)
+  await renderNormalStart()
+  assert.ok(!window.document.body.textContent?.includes(entries[0].title), 'recent visits are hidden after eye click')
+  assert.ok(window.document.querySelector('button[aria-label="显示最近访问"]'), 'eye button toggles label to show recent visits')
+  const collapsedCard = window.document.querySelector('button.browser-recent-collapsed') as HTMLButtonElement
+  assert.ok(collapsedCard, 'collapsed placeholder card is rendered when recent visits are hidden')
+  await click(collapsedCard)
+  await renderNormalStart()
+  assert.ok(window.document.body.textContent?.includes(entries[0].title), 'recent visits are restored when clicking collapsed card')
+
   let searchClosed = 0
   await act(async () => root.render(<BrowserSearchPanel current="" initialValue="" engine="bing" history={entries}
     privateMode pending={false} error="" onClose={() => {searchClosed++}}

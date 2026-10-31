@@ -43,6 +43,29 @@ assert.deepEqual(normalizeBrowserVisits([
 assert.deepEqual(normalizeHiddenBrowserHosts({}), [])
 assert.deepEqual(normalizeHiddenBrowserHosts([' WWW.Example.COM ', null, 'example.com', 'linux.do', 'bad host']), ['example.com', 'linux.do'])
 assert.deepEqual(normalizeBrowserShortcuts({}), DEFAULT_BROWSER_SHORTCUTS, 'invalid shortcut container falls back to the default start page')
+assert.equal(DEFAULT_BROWSER_SHORTCUTS.length, 6, 'start page reserves 6 default shortcuts leaving 2 customizable slots')
+assert.deepEqual(DEFAULT_BROWSER_SHORTCUTS.map(x => x.name), ['GitHub 仓库', '微信公众号', 'Linux.do', '维基百科', 'ChatGPT', 'Google'])
+assert.deepEqual(
+  normalizeBrowserShortcuts([
+    { name: 'Linux.do', url: 'https://linux.do/' },
+    { name: '知乎', url: 'https://www.zhihu.com/' },
+    { name: 'ChatGPT', url: 'https://chatgpt.com/' },
+    { name: 'Bing', url: 'https://www.bing.com/' },
+  ]),
+  DEFAULT_BROWSER_SHORTCUTS,
+  'legacy 4 default shortcuts smoothly upgrade to the new 6 curated items',
+)
+assert.deepEqual(
+  normalizeBrowserShortcuts([
+    { name: '我的博客', url: 'https://blog.example.com/' },
+    { name: 'Linux.do', url: 'https://linux.do/' },
+  ]),
+  [
+    { name: '我的博客', url: 'https://blog.example.com/' },
+    { name: 'Linux.do', url: 'https://linux.do/' },
+  ],
+  'custom shortcuts are strictly preserved without unwanted upgrades',
+)
 assert.deepEqual(normalizeBrowserShortcuts([]), [], 'an intentionally empty shortcut list stays empty')
 assert.deepEqual(normalizeBrowserShortcuts([
   null, { name: 1, url: 'https://invalid.example/' },

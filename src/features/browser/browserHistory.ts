@@ -3,10 +3,12 @@ export interface BrowserVisit { url: string; title: string; time: number }
 export interface BrowserShortcut { name: string; url: string }
 
 export const DEFAULT_BROWSER_SHORTCUTS: BrowserShortcut[] = [
+  { name: 'GitHub 仓库', url: 'https://github.com/t59688/newsnook' },
+  { name: '微信公众号', url: 'https://mp.weixin.qq.com/s/d8fJvLQ4o7wjr_4YBXGgqQ' },
   { name: 'Linux.do', url: 'https://linux.do/' },
-  { name: '知乎', url: 'https://www.zhihu.com/' },
+  { name: '维基百科', url: 'https://zh.wikipedia.org/' },
   { name: 'ChatGPT', url: 'https://chatgpt.com/' },
-  { name: 'Bing', url: 'https://www.bing.com/' },
+  { name: 'Google', url: 'https://www.google.com/' },
 ]
 
 function browserUrl(value: unknown): URL | null {
@@ -50,6 +52,8 @@ export function normalizeHiddenBrowserHosts(value: unknown): string[] {
   return [...new Set(hosts)].slice(0, 400)
 }
 
+const LEGACY_DEFAULT_HOSTS = new Set(['linux.do', 'zhihu.com', 'chatgpt.com', 'bing.com'])
+
 export function normalizeBrowserShortcuts(value: unknown): BrowserShortcut[] {
   if (!Array.isArray(value)) return DEFAULT_BROWSER_SHORTCUTS.map(item => ({ ...item }))
   let shortcuts: BrowserShortcut[] = []
@@ -57,6 +61,13 @@ export function normalizeBrowserShortcuts(value: unknown): BrowserShortcut[] {
     if (!item || typeof item !== 'object' || typeof item.name !== 'string' || typeof item.url !== 'string') continue
     shortcuts = addBrowserShortcut(shortcuts, item)
     if (shortcuts.length === 8) break
+  }
+  // 未曾自定义过快捷方式的老用户（刚好命中旧版 4 项默认值）：平滑升级至包含官方渠道与 Google 的新默认项
+  if (
+    shortcuts.length === 4 &&
+    shortcuts.every(item => LEGACY_DEFAULT_HOSTS.has(normalizeBrowserHost(item.url)))
+  ) {
+    return DEFAULT_BROWSER_SHORTCUTS.map(item => ({ ...item }))
   }
   return shortcuts
 }
