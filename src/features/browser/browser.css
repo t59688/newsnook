@@ -392,6 +392,32 @@ html[data-scheme='buer'] .browser-workspace svg.lucide[fill='none'] { fill: none
   .browser-sheet { padding-bottom: max(var(--sab, 0px), 12px); }
 }
 .browser-loading-icon { animation: browser-spin 900ms linear infinite; }
+.browser-loading-stop-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: var(--color-paper);
+}
+.browser-loading-stop-track {
+  stroke: currentColor;
+  opacity: 0.15;
+}
+.browser-loading-stop-border {
+  stroke: var(--color-cinnabar);
+  stroke-linecap: round;
+  stroke-dasharray: 28 46.5;
+  filter: drop-shadow(0 0 2.5px color-mix(in srgb, var(--color-cinnabar) 80%, transparent));
+  animation: browser-border-trace 850ms linear infinite;
+}
+.browser-loading-stop-square {
+  fill: currentColor;
+}
+@keyframes browser-border-trace {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: -74.5; }
+}
 @keyframes browser-spin { to { transform: rotate(360deg); } }
 @keyframes browser-sheet-enter { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes browser-panel-enter { from { opacity: 0; } to { opacity: 1; } }
@@ -416,8 +442,10 @@ html[data-scheme='buer'] .browser-workspace svg.lucide[fill='none'] { fill: none
   .browser-choice:hover:not(:disabled), .browser-provider:hover:not(:disabled), .browser-shortcut:hover { background: var(--color-haze); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .browser-sheet, .browser-panel, .browser-start, .browser-user-agent-editor, .browser-loading-icon { animation: none; }
+  .browser-sheet, .browser-panel, .browser-start, .browser-user-agent-editor, .browser-loading-icon, .browser-loading-stop-border { animation: none; }
+  .browser-loading-stop-border { stroke-dasharray: none; opacity: 0.75; }
   .browser-workspace * { scroll-behavior: auto; transition-duration: 0ms; }
 }
 [data-eink] .browser-sheet, [data-eink] .browser-panel, [data-eink] .browser-start,
-[data-eink] .browser-user-agent-editor, [data-eink] .browser-loading-icon { animation: none; }
+[data-eink] .browser-user-agent-editor, [data-eink] .browser-loading-icon, [data-eink] .browser-loading-stop-border { animation: none; }
+[data-eink] .browser-loading-stop-border { stroke-dasharray: none; opacity: 0.75; }

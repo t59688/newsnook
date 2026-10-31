@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, BookmarkCheck, ChevronRight, Clock3, Copy,
   Download, Film, Globe2, Home, Images, Laptop, LogOut, ScanText, Share2, Shield,
-  MoreHorizontal, Pencil, Play, Plus, RefreshCw, Settings2, ShieldCheck, Square, Trash2, X, BotMessageSquare,
+  MoreHorizontal, Pencil, Play, Plus, RefreshCw, Settings2, ShieldCheck, Trash2, X, BotMessageSquare,
 } from 'lucide-react'
 import { Share } from '@capacitor/share'
 import {createBrowserConfigController} from './agent/browserConfig'
@@ -30,7 +30,7 @@ import type { BrowserPrivacyCapabilities } from './browserPrivacy'
 import { BrowserFindBar } from './BrowserFindBar'
 import { BrowserImagesPanel } from './BrowserImagesPanel'
 import { useBrowserDialogFocus } from './useBrowserDialogFocus'
-import { BrowserIconButton, BrowserSheet } from './BrowserPrimitives'
+import { BrowserIconButton, BrowserLoadingStopIcon, BrowserSheet } from './BrowserPrimitives'
 import { BrowserAddressBar, BrowserMediaStrip, browserMediaMatchesPage } from './BrowserAddressBar'
 import { BrowserAgentPanel } from './agent/BrowserAgentPanel'
 import { BrowserStartPage } from './BrowserStartPage'
@@ -455,7 +455,7 @@ export function BrowserWorkspace({
         mediaPanelOpen={panel === 'media'} onOpenSite={() => openPanel('site')}
         onSearch={showSearch} onOpenMedia={openMediaPanel}/>
       <BrowserIconButton label={session.state.loading ? '停止加载' : '刷新'} disabled={!active || (!session.state.loading && session.pending)} onClick={() => runCommand(session.state.loading ? 'stop' : 'reload')}>
-        {session.state.loading ? <Square size={17} strokeWidth={1.9}/> : <RefreshCw size={19} strokeWidth={1.8}/>}
+        {session.state.loading ? <BrowserLoadingStopIcon size={20}/> : <RefreshCw size={19} strokeWidth={1.8}/>}
       </BrowserIconButton>
       <BrowserIconButton label="标签页" disabled={session.pending} onClick={() => openPanel('tabs')}>
         <span className="flex size-[18px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[10.5px] font-bold leading-none tabular-nums select-none">{session.tabs.length || 1}</span>
@@ -535,7 +535,7 @@ export function BrowserWorkspace({
         {([
           {label:'后退', icon:ArrowLeft, command:'back', disabled:!session.state.back},
           {label:'前进', icon:ArrowRight, command:'forward', disabled:!session.state.forward},
-          {label:session.state.loading ? '停止' : '刷新', icon:session.state.loading ? Square : RefreshCw, command:session.state.loading ? 'stop' : 'reload', disabled:!active},
+          {label:session.state.loading ? '停止' : '刷新', icon:session.state.loading ? BrowserLoadingStopIcon : RefreshCw, command:session.state.loading ? 'stop' : 'reload', disabled:!active},
         ] as const).map(item => <button type="button" key={item.label} disabled={item.disabled || (session.pending && item.command !== 'stop')} onClick={() => runCommand(item.command)}
           className="flex min-h-14 flex-col items-center justify-center gap-1.5 rounded-xl text-[13px] text-paper-muted disabled:opacity-30 active:bg-haze"><item.icon size={20}/>{item.label}</button>)}
         <button type="button" disabled={!active} onClick={() => {void copy(current)}} className="flex min-h-14 flex-col items-center justify-center gap-1.5 rounded-xl text-[13px] text-paper-muted disabled:opacity-30 active:bg-haze"><Copy size={19}/>复制网址</button>
