@@ -5,6 +5,8 @@ import {
   MoreHorizontal, Pencil, Play, Plus, RefreshCw, Settings2, ShieldCheck, Trash2, X, BotMessageSquare,
 } from 'lucide-react'
 import { Share } from '@capacitor/share'
+import { Capacitor } from '@capacitor/core'
+import { nativeBrowser } from './nativeBrowser'
 import {createBrowserConfigController} from './agent/browserConfig'
 import {downloadUserScriptSource} from './userScriptImport'
 import {loadUserScripts,saveUserScripts} from './scripts'
@@ -120,6 +122,7 @@ export function BrowserWorkspace({
   const prevTabsCount = useRef(0)
   const tabMotionRevision = useRef(0)
   const [tabCountMotion, setTabCountMotion] = useState<{kind: 'increase' | 'decrease'; revision: number} | null>(null)
+  const tabBadgeButtonRef = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
     let live = true
     void getBrowserContext().then(context => {if (live && context.privacyCapabilities) setCapabilities(context.privacyCapabilities)}).catch(() => undefined)
@@ -146,6 +149,30 @@ export function BrowserWorkspace({
   searchRef.current = search
   const bottomAddressRef = useRef(bottomAddress)
   bottomAddressRef.current = bottomAddress
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return
+    let frameId: number | null = null
+    const reportBadgeBounds = () => {
+      const el = tabBadgeButtonRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        void nativeBrowser.updateTabBadgeBounds({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        }).catch(() => undefined)
+      }
+    }
+    frameId = requestAnimationFrame(reportBadgeBounds)
+    window.addEventListener('resize', reportBadgeBounds)
+    window.visualViewport?.addEventListener('resize', reportBadgeBounds)
+    return () => {
+      if (frameId !== null) cancelAnimationFrame(frameId)
+      window.removeEventListener('resize', reportBadgeBounds)
+      window.visualViewport?.removeEventListener('resize', reportBadgeBounds)
+    }
+  }, [bottomAddress])
   const historyRef = useRef(history)
   const exiting = useRef(false)
   const uiRevision = useRef(0)
@@ -495,7 +522,7 @@ export function BrowserWorkspace({
       <BrowserIconButton label={session.state.loading ? '停止加载' : '刷新'} disabled={!active || (!session.state.loading && session.pending)} onClick={() => runCommand(session.state.loading ? 'stop' : 'reload')}>
         {session.state.loading ? <BrowserLoadingStopIcon size={20}/> : <RefreshCw size={19} strokeWidth={1.8}/>}
       </BrowserIconButton>
-      <BrowserIconButton label="标签页" disabled={session.pending} onClick={() => openPanel('tabs')}>
+      <BrowserIconButton buttonRef={tabBadgeButtonRef} label="标签页" disabled={session.pending} onClick={() => openPanel('tabs')}>
         <BrowserTabBadge count={session.tabs.length || 1} motion={tabCountMotion} />
       </BrowserIconButton>
       <BrowserIconButton label={agentBusy?'AI 浏览助手（任务未结束）':'AI 浏览助手'} className="browser-toolbar-compact-optional" onClick={() => {

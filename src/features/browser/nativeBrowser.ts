@@ -48,6 +48,7 @@ interface NativeBrowser {
   updateScripts(args: {scripts: ReturnType<typeof loadUserScripts>}): Promise<void>
   updateSettings(args: {settings: BrowserPreferences}): Promise<void>
   updatePalette(args: {palette: Record<string, string>}): Promise<void>
+  updateTabBadgeBounds(args: {x: number; y: number}): Promise<void>
   getBrowserContext(): Promise<BrowserContext>
   findInPage(args: {query: string; tabId?: number}): Promise<void>
   findNext(args: {forward: boolean; tabId?: number}): Promise<void>

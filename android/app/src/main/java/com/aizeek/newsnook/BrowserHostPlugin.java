@@ -1,6 +1,9 @@
 package com.aizeek.newsnook;
 
+import android.animation.Animator;
+import android.animation.AnimatorListenerAdapter;
 import android.animation.ValueAnimator;
+import android.widget.ImageView;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
@@ -336,6 +339,8 @@ public class BrowserHostPlugin extends Plugin {
     private int muted = Color.rgb(168, 161, 148);
     private int accent = Color.rgb(196, 92, 74);
     private int outline = Color.rgb(60, 60, 63);
+    private float tabBadgeCenterX = -1f;
+    private float tabBadgeCenterY = -1f;
     private volatile boolean closing;
     private boolean destroyed;
     private boolean activityPaused;
@@ -460,6 +465,18 @@ public class BrowserHostPlugin extends Plugin {
         onUi(call, () -> {
             if (palette != null) {
                 updatePalette(palette);
+            }
+            call.resolve();
+        });
+    }
+
+    @PluginMethod public void updateTabBadgeBounds(PluginCall call) {
+        float x = call.getFloat("x", -1f);
+        float y = call.getFloat("y", -1f);
+        onUi(call, () -> {
+            if (x >= 0 && y >= 0) {
+                tabBadgeCenterX = dp(x);
+                tabBadgeCenterY = dp(y);
             }
             call.resolve();
         });
@@ -2029,7 +2046,9 @@ public class BrowserHostPlugin extends Plugin {
         card.addView(createLinkActionRow(isImage ? "后台打开图片" : "后台标签页打开", "link-open-background",
             LinkActionIconType.LAYERS, false, () -> {
                 dismissLinkActionSurface(null, true);
-                if (!closing && tabs.contains(source)) createTab(target, null, false);
+                if (!closing && tabs.contains(source)) {
+                    animatePaperFlyIntoTabBadge(source, target);
+                }
             }), new LinearLayout.LayoutParams(-1, dp(40)));
 
         card.addView(createLinkActionRow(isImage ? "复制图片链接" : "复制链接地址", "link-copy-address",
@@ -2259,6 +2278,152 @@ public class BrowserHostPlugin extends Plugin {
             popup.dismiss();
             if (after != null) after.run();
         }).start();
+    }
+
+    private void animatePaperFlyIntoTabBadge(Tab source, String targetUrl) {
+        if (source == null || source.webView == null || closing || destroyed || getActivity() == null) {
+            createTab(targetUrl, null, false);
+            return;
+        }
+
+        final WebView view = source.webView;
+        final int w = view.getWidth();
+        final int h = view.getHeight();
+        final FrameLayout rootContainer = embeddedRoot();
+
+        if (w <= 0 || h <= 0 || rootContainer == null) {
+            createTab(targetUrl, null, false);
+            return;
+        }
+
+        int[] viewLoc = new int[2];
+        view.getLocationInWindow(viewLoc);
+        int[] rootLoc = new int[2];
+        rootContainer.getLocationInWindow(rootLoc);
+        final int startX = viewLoc[0] - rootLoc[0];
+        final int startY = viewLoc[1] - rootLoc[1];
+
+        Bitmap snapshot = null;
+        try {
+            float snapScale = Math.min(1f, 720f / w);
+            int bw = Math.max(1, Math.round(w * snapScale));
+            int bh = Math.max(1, Math.round(h * snapScale));
+            snapshot = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
+            Canvas canvas = new Canvas(snapshot);
+            canvas.scale(snapScale, snapScale);
+            view.draw(canvas);
+        } catch (Throwable ignored) {
+            snapshot = null;
+        }
+
+        final Bitmap finalSnapshot = snapshot;
+        final FrameLayout flyerCard = new FrameLayout(getActivity());
+        flyerCard.setElevation(dp(22));
+        flyerCard.setBackgroundColor(surface);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            flyerCard.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override public void getOutline(View v, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, v.getWidth(), v.getHeight(), dp(14));
+                }
+            });
+            flyerCard.setClipToOutline(true);
+        }
+
+        if (finalSnapshot != null) {
+            ImageView iv = new ImageView(getActivity());
+            iv.setScaleType(ImageView.ScaleType.FIT_XY);
+            iv.setImageBitmap(finalSnapshot);
+            flyerCard.addView(iv, new FrameLayout.LayoutParams(-1, -1));
+        }
+
+        View borderOverlay = new View(getActivity());
+        GradientDrawable borderBg = new GradientDrawable();
+        borderBg.setCornerRadius(dp(14));
+        borderBg.setStroke(dp(1.2f), isLightSurface() ? Color.argb(40, 0, 0, 0) : Color.argb(55, 255, 255, 255));
+        borderBg.setColor(Color.TRANSPARENT);
+        borderOverlay.setBackground(borderBg);
+        flyerCard.addView(borderOverlay, new FrameLayout.LayoutParams(-1, -1));
+
+        FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(w, h);
+        params.leftMargin = startX;
+        params.topMargin = startY;
+        rootContainer.addView(flyerCard, params);
+
+        int rootWidth = rootContainer.getWidth() > 0 ? rootContainer.getWidth() : getContext().getResources().getDisplayMetrics().widthPixels;
+        int rootHeight = rootContainer.getHeight() > 0 ? rootContainer.getHeight() : getContext().getResources().getDisplayMetrics().heightPixels;
+
+        float destCenterX = (tabBadgeCenterX > 0) ? tabBadgeCenterX : (rootWidth - dp(84));
+        float destCenterY = (tabBadgeCenterY > 0) ? tabBadgeCenterY : (rootHeight - dp(28));
+
+        float originCenterX = startX + w / 2f;
+        float originCenterY = startY + h / 2f;
+        final float travelX = destCenterX - originCenterX;
+        final float travelY = destCenterY - originCenterY;
+
+        flyerCard.setPivotX(w / 2f);
+        flyerCard.setPivotY(h / 2f);
+
+        ValueAnimator animator = ValueAnimator.ofFloat(0f, 1f);
+        animator.setDuration(400);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            animator.setInterpolator(new android.view.animation.PathInterpolator(0.28f, 0f, 0.12f, 1f));
+        } else {
+            animator.setInterpolator(new android.view.animation.AccelerateDecelerateInterpolator());
+        }
+
+        animator.addUpdateListener(animation -> {
+            float t = animation.getAnimatedFraction();
+            flyerCard.setTranslationX(travelX * t);
+            flyerCard.setTranslationY(travelY * t);
+
+            float scale = Math.max(0.015f, 1f - t * 0.985f);
+            if (t > 0.55f) {
+                float squashFactor = (t - 0.55f) / 0.45f;
+                flyerCard.setScaleX(scale * (1f - squashFactor * 0.22f));
+                flyerCard.setScaleY(scale * (1f + squashFactor * 0.18f));
+            } else {
+                flyerCard.setScaleX(scale);
+                flyerCard.setScaleY(scale);
+            }
+
+            float tilt = (float) Math.sin(t * Math.PI) * 4.8f;
+            flyerCard.setRotation(tilt);
+
+            if (t >= 0.85f) {
+                flyerCard.setAlpha((1f - t) / 0.15f);
+            } else {
+                flyerCard.setAlpha(1f);
+            }
+        });
+
+        animator.addListener(new AnimatorListenerAdapter() {
+            private boolean finished = false;
+            private void cleanUp() {
+                if (finished) return;
+                finished = true;
+                try { rootContainer.removeView(flyerCard); } catch (Throwable ignored) {}
+                if (finalSnapshot != null && !finalSnapshot.isRecycled()) {
+                    try { finalSnapshot.recycle(); } catch (Throwable ignored) {}
+                }
+            }
+
+            @Override public void onAnimationEnd(Animator animation) {
+                cleanUp();
+                try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); } catch (Throwable ignored) {}
+                if (!closing && tabs.contains(source)) {
+                    createTab(targetUrl, null, false);
+                }
+            }
+
+            @Override public void onAnimationCancel(Animator animation) {
+                cleanUp();
+                if (!closing && tabs.contains(source)) {
+                    createTab(targetUrl, null, false);
+                }
+            }
+        });
+
+        animator.start();
     }
 
     private void prepareRuntime(Tab tab) {

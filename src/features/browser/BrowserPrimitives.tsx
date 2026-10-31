@@ -1,14 +1,14 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode, type Ref } from 'react'
 import { AlertCircle, ArrowLeft, Globe2, ShieldCheck, X, type LucideIcon } from 'lucide-react'
 import { shortcutFaviconUrl } from './browserHistory'
 import { useBrowserDialogFocus } from './useBrowserDialogFocus'
 import { getBrowserBrandIcon } from './browserBrandIcons'
 
-export function BrowserIconButton({label, children, onClick, disabled = false, pressed, className = ''}: {
+export function BrowserIconButton({label, children, onClick, disabled = false, pressed, className = '', buttonRef}: {
   label: string; children: ReactNode; onClick: () => void; disabled?: boolean
-  pressed?: boolean; className?: string
+  pressed?: boolean; className?: string; buttonRef?: Ref<HTMLButtonElement | null>
 }) {
-  return <button type="button" aria-label={label} title={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}
+  return <button ref={buttonRef} type="button" aria-label={label} title={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}
     className={'browser-icon-button ' + className}>
     {children}
   </button>
