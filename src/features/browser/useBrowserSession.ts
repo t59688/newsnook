@@ -17,11 +17,24 @@ export async function getBrowserContext(): Promise<BrowserContext> {
   return nativeBrowser.getBrowserContext()
 }
 
+function normalizePaletteColor(val: string): string {
+  const trimmed = val.trim()
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
+  }
+  if (/^#[0-9a-f]{4}$/i.test(trimmed)) {
+    return `#${trimmed[4]}${trimmed[4]}${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
+  }
+  return trimmed
+}
+
 export function browserThemePalette(): Record<string, string> {
   const css = getComputedStyle(document.documentElement)
   const tones: Record<string, string> = {ink: 'ink', surface: 'ink-raised', paper: 'paper', muted: 'paper-muted', accent: 'cinnabar', outline: 'paper-faint'}
   const palette: Record<string, string> = {}
-  for (const [key, tone] of Object.entries(tones)) palette[key] = css.getPropertyValue('--tone-' + tone).trim()
+  for (const [key, tone] of Object.entries(tones)) {
+    palette[key] = normalizePaletteColor(css.getPropertyValue('--tone-' + tone))
+  }
   return palette
 }
 
@@ -351,6 +364,22 @@ export function useBrowserSession(
     }, false, recoverySession)
   }, [enqueue, ensureOpen, recoverySession])
 
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined') return
+    const observer = new MutationObserver(mutations => {
+      for (const m of mutations) {
+        if (m.type === 'attributes' && (m.attributeName === 'data-theme' || m.attributeName === 'data-scheme')) {
+          if (opened.current && !closing.current) {
+            void nativeBrowser.updatePalette({palette: browserThemePalette()}).catch(() => undefined)
+          }
+          break
+        }
+      }
+    })
+    observer.observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme', 'data-scheme']})
+    return () => observer.disconnect()
+  }, [])
+
   const open = useCallback((url: string, throwOnError = false) => enqueue(() => ensureOpen(url), throwOnError, url), [enqueue, ensureOpen])
   const command = useCallback((action: BrowserCommand): Promise<boolean> => {
     if (action === 'stop') {
@@ -379,6 +408,9 @@ export function useBrowserSession(
   }), [enqueue])
   const updateSettings = useCallback((settings: BrowserPreferences) => enqueue(async () => {
     await nativeBrowser.updateSettings({settings})
+  }), [enqueue])
+  const updatePalette = useCallback(() => enqueue(async () => {
+    if (opened.current) await nativeBrowser.updatePalette({palette: browserThemePalette()})
   }), [enqueue])
   const clearSiteData = useCallback((url: string) => enqueue(async () => {
     if (!url) throw new Error('请先打开需要清理的网站')
@@ -434,7 +466,7 @@ export function useBrowserSession(
     await nativeBrowser.close().catch(() => undefined)
   }, [])
 
-  return {state, tabs, mediaTabs, ready, initialSessionSettled, pending, error, setError, open, command, activate, remove, updateScripts, updateSettings, clearSiteData,
+  return {state, tabs, mediaTabs, ready, initialSessionSettled, pending, error, setError, open, command, activate, remove, updateScripts, updateSettings, updatePalette, clearSiteData,
     images, scanningImages, imageError, scanImages, loadImage, cancelImageRequests, invalidateImages, findResult, findInPage, findNext, clearFind, close,
     refreshTabs: refresh}
 }

@@ -885,6 +885,27 @@ try {
   assert.equal(document.body.textContent?.includes('private.example'), false, 'private visits do not appear in recently visited sites')
   console.log('Private browser: navigation, bookmarks and recent-site storage boundary OK')
 
+  await mount()
+  await visit('https://example.com/article')
+  const foregroundTabId = current.tabId!
+  await act(async () => {
+    tabList.push({index: 1, id: nextTabId++, title: '后台资料', url: 'https://reference.example/guide', active: false, loading: true})
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  const tabCountBadge = button('标签页').querySelector('[data-tab-count-motion]')
+  assert.equal(tabCountBadge?.getAttribute('data-tab-count-motion'), 'increase', 'adding a tab gives the count a directional increase motion')
+  assert.equal(current.tabId, foregroundTabId, 'background feedback cannot switch the visible page')
+  assert.equal(document.querySelector('.browser-tab-feedback'), null, 'background open removes noisy feedback toast')
+  await act(async () => {
+    tabList.pop()
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  assert.equal(button('标签页').querySelector('[data-tab-count-motion]')?.getAttribute('data-tab-count-motion'), 'decrease',
+    'closing a tab gives the count a distinct decrease motion')
+  console.log('Browser tab feedback: custom background notice and directional count motion OK')
+
   const recovery: BrowserRecoverySession = { activeIndex: 1, tabs: [
     { url: 'https://linux.do/t/retained', title: '保留的讨论', desktop: false },
     { url: 'https://example.com/account?view=retained', title: '保留的当前页', desktop: true },
@@ -906,7 +927,9 @@ try {
   assert.match(document.body.textContent ?? '', /网页进程已恢复，请重新加载此页/)
   assert.equal(bounds.at(-1)?.visible, false, 'recovered error pages leave native content hidden')
   assert.equal(commands.length, 0, 'restoration cannot automatically reload or navigate a recovered page')
-  assert.deepEqual([...storage.keys()], [SHORTCUTS], 'the recovery snapshot is not written to local storage or visit history')
+  assert.equal(storage.has(HISTORY), false, 'the recovery snapshot is not written to visit history')
+  assert.equal([...storage.values()].some(value => value.includes('retained')), false,
+    'recovered URLs and titles are never persisted by browser preference migrations')
   await click(button('标签页'))
   assert.ok(button('打开标签页：保留的讨论'))
   assert.ok(button('打开标签页：保留的当前页'))

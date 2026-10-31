@@ -45,6 +45,7 @@ export const DEFAULT_BROWSER_PREFERENCES: Readonly<BrowserPreferences> = Object.
 })
 
 export const DEFAULT_BROWSER_SEARCH_ENGINE: BrowserSearchChoice = 'google'
+const BROWSER_SEARCH_GOOGLE_DEFAULT_MIGRATION = 'newsnook:browser:search-google-default:v1'
 
 export const BROWSER_ENGINES = Object.fromEntries(BROWSER_SEARCH_PROVIDERS.map(provider =>
   [provider.id, {name: provider.name, url: provider.queryPrefix}],
@@ -111,6 +112,21 @@ export function saveBrowserPreferences(value: BrowserPreferences): BrowserPrefer
 
 export function readBrowserPreference(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
+}
+
+/** Upgrade the former persisted Bing default once, then preserve later user choices. */
+export function loadBrowserSearchEngine(): BrowserSearchChoice {
+  const saved = readBrowserPreference(BROWSER_KEYS.search)
+  const valid = saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved)
+    ? saved as BrowserSearchChoice : DEFAULT_BROWSER_SEARCH_ENGINE
+  if (readBrowserPreference(BROWSER_SEARCH_GOOGLE_DEFAULT_MIGRATION) === '1') return valid
+  try {
+    if (saved === 'bing') writeBrowserPreference(BROWSER_KEYS.search, DEFAULT_BROWSER_SEARCH_ENGINE, true)
+    writeBrowserPreference(BROWSER_SEARCH_GOOGLE_DEFAULT_MIGRATION, '1', true)
+  } catch {
+    // A read-only WebView still receives the new in-memory default.
+  }
+  return saved === 'bing' ? DEFAULT_BROWSER_SEARCH_ENGINE : valid
 }
 
 export function readBrowserList(key: string): unknown {

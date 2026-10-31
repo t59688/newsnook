@@ -15,7 +15,14 @@ import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
 import android.graphics.Typeface;
+import android.graphics.Path;
 import android.graphics.drawable.GradientDrawable;
+import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.StateListDrawable;
+import android.content.ClipData;
+import android.content.ClipboardManager;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Handler;
@@ -49,6 +56,7 @@ import android.widget.FrameLayout;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
+import android.widget.PopupWindow;
 import android.widget.TextView;
 import android.widget.Toast;
 import android.util.Base64;
@@ -165,6 +173,8 @@ public class BrowserHostPlugin extends Plugin {
         boolean recreateAfterSiteClear;
         int progress;
         int scriptVersion = -1;
+        float lastTouchX;
+        float lastTouchY;
         Tab(String url, int id) {
             this.id = id;
             this.url = url;
@@ -313,6 +323,7 @@ public class BrowserHostPlugin extends Plugin {
     private TextView forwardButton;
     private TextView desktopButton;
     private TextView menuButton;
+    private PopupWindow linkContextPopup;
     private final List<Tab> tabs = new ArrayList<>();
     private int nextTabId = 1;
     private Tab current;
@@ -441,6 +452,16 @@ public class BrowserHostPlugin extends Plugin {
             }
             if (current != null) sendNavigation(current.url, "state");
             call.resolve(new JSObject().put("settings", requested.toJson()));
+        });
+    }
+
+    @PluginMethod public void updatePalette(PluginCall call) {
+        JSObject palette = call.getObject("palette");
+        onUi(call, () -> {
+            if (palette != null) {
+                updatePalette(palette);
+            }
+            call.resolve();
         });
     }
 
@@ -1396,8 +1417,57 @@ public class BrowserHostPlugin extends Plugin {
     private int dp(float value) { return Math.round(value * getContext().getResources().getDisplayMetrics().density); }
     private int color(JSObject palette, String name, int fallback) {
         if (palette == null) return fallback;
-        try { return Color.parseColor(palette.getString(name, "")); }
-        catch (Exception e) { return fallback; }
+        String val = palette.getString(name, "");
+        if (val == null || val.trim().isEmpty()) return fallback;
+        String trimmed = val.trim();
+        try {
+            if (trimmed.startsWith("#")) {
+                if (trimmed.length() == 4) { // #rgb -> #rrggbb
+                    char r = trimmed.charAt(1);
+                    char g = trimmed.charAt(2);
+                    char b = trimmed.charAt(3);
+                    return Color.parseColor("#" + r + r + g + g + b + b);
+                } else if (trimmed.length() == 5) { // #rgba -> #aarrggbb
+                    char r = trimmed.charAt(1);
+                    char g = trimmed.charAt(2);
+                    char b = trimmed.charAt(3);
+                    char a = trimmed.charAt(4);
+                    return Color.parseColor("#" + a + a + r + r + g + g + b + b);
+                }
+                return Color.parseColor(trimmed);
+            }
+            if (trimmed.startsWith("rgb")) {
+                int open = trimmed.indexOf('(');
+                int close = trimmed.indexOf(')');
+                if (open != -1 && close > open) {
+                    String[] parts = trimmed.substring(open + 1, close).split("[,/ ]+");
+                    if (parts.length >= 3) {
+                        int r = Math.round(Float.parseFloat(parts[0].trim()));
+                        int g = Math.round(Float.parseFloat(parts[1].trim()));
+                        int b = Math.round(Float.parseFloat(parts[2].trim()));
+                        int a = 255;
+                        if (parts.length >= 4) {
+                            float alpha = Float.parseFloat(parts[3].trim());
+                            a = Math.round(alpha <= 1.0f ? alpha * 255f : alpha);
+                        }
+                        return Color.argb(Math.max(0, Math.min(255, a)),
+                                          Math.max(0, Math.min(255, r)),
+                                          Math.max(0, Math.min(255, g)),
+                                          Math.max(0, Math.min(255, b)));
+                    }
+                }
+            }
+            return Color.parseColor(trimmed);
+        } catch (Throwable ignored) {
+            return fallback;
+        }
+    }
+
+    private boolean isLightSurface() {
+        int r = Color.red(surface);
+        int g = Color.green(surface);
+        int b = Color.blue(surface);
+        return (0.299 * r + 0.587 * g + 0.114 * b) > 130;
     }
     private void updatePalette(JSObject colors) {
         ink = color(colors, "ink", ink);
@@ -1546,6 +1616,10 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void createTab(String url, PluginCall call) {
+        createTab(url, call, true);
+    }
+
+    private void createTab(String url, PluginCall call, boolean activate) {
         if (tabs.size() >= MAX_TABS) {
             if (call != null) call.reject("最多同时打开 6 个标签页");
             Toast.makeText(getContext(), "最多同时打开 6 个标签页", Toast.LENGTH_SHORT).show();
@@ -1560,7 +1634,8 @@ public class BrowserHostPlugin extends Plugin {
         }
         tab.pendingOpen = call;
         tabs.add(tab);
-        initializeTab(tab);
+        initializeTab(tab, activate);
+        if (!activate && current != null) sendNavigation(current.url, "state");
     }
 
     private boolean isLive(Tab tab, WebView view) {
@@ -1568,7 +1643,14 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void initializeTab(Tab tab) {
-        if (deferForSiteClear(tab, tab.url)) { selectTab(tab); return; }
+        initializeTab(tab, true);
+    }
+
+    private void initializeTab(Tab tab, boolean activate) {
+        if (deferForSiteClear(tab, tab.url)) {
+            if (activate) selectTab(tab);
+            return;
+        }
         tab.siteDataClearing = false;
         tab.recreateAfterSiteClear = false;
         WebView view = new WebView(getActivity()) {
@@ -1580,6 +1662,8 @@ public class BrowserHostPlugin extends Plugin {
             @Override public boolean dispatchTouchEvent(MotionEvent event) {
                 if (event.getActionMasked() == MotionEvent.ACTION_DOWN
                         && (tab.agentInput == null || !tab.agentInput.isDispatching())) {
+                    tab.lastTouchX = event.getX();
+                    tab.lastTouchY = event.getY();
                     if (tab.agent != null) tab.agent.invalidateVisual();
                     if (agentOwner.tabId() == tab.id) pauseAgentForHuman("user_touch");
                 }
@@ -1613,6 +1697,7 @@ public class BrowserHostPlugin extends Plugin {
                 cancelAgentInputForViewport(tab);
             }
         });
+        view.setOnLongClickListener(pressed -> showLinkContextMenu(tab, view));
         tab.pageProfile = new BrowserPageProfile(view);
         tab.error = null;
         tab.loading = false;
@@ -1826,8 +1911,354 @@ public class BrowserHostPlugin extends Plugin {
         } catch (Exception error) {
             if (!privateMode()) android.util.Log.w("NewsNookBrowser", "Media observation unavailable", error);
         }
-        selectTab(tab);
+        if (activate) selectTab(tab);
         prepareRuntime(tab);
+    }
+
+    private enum LinkActionIconType { EXTERNAL_LINK, LAYERS, COPY, SHARE }
+
+    private boolean showLinkContextMenu(Tab source, WebView view) {
+        if (!isLive(source, view) || current != source) return false;
+        WebView.HitTestResult hit = view.getHitTestResult();
+        int type = hit == null ? WebView.HitTestResult.UNKNOWN_TYPE : hit.getType();
+        if (type != WebView.HitTestResult.SRC_ANCHOR_TYPE
+                && type != WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE
+                && type != WebView.HitTestResult.IMAGE_TYPE) return false;
+        String target = hit.getExtra();
+        if (!isHttpUrl(target)) return false;
+        pauseAgentForHuman("link_context");
+        showLinkActionSurface(source, view, target, type == WebView.HitTestResult.IMAGE_TYPE);
+        return true;
+    }
+
+    private void showLinkActionSurface(Tab source, WebView view, String target, boolean isImage) {
+        dismissLinkActionSurface(null, false);
+        try { view.performHapticFeedback(android.view.HapticFeedbackConstants.LONG_PRESS); } catch (Throwable ignored) {}
+
+        boolean isLight = isLightSurface();
+
+        FrameLayout overlay = new FrameLayout(getActivity());
+        overlay.setBackgroundColor(isLight ? Color.argb(20, 0, 0, 0) : Color.argb(56, 0, 0, 0));
+        overlay.setAlpha(0f);
+        overlay.setContentDescription(isImage ? "图片操作菜单" : "链接操作菜单");
+
+        LinearLayout card = new LinearLayout(getActivity());
+        card.setTag("link-action-card");
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setPadding(dp(6), dp(6), dp(6), dp(6));
+
+        GradientDrawable cardBg = new GradientDrawable();
+        cardBg.setColor(surface);
+        cardBg.setCornerRadius(dp(12));
+        int strokeColor = isLight ? Color.argb(18, 0, 0, 0) : Color.argb(30, 255, 255, 255);
+        cardBg.setStroke(dp(1), strokeColor);
+        card.setBackground(cardBg);
+        card.setElevation(dp(isLight ? 10 : 16));
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
+            card.setOutlineProvider(new android.view.ViewOutlineProvider() {
+                @Override public void getOutline(View view, android.graphics.Outline outline) {
+                    outline.setRoundRect(0, 0, view.getWidth(), view.getHeight(), dp(12));
+                }
+            });
+            card.setClipToOutline(true);
+        }
+
+        // Parse target URL for readable display
+        String host = "";
+        String readablePath = "";
+        try {
+            Uri uri = Uri.parse(target);
+            host = uri.getHost();
+            if (host == null || host.isEmpty()) {
+                host = isImage ? "图片资源" : "网页链接";
+            } else {
+                host = host.replaceFirst("^www\\.", "");
+            }
+            String path = uri.getPath();
+            String query = uri.getQuery();
+            StringBuilder sb = new StringBuilder();
+            if (path != null && !path.isEmpty()) sb.append(path);
+            if (query != null && !query.isEmpty()) sb.append('?').append(query);
+            readablePath = URLDecoder.decode(sb.toString(), StandardCharsets.UTF_8.name());
+        } catch (Throwable ignored) {
+            if (host.isEmpty()) host = isImage ? "图片资源" : "网页链接";
+            readablePath = target;
+        }
+        if (readablePath.isEmpty() || "/".equals(readablePath)) {
+            readablePath = target;
+        }
+
+        // Header container (matches ContextActionMenu header styling: border-b border-haze/70 px-2.5 py-2)
+        LinearLayout header = new LinearLayout(getActivity());
+        header.setOrientation(LinearLayout.VERTICAL);
+        header.setPadding(dp(10), dp(8), dp(10), dp(8));
+
+        TextView heading = text(host, 12.5f, paper);
+        heading.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        heading.setSingleLine(true);
+        heading.setEllipsize(android.text.TextUtils.TruncateAt.END);
+        header.addView(heading, new LinearLayout.LayoutParams(-1, -2));
+
+        if (!readablePath.isEmpty()) {
+            TextView addressLine = text(readablePath, 9.5f, muted);
+            addressLine.setTypeface(Typeface.MONOSPACE);
+            addressLine.setSingleLine(true);
+            addressLine.setEllipsize(android.text.TextUtils.TruncateAt.MIDDLE);
+            addressLine.setAlpha(0.85f);
+            LinearLayout.LayoutParams addressParams = new LinearLayout.LayoutParams(-1, -2);
+            addressParams.topMargin = dp(2);
+            header.addView(addressLine, addressParams);
+        }
+
+        card.addView(header, new LinearLayout.LayoutParams(-1, -2));
+
+        // Hairline divider
+        View divider = new View(getActivity());
+        divider.setBackgroundColor(isLight ? Color.argb(16, 0, 0, 0) : Color.argb(25, 255, 255, 255));
+        LinearLayout.LayoutParams dividerParams = new LinearLayout.LayoutParams(-1, dp(1));
+        dividerParams.setMargins(dp(6), 0, dp(6), dp(4));
+        card.addView(divider, dividerParams);
+
+        // Action Rows (compact, elegant, with icons matching ContextActionMenu)
+        card.addView(createLinkActionRow(isImage ? "新标签页查看图片" : "新标签页打开", "link-open-foreground",
+            LinkActionIconType.EXTERNAL_LINK, true, () -> {
+                dismissLinkActionSurface(null, true);
+                if (!closing && tabs.contains(source)) createTab(target, null, true);
+            }), new LinearLayout.LayoutParams(-1, dp(40)));
+
+        card.addView(createLinkActionRow(isImage ? "后台打开图片" : "后台标签页打开", "link-open-background",
+            LinkActionIconType.LAYERS, false, () -> {
+                dismissLinkActionSurface(null, true);
+                if (!closing && tabs.contains(source)) createTab(target, null, false);
+            }), new LinearLayout.LayoutParams(-1, dp(40)));
+
+        card.addView(createLinkActionRow(isImage ? "复制图片链接" : "复制链接地址", "link-copy-address",
+            LinkActionIconType.COPY, false, () -> {
+                dismissLinkActionSurface(null, true);
+                copyToClipboard(target, isImage ? "图片链接已复制" : "链接已复制");
+            }), new LinearLayout.LayoutParams(-1, dp(40)));
+
+        card.addView(createLinkActionRow(isImage ? "分享图片链接" : "分享链接", "link-share",
+            LinkActionIconType.SHARE, false, () -> {
+                dismissLinkActionSurface(null, true);
+                shareLink(target, isImage ? "分享图片链接" : "分享链接");
+            }), new LinearLayout.LayoutParams(-1, dp(40)));
+
+        // Position calculation: anchored to touch point like ContextActionMenu
+        int screenWidth = getContext().getResources().getDisplayMetrics().widthPixels;
+        int screenHeight = getContext().getResources().getDisplayMetrics().heightPixels;
+        int viewportWidth = pageFrame != null && pageFrame.getWidth() > 0 ? pageFrame.getWidth() : screenWidth;
+        int menuWidth = Math.min(dp(220), Math.min(viewportWidth - dp(24), screenWidth - dp(24)));
+        card.measure(View.MeasureSpec.makeMeasureSpec(menuWidth, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED));
+        int menuHeight = card.getMeasuredHeight();
+
+        int[] framePosition = new int[] {0, 0};
+        if (pageFrame != null) pageFrame.getLocationOnScreen(framePosition);
+        int touchX = framePosition[0] + Math.round(source.lastTouchX);
+        int touchY = framePosition[1] + Math.round(source.lastTouchY);
+
+        int left = Math.max(dp(12), Math.min(touchX - menuWidth / 2, screenWidth - menuWidth - dp(12)));
+        int viewportTop = Math.max(dp(12), framePosition[1] + dp(8));
+        int viewportBottom = pageFrame != null && pageFrame.getHeight() > 0
+            ? framePosition[1] + pageFrame.getHeight() - dp(8) : screenHeight - dp(12);
+
+        boolean placeBelow = (touchY + dp(8) + menuHeight <= viewportBottom);
+        int top = placeBelow ? touchY + dp(8) : Math.max(viewportTop, touchY - menuHeight - dp(8));
+
+        FrameLayout.LayoutParams cardPosition = new FrameLayout.LayoutParams(menuWidth, -2);
+        cardPosition.leftMargin = left;
+        cardPosition.topMargin = top;
+        overlay.addView(card, cardPosition);
+
+        float pivotX = Math.max(dp(12), Math.min(menuWidth - dp(12), touchX - left));
+        float pivotY = placeBelow ? 0f : (float) menuHeight;
+        card.setPivotX(pivotX);
+        card.setPivotY(pivotY);
+
+        PopupWindow popup = new PopupWindow(overlay, -1, -1, true);
+        linkContextPopup = popup;
+        popup.setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+        popup.setOutsideTouchable(true);
+        popup.setClippingEnabled(true);
+        popup.setOnDismissListener(() -> { if (linkContextPopup == popup) linkContextPopup = null; });
+        overlay.setOnClickListener(ignored -> dismissLinkActionSurface(null, true));
+        card.setOnClickListener(ignored -> { });
+        popup.showAtLocation(view, Gravity.TOP | Gravity.START, 0, 0);
+
+        overlay.animate().alpha(1f).setDuration(150).start();
+        card.setAlpha(0f);
+        card.setScaleX(0.94f);
+        card.setScaleY(0.94f);
+        card.animate().alpha(1f).scaleX(1f).scaleY(1f)
+            .setDuration(190)
+            .setInterpolator(new android.view.animation.DecelerateInterpolator(2.2f))
+            .start();
+    }
+
+    private View createLinkActionRow(String title, String tag, LinkActionIconType iconType, boolean highlight, Runnable action) {
+        boolean isLight = isLightSurface();
+        LinearLayout row = new LinearLayout(getActivity());
+        row.setTag(tag);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        row.setPadding(dp(10), 0, dp(10), 0);
+        row.setClickable(true);
+        row.setFocusable(true);
+        row.setContentDescription(title);
+
+        StateListDrawable stateBg = new StateListDrawable();
+        GradientDrawable pressed = new GradientDrawable();
+        pressed.setColor(isLight ? Color.argb(14, 0, 0, 0) : Color.argb(22, 255, 255, 255));
+        pressed.setCornerRadius(dp(8));
+        GradientDrawable normal = new GradientDrawable();
+        normal.setColor(Color.TRANSPARENT);
+        normal.setCornerRadius(dp(8));
+        stateBg.addState(new int[]{android.R.attr.state_pressed}, pressed);
+        stateBg.addState(new int[]{android.R.attr.state_focused}, pressed);
+        stateBg.addState(new int[]{}, normal);
+        row.setBackground(stateBg);
+
+        int iconColor = highlight ? accent : muted;
+        View icon = createActionIconView(iconType, iconColor);
+        LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(15.5f), dp(15.5f));
+        iconParams.rightMargin = dp(10);
+        row.addView(icon, iconParams);
+
+        TextView label = text(title, 12.5f, highlight ? paper : muted);
+        if (highlight) {
+            label.setTypeface(Typeface.DEFAULT, Typeface.NORMAL);
+            label.setTextColor(paper);
+        }
+        row.addView(label, new LinearLayout.LayoutParams(0, -2, 1));
+
+        row.setOnClickListener(v -> {
+            try { v.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); } catch (Throwable ignored) {}
+            action.run();
+        });
+        return row;
+    }
+
+    private View createActionIconView(LinkActionIconType type, int iconColor) {
+        return new View(getActivity()) {
+            private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+            @Override protected void onDraw(Canvas canvas) {
+                super.onDraw(canvas);
+                float w = getWidth(), h = getHeight();
+                if (w <= 0 || h <= 0) return;
+                float sx = w / 24f, sy = h / 24f;
+                canvas.save();
+                canvas.scale(sx, sy);
+                paint.setColor(iconColor);
+                paint.setStyle(Paint.Style.STROKE);
+                paint.setStrokeWidth(dp(1.7f));
+                paint.setStrokeCap(Paint.Cap.ROUND);
+                paint.setStrokeJoin(Paint.Join.ROUND);
+
+                switch (type) {
+                    case EXTERNAL_LINK: {
+                        Path path = new Path();
+                        path.moveTo(11, 4);
+                        path.lineTo(6, 4);
+                        path.quadTo(3, 4, 3, 7);
+                        path.lineTo(3, 18);
+                        path.quadTo(3, 21, 6, 21);
+                        path.lineTo(17, 21);
+                        path.quadTo(20, 21, 20, 18);
+                        path.lineTo(20, 13);
+                        canvas.drawPath(path, paint);
+
+                        canvas.drawLine(14, 3, 21, 3, paint);
+                        canvas.drawLine(21, 3, 21, 10, paint);
+                        canvas.drawLine(10, 14, 21, 3, paint);
+                        break;
+                    }
+                    case LAYERS: {
+                        Path back = new Path();
+                        back.moveTo(7, 3);
+                        back.lineTo(18, 3);
+                        back.quadTo(21, 3, 21, 6);
+                        back.lineTo(21, 16);
+                        canvas.drawPath(back, paint);
+
+                        RectF front = new RectF(3, 7, 17, 21);
+                        canvas.drawRoundRect(front, 2.5f, 2.5f, paint);
+                        break;
+                    }
+                    case COPY: {
+                        Path back = new Path();
+                        back.moveTo(8, 4);
+                        back.lineTo(18, 4);
+                        back.quadTo(20, 4, 20, 6);
+                        back.lineTo(20, 16);
+                        canvas.drawPath(back, paint);
+
+                        RectF front = new RectF(4, 8, 16, 20);
+                        canvas.drawRoundRect(front, 2f, 2f, paint);
+                        break;
+                    }
+                    case SHARE: {
+                        canvas.drawLine(6, 12, 18, 5, paint);
+                        canvas.drawLine(6, 12, 18, 19, paint);
+
+                        paint.setStyle(Paint.Style.FILL);
+                        paint.setColor(surface);
+                        canvas.drawCircle(18, 5, 3f, paint);
+                        canvas.drawCircle(6, 12, 3f, paint);
+                        canvas.drawCircle(18, 19, 3f, paint);
+
+                        paint.setStyle(Paint.Style.STROKE);
+                        paint.setColor(iconColor);
+                        canvas.drawCircle(18, 5, 2.2f, paint);
+                        canvas.drawCircle(6, 12, 2.2f, paint);
+                        canvas.drawCircle(18, 19, 2.2f, paint);
+                        break;
+                    }
+                }
+                canvas.restore();
+            }
+        };
+    }
+
+    private void copyToClipboard(String target, String successMessage) {
+        if (getActivity() == null) return;
+        try {
+            ClipboardManager clipboard = (ClipboardManager) getActivity().getSystemService(Context.CLIPBOARD_SERVICE);
+            if (clipboard != null) {
+                ClipData clip = ClipData.newPlainText("URL", target);
+                clipboard.setPrimaryClip(clip);
+                Toast.makeText(getActivity(), successMessage, Toast.LENGTH_SHORT).show();
+            }
+        } catch (Throwable ignored) {}
+    }
+
+    private void shareLink(String target, String chooserTitle) {
+        if (getActivity() == null) return;
+        try {
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("text/plain");
+            intent.putExtra(Intent.EXTRA_TEXT, target);
+            getActivity().startActivity(Intent.createChooser(intent, chooserTitle));
+        } catch (Throwable ignored) {}
+    }
+
+    private void dismissLinkActionSurface(Runnable after, boolean animated) {
+        PopupWindow popup = linkContextPopup;
+        if (popup == null) { if (after != null) after.run(); return; }
+        if (!animated || popup.getContentView() == null) {
+            popup.dismiss();
+            if (after != null) after.run();
+            return;
+        }
+        View content = popup.getContentView();
+        View card = content.findViewWithTag("link-action-card");
+        if (card != null) {
+            card.animate().alpha(0f).scaleX(.95f).scaleY(.95f).translationY(dp(4)).setDuration(110).start();
+        }
+        content.animate().alpha(0f).setDuration(120).withEndAction(() -> {
+            popup.dismiss();
+            if (after != null) after.run();
+        }).start();
     }
 
     private void prepareRuntime(Tab tab) {
@@ -2463,6 +2894,7 @@ public class BrowserHostPlugin extends Plugin {
         if (closing) return;
         boolean wasOpen = pageFrame != null || dialog != null || !tabs.isEmpty();
         closing=true;
+        dismissLinkActionSurface(null, false);
         agentOwner.stopCurrent();
         releaseAgentBackground();
         agentDialogs.close(true);

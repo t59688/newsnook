@@ -475,21 +475,58 @@ html[data-scheme='buer'] .browser-workspace svg.lucide[fill='none'] { fill: none
 .browser-tab-close:active {
   transform: scale(0.92);
 }
-.browser-tab-count-bounce {
-  animation: browser-tab-bounce 450ms cubic-bezier(0.175, 0.885, 0.32, 1.275) both;
+.browser-tab-count {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center;
+  transition: color 200ms ease;
+  overflow: hidden;
 }
-@keyframes browser-tab-bounce {
+.browser-tab-count-number {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  line-height: 1;
+  will-change: transform, opacity;
+}
+.browser-tab-count-increase { animation: browser-tab-box-grow 420ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.browser-tab-count-increase .browser-tab-count-number { animation: browser-tab-num-rise 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+.browser-tab-count-decrease { animation: browser-tab-box-shrink 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+.browser-tab-count-decrease .browser-tab-count-number { animation: browser-tab-num-fall 350ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+@keyframes browser-tab-box-grow {
+  0% { transform: scale(1); color: inherit; }
+  32% { transform: scale(1.24); color: var(--color-cinnabar); }
+  68% { transform: scale(0.95); }
+  100% { transform: scale(1); color: inherit; }
+}
+@keyframes browser-tab-box-shrink {
   0% { transform: scale(1); }
-  35% { transform: scale(1.36); color: var(--color-cinnabar); }
-  70% { transform: scale(0.92); }
-  100% { transform: scale(1); }
+  32% { transform: scale(0.82); color: var(--color-paper-muted); }
+  68% { transform: scale(1.08); }
+  100% { transform: scale(1); color: inherit; }
 }
-.browser-new-tab-indicator {
-  animation: browser-pill-enter 240ms cubic-bezier(0.16, 1, 0.3, 1) both;
+@keyframes browser-tab-num-rise {
+  0% { opacity: 0; transform: translateY(12px) scale(0.7); }
+  55% { opacity: 1; transform: translateY(-2px) scale(1.08); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
 }
-@keyframes browser-pill-enter {
-  from { opacity: 0; transform: translate(-50%, -10px) scale(0.92); }
-  to { opacity: 1; transform: translate(-50%, 0) scale(1); }
+@keyframes browser-tab-num-fall {
+  0% { opacity: 0; transform: translateY(-12px) scale(0.7); }
+  55% { opacity: 1; transform: translateY(2px) scale(1.08); }
+  100% { opacity: 1; transform: translateY(0) scale(1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .browser-tab-count-increase,
+  .browser-tab-count-decrease,
+  .browser-tab-count-increase .browser-tab-count-number,
+  .browser-tab-count-decrease .browser-tab-count-number {
+    animation: none;
+  }
 }
 .browser-new-tab { display: flex; width: 100%; max-width: 648px; margin: 0 auto; }
 

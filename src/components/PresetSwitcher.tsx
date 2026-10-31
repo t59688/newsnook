@@ -33,11 +33,8 @@ import { useLongPressAction } from '../hooks/useLongPressAction'
 import type { Point } from '../lib/contextActions'
 import {
   BROWSER_ENGINES,
-  BROWSER_KEYS,
-  DEFAULT_BROWSER_SEARCH_ENGINE,
-  readBrowserPreference,
+  loadBrowserSearchEngine,
   resolveBrowserAddress,
-  type BrowserSearchChoice,
 } from '../features/browser/browserPreferences'
 import { PromptDialog } from './ConfirmDialog'
 import { ContextActionMenu, type ContextActionItem } from './ContextActionMenu'
@@ -149,10 +146,7 @@ export function PresetSwitcher({
       onOpenBrowser()
       return
     }
-    const saved = readBrowserPreference(BROWSER_KEYS.search)
-    const engine = saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved)
-      ? (saved as BrowserSearchChoice)
-      : DEFAULT_BROWSER_SEARCH_ENGINE
+    const engine = loadBrowserSearchEngine()
     const resolved = resolveBrowserAddress(trimmed, engine) || (BROWSER_ENGINES[engine].url + encodeURIComponent(trimmed))
     onOpenBrowser(resolved)
   }

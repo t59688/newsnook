@@ -9,6 +9,7 @@ import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.PopupWindow;
 import androidx.appcompat.app.AppCompatActivity;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.PluginCall;
@@ -24,6 +25,8 @@ import org.robolectric.RobolectricTestRunner;
 import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.shadows.ShadowDialog;
+import org.robolectric.shadows.ShadowWebView;
 
 @RunWith(RobolectricTestRunner.class)
 @Config(sdk = 34)
@@ -309,6 +312,63 @@ public class BrowserHostLifecycleTest {
         Call call = new Call("tabs", new JSObject());
         host.tabs(call);
         return call.result;
+    }
+
+    private PopupWindow linkContextPopup() throws Exception {
+        Field popup = BrowserHostPlugin.class.getDeclaredField("linkContextPopup");
+        popup.setAccessible(true);
+        return (PopupWindow) popup.get(host);
+    }
+
+    @Test public void longPressedWebLinkUsesCustomChromeAndOpensInANewBackgroundTab() throws Exception {
+        assertNull(open("https://example.com/article").error);
+        WebView article = currentView();
+        int articleTabId = state().getInt("tabId");
+        ShadowDialog.reset();
+        Shadows.shadowOf(article).setHitTestResult(ShadowWebView.createHitTestResult(
+            WebView.HitTestResult.SRC_ANCHOR_TYPE, "https://developer.android.com/guide"));
+
+        assertTrue("a web link long-press must be handled by browser chrome", article.performLongClick());
+        assertNull("link actions must never use a platform AlertDialog", ShadowDialog.getLatestDialog());
+        PopupWindow menu = linkContextPopup();
+        assertNotNull("the browser must show its custom link action surface", menu);
+        View background = menu.getContentView().findViewWithTag("link-open-background");
+        View foreground = menu.getContentView().findViewWithTag("link-open-foreground");
+        View copyAddress = menu.getContentView().findViewWithTag("link-copy-address");
+        View shareLink = menu.getContentView().findViewWithTag("link-share");
+        assertNotNull(background);
+        assertNotNull(foreground);
+        assertNotNull(copyAddress);
+        assertNotNull(shareLink);
+        background.performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        org.json.JSONArray opened = tabs().getJSONArray("tabs");
+        assertEquals(2, opened.length());
+        assertEquals("https://developer.android.com/guide", opened.getJSONObject(1).getString("url"));
+        assertFalse("the long-press action must preserve the reading context",
+            opened.getJSONObject(1).getBoolean("active"));
+        assertEquals(articleTabId, state().getInt("tabId"));
+        assertSame(article, currentView());
+    }
+
+    @Test public void longPressedWebLinkCanOpenAndActivateANewTab() throws Exception {
+        assertNull(open("https://example.com/article").error);
+        WebView article = currentView();
+        int articleTabId = state().getInt("tabId");
+        Shadows.shadowOf(article).setHitTestResult(ShadowWebView.createHitTestResult(
+            WebView.HitTestResult.SRC_IMAGE_ANCHOR_TYPE, "https://developer.android.com/reference"));
+
+        assertTrue(article.performLongClick());
+        PopupWindow menu = linkContextPopup();
+        assertNotNull(menu);
+        menu.getContentView().findViewWithTag("link-open-foreground").performClick();
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+
+        assertEquals(2, tabs().getJSONArray("tabs").length());
+        assertNotEquals(articleTabId, state().getInt("tabId"));
+        assertEquals("https://developer.android.com/reference", state().getString("url"));
+        assertNotSame(article, currentView());
     }
 
     @Test public void initiallyHiddenBrowserStaysHiddenThroughAsynchronousPreparation() throws Exception {

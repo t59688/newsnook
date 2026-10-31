@@ -15,12 +15,10 @@ import {
 import { Capacitor } from '@capacitor/core'
 import { registerHardwareBackLayer } from '../../lib/hardwareBackStack'
 import {
-  BROWSER_ENGINES,
   BROWSER_KEYS,
-  DEFAULT_BROWSER_SEARCH_ENGINE,
   loadBrowserPreferences,
+  loadBrowserSearchEngine,
   readBrowserList,
-  readBrowserPreference,
   resolveBrowserAddress,
   writeBrowserPreference,
   type BrowserSearchChoice,
@@ -63,12 +61,7 @@ export function WikiSearchBrowserSheet({
   const fullBrowserOpeningRef = useRef(false)
   const pillsContainerRef = useRef<HTMLDivElement>(null)
 
-  const [searchEngine, setSearchEngine] = useState<BrowserSearchChoice>(() => {
-    const saved = readBrowserPreference(BROWSER_KEYS.search)
-    return saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved)
-      ? (saved as BrowserSearchChoice)
-      : DEFAULT_BROWSER_SEARCH_ENGINE
-  })
+  const [searchEngine, setSearchEngine] = useState<BrowserSearchChoice>(loadBrowserSearchEngine)
 
   const currentProvider = useMemo(() => {
     return (

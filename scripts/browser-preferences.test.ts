@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as browserPreferences from '../src/features/browser/browserPreferences'
 import {
   BROWSER_ENGINES, BROWSER_KEYS, DEFAULT_BROWSER_PREFERENCES, browserHostLabel, readBrowserList,
   loadBrowserPreferences, normalizeBrowserPreferences, readBrowserPreference, readHideRecentPreference, resolveBrowserAddress,
@@ -62,6 +63,19 @@ test('browser preferences round-trip raw options and complete local payloads', (
   assert.equal(readHideRecentPreference(), true, 'hide recent preference toggles to true')
   writeBrowserPreference(BROWSER_KEYS.hideRecent, 'false', true)
   assert.equal(readHideRecentPreference(), false, 'hide recent preference toggles to false')
+})
+
+test('legacy Bing default migrates once to Google without blocking a later explicit Bing choice', () => {
+  stored.clear()
+  stored.set(BROWSER_KEYS.search, 'bing')
+  const loadBrowserSearchEngine = (browserPreferences as unknown as {
+    loadBrowserSearchEngine?: () => string
+  }).loadBrowserSearchEngine
+  assert.equal(typeof loadBrowserSearchEngine, 'function', 'browser search defaults need one shared migration boundary')
+  assert.equal(loadBrowserSearchEngine!(), 'google')
+  assert.equal(stored.get(BROWSER_KEYS.search), 'google')
+  writeBrowserPreference(BROWSER_KEYS.search, 'bing', true)
+  assert.equal(loadBrowserSearchEngine!(), 'bing', 'a choice made after migration remains user-controlled')
 })
 
 test('storage read failures fall back and write failures preserve the previous payload', () => {
