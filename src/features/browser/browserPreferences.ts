@@ -44,6 +44,8 @@ export const DEFAULT_BROWSER_PREFERENCES: Readonly<BrowserPreferences> = Object.
   confirmExternalApps: true,
 })
 
+export const DEFAULT_BROWSER_SEARCH_ENGINE: BrowserSearchChoice = 'google'
+
 export const BROWSER_ENGINES = Object.fromEntries(BROWSER_SEARCH_PROVIDERS.map(provider =>
   [provider.id, {name: provider.name, url: provider.queryPrefix}],
 )) as Record<BrowserSearchChoice, {name: string; url: string}>

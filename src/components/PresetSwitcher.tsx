@@ -34,6 +34,7 @@ import type { Point } from '../lib/contextActions'
 import {
   BROWSER_ENGINES,
   BROWSER_KEYS,
+  DEFAULT_BROWSER_SEARCH_ENGINE,
   readBrowserPreference,
   resolveBrowserAddress,
   type BrowserSearchChoice,
@@ -151,7 +152,7 @@ export function PresetSwitcher({
     const saved = readBrowserPreference(BROWSER_KEYS.search)
     const engine = saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved)
       ? (saved as BrowserSearchChoice)
-      : 'bing'
+      : DEFAULT_BROWSER_SEARCH_ENGINE
     const resolved = resolveBrowserAddress(trimmed, engine) || (BROWSER_ENGINES[engine].url + encodeURIComponent(trimmed))
     onOpenBrowser(resolved)
   }

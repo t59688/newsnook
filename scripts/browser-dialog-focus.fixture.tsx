@@ -8,7 +8,7 @@ import { BrowserTabsPanel } from '../src/features/browser/BrowserTabsPanel'
 import { BrowserWorkspace } from '../src/features/browser/BrowserWorkspace'
 import { BrowserImagesPanel } from '../src/features/browser/BrowserImagesPanel'
 import type { BrowserImageData, BrowserImageLoadRequest, BrowserImageSnapshot } from '../src/features/browser/browserImages'
-import { BROWSER_ENGINES, BROWSER_KEYS, DEFAULT_BROWSER_PREFERENCES, loadBrowserPreferences, resolveBrowserAddress, saveBrowserPreferences, toggleBrowserDesktopMode, type BrowserSearchChoice } from '../src/features/browser/browserPreferences'
+import { BROWSER_ENGINES, BROWSER_KEYS, DEFAULT_BROWSER_PREFERENCES, DEFAULT_BROWSER_SEARCH_ENGINE, loadBrowserPreferences, resolveBrowserAddress, saveBrowserPreferences, toggleBrowserDesktopMode, type BrowserSearchChoice } from '../src/features/browser/browserPreferences'
 import { useBrowserDialogFocus } from '../src/features/browser/useBrowserDialogFocus'
 import { InkVideoPlayer } from '../src/components/InkVideoPlayer'
 import { FloatingVideoProvider } from '../src/features/floatingVideo/FloatingVideoProvider'
@@ -163,7 +163,7 @@ function PlayerFixture({onClose}: {onClose: () => void}) {
 
 function savedSearchChoice(): BrowserSearchChoice {
   const saved = localStorage.getItem(BROWSER_KEYS.search)
-  return saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved) ? saved as BrowserSearchChoice : 'bing'
+  return saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved) ? saved as BrowserSearchChoice : DEFAULT_BROWSER_SEARCH_ENGINE
 }
 
 function ThemeSettingsFixture({pending = false}: {pending?: boolean}) {

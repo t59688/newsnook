@@ -28,6 +28,7 @@ export interface BrowserTab {
   active: boolean
   loading: boolean
   error?: string
+  preview?: string
 }
 export interface BrowserRecoverySession {
   tabs: {url: string; title: string; desktop: boolean}[]

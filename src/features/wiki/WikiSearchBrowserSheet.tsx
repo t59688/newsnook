@@ -17,6 +17,7 @@ import { registerHardwareBackLayer } from '../../lib/hardwareBackStack'
 import {
   BROWSER_ENGINES,
   BROWSER_KEYS,
+  DEFAULT_BROWSER_SEARCH_ENGINE,
   loadBrowserPreferences,
   readBrowserList,
   readBrowserPreference,
@@ -66,7 +67,7 @@ export function WikiSearchBrowserSheet({
     const saved = readBrowserPreference(BROWSER_KEYS.search)
     return saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved)
       ? (saved as BrowserSearchChoice)
-      : 'bing'
+      : DEFAULT_BROWSER_SEARCH_ENGINE
   })
 
   const currentProvider = useMemo(() => {

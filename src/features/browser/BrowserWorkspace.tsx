@@ -22,7 +22,7 @@ import {
 import { browserMediaResources, browserResourceTitle, browserResourceDetails, browserResourceTracks } from './browserMedia'
 import { loadBrowserBookmarks, saveBrowserBookmarks, toggleBrowserBookmark, type BookmarkScope } from './browserBookmarks'
 import {
-  BROWSER_ENGINES, BROWSER_KEYS, browserHostLabel, readBrowserList, readBrowserPreference,
+  BROWSER_ENGINES, BROWSER_KEYS, DEFAULT_BROWSER_SEARCH_ENGINE, browserHostLabel, readBrowserList, readBrowserPreference,
   resolveBrowserAddress, writeBrowserPreference, loadBrowserPreferences, saveBrowserPreferences, toggleBrowserDesktopMode, type BrowserPreferences, type BrowserSearchChoice,
 } from './browserPreferences'
 import { useBrowserSession, getBrowserContext, type BrowserCommand, type BrowserRecoverySession } from './useBrowserSession'
@@ -101,6 +101,9 @@ export function BrowserWorkspace({
     }
   }, [privateMode, applyPrivacyGuard])
   const [capabilities, setCapabilities] = useState<BrowserPrivacyCapabilities>({privateMode: true, clearSiteData: false, sharedSiteData: true})
+  const prevTabsCount = useRef(0)
+  const [tabBadgeBouncing, setTabBadgeBouncing] = useState(false)
+  const [newTabNotice, setNewTabNotice] = useState<{ count: number } | null>(null)
   useEffect(() => {
     let live = true
     void getBrowserContext().then(context => {if (live && context.privacyCapabilities) setCapabilities(context.privacyCapabilities)}).catch(() => undefined)
@@ -119,7 +122,7 @@ export function BrowserWorkspace({
   const [bottomAddress, setBottomAddress] = useState(() => readBrowserPreference(BROWSER_KEYS.addressPosition) !== 'top')
   const [search, setSearch] = useState<BrowserSearchChoice>(() => {
     const saved = readBrowserPreference(BROWSER_KEYS.search)
-    return saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved) ? saved as BrowserSearchChoice : 'bing'
+    return saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved) ? saved as BrowserSearchChoice : DEFAULT_BROWSER_SEARCH_ENGINE
   })
   // Share the resolver's result between startup identity and the native command.
   const initialAddress = useMemo(
@@ -181,6 +184,21 @@ export function BrowserWorkspace({
     const timer = window.setTimeout(() => setNotice(null), 2800)
     return () => window.clearTimeout(timer)
   }, [notice])
+
+  useEffect(() => {
+    if (session.tabs.length > prevTabsCount.current && prevTabsCount.current > 0) {
+      setTabBadgeBouncing(true)
+      setNewTabNotice({ count: session.tabs.length })
+      const bounceTimer = window.setTimeout(() => setTabBadgeBouncing(false), 500)
+      const noticeTimer = window.setTimeout(() => setNewTabNotice(null), 1800)
+      prevTabsCount.current = session.tabs.length
+      return () => {
+        window.clearTimeout(bounceTimer)
+        window.clearTimeout(noticeTimer)
+      }
+    }
+    prevTabsCount.current = session.tabs.length
+  }, [session.tabs.length])
   const closeSession = session.close
   const close = useCallback(() => {
     if (exiting.current) return
@@ -270,7 +288,12 @@ export function BrowserWorkspace({
     return () => window.removeEventListener(BROWSER_OPEN_EVENT, handleOpen)
   }, [session])
   const showSearch = () => {if (findOpen) closeFind(); setAgentMinimized(true); setPanel(null); session.setError(''); setSearchOpen(true)}
-  const openPanel = (next: Panel) => {if(next)setAgentMinimized(true);setSearchOpen(false);setPanel(next)}
+  const openPanel = (next: Panel) => {
+    if (next) setAgentMinimized(true)
+    setSearchOpen(false)
+    setPanel(next)
+    if (next === 'tabs') void session.refreshTabs?.()
+  }
   const runCommand = (command: BrowserCommand) => {
     setPanel(null)
     void session.command(command).then(ok => {
@@ -461,7 +484,7 @@ export function BrowserWorkspace({
         {session.state.loading ? <BrowserLoadingStopIcon size={20}/> : <RefreshCw size={19} strokeWidth={1.8}/>}
       </BrowserIconButton>
       <BrowserIconButton label="标签页" disabled={session.pending} onClick={() => openPanel('tabs')}>
-        <span className="flex size-[18px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[10.5px] font-bold leading-none tabular-nums select-none">{session.tabs.length || 1}</span>
+        <span className={'flex size-[18px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[10.5px] font-bold leading-none tabular-nums select-none transition-transform ' + (tabBadgeBouncing ? 'browser-tab-count-bounce' : '')}>{session.tabs.length || 1}</span>
       </BrowserIconButton>
       <BrowserIconButton label={agentBusy?'AI 浏览助手（任务未结束）':'AI 浏览助手'} className="browser-toolbar-compact-optional" onClick={() => {
         setPanel(null)
@@ -555,6 +578,7 @@ export function BrowserWorkspace({
     </BrowserSheet>}
 
     {panel === 'tabs' && <BrowserFullPage title="标签页"><BrowserTabsPanel privateMode={privateMode} tabs={session.tabs} pending={session.pending} onBack={() => setPanel(null)}
+      onRefresh={session.refreshTabs}
       onSelect={tab => finishTabChange(session.activate(tab))}
       onRemove={tab => {void session.remove(tab).then(ok => {if (ok && playing?.tabId === tab.id) setPlaying(null)})}}
       onNew={() => finishTabChange(session.command('new'))}/></BrowserFullPage>}
@@ -666,6 +690,19 @@ export function BrowserWorkspace({
         }} className="min-h-12 rounded-xl bg-cinnabar text-[14px] font-semibold text-white shadow-xs transition-opacity hover:opacity-90 active:scale-95 disabled:opacity-50">{confirming ? '正在处理' : confirmation.actionLabel || '确认删除'}</button>
       </div>
     </BrowserSheet>}
+
+    {newTabNotice && (
+      <aside aria-live="polite" className="browser-new-tab-indicator pointer-events-none absolute left-1/2 -translate-x-1/2 z-[65] flex items-center gap-2 rounded-full border border-cinnabar/30 bg-ink-raised/95 px-3.5 py-1.5 shadow-lg backdrop-blur-md"
+        style={{top: 'calc(var(--sat) + 14px)'}}>
+        <span className="flex size-4 items-center justify-center rounded-full bg-cinnabar text-white">
+          <Plus size={11} strokeWidth={2.8} />
+        </span>
+        <span className="text-[12.5px] font-medium text-paper">已打开新标签页</span>
+        <span className="rounded bg-haze px-1.5 py-0.5 text-[10.5px] font-semibold tabular-nums text-paper-muted">
+          {newTabNotice.count} / 6
+        </span>
+      </aside>
+    )}
 
     {(notice || (session.error && !searchOpen)) && <div role={notice?.error || session.error ? 'alert' : 'status'}
       className="absolute right-4 left-4 z-[70] mx-auto flex max-w-lg items-center gap-2 rounded-2xl border border-haze bg-ink-raised px-4 py-2 shadow-lg"

@@ -46,16 +46,19 @@ import androidx.activity.result.ActivityResultLauncher;
 import androidx.activity.result.contract.ActivityResultContracts;
 import android.widget.EditText;
 import android.widget.FrameLayout;
+import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
 import android.widget.TextView;
 import android.widget.Toast;
+import android.util.Base64;
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
+import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -67,7 +70,7 @@ import okhttp3.HttpUrl;
 /** Independent Android System WebView browser; no Capacitor bridge is installed in websites. */
 @CapacitorPlugin(name = "NewsNookBrowser")
 public class BrowserHostPlugin extends Plugin {
-    private static final String HOME = "https://www.bing.com/";
+    private static final String HOME = "https://www.google.com/";
     private static final int MAX_TABS = 6;
     private static final int MAX_HISTORY = 240;
     private static final int MAX_BOOKMARKS = 120;
@@ -147,6 +150,7 @@ public class BrowserHostPlugin extends Plugin {
         String title = "网页";
         String url;
         String error;
+        String preview;
         boolean desktop;
         boolean loading;
         boolean preparing;
@@ -877,6 +881,9 @@ public class BrowserHostPlugin extends Plugin {
             // 拖拽面板期间会高频更新可视区域。仅在显隐真正改变时切换 WebView 生命周期，
             // 否则每帧 onResume()/onPause() 都会干扰渲染与视频播放。
             if (embeddedVisible != visible) {
+                if (!visible && current != null && current.webView != null) {
+                    captureTabPreview(current);
+                }
                 embeddedVisible = visible;
                 if (current != null && current.agent != null) current.agent.invalidateVisual();
                 if (!visible) pauseAgentForHuman("hidden");
@@ -894,6 +901,9 @@ public class BrowserHostPlugin extends Plugin {
 
     @PluginMethod public void tabs(PluginCall call) {
         onUi(call, () -> {
+            if (current != null && current.webView != null) {
+                captureTabPreview(current);
+            }
             JSArray list = new JSArray();
             for (int i=0; i<tabs.size(); i++) {
                 Tab tab=tabs.get(i);
@@ -905,6 +915,7 @@ public class BrowserHostPlugin extends Plugin {
                 entry.put("active",tab == current);
                 entry.put("loading",tab.loading || tab.preparing);
                 entry.put("error",tab.error == null ? JSONObject.NULL : tab.error);
+                entry.put("preview",tab.preview == null ? JSONObject.NULL : tab.preview);
                 list.put(entry);
             }
             JSObject result=new JSObject();result.put("tabs",list);call.resolve(result);
@@ -1528,7 +1539,7 @@ public class BrowserHostPlugin extends Plugin {
             if (candidate.matches("^[A-Za-z0-9][A-Za-z0-9.-]*(:[0-9]{1,5})?(/.*)?$") && candidate.contains(".")) {
                 candidate = "https://" + candidate;
             } else {
-                candidate = "https://www.bing.com/search?q=" + Uri.encode(candidate);
+                candidate = "https://www.google.com/search?q=" + Uri.encode(candidate);
             }
         }
         return isHttpUrl(candidate) ? candidate : null;
@@ -1659,6 +1670,11 @@ public class BrowserHostPlugin extends Plugin {
                 if (tab.pageProfile != null) tab.pageProfile.onPageFinished();
                 if (current == tab) sendNavigation(address, "end");
                 if (tab.media != null) tab.media.onPageFinished();
+                if (isLive(tab, web)) {
+                    web.postDelayed(() -> {
+                        if (isLive(tab, web)) captureTabPreview(tab);
+                    }, 350);
+                }
             }
             @Override public boolean onRenderProcessGone(WebView web, RenderProcessGoneDetail detail) {
                 if (!privateMode()) android.util.Log.e("NewsNookBrowser", "Renderer terminated: crashed=" + detail.didCrash()
@@ -1924,6 +1940,48 @@ public class BrowserHostPlugin extends Plugin {
         sendNavigation(tab.url, "state");
     }
 
+    private void captureTabPreview(Tab tab) {
+        if (tab == null || tab.webView == null || closing || destroyed) return;
+        final WebView view = tab.webView;
+        int width = view.getWidth(), height = view.getHeight();
+        if (width <= 0 || height <= 0) return;
+        float scale = Math.min(1f, 360f / width);
+        int targetWidth = Math.max(1, Math.round(width * scale));
+        int targetHeight = Math.max(1, Math.round(height * scale));
+        Bitmap bitmap = null;
+        try {
+            bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.RGB_565);
+            Canvas canvas = new Canvas(bitmap);
+            canvas.drawColor(surface);
+            canvas.scale(scale, scale);
+            view.draw(canvas);
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 65, stream);
+            tab.preview = "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
+        } catch (Throwable ignored) {
+        } finally {
+            if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
+        }
+    }
+
+    private void saveTabPreviewFromBitmap(Tab tab, Bitmap source) {
+        if (tab == null || source == null || source.isRecycled()) return;
+        try {
+            int w = source.getWidth(), h = source.getHeight();
+            if (w <= 0 || h <= 0) return;
+            float scale = Math.min(1f, 360f / w);
+            int targetW = Math.max(1, Math.round(w * scale));
+            int targetH = Math.max(1, Math.round(h * scale));
+            Bitmap thumbnail = Bitmap.createScaledBitmap(source, targetW, targetH, true);
+            ByteArrayOutputStream stream = new ByteArrayOutputStream();
+            thumbnail.compress(Bitmap.CompressFormat.JPEG, 65, stream);
+            tab.preview = "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
+            if (thumbnail != source && !thumbnail.isRecycled()) {
+                thumbnail.recycle();
+            }
+        } catch (Throwable ignored) {}
+    }
+
     private void selectTab(Tab tab) {
         if (!tabs.contains(tab) || pageFrame == null || closing) return;
         if (current != tab && !agentTabTransition) pauseAgentForHuman("tab_switch");
@@ -1932,21 +1990,86 @@ public class BrowserHostPlugin extends Plugin {
             if (current.webView != null) current.webView.onPause();
             if (current.media != null) current.media.setActive(false);
         }
+        final Tab previous = current;
         current = tab;
         if (tab.recreateAfterSiteClear && !tab.siteDataClearing && tab.webView == null) {
             initializeTab(tab);
             return;
         }
-        showTabContent(tab);
+        showTabContent(tab, previous);
         syncTabActivity();
         updateChrome();
         sendNavigation(tab.url, "state");
     }
 
     private void showTabContent(Tab tab) {
+        showTabContent(tab, null);
+    }
+
+    private void showTabContent(Tab tab, Tab previous) {
         if (pageFrame == null) return;
+        boolean canAnimate = previous != null && previous != tab && previous.webView != null
+                && tab.webView != null && pageFrame.getWidth() > 0 && pageFrame.getHeight() > 0
+                && (!embeddedMode || embeddedVisible) && !activityPaused && !closing;
+
+        if (canAnimate) {
+            Bitmap previousSnapshot = null;
+            try {
+                int w = pageFrame.getWidth();
+                int h = pageFrame.getHeight();
+                previousSnapshot = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
+                Canvas canvas = new Canvas(previousSnapshot);
+                canvas.drawColor(surface);
+                previous.webView.draw(canvas);
+                saveTabPreviewFromBitmap(previous, previousSnapshot);
+            } catch (Throwable ignored) {
+                previousSnapshot = null;
+            }
+
+            if (previousSnapshot != null) {
+                final Bitmap bmpToRecycle = previousSnapshot;
+                final ImageView snapshotView = new ImageView(getActivity());
+                snapshotView.setImageBitmap(previousSnapshot);
+                snapshotView.setScaleType(ImageView.ScaleType.FIT_XY);
+
+                pageFrame.removeAllViews();
+                pageFrame.addView(snapshotView, new FrameLayout.LayoutParams(-1, -1));
+
+                if (tab.webView.getParent() != null) {
+                    ((ViewGroup) tab.webView.getParent()).removeView(tab.webView);
+                }
+                final int width = pageFrame.getWidth();
+                tab.webView.setTranslationX(width * 0.35f);
+                tab.webView.setAlpha(0f);
+                pageFrame.addView(tab.webView, new FrameLayout.LayoutParams(-1, -1));
+
+                tab.webView.animate()
+                    .translationX(0f)
+                    .alpha(1f)
+                    .setDuration(220)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
+                    .withEndAction(() -> {
+                        if (pageFrame != null) pageFrame.removeView(snapshotView);
+                        if (bmpToRecycle != null && !bmpToRecycle.isRecycled()) bmpToRecycle.recycle();
+                    })
+                    .start();
+
+                snapshotView.animate()
+                    .translationX(-width * 0.15f)
+                    .alpha(0.6f)
+                    .setDuration(220)
+                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
+                    .start();
+
+                layoutBackgroundAgent();
+                return;
+            }
+        }
+
         pageFrame.removeAllViews();
         if (tab.webView != null) {
+            tab.webView.setTranslationX(0f);
+            tab.webView.setAlpha(1f);
             ViewGroup parent = (ViewGroup) tab.webView.getParent();
             if (parent != null) parent.removeView(tab.webView);
             pageFrame.addView(tab.webView, new FrameLayout.LayoutParams(-1, -1));
@@ -2318,6 +2441,7 @@ public class BrowserHostPlugin extends Plugin {
         tab.images = null;
         if (tab.pageProfile != null) tab.pageProfile.close(!rendererGone);
         tab.pageProfile = null;
+        tab.preview = null;
         if (view != null) {
             ViewGroup parent = (ViewGroup) view.getParent();
             if (parent != null) parent.removeView(view);
