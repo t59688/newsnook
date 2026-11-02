@@ -819,8 +819,8 @@ export function CustomSourcesScreen({
             </p>
           </div>
         ) : (
-          <div className="space-y-3">
-            <div className="page-x flex flex-wrap items-center gap-2">
+          <div>
+            <div className="custom-sources-filter-toolbar page-x flex flex-wrap items-center gap-2">
               {customSources.length > 5 ? (
                 <div className="relative flex min-w-[160px] flex-1 items-center">
                   <Search
@@ -850,7 +850,7 @@ export function CustomSourcesScreen({
                   {selectionMode
                     ? '点击条目选择；可一次整理多个订阅'
                     : customSources.length > 1
-                      ? '支持批量选择、分类整理与删除'
+                      ? '批量整理'
                       : '点击订阅可编辑，右侧可删除'}
                 </span>
               )}
@@ -878,7 +878,7 @@ export function CustomSourcesScreen({
             </div>
 
             {selectionMode && (
-              <div className="page-x sticky top-0 z-10 bg-ink py-1">
+              <div className="page-x sticky top-0 z-10 my-3 bg-ink py-1">
                 <div className="rounded-xl border border-cinnabar/30 bg-ink-raised px-3 py-2 shadow-sm">
                   <div className="flex items-center gap-2">
                     <span
