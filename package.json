@@ -24,6 +24,7 @@
     "test:scroll-lifecycle": "node --import tsx scripts/scroll-lifecycle.test.tsx",
     "test:tab-navigation": "node scripts/tab-navigation-layout.test.mjs",
     "test:easter-egg": "npx tsx scripts/easter-egg-trigger.test.ts",
+    "test:legacy-webview": "node scripts/legacy-webview-compat.test.mjs",
     "test:easter-egg-screen-chrome": "npx tsx scripts/easter-egg-screen-chrome.test.ts",
     "test:easter-egg-autopilot": "node scripts/easter-egg-autopilot.test.mjs",
     "test:category-order": "rolldown scripts/category-settings-order.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/category-settings-order.test.mjs && node node_modules/.cache/newsnook/category-settings-order.test.mjs",

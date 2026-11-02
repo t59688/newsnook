@@ -1,16 +1,39 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
 
 import {
+  captureReaderLayoutAnchor,
   clampPageIndex,
+  contentOffsetAtViewportTop,
+  collectVisualBreakOffsets,
   findPageIndex,
   paginateOffsets,
   resolvePageTapZone,
+  resolveReaderLayoutAnchor,
+  scrollTopForPagedOffset,
   type PageSlice,
+  type ReaderLayoutAnchor,
 } from '../lib/readerPagination'
-import { readingPositionOf, rememberReadingPosition } from '../lib/readingPosition'
+import {
+  readingPositionOf,
+  rememberReadingPosition,
+  resolveScrollTop,
+} from '../lib/readingPosition'
+
+const PLACEHOLDER_PAGES: PageSlice[] = [{ startOffset: 0, endOffset: 0 }]
 
 function isPlaceholderPages(pages: PageSlice[]): boolean {
   return pages.length === 1 && pages[0]!.startOffset === 0 && pages[0]!.endOffset === 0
+}
+
+function samePageSlices(left: PageSlice[], right: PageSlice[]): boolean {
+  return (
+    left.length === right.length &&
+    left.every(
+      (page, index) =>
+        page.startOffset === right[index]!.startOffset &&
+        page.endOffset === right[index]!.endOffset,
+    )
+  )
 }
 
 interface Options {
@@ -25,13 +48,11 @@ interface Options {
 export interface PagedReaderApi {
   pages: PageSlice[]
   pageIndex: number
-  pageHeight: number
   goPrev: () => void
   goNext: () => void
   setPageIndex: (index: number) => void
   handleTap: (clientX: number, width: number) => 'prev' | 'next' | 'toggleChrome'
   pageOffset: number
-  pageSliceHeight: number
   /** 按滚动偏移重新测量并落到对应页（阅读中开启 eink 用） */
   syncFromScrollTop: (scrollTop: number) => void
   currentStartOffset: () => number
@@ -45,17 +66,19 @@ export function usePagedReader({
   measureKey,
   ready,
 }: Options): PagedReaderApi {
-  const [pages, setPages] = useState<PageSlice[]>([{ startOffset: 0, endOffset: 0 }])
+  const [pages, setPages] = useState<PageSlice[]>(PLACEHOLDER_PAGES)
   const [pageIndex, setPageIndexState] = useState(0)
-  const [pageHeight, setPageHeight] = useState(0)
   const pagesRef = useRef(pages)
   pagesRef.current = pages
-  const pageHeightRef = useRef(pageHeight)
-  pageHeightRef.current = pageHeight
+  const pageIndexRef = useRef(pageIndex)
+  pageIndexRef.current = pageIndex
+  const pageHeightRef = useRef(0)
+  const layoutAnchorRef = useRef<ReaderLayoutAnchor | null>(null)
+  const articleIdRef = useRef(articleId)
 
   /**
-   * 页码与滚动位置共用一张跨会话的表：这里同时写下该页的内容偏移，
-   * 关掉墨水屏改回滚动阅读时才能落在同一段文字上。
+   * 页码与滚动位置共用一张跨会话的表：保存当前页的内容偏移及当时
+   * 可滚动范围。视口或字号变化后按比例恢复，再映射到新的视觉页。
    */
   const writeStoredPage = useCallback(
     (index: number, nextPages: PageSlice[] = pagesRef.current) => {
@@ -72,56 +95,10 @@ export function usePagedReader({
     [articleId],
   )
 
-  const readStoredPage = useCallback(
-    () => readingPositionOf(articleId)?.pageIndex ?? null,
+  const readStoredPosition = useCallback(
+    () => readingPositionOf(articleId),
     [articleId],
   )
-
-  const collectBlockEnds = useCallback((content: HTMLElement, height: number): number[] => {
-    const rootBox = content.getBoundingClientRect()
-    const blockEnds: number[] = []
-
-    const pushEnd = (el: Element) => {
-      const box = el.getBoundingClientRect()
-      const end = box.bottom - rootBox.top
-      if (end > 0) blockEnds.push(end)
-    }
-
-    const prose = content.querySelector('.reader-prose')
-    for (const child of Array.from(content.children)) {
-      if (prose && child.contains(prose)) {
-        for (const before of Array.from(child.children)) {
-          if (before === prose || before.contains(prose)) break
-          pushEnd(before)
-        }
-        const proseBlocks = Array.from(prose.children)
-        if (proseBlocks.length) {
-          for (const block of proseBlocks) pushEnd(block)
-        } else {
-          pushEnd(prose)
-        }
-        let after = false
-        for (const node of Array.from(child.children)) {
-          if (node === prose || node.contains(prose)) {
-            after = true
-            continue
-          }
-          if (after) pushEnd(node)
-        }
-      } else {
-        pushEnd(child)
-      }
-    }
-
-    if (!blockEnds.length) {
-      blockEnds.push(Math.max(content.scrollHeight, height))
-    }
-
-    for (let i = 1; i < blockEnds.length; i++) {
-      if (blockEnds[i]! < blockEnds[i - 1]!) blockEnds[i] = blockEnds[i - 1]!
-    }
-    return blockEnds
-  }, [])
 
   const remeasure = useCallback(
     (opts?: { scrollAnchor?: number }) => {
@@ -131,81 +108,173 @@ export function usePagedReader({
 
       const height = Math.max(viewport.clientHeight, 1)
       pageHeightRef.current = height
-      setPageHeight(height)
+      viewport.style.setProperty('--reader-page-height', `${height}px`)
 
-      const blockEnds = collectBlockEnds(content, height)
-      const nextPages = paginateOffsets(blockEnds, height)
-      setPages(nextPages)
+      const nextPages = paginateOffsets(collectVisualBreakOffsets(content), height)
+      const previousPages = pagesRef.current
+      const previousIndex = clampPageIndex(pageIndexRef.current, previousPages.length)
 
-      setPageIndexState((prev) => {
-        if (typeof opts?.scrollAnchor === 'number') {
-          const idx = findPageIndex(nextPages, opts.scrollAnchor)
-          writeStoredPage(idx, nextPages)
-          return idx
-        }
+      let anchorOffset: number | null =
+        typeof opts?.scrollAnchor === 'number'
+          ? Math.max(0, opts.scrollAnchor)
+          : resolveReaderLayoutAnchor(content, layoutAnchorRef.current)
+      const stored = anchorOffset === null ? readStoredPosition() : null
 
-        const prevPages = pagesRef.current
-        if (!isPlaceholderPages(prevPages)) {
-          const anchor = prevPages[clampPageIndex(prev, prevPages.length)]?.startOffset
-          if (typeof anchor === 'number') {
-            const idx = findPageIndex(nextPages, anchor)
-            writeStoredPage(idx, nextPages)
-            return idx
-          }
-        }
+      if (anchorOffset === null && stored) {
+        const contentEnd = nextPages[nextPages.length - 1]?.endOffset ?? 0
+        const currentRange = Math.max(contentEnd - height, 0)
+        anchorOffset = resolveScrollTop(stored, currentRange)
+      }
 
-        const stored = readStoredPage()
-        if (stored != null) return clampPageIndex(stored, nextPages.length)
-        return clampPageIndex(prev, nextPages.length)
-      })
+      if (anchorOffset === null && !isPlaceholderPages(previousPages)) {
+        anchorOffset = previousPages[previousIndex]?.startOffset ?? 0
+      }
+
+      const nextIndex =
+        anchorOffset !== null
+          ? findPageIndex(nextPages, anchorOffset)
+          : stored?.pageIndex !== undefined
+            ? clampPageIndex(stored.pageIndex, nextPages.length)
+            : clampPageIndex(previousIndex, nextPages.length)
+
+      if (!samePageSlices(previousPages, nextPages)) {
+        pagesRef.current = nextPages
+        setPages(nextPages)
+      }
+
+      if (nextIndex !== pageIndexRef.current) {
+        pageIndexRef.current = nextIndex
+        setPageIndexState(nextIndex)
+      }
+      writeStoredPage(nextIndex, nextPages)
     },
-    [collectBlockEnds, contentRef, readStoredPage, viewportRef, writeStoredPage],
+    [contentRef, readStoredPosition, viewportRef, writeStoredPage],
   )
+
+  // Do not carry a previous article's page index or DOM anchor into the next one.
+  useLayoutEffect(() => {
+    if (articleIdRef.current === articleId) return
+    articleIdRef.current = articleId
+    pagesRef.current = PLACEHOLDER_PAGES
+    pageIndexRef.current = 0
+    layoutAnchorRef.current = null
+    setPages(PLACEHOLDER_PAGES)
+    setPageIndexState(0)
+  }, [articleId])
 
   useLayoutEffect(() => {
     if (!enabled || !ready) return
     remeasure()
   }, [enabled, ready, measureKey, remeasure])
 
+  // Content height can change after the first layout (images, embeds, late fonts,
+  // translation and provider-rendered DOM). Coalesce all signals into one frame.
   useEffect(() => {
     if (!enabled || !ready) return
     const viewport = viewportRef.current
-    if (!viewport || typeof ResizeObserver === 'undefined') return
-    const obs = new ResizeObserver(() => remeasure())
-    obs.observe(viewport)
     const content = contentRef.current
-    if (content) obs.observe(content)
-    return () => obs.disconnect()
+    if (!viewport || !content) return
+
+    let disposed = false
+    let frame: number | null = null
+    const scheduleRemeasure = () => {
+      if (disposed || frame !== null) return
+      frame = requestAnimationFrame(() => {
+        frame = null
+        if (!disposed) remeasure()
+      })
+    }
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(scheduleRemeasure)
+    resizeObserver?.observe(viewport)
+    resizeObserver?.observe(content)
+
+    const mutationObserver =
+      typeof MutationObserver === 'undefined'
+        ? null
+        : new MutationObserver(scheduleRemeasure)
+    mutationObserver?.observe(content, {
+      subtree: true,
+      childList: true,
+      characterData: true,
+      attributes: true,
+      attributeFilter: ['class', 'style', 'src', 'srcset', 'width', 'height', 'hidden', 'open'],
+    })
+
+    const rootMutationObserver =
+      typeof MutationObserver === 'undefined' ? null : new MutationObserver(scheduleRemeasure)
+    rootMutationObserver?.observe(content.ownerDocument.documentElement, {
+      attributes: true,
+      attributeFilter: ['style', 'class', 'data-theme', 'data-scheme'],
+    })
+
+    content.addEventListener('load', scheduleRemeasure, true)
+    content.addEventListener('error', scheduleRemeasure, true)
+    window.addEventListener('resize', scheduleRemeasure)
+    window.addEventListener('orientationchange', scheduleRemeasure)
+
+    const visualViewport = window.visualViewport
+    visualViewport?.addEventListener('resize', scheduleRemeasure)
+
+    const fonts = content.ownerDocument.fonts
+    fonts?.addEventListener('loadingdone', scheduleRemeasure)
+    void fonts?.ready.then(scheduleRemeasure).catch(() => undefined)
+
+    return () => {
+      disposed = true
+      if (frame !== null) cancelAnimationFrame(frame)
+      resizeObserver?.disconnect()
+      mutationObserver?.disconnect()
+      rootMutationObserver?.disconnect()
+      content.removeEventListener('load', scheduleRemeasure, true)
+      content.removeEventListener('error', scheduleRemeasure, true)
+      window.removeEventListener('resize', scheduleRemeasure)
+      window.removeEventListener('orientationchange', scheduleRemeasure)
+      visualViewport?.removeEventListener('resize', scheduleRemeasure)
+      fonts?.removeEventListener('loadingdone', scheduleRemeasure)
+    }
   }, [enabled, ready, remeasure, viewportRef, contentRef, measureKey])
 
   useEffect(() => {
-    if (!enabled) return
-    writeStoredPage(pageIndex)
-  }, [enabled, pageIndex, writeStoredPage])
+    if (!enabled) {
+      layoutAnchorRef.current = null
+      return
+    }
+
+    const currentPages = pagesRef.current
+    const index = clampPageIndex(pageIndex, currentPages.length)
+    const pageOffset = currentPages[index]?.startOffset ?? 0
+    writeStoredPage(index, currentPages)
+
+    const content = contentRef.current
+    if (content) {
+      layoutAnchorRef.current = captureReaderLayoutAnchor(content, pageOffset)
+    }
+  }, [enabled, pageIndex, pages, writeStoredPage, contentRef])
 
   const goPrev = useCallback(() => {
-    setPageIndexState((prev) => {
-      const next = clampPageIndex(prev - 1, pagesRef.current.length)
-      writeStoredPage(next)
-      return next
-    })
+    const next = clampPageIndex(pageIndexRef.current - 1, pagesRef.current.length)
+    pageIndexRef.current = next
+    setPageIndexState(next)
+    writeStoredPage(next)
   }, [writeStoredPage])
 
   const goNext = useCallback(() => {
-    setPageIndexState((prev) => {
-      const next = clampPageIndex(prev + 1, pagesRef.current.length)
-      writeStoredPage(next)
-      return next
-    })
+    const next = clampPageIndex(pageIndexRef.current + 1, pagesRef.current.length)
+    pageIndexRef.current = next
+    setPageIndexState(next)
+    writeStoredPage(next)
   }, [writeStoredPage])
 
   const setPageIndex = useCallback(
     (index: number) => {
-      setPageIndexState(() => {
-        const next = clampPageIndex(index, pagesRef.current.length)
-        writeStoredPage(next)
-        return next
-      })
+      const next = clampPageIndex(index, pagesRef.current.length)
+      pageIndexRef.current = next
+      setPageIndexState(next)
+      writeStoredPage(next)
     },
     [writeStoredPage],
   )
@@ -216,32 +285,51 @@ export function usePagedReader({
 
   const syncFromScrollTop = useCallback(
     (scrollTop: number) => {
-      remeasure({ scrollAnchor: scrollTop })
+      const viewport = viewportRef.current
+      const content = contentRef.current
+      const currentPages = pagesRef.current
+      const currentIndex = clampPageIndex(pageIndexRef.current, currentPages.length)
+      const translatedOffset = currentPages[currentIndex]?.startOffset ?? 0
+      const anchor =
+        viewport && content
+          ? contentOffsetAtViewportTop(
+              viewport.getBoundingClientRect().top,
+              content.getBoundingClientRect().top,
+              translatedOffset,
+            )
+          : scrollTop
+      remeasure({ scrollAnchor: anchor })
     },
-    [remeasure],
+    [contentRef, remeasure, viewportRef],
   )
 
   const safeIndex = clampPageIndex(pageIndex, pages.length)
   const page = pages[safeIndex] ?? { startOffset: 0, endOffset: 0 }
   const pageOffset = page.startOffset
-  const pageSliceHeight = Math.max(page.endOffset - page.startOffset, 0)
 
   const currentStartOffset = useCallback(() => {
     const list = pagesRef.current
-    const idx = clampPageIndex(pageIndex, list.length)
-    return list[idx]?.startOffset ?? 0
-  }, [pageIndex])
+    const index = clampPageIndex(pageIndexRef.current, list.length)
+    const pageOffset = list[index]?.startOffset ?? 0
+    const viewport = viewportRef.current
+    const content = contentRef.current
+    if (!viewport || !content) return pageOffset
+
+    return scrollTopForPagedOffset(
+      pageOffset,
+      viewport.getBoundingClientRect().top,
+      content.getBoundingClientRect().top,
+    )
+  }, [contentRef, viewportRef])
 
   return {
     pages,
     pageIndex: safeIndex,
-    pageHeight,
     goPrev,
     goNext,
     setPageIndex,
     handleTap,
     pageOffset,
-    pageSliceHeight,
     syncFromScrollTop,
     currentStartOffset,
   }
