@@ -97,6 +97,7 @@ public class BrowserHostPlugin extends Plugin {
         final String customUserAgent;
         final String lastNonDesktopUserAgentMode;
         final boolean privateMode;
+        final boolean incognitoMode;
         final int textZoom;
         final boolean javaScriptEnabled;
         final boolean loadsImagesAutomatically;
@@ -119,6 +120,7 @@ public class BrowserHostPlugin extends Plugin {
                     || ("custom".equals(previous) && customUserAgent.isEmpty())) previous = "system";
             lastNonDesktopUserAgentMode = "desktop".equals(mode) ? previous : mode;
             privateMode = values.optBoolean("privateMode", false);
+            incognitoMode = !privateMode && values.optBoolean("incognitoMode", false);
             textZoom = Math.max(75, Math.min(200, values.optInt("textZoom", 100)));
             javaScriptEnabled = values.optBoolean("javaScriptEnabled", true);
             loadsImagesAutomatically = values.optBoolean("loadsImagesAutomatically", true);
@@ -130,6 +132,7 @@ public class BrowserHostPlugin extends Plugin {
         JSObject toJson() {
             return new JSObject().put("userAgentMode", userAgentMode).put("customUserAgent", customUserAgent)
                 .put("lastNonDesktopUserAgentMode", lastNonDesktopUserAgentMode).put("privateMode", privateMode)
+                .put("incognitoMode", incognitoMode)
                 .put("textZoom", textZoom).put("javaScriptEnabled", javaScriptEnabled)
                 .put("loadsImagesAutomatically", loadsImagesAutomatically)
                 .put("thirdPartyCookiesEnabled", thirdPartyCookiesEnabled)
@@ -394,12 +397,18 @@ public class BrowserHostPlugin extends Plugin {
 
     private boolean privateMode() { return isPrivacyModeEnabled(getContext()); }
 
-    private void savePrivacyPreference(boolean enabled) {
+    private boolean recordingDisabled() {
+        return privateMode() || getContext().getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE)
+            .getBoolean("incognito-enabled", false);
+    }
+
+    private void savePrivacyPreference(boolean enabled, boolean incognito) {
         SharedPreferences local = getContext().getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE);
-        if (local.getBoolean("privacy-enabled", false) != enabled
-                && !local.edit().putBoolean("privacy-enabled", enabled).commit())
+        if ((local.getBoolean("privacy-enabled", false) != enabled
+                || local.getBoolean("incognito-enabled", false) != incognito)
+                && !local.edit().putBoolean("privacy-enabled", enabled).putBoolean("incognito-enabled", incognito).commit())
             throw new IllegalStateException("隐私设置保存失败，请重试");
-        if (enabled) {
+        if (enabled || incognito) {
             pendingRecoverySession.set(null);
             // A page which was private at any point must not later enter history/recovery.
             for (Tab tab : tabs) tab.recordHistory = false;
@@ -431,7 +440,7 @@ public class BrowserHostPlugin extends Plugin {
             java.util.Map<Tab, String> previousModes = new java.util.IdentityHashMap<>();
             for (Tab tab : tabs) previousModes.put(tab, tab.userAgentMode);
             try {
-                savePrivacyPreference(requested.privateMode);
+                savePrivacyPreference(requested.privateMode, requested.incognitoMode);
                 browserSettings = requested;
                 for (Tab tab : tabs) {
                     tab.freshDocumentRequired |= reload || privacyChanged;
@@ -442,7 +451,7 @@ public class BrowserHostPlugin extends Plugin {
                 if (reload && current != null && current.webView != null && current.hasLoaded) reloadTab(current);
             } catch (RuntimeException failure) {
                 browserSettings = previous;
-                try { savePrivacyPreference(previousPrivacy); }
+                try { savePrivacyPreference(previousPrivacy, previous.incognitoMode); }
                 catch (RuntimeException rollback) { failure.addSuppressed(rollback); }
                 for (Tab tab : tabs) {
                     tab.userAgentMode = previousModes.getOrDefault(tab, previous.userAgentMode);
@@ -743,11 +752,11 @@ public class BrowserHostPlugin extends Plugin {
         try {
             JSObject values = call.getObject("settings");
             requestedSettings = new BrowserSettings(values == null
-                ? new JSObject().put("privateMode", privateMode()) : values);
+                ? new JSObject().put("privateMode", privateMode()).put("incognitoMode", recordingDisabled() && !privateMode()) : values);
         }
         catch (IllegalArgumentException error) { call.reject(error.getMessage()); return; }
         JSObject requestedRecovery = call.getObject("recoverySession");
-        if (requestedSettings.privateMode && requestedRecovery != null) { call.reject("隐私模式不恢复浏览记录"); return; }
+        if ((requestedSettings.privateMode || requestedSettings.incognitoMode) && requestedRecovery != null) { call.reject("当前模式不恢复浏览记录"); return; }
         JSObject recovery = requestedRecovery == null ? null : normalizeRecoverySession(requestedRecovery);
         if (requestedRecovery != null && recovery == null) { call.reject("没有可恢复的有效标签页"); return; }
         String url = normalizeUrl(call.getString("url", HOME));
@@ -760,7 +769,7 @@ public class BrowserHostPlugin extends Plugin {
         float bottom = call.getFloat("bottom", 0f);
         float occludedBottom = call.getFloat("occludedBottom", 0f);
         onUi(call, () -> {
-            savePrivacyPreference(requestedSettings.privateMode);
+            savePrivacyPreference(requestedSettings.privateMode, requestedSettings.incognitoMode);
             closeNative();
             try {
                 closing = false;
@@ -789,7 +798,7 @@ public class BrowserHostPlugin extends Plugin {
 
     void captureRecoverySession() {
         pendingRecoverySession.set(null);
-        if (privateMode() || tabs.isEmpty()) return;
+        if (recordingDisabled() || tabs.isEmpty()) return;
         JSArray entries = new JSArray();
         int activeIndex = 0;
         for (Tab tab : tabs) {
@@ -804,7 +813,7 @@ public class BrowserHostPlugin extends Plugin {
     @PluginMethod public void takeRecoverySession(PluginCall call) {
         onUi(call, () -> {
             JSObject saved = pendingRecoverySession.getAndSet(null);
-            JSObject session = privateMode() ? null : saved;
+            JSObject session = recordingDisabled() ? null : saved;
             call.resolve(new JSObject().put("session", session == null ? JSONObject.NULL : session));
         });
     }
@@ -873,7 +882,7 @@ public class BrowserHostPlugin extends Plugin {
         state.put("forward", tab != null && tab.webView != null && tab.webView.canGoForward());
         state.put("desktop", tab != null && tab.desktop);
         state.put("privateMode", privateMode());
-        state.put("recordHistory", tab != null && tab.recordHistory && !privateMode());
+        state.put("recordHistory", tab != null && tab.recordHistory && !recordingDisabled());
         state.put("activeScriptCount", tab == null || tab.runtime == null ? 0 : tab.runtime.getActiveScriptCount());
         state.put("matchedScriptCount", tab == null || tab.runtime == null ? 0 : tab.runtime.getMatchedScriptCount(tab.url));
         state.put("userAgentMode", tab == null ? browserSettings.userAgentMode : tab.userAgentMode);
@@ -1747,7 +1756,7 @@ public class BrowserHostPlugin extends Plugin {
                     tab.agent.onPageStarted(address);
                 }
                 tab.url = address; tab.loading = true; tab.progress = 0; tab.error = null;
-                tab.recordHistory = !privateMode();
+                tab.recordHistory = !recordingDisabled();
                 tab.documentScriptVersion = tab.scriptVersion;
                 tab.freshDocumentRequired = false;
                 if (tab.pageProfile != null) tab.pageProfile.onPageStarted();
@@ -1768,7 +1777,7 @@ public class BrowserHostPlugin extends Plugin {
                 tab.url = address; tab.title = web.getTitle() == null ? address : web.getTitle();
                 tab.loading = false; tab.progress = 100;
                 if (current == tab) updateChrome();
-                if (!embeddedMode && tab.recordHistory && !privateMode() && isHttpUrl(address)) recordVisit(tab.title, address);
+                if (!embeddedMode && tab.recordHistory && !recordingDisabled() && isHttpUrl(address)) recordVisit(tab.title, address);
                 if (tab.pageProfile != null) tab.pageProfile.onPageFinished();
                 if (current == tab) sendNavigation(address, "end");
                 if (tab.media != null) tab.media.onPageFinished();
@@ -2775,7 +2784,7 @@ public class BrowserHostPlugin extends Plugin {
         settings.setMediaPlaybackRequiresUserGesture(browserSettings.mediaPlaybackRequiresUserGesture);
         CookieManager.getInstance().setAcceptThirdPartyCookies(tab.webView, browserSettings.thirdPartyCookiesEnabled);
         boolean privacy = privateMode();
-        if (privacy) tab.recordHistory = false;
+        if (recordingDisabled()) tab.recordHistory = false;
         settings.setSaveFormData(!privacy);
         settings.setCacheMode(privacy ? WebSettings.LOAD_NO_CACHE : WebSettings.LOAD_DEFAULT);
         tab.webView.setSaveEnabled(!privacy);
@@ -2866,7 +2875,7 @@ public class BrowserHostPlugin extends Plugin {
         catch (Exception e) { return new JSONArray(); }
     }
     private void recordVisit(String title, String url) {
-        if (privateMode()) return;
+        if (recordingDisabled()) return;
         JSONArray old = readPlaces(HISTORY), next = new JSONArray();
         JSONObject entry = new JSONObject();
         try {

@@ -97,6 +97,9 @@ export function BrowserWorkspace({
   const preferencesRef = useRef(preferences)
   preferencesRef.current = preferences
   const privateMode = preferences.privateMode
+  const privateBookmarks = privateMode || preferences.incognitoMode
+  const recordingDisabledRef = useRef(privateMode || preferences.incognitoMode)
+  recordingDisabledRef.current = privateMode || preferences.incognitoMode
   const privateModeRef = useRef(privateMode)
   const privacyLogRelease = useRef<(() => void) | null>(null)
   const workspaceLive = useRef(true)
@@ -189,7 +192,7 @@ export function BrowserWorkspace({
     }
   }, [])
   const recordVisit = useCallback((url: string, title: string) => {
-    if (privateModeRef.current) return
+    if (privateModeRef.current || recordingDisabledRef.current) return
     const next = saveBrowserVisit(historyRef.current, url, title)
     persist(BROWSER_KEYS.history, next, () => {historyRef.current = next; setHistory(next)})
   }, [persist])
@@ -209,7 +212,7 @@ export function BrowserWorkspace({
   const active = /^https?:\/\//i.test(current)
   const title = session.state.title && session.state.title !== '网页' ? session.state.title : browserHostLabel(current)
   // Scope follows the current recording mode. A private save never changes a public star.
-  const marked = (privateMode ? privateMarks : marks).some(item => item.url === current)
+  const marked = (privateBookmarks ? privateMarks : marks).some(item => item.url === current)
   const currentMedia = session.mediaTabs.get(session.state.tabId ?? -1)
   const mediaEntries = useMemo(() => browserMediaResources(currentMedia?.observations ?? [], { includeBlocked: true }), [currentMedia])
   const resources = useMemo(() => mediaEntries.filter(item => !item.isAd && !item.drm), [mediaEntries])
@@ -367,8 +370,8 @@ export function BrowserWorkspace({
   const saveShortcuts = (next: BrowserShortcut[]) => persist(BROWSER_KEYS.shortcuts, next, () => setShortcuts(next))
   const toggleBookmark = () => {
     if (!active) return
-    const scope: BookmarkScope = privateMode ? 'private' : 'normal'
-    const currentMarks = privateMode ? privateMarks : marks
+    const scope: BookmarkScope = privateBookmarks ? 'private' : 'normal'
+    const currentMarks = privateBookmarks ? privateMarks : marks
     const change = toggleBrowserBookmark(currentMarks, current, title)
     if (change.entries === currentMarks) return
     if (saveMarks(scope, change.entries)) {
@@ -416,20 +419,24 @@ export function BrowserWorkspace({
 
   const updatePreferences = async (next: BrowserPreferences): Promise<boolean> => {
     const previous = preferencesRef.current
+    recordingDisabledRef.current = previous.privateMode || previous.incognitoMode || next.privateMode || next.incognitoMode
     // Stop recording before the asynchronous native acknowledgement; resume only after persistence.
     applyPrivacyGuard(previous.privateMode || next.privateMode)
     if (!(await session.updateSettings(next))) {
+      recordingDisabledRef.current = previous.privateMode || previous.incognitoMode
       applyPrivacyGuard(previous.privateMode)
       return false
     }
     try {
       const confirmed = saveBrowserPreferences(next)
       preferencesRef.current = confirmed
+      recordingDisabledRef.current = confirmed.privateMode || confirmed.incognitoMode
       setPreferences(confirmed)
       applyPrivacyGuard(confirmed.privateMode)
       return true
     } catch (error) {
       await session.updateSettings(previous)
+      recordingDisabledRef.current = previous.privateMode || previous.incognitoMode
       applyPrivacyGuard(previous.privateMode)
       setNotice({message: error instanceof Error ? error.message : '保存失败，请重试', error: true})
       return false
@@ -441,7 +448,7 @@ export function BrowserWorkspace({
     void updatePreferences(toggleBrowserDesktopMode(preferences))
   }
   const changePrivateMode = (enabled: boolean): Promise<boolean> | boolean =>
-    session.pending ? false : updatePreferences({...preferences, privateMode: enabled})
+    session.pending ? false : updatePreferences({...preferences, privateMode: enabled, incognitoMode: enabled ? false : preferences.incognitoMode})
   const saveSearchEngine = (value: BrowserSearchChoice): boolean =>
     persist(BROWSER_KEYS.search, value, () => {searchRef.current=value;setSearch(value)}, true)
   const saveAddressPosition = (value: 'top'|'bottom'): boolean =>
@@ -506,6 +513,7 @@ export function BrowserWorkspace({
     {label:'页内查找', icon:ScanText, action:openFind, disabled:!active},
     {label:'分享网页', icon:Share2, action:() => {void sharePage()}, disabled:!active},
     {label:'隐私模式', icon:Shield, action:() => {void changePrivateMode(!privateMode)}, disabled:session.pending, selected:privateMode},
+    {label:'无痕模式', icon:ShieldCheck, action:() => {void updatePreferences({...preferences, incognitoMode: !preferences.incognitoMode, privateMode: false})}, disabled:session.pending, selected:preferences.incognitoMode},
     {label:'浏览设置', icon:Settings2, action:() => openPanel('settings')},
     {label:'返回有所闻', icon:LogOut, action:close},
   ]
@@ -547,7 +555,7 @@ export function BrowserWorkspace({
     style={{paddingTop:'var(--sat)', paddingBottom:'var(--sab)'}}>
     {!bottomAddress && toolbar}
     <div ref={viewport} data-browser-viewport className="relative min-h-0 flex-1 overflow-hidden bg-ink">
-      {!active && !playing && <BrowserStartPage privateMode={privateMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
+      {!active && !playing && <BrowserStartPage privateMode={privateMode} incognitoMode={preferences.incognitoMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
         hideRecent={hideRecent} onToggleHideRecent={toggleHideRecent}
         onOpen={url => {void openAddress(url)}} onAddShortcut={() => editShortcut({name:'',url:''})}
         onShortcutOptions={index => setPlaceAction({kind:'shortcut', index})}
@@ -621,8 +629,8 @@ export function BrowserWorkspace({
       onSelect={tab => finishTabChange(session.activate(tab))}
       onRemove={tab => {void session.remove(tab).then(ok => {if (ok && playing?.tabId === tab.id) setPlaying(null)})}}
       onNew={() => finishTabChange(session.command('new'))}/></BrowserFullPage>}
-    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateMode} key={panel} kind={panel} entries={panel === 'history' ? history : marks}
-      privateEntries={privateMode && panel === 'bookmarks' ? privateMarks : []}
+    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateBookmarks} key={panel + ':' + privateMode + ':' + preferences.incognitoMode} kind={panel} entries={panel === 'history' ? history : marks}
+      privateEntries={privateBookmarks && panel === 'bookmarks' ? privateMarks : []}
       hiddenHostCount={hiddenHosts.length} onBack={() => setPanel(null)} onOpen={url => {void openAddress(url)}}
       onRemove={url => {if (panel === 'history') saveHistory(history.filter(item => item.url !== url)); else saveMarks('normal', marks.filter(item => item.url !== url))}}
       onClear={() => confirmClear(panel)}

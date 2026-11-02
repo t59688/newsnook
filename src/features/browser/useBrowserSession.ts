@@ -48,7 +48,7 @@ export function useBrowserSession(
   options: {settings?: BrowserPreferences; initialUrl?: string; agentSheetRef?: RefObject<HTMLElement | null>; agentSheetVisible?: boolean; agentOperating?: boolean} = {},
 ) {
   const initialEntry: InitialBrowserEntry = options.initialUrl && /^https?:\/\//i.test(options.initialUrl) ? options.initialUrl
-    : recoverySession && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).privateMode ? recoverySession : null
+    : recoverySession && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).privateMode && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).incognitoMode ? recoverySession : null
   const [state, setState] = useState<BrowserState>(EMPTY)
   const [tabs, setTabs] = useState<BrowserTab[]>([])
   const [mediaTabs, setMediaTabs] = useState<ReadonlyMap<number, BrowserMediaTab>>(() => new Map())
@@ -187,7 +187,7 @@ export function useBrowserSession(
           stateRef.current = next
           return next
         })
-        if (!settingsRef.current.privateMode && !event.privateMode && event.recordHistory !== false && event.url && /^https?:\/\//i.test(event.url) && event.phase === 'end' && !event.error) {
+        if (!settingsRef.current.privateMode && !settingsRef.current.incognitoMode && !event.privateMode && event.recordHistory !== false && event.url && /^https?:\/\//i.test(event.url) && event.phase === 'end' && !event.error) {
           visit.current(event.url, event.title || event.url)
         }
         if (opened.current) void refresh().catch(() => undefined)
@@ -345,7 +345,7 @@ export function useBrowserSession(
         url, scripts: loadUserScripts().filter(script => script.enabled),
         settings: settingsRef.current,
         embedded: true, visible: false, ...getBounds(), palette: browserThemePalette(),
-        ...(!settingsRef.current.privateMode && snapshot ? {recoverySession: snapshot} : {}),
+        ...(!settingsRef.current.privateMode && !settingsRef.current.incognitoMode && snapshot ? {recoverySession: snapshot} : {}),
       })
       if (live.current && !closing.current && generation === epoch.current) opened.current = true
     }
@@ -355,7 +355,7 @@ export function useBrowserSession(
   }, [getBounds])
 
   useEffect(() => {
-    if (!recoverySession || settingsRef.current.privateMode || recoveryStarted.current) return
+    if (!recoverySession || settingsRef.current.privateMode || settingsRef.current.incognitoMode || recoveryStarted.current) return
     void enqueue(async () => {
       if (recoveryStarted.current) return
       recoveryStarted.current = true

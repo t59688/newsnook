@@ -175,6 +175,32 @@ public class BrowserHostLifecycleTest {
         assertTrue("a new public navigation can be recorded", state().getBoolean("recordHistory", false));
     }
 
+    @Test public void incognitoKeepsCacheAndCookiesButExcludesHistoryAndRecovery() throws Exception {
+        assertNull(open("https://example.com/ordinary").error);
+        WebView view = currentView();
+        android.webkit.CookieManager.getInstance().setCookie("https://example.com", "session=retained");
+        Call enabled = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("incognitoMode", true)));
+        host.updateSettings(enabled);
+        await(enabled);
+        assertNull(enabled.error);
+        assertSame(view, currentView());
+        assertEquals(android.webkit.WebSettings.LOAD_DEFAULT, view.getSettings().getCacheMode());
+        assertEquals("session=retained", android.webkit.CookieManager.getInstance().getCookie("https://example.com"));
+        view.getWebViewClient().onPageStarted(view, "https://example.com/unrecorded", null);
+        assertFalse(state().getBoolean("recordHistory", true));
+        host.captureRecoverySession();
+        Call recovery = new Call("takeRecoverySession", new JSObject());
+        host.takeRecoverySession(recovery);
+        assertTrue(recovery.result.isNull("session"));
+        Call disabled = new Call("updateSettings", new JSObject().put("settings", new JSObject()));
+        host.updateSettings(disabled);
+        await(disabled);
+        view.getWebViewClient().onPageFinished(view, "https://example.com/unrecorded");
+        assertFalse("late completions must not backfill history", state().getBoolean("recordHistory", true));
+        view.getWebViewClient().onPageStarted(view, "https://example.com/public", null);
+        assertTrue(state().getBoolean("recordHistory", false));
+    }
+
     @Test public void mobileAgentChoicesAreAcceptedAndHaveConsistentPageSettings() throws Exception {
         for (String mode : new String[] {"android", "ios", "desktop", "system"}) {
             Call opening = new Call("open", new JSObject().put("url", "https://example.com/profile")

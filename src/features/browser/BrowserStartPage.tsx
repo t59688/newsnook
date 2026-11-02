@@ -6,13 +6,13 @@ import { BrowserIconButton, BrowserSiteIcon } from './BrowserPrimitives'
 
 export function BrowserStartPage({
   shortcuts, recent, onSearch, onOpen, onAddShortcut, onShortcutOptions, onHistoryOptions, onPanel,
-  privateMode = false, hideRecent, onToggleHideRecent,
+  privateMode = false, incognitoMode = false, hideRecent, onToggleHideRecent,
 }: {
   shortcuts: BrowserShortcut[]; recent: BrowserVisit[]
   onSearch: () => void; onOpen: (url: string) => void; onAddShortcut: () => void
   onShortcutOptions: (index: number) => void; onHistoryOptions: (visit: BrowserVisit) => void
   onPanel: (panel: 'history' | 'bookmarks' | 'scripts') => void
-  privateMode?: boolean; hideRecent?: boolean; onToggleHideRecent?: () => void
+  privateMode?: boolean; incognitoMode?: boolean; hideRecent?: boolean; onToggleHideRecent?: () => void
 }) {
   const [managing, setManaging] = useState(false)
   const [internalHide, setInternalHide] = useState(() => readHideRecentPreference())
@@ -36,7 +36,7 @@ export function BrowserStartPage({
   return <div className="browser-start">
     <div className="browser-start-brand">
       <img src="/favicon.svg" alt=""/>
-      <div><h1>{privateMode ? '隐私浏览' : '浏览器'}</h1>{privateMode && <p>不保存搜索和浏览记录</p>}</div>
+      <div><h1>{privateMode ? '隐私浏览' : incognitoMode ? '无痕模式' : '浏览器'}</h1>{(privateMode || incognitoMode) && <p>不保存搜索和浏览记录</p>}</div>
     </div>
     <button type="button" aria-label="首页搜索或输入网址" onClick={onSearch} className="browser-start-search">
       <Search size={21} strokeWidth={1.8} aria-hidden="true"/>
@@ -74,7 +74,7 @@ export function BrowserStartPage({
       {canManage && <p role="status" className="browser-start-help"><Check size={15} aria-hidden="true"/>点按快捷方式进行编辑或排序</p>}
     </section>
 
-    {!privateMode && <section className="browser-start-section" aria-labelledby="browser-recent-title">
+    {!privateMode && !incognitoMode && <section className="browser-start-section" aria-labelledby="browser-recent-title">
       <div className="browser-section-heading">
         <div className="browser-section-title-wrap">
           <h2 id="browser-recent-title">最近访问</h2>

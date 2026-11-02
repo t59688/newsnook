@@ -185,6 +185,7 @@ export function BrowserSettingsPanel({
       <div className="browser-settings-content">
         {(error || saveError) && <BrowserStatusBanner error>{error || saveError}</BrowserStatusBanner>}
         {effectivePrivateMode && <BrowserPrivateNotice/>}
+        {preferences?.incognitoMode && <BrowserStatusBanner>无痕模式：不保存搜索、浏览记录或恢复标签页，保留缓存和登录状态。</BrowserStatusBanner>}
         {saving && <p className="browser-save-status" role="status">正在保存设置…</p>}
 
         <SettingsSection id="browser-settings-search" title="搜索与布局">
@@ -271,12 +272,15 @@ export function BrowserSettingsPanel({
         {(hasPreferences || onPrivateModeChange) && <SettingsSection id="browser-settings-privacy" title="隐私与权限">
           <div className="browser-setting-group">
             {(hasPreferences || onPrivateModeChange) && <SettingsToggle label="隐私浏览"
-              description="开启后不保存搜索和浏览记录"
+              description="不保存搜索和浏览记录，并停用网页资源缓存"
               checked={effectivePrivateMode} disabled={busy} onChange={() => {
                 if (onPrivateModeChange) void saveAction(() => onPrivateModeChange(!effectivePrivateMode))
-                else void savePatch({privateMode: !effectivePrivateMode})
+                else void savePatch({privateMode: !effectivePrivateMode, incognitoMode: false})
               }}/>}
             {hasPreferences && preferences && <>
+              <SettingsToggle label="无痕模式" description="不保存搜索、浏览记录或恢复标签页；保留缓存、Cookie 和登录状态"
+                checked={preferences.incognitoMode} disabled={busy}
+                onChange={() => {void savePatch({incognitoMode: !preferences.incognitoMode, privateMode: false})}}/>
               <SettingsToggle label="第三方 Cookie" description="部分跨站登录可能需要开启"
                 checked={preferences.thirdPartyCookiesEnabled} disabled={busy}
                 onChange={() => {void savePatch({thirdPartyCookiesEnabled: !preferences.thirdPartyCookiesEnabled})}}/>

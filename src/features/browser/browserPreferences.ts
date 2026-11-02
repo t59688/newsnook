@@ -7,6 +7,7 @@ export type BrowserMobileUserAgentMode = Exclude<BrowserUserAgentMode, 'desktop'
 /** Web-page options are separate from the existing search and layout keys. */
 export interface BrowserPreferences {
   privateMode: boolean
+  incognitoMode: boolean
   userAgentMode: BrowserUserAgentMode
   lastNonDesktopUserAgentMode: BrowserMobileUserAgentMode
   customUserAgent: string
@@ -33,6 +34,7 @@ export const BROWSER_KEYS = {
 
 export const DEFAULT_BROWSER_PREFERENCES: Readonly<BrowserPreferences> = Object.freeze({
   privateMode: false,
+  incognitoMode: false,
   userAgentMode: 'system',
   lastNonDesktopUserAgentMode: 'system',
   customUserAgent: '',
@@ -75,6 +77,7 @@ export function normalizeBrowserPreferences(value: unknown): BrowserPreferences 
     typeof source[key] === 'boolean' ? source[key] as boolean : defaults[key] as boolean
   return {
     privateMode: boolean('privateMode'),
+    incognitoMode: !boolean('privateMode') && boolean('incognitoMode'),
     userAgentMode,
     lastNonDesktopUserAgentMode,
     customUserAgent,

@@ -129,6 +129,15 @@ test('privacy is an opt-in saved recording preference and never erases existing 
   } finally { unwritable = false }
 })
 
+test('incognito persists independently of strict privacy and defaults off for old preferences', () => {
+  assert.equal(normalizeBrowserPreferences({}).incognitoMode, false)
+  assert.equal(normalizeBrowserPreferences({incognitoMode: 'true'}).incognitoMode, false)
+  const saved = saveBrowserPreferences({...DEFAULT_BROWSER_PREFERENCES, incognitoMode: true})
+  assert.equal(saved.privateMode, false)
+  assert.equal(loadBrowserPreferences().incognitoMode, true)
+  assert.equal(normalizeBrowserPreferences({...saved, privateMode: true}).incognitoMode, false)
+})
+
 test('Android and iOS identities survive normalization and retain the last non-desktop choice', () => {
   for (const mode of ['android', 'ios', 'system'] as const) {
     const preferences = normalizeBrowserPreferences({userAgentMode: mode, lastNonDesktopUserAgentMode: 'ios'})
