@@ -971,7 +971,7 @@ export function ReaderScreen({
     articleId: article.id,
     viewportRef: rootRef,
     contentRef: contentMeasureRef,
-    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}`,
+    measureKey: `${proseHtml.length}:${showTranslation}:${loadState}:${fontScale}`,
     ready: loadState === 'ready',
   })
 
@@ -1617,13 +1617,10 @@ export function ReaderScreen({
           <div
             ref={rootRef}
             {...{ [SCROLL_SURFACE_ATTR]: '' }}
+            data-eink-reader-viewport={einkMode ? '' : undefined}
             onScroll={einkMode ? undefined : handleScroll}
             className={`reader-font-pinch-surface scroll-hidden h-full overflow-x-hidden ${
-              einkMode
-                ? paged.pageSliceHeight > paged.pageHeight
-                  ? 'overflow-y-auto'
-                  : 'overflow-hidden'
-                : 'overflow-y-auto'
+              einkMode ? 'overflow-hidden' : 'overflow-y-auto'
             }`}
           >
           <div
