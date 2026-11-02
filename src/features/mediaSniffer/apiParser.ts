@@ -284,7 +284,7 @@ function walk(
     emitDashTracks(record.video as unknown[], 'video', assetGroup, pageUrl, source, observations, metadata)
     emitDashTracks(record.audio as unknown[], 'audio', assetGroup, pageUrl, source, observations, metadata)
     for (const [key, child] of Object.entries(record).slice(0, 512)) {
-      if (key === 'video' || key === 'audio' || SKIPPED_PAYLOAD_KEYS.test(key)) continue
+      if (key === 'video' || key === 'audio' || (source === 'static' && SKIPPED_PAYLOAD_KEYS.test(key))) continue
       walk(child, pageUrl, source, observations, seen, depth + 1, budget, childMetadata(record, key, metadata))
     }
     return
@@ -292,7 +292,7 @@ function walk(
 
   emitUrlFields(record, pageUrl, source, observations, metadata)
   for (const [key, child] of Object.entries(record).slice(0, 512)) {
-    if (SKIPPED_PAYLOAD_KEYS.test(key)) continue
+    if (source === 'static' && SKIPPED_PAYLOAD_KEYS.test(key)) continue
     walk(child, pageUrl, source, observations, seen, depth + 1, budget, childMetadata(record, key, metadata))
   }
 }
