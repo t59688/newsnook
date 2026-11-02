@@ -33,6 +33,7 @@ const props = {
   prefs: DEFAULT_PREFERENCES,
   onAddCustomSource: (value: NewsSource) => { saved.push(value) },
   onUpdateCustomSource: () => {}, onDeleteCustomSource: () => {}, onDeleteCustomSources: () => {},
+  onMoveCustomSourcesToCategory: () => {}, onAddCustomSourcesToCategory: () => {}, onSetCustomSourcesPaused: () => {},
   onBatchImport: () => {}, onOpenFeedStore: () => {}, onBack: () => {},
 }
 function button(label: string): HTMLButtonElement {

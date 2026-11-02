@@ -6,9 +6,14 @@ import {
   ChevronDown,
   Download,
   ExternalLink,
+  Filter,
   FileText,
   FolderOpen,
+  FolderInput,
+  FolderPlus,
   Loader2,
+  PauseCircle,
+  PlayCircle,
   Plus,
   Rss,
   Search,
@@ -34,6 +39,8 @@ import { parseSourcePayload } from '../../lib/parseFeed'
 import type { CategoryId, NewsCategory } from '../../sources/categories'
 import {
   allRegisteredCategories,
+  categorySourceIds,
+  isAggregateCategoryId,
   type Preferences,
 } from '../../sources/preferences'
 import type { NewsSource, SourceDiscoveryMetadata } from '../../sources/registry'
@@ -49,6 +56,8 @@ import { fetchProbeEntryPage } from '../../features/siteCatalog/probeUrl'
 import { catalogRequestOptions } from '../../features/siteCatalog/requestIdentity'
 import { detectFramework } from '../../features/frameworkDetect/detect'
 import type { FrameworkHint } from '../../features/frameworkDetect/types'
+
+const EMPTY_CUSTOM_SOURCES: NewsSource[] = []
 
 interface Props {
   prefs: Preferences
@@ -71,6 +80,9 @@ interface Props {
   ) => void
   onDeleteCustomSource: (sourceId: string) => void
   onDeleteCustomSources: (sourceIds: string[]) => void
+  onMoveCustomSourcesToCategory: (sourceIds: string[], categoryId: CategoryId) => void
+  onAddCustomSourcesToCategory: (sourceIds: string[], categoryId: CategoryId) => void
+  onSetCustomSourcesPaused: (sourceIds: string[], paused: boolean) => void
   onBatchImport: (sources: NewsSource[], categories?: NewsCategory[]) => void
   onOpenFeedStore: () => void
   onBack: () => void
@@ -82,12 +94,15 @@ export function CustomSourcesScreen({
   onUpdateCustomSource,
   onDeleteCustomSource,
   onDeleteCustomSources,
+  onMoveCustomSourcesToCategory,
+  onAddCustomSourcesToCategory,
+  onSetCustomSourcesPaused,
   onBatchImport,
   onOpenFeedStore,
   onBack,
 }: Props) {
-  const customSources = prefs.customSources ?? []
-  const categories = allRegisteredCategories(prefs)
+  const customSources = prefs.customSources ?? EMPTY_CUSTOM_SOURCES
+  const categories = useMemo(() => allRegisteredCategories(prefs), [prefs])
 
   // 新建/编辑自定义订阅弹窗状态
   const [showAddModal, setShowAddModal] = useState(false)
@@ -132,13 +147,46 @@ export function CustomSourcesScreen({
   const [confirmBatchDelete, setConfirmBatchDelete] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [categoryPickerOpen, setCategoryPickerOpen] = useState(false)
+  const [categoryFilter, setCategoryFilter] = useState('all')
+  const [filterPickerOpen, setFilterPickerOpen] = useState(false)
+  const [batchCategoryPickerOpen, setBatchCategoryPickerOpen] = useState(false)
+  const [batchCategoryMode, setBatchCategoryMode] = useState<'move' | 'add'>('move')
+  const [batchTargetCategory, setBatchTargetCategory] = useState<CategoryId>('')
+
+  const assignableCategories = useMemo(
+    () => categories.filter((category) => !isAggregateCategoryId(category.id)),
+    [categories],
+  )
+  const categoryById = useMemo(
+    () => new Map(categories.map((category) => [category.id, category])),
+    [categories],
+  )
 
   const categoryOptions: OptionPickerItem<string>[] = useMemo(
     () => [
       { id: 'none', label: '暂不归入特定分类 (可在分类设置中按需添加)' },
-      ...categories.map((c) => ({ id: c.id, label: c.label })),
+      ...assignableCategories.map((c) => ({ id: c.id, label: c.label })),
     ],
-    [categories],
+    [assignableCategories],
+  )
+
+  const batchCategoryOptions: OptionPickerItem<CategoryId>[] = useMemo(
+    () => assignableCategories.map((category) => ({ id: category.id, label: category.label })),
+    [assignableCategories],
+  )
+
+  const filterOptions: OptionPickerItem<string>[] = useMemo(
+    () => [
+      { id: 'all', label: '全部分类' },
+      { id: 'uncategorized', label: '未归类' },
+      ...assignableCategories.map((category) => ({ id: category.id, label: category.label })),
+    ],
+    [assignableCategories],
+  )
+
+  const categoryFilterLabel = useMemo(
+    () => filterOptions.find((option) => option.id === categoryFilter)?.label ?? '全部分类',
+    [categoryFilter, filterOptions],
   )
 
   const selectedCategoryLabel = useMemo(() => {
@@ -149,23 +197,47 @@ export function CustomSourcesScreen({
     return found ? found.label : '暂不归入特定分类'
   }, [targetCategory, categories])
 
+  const sourceCategoryIdsById = useMemo(() => {
+    const memberships = new Map<string, CategoryId[]>()
+    customSources.forEach((source) => memberships.set(source.id, []))
+    assignableCategories.forEach((category) => {
+      categorySourceIds(category.id, prefs).forEach((sourceId) => {
+        const sourceCategories = memberships.get(sourceId)
+        if (sourceCategories) sourceCategories.push(category.id)
+      })
+    })
+    return memberships
+  }, [assignableCategories, customSources, prefs])
+
   const filteredCustomSources = useMemo(() => {
     const list = prefs.customSources ?? []
     const q = searchQuery.trim().toLowerCase()
-    if (!q) return list
-    return list.filter(
-      (s) =>
-        s.name.toLowerCase().includes(q) ||
-        s.label.toLowerCase().includes(q) ||
-        s.url.toLowerCase().includes(q) ||
-        (s.siteUrl && s.siteUrl.toLowerCase().includes(q)),
-    )
-  }, [prefs.customSources, searchQuery])
+    return list.filter((source) => {
+      const memberships = sourceCategoryIdsById.get(source.id) ?? []
+      const matchesCategory = categoryFilter === 'all'
+        ? true
+        : categoryFilter === 'uncategorized'
+          ? memberships.length === 0
+          : memberships.includes(categoryFilter)
+      if (!matchesCategory) return false
+      if (!q) return true
+      return source.name.toLowerCase().includes(q) ||
+        source.label.toLowerCase().includes(q) ||
+        source.url.toLowerCase().includes(q) ||
+        Boolean(source.siteUrl?.toLowerCase().includes(q))
+    })
+  }, [prefs.customSources, searchQuery, categoryFilter, sourceCategoryIdsById])
   const filteredSourceIds = useMemo(
     () => filteredCustomSources.map((source) => source.id),
     [filteredCustomSources],
   )
   const selectedSourceCount = selectedSourceIds.size
+  const selectedSources = useMemo(
+    () => customSources.filter((source) => selectedSourceIds.has(source.id)),
+    [customSources, selectedSourceIds],
+  )
+  const allSelectedPaused = selectedSources.length > 0 && selectedSources.every((source) => source.paused === true)
+  const allSelectedActive = selectedSources.length > 0 && selectedSources.every((source) => source.paused !== true)
   const allFilteredSelected =
     filteredSourceIds.length > 0 &&
     filteredSourceIds.every((sourceId) => selectedSourceIds.has(sourceId))
@@ -254,6 +326,8 @@ export function CustomSourcesScreen({
       else if (showOpmlTextEditor) setShowOpmlTextEditor(false)
       else if (showOpmlImportChooser) setShowOpmlImportChooser(false)
       else if (showExportModal) setShowExportModal(false)
+      else if (batchCategoryPickerOpen) setBatchCategoryPickerOpen(false)
+      else if (filterPickerOpen) setFilterPickerOpen(false)
       else if (selectionMode) exitSelectionMode()
     }
     window.addEventListener('keydown', handleKeyDown)
@@ -265,7 +339,32 @@ export function CustomSourcesScreen({
     showOpmlTextEditor,
     showOpmlImportChooser,
     showExportModal,
+    batchCategoryPickerOpen,
+    filterPickerOpen,
   ])
+
+  useEffect(() => {
+    if (categoryFilter === 'all' || categoryFilter === 'uncategorized') return
+    if (!assignableCategories.some((category) => category.id === categoryFilter)) {
+      setCategoryFilter('all')
+    }
+  }, [assignableCategories, categoryFilter])
+
+  const openBatchCategoryPicker = (mode: 'move' | 'add') => {
+    if (!selectedSourceCount || !assignableCategories.length) return
+    setBatchCategoryMode(mode)
+    setBatchTargetCategory(assignableCategories[0].id)
+    setBatchCategoryPickerOpen(true)
+  }
+
+  const commitBatchCategory = (categoryId: CategoryId) => {
+    if (!selectedSourceCount) return
+    const sourceIds = [...selectedSourceIds]
+    if (batchCategoryMode === 'move') onMoveCustomSourcesToCategory(sourceIds, categoryId)
+    else onAddCustomSourcesToCategory(sourceIds, categoryId)
+    setBatchCategoryPickerOpen(false)
+    exitSelectionMode()
+  }
 
   const openAddModal = () => {
     resetForm()
@@ -721,9 +820,9 @@ export function CustomSourcesScreen({
           </div>
         ) : (
           <div className="space-y-3">
-            <div className="page-x flex items-center gap-2">
+            <div className="page-x flex flex-wrap items-center gap-2">
               {customSources.length > 5 ? (
-                <div className="relative flex min-w-0 flex-1 items-center">
+                <div className="relative flex min-w-[160px] flex-1 items-center">
                   <Search
                     size={14}
                     className="pointer-events-none absolute left-3.5 text-paper-faint"
@@ -749,12 +848,22 @@ export function CustomSourcesScreen({
               ) : (
                 <span className="min-w-0 flex-1 font-mono text-[10.5px] text-paper-faint">
                   {selectionMode
-                    ? '点击条目选择；可一次删除多个订阅'
+                    ? '点击条目选择；可一次整理多个订阅'
                     : customSources.length > 1
-                      ? '支持批量选择与删除'
+                      ? '支持批量选择、分类整理与删除'
                       : '点击订阅可编辑，右侧可删除'}
                 </span>
               )}
+
+              <button
+                type="button"
+                onClick={() => setFilterPickerOpen(true)}
+                className="flex shrink-0 items-center gap-1.5 rounded-full border border-haze bg-paper/5 px-3 py-2 font-mono text-[10.5px] text-paper-muted transition-colors hover:border-cinnabar/40 hover:text-paper"
+                aria-label="按分类筛选订阅"
+              >
+                <Filter size={12} />
+                {categoryFilterLabel}
+              </button>
 
               {!selectionMode && customSources.length > 1 && (
                 <button
@@ -770,36 +879,76 @@ export function CustomSourcesScreen({
 
             {selectionMode && (
               <div className="page-x sticky top-0 z-10 bg-ink py-1">
-                <div className="flex items-center gap-2 rounded-xl border border-cinnabar/30 bg-ink-raised px-3 py-2 shadow-sm">
-                  <span
-                    role="status"
-                    aria-live="polite"
-                    className="min-w-0 flex-1 font-mono text-[10.5px] text-paper-muted"
-                  >
-                    已选 <strong className="font-semibold text-paper">{selectedSourceCount}</strong> /{' '}
-                    {customSources.length}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={filteredSourceIds.length === 0}
-                    onClick={toggleAllFilteredSources}
-                    className="shrink-0 rounded-full border border-haze px-2.5 py-1.5 font-mono text-[10px] text-paper-muted transition-colors hover:text-paper disabled:opacity-35"
-                  >
-                    {allFilteredSelected
-                      ? '取消全选'
-                      : searchQuery.trim()
-                        ? `全选结果 ${filteredSourceIds.length}`
-                        : '全选'}
-                  </button>
-                  <button
-                    type="button"
-                    disabled={selectedSourceCount === 0}
-                    onClick={() => setConfirmBatchDelete(true)}
-                    className="flex shrink-0 items-center gap-1 rounded-full border border-rose-500/35 bg-rose-500/5 px-2.5 py-1.5 font-mono text-[10px] text-rose-400 transition-colors hover:bg-rose-500/10 disabled:opacity-35"
-                  >
-                    <Trash2 size={12} />
-                    删除{selectedSourceCount > 0 ? ` ${selectedSourceCount}` : ''}
-                  </button>
+                <div className="rounded-xl border border-cinnabar/30 bg-ink-raised px-3 py-2 shadow-sm">
+                  <div className="flex items-center gap-2">
+                    <span
+                      role="status"
+                      aria-live="polite"
+                      className="min-w-0 flex-1 font-mono text-[10.5px] text-paper-muted"
+                    >
+                      已选 <strong className="font-semibold text-paper">{selectedSourceCount}</strong> /{' '}
+                      {customSources.length}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={filteredSourceIds.length === 0}
+                      onClick={toggleAllFilteredSources}
+                      className="shrink-0 rounded-full border border-haze px-2.5 py-1.5 font-mono text-[10px] text-paper-muted transition-colors hover:text-paper disabled:opacity-35"
+                    >
+                      {allFilteredSelected
+                        ? '取消全选'
+                        : searchQuery.trim() || categoryFilter !== 'all'
+                          ? `全选结果 ${filteredSourceIds.length}`
+                          : '全选'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedSourceCount === 0}
+                      onClick={() => setConfirmBatchDelete(true)}
+                      className="flex shrink-0 items-center gap-1 rounded-full border border-rose-500/35 bg-rose-500/5 px-2.5 py-1.5 font-mono text-[10px] text-rose-400 transition-colors hover:bg-rose-500/10 disabled:opacity-35"
+                    >
+                      <Trash2 size={12} />
+                      删除
+                    </button>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                    <button
+                      type="button"
+                      disabled={selectedSourceCount === 0 || assignableCategories.length === 0}
+                      onClick={() => openBatchCategoryPicker('move')}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-haze px-2 py-2 text-[11px] text-paper-muted transition-colors hover:border-cinnabar/40 hover:text-paper disabled:opacity-35"
+                    >
+                      <FolderInput size={13} />
+                      移动到分类
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedSourceCount === 0 || assignableCategories.length === 0}
+                      onClick={() => openBatchCategoryPicker('add')}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-haze px-2 py-2 text-[11px] text-paper-muted transition-colors hover:border-cinnabar/40 hover:text-paper disabled:opacity-35"
+                    >
+                      <FolderPlus size={13} />
+                      加入分类
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedSourceCount === 0 || allSelectedPaused}
+                      onClick={() => onSetCustomSourcesPaused([...selectedSourceIds], true)}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-haze px-2 py-2 text-[11px] text-paper-muted transition-colors hover:border-paper-faint/50 hover:text-paper disabled:opacity-35"
+                    >
+                      <PauseCircle size={13} />
+                      暂停抓取
+                    </button>
+                    <button
+                      type="button"
+                      disabled={selectedSourceCount === 0 || allSelectedActive}
+                      onClick={() => onSetCustomSourcesPaused([...selectedSourceIds], false)}
+                      className="flex items-center justify-center gap-1 rounded-lg border border-haze px-2 py-2 text-[11px] text-paper-muted transition-colors hover:border-paper-faint/50 hover:text-paper disabled:opacity-35"
+                    >
+                      <PlayCircle size={13} />
+                      恢复抓取
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
@@ -807,7 +956,13 @@ export function CustomSourcesScreen({
             {filteredCustomSources.length === 0 ? (
               <div className="page-x py-8 text-center">
                 <p className="text-[13px] text-paper-faint">
-                  未找到与「{searchQuery}」匹配的自建订阅源
+                  {searchQuery.trim()
+                    ? `未找到与「${searchQuery}」匹配的自建订阅源`
+                    : categoryFilter === 'uncategorized'
+                      ? '当前没有未归类订阅源'
+                      : categoryFilter !== 'all'
+                        ? `「${categoryFilterLabel}」分类下暂无订阅源`
+                        : '暂无自定义订阅源'}
                 </p>
               </div>
             ) : (
@@ -863,6 +1018,25 @@ export function CustomSourcesScreen({
                           </span>
                           <span className="mt-1 block truncate font-mono text-[10.5px] text-paper-faint">
                             {source.url.replace(/^https?:\/\//, '')}
+                          </span>
+                          <span className="mt-1 flex flex-wrap items-center gap-1">
+                            {(sourceCategoryIdsById.get(source.id) ?? []).length > 0 ? (
+                              <>
+                                {(sourceCategoryIdsById.get(source.id) ?? []).slice(0, 3).map((categoryId) => (
+                                  <span key={categoryId} className="rounded-md border border-haze/70 bg-paper/5 px-1.5 py-0.5 text-[9.5px] text-paper-muted">
+                                    {categoryById.get(categoryId)?.label ?? categoryId}
+                                  </span>
+                                ))}
+                                {(sourceCategoryIdsById.get(source.id)?.length ?? 0) > 3 && (
+                                  <span className="font-mono text-[9px] text-paper-faint">+{(sourceCategoryIdsById.get(source.id)?.length ?? 0) - 3}</span>
+                                )}
+                              </>
+                            ) : (
+                              <span className="rounded-md border border-haze/60 px-1.5 py-0.5 text-[9.5px] text-paper-faint">未归类</span>
+                            )}
+                            {source.paused === true && (
+                              <span className="rounded-md border border-amber-500/30 bg-amber-500/5 px-1.5 py-0.5 text-[9.5px] text-amber-300">已暂停</span>
+                            )}
                           </span>
                           {timeStr && (
                             <span className="mt-0.5 block font-mono text-[9.5px] text-paper-faint/60">
@@ -1490,6 +1664,29 @@ export function CustomSourcesScreen({
           setTargetCategory(val)
           setCategoryPickerOpen(false)
         }}
+      />
+
+      <OptionPickerDialog
+        open={filterPickerOpen}
+        title="按分类筛选订阅"
+        value={categoryFilter}
+        options={filterOptions}
+        searchPlaceholder={filterOptions.length > 8 ? '搜索分类...' : undefined}
+        onCancel={() => setFilterPickerOpen(false)}
+        onChange={(value) => {
+          setCategoryFilter(value)
+          setFilterPickerOpen(false)
+        }}
+      />
+
+      <OptionPickerDialog
+        open={batchCategoryPickerOpen && batchCategoryOptions.length > 0}
+        title={batchCategoryMode === 'move' ? '移动所选订阅到' : '将所选订阅加入'}
+        value={batchTargetCategory || batchCategoryOptions[0]?.id || ''}
+        options={batchCategoryOptions}
+        searchPlaceholder={batchCategoryOptions.length > 8 ? '搜索目标分类...' : undefined}
+        onCancel={() => setBatchCategoryPickerOpen(false)}
+        onChange={commitBatchCategory}
       />
     </SettingsShell>
   )

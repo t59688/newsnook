@@ -69,7 +69,9 @@ export function categorySourceIds(categoryId: CategoryId, prefs: Preferences): s
   }
 
   const custom = prefs.customCategories?.find((category) => category.id === categoryId)
-  if (custom?.sourceIds?.length) return custom.sourceIds
+  // An empty custom category is still a valid category. Do not fall through to
+  // findCategory(), whose unknown-id fallback is the first built-in category.
+  if (custom) return custom.sourceIds ?? []
 
   return findCategory(categoryId).sourceIds ?? []
 }
@@ -333,7 +335,7 @@ export function toggleCategorySource(
   categoryId: CategoryId,
   sourceId: string,
 ): Preferences {
-  if (isAggregateCategoryId(categoryId)) return prefs
+  if (!isEditableCategory(prefs, categoryId)) return prefs
 
   const current = categorySourceIds(categoryId, prefs)
   const removing = current.includes(sourceId)
@@ -341,10 +343,7 @@ export function toggleCategorySource(
   if (removing && current.length <= 1) return prefs
 
   const next = removing ? current.filter((id) => id !== sourceId) : [...current, sourceId]
-  return {
-    ...prefs,
-    categorySources: { ...prefs.categorySources, [categoryId]: next },
-  }
+  return applyCategoryMembershipUpdates(prefs, new Map([[categoryId, next]]))
 }
 
 /** 新闻页长按「移出」允许移除普通分类的最后一个信源。 */
@@ -353,16 +352,155 @@ export function removeCategorySource(
   categoryId: CategoryId,
   sourceId: string,
 ): Preferences {
-  if (isAggregateCategoryId(categoryId)) return prefs
+  if (!isEditableCategory(prefs, categoryId)) return prefs
   const current = categorySourceIds(categoryId, prefs)
   if (!current.includes(sourceId)) return prefs
-  return {
-    ...prefs,
-    categorySources: {
-      ...prefs.categorySources,
-      [categoryId]: current.filter((id) => id !== sourceId),
-    },
+  return applyCategoryMembershipUpdates(
+    prefs,
+    new Map([[categoryId, current.filter((id) => id !== sourceId)]]),
+  )
+}
+
+function sameIds(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((id, index) => id === right[index])
+}
+
+/**
+ * Apply several category membership changes in one immutable preferences update.
+ * Custom categories keep sourceIds as their canonical definition; an existing
+ * categorySources override is synchronized when one is present.
+ */
+function applyCategoryMembershipUpdates(
+  prefs: Preferences,
+  updates: ReadonlyMap<CategoryId, string[]>,
+): Preferences {
+  if (!updates.size) return prefs
+
+  const customCategoryIds = new Set((prefs.customCategories ?? []).map((category) => category.id))
+  const nextCategorySources = { ...prefs.categorySources }
+  let changed = false
+
+  for (const [categoryId, sourceIds] of updates) {
+    if (customCategoryIds.has(categoryId)) {
+      if (Object.prototype.hasOwnProperty.call(prefs.categorySources, categoryId)) {
+        nextCategorySources[categoryId] = [...sourceIds]
+      }
+    } else {
+      nextCategorySources[categoryId] = [...sourceIds]
+    }
+    changed = true
   }
+
+  const nextCustomCategories = (prefs.customCategories ?? []).map((category) => {
+    const sourceIds = updates.get(category.id)
+    if (!sourceIds) return category
+    return {
+      ...category,
+      sourceIds: [...sourceIds],
+      caption: describeSources(sourceIds, prefs.customSources),
+      isCustom: true,
+    }
+  })
+
+  return changed
+    ? { ...prefs, categorySources: nextCategorySources, customCategories: nextCustomCategories }
+    : prefs
+}
+
+function isValidCategoryTarget(prefs: Preferences, categoryId: CategoryId): boolean {
+  return !isAggregateCategoryId(categoryId) &&
+    allRegisteredCategories(prefs).some((category) => category.id === categoryId)
+}
+
+/** Legacy category overrides may outlive their taxonomy entry until migration. */
+function isEditableCategory(prefs: Preferences, categoryId: CategoryId): boolean {
+  return !isAggregateCategoryId(categoryId) && (
+    isValidCategoryTarget(prefs, categoryId) ||
+    Object.prototype.hasOwnProperty.call(prefs.categorySources, categoryId)
+  )
+}
+
+/** Return all ordinary categories containing a source, including hidden categories. */
+export function categoriesForSource(prefs: Preferences, sourceId: string): CategoryId[] {
+  if (!allRegisteredSources(prefs).some((source) => source.id === sourceId)) return []
+  return allRegisteredCategories(prefs)
+    .filter((category) => !isAggregateCategoryId(category.id) && categorySourceIds(category.id, prefs).includes(sourceId))
+    .map((category) => category.id)
+}
+
+/** Add sources to one ordinary category without changing their other memberships. */
+export function addSourcesToCategory(
+  prefs: Preferences,
+  sourceIds: readonly string[],
+  targetCategoryId: CategoryId,
+): Preferences {
+  if (!isValidCategoryTarget(prefs, targetCategoryId) || !sourceIds.length) return prefs
+
+  const knownSourceIds = new Set(allRegisteredSources(prefs).map((source) => source.id))
+  const requestedIds = [...new Set(sourceIds.filter((id) => knownSourceIds.has(id)))]
+  if (!requestedIds.length) return prefs
+
+  const current = categorySourceIds(targetCategoryId, prefs)
+  const next = [...current]
+  requestedIds.forEach((id) => {
+    if (!next.includes(id)) next.push(id)
+  })
+  if (sameIds(current, next)) return prefs
+
+  return applyCategoryMembershipUpdates(prefs, new Map([[targetCategoryId, next]]))
+}
+
+/**
+ * Move sources to a single category, making that their only ordinary-category
+ * membership. Aggregate categories are derived and are never mutated here.
+ */
+export function moveSourcesToCategory(
+  prefs: Preferences,
+  sourceIds: readonly string[],
+  targetCategoryId: CategoryId,
+): Preferences {
+  if (!isValidCategoryTarget(prefs, targetCategoryId) || !sourceIds.length) return prefs
+
+  const knownSourceIds = new Set(allRegisteredSources(prefs).map((source) => source.id))
+  const requestedIds = [...new Set(sourceIds.filter((id) => knownSourceIds.has(id)))]
+  if (!requestedIds.length) return prefs
+  const requested = new Set(requestedIds)
+  const updates = new Map<CategoryId, string[]>()
+
+  for (const category of allRegisteredCategories(prefs)) {
+    if (isAggregateCategoryId(category.id)) continue
+    const current = categorySourceIds(category.id, prefs)
+    const next = category.id === targetCategoryId
+      ? [...current, ...requestedIds.filter((id) => !current.includes(id))]
+      : current.filter((id) => !requested.has(id))
+    // Existing target members retain their order; newly moved members append in
+    // the caller's stable selection order.
+    if (!sameIds(current, next)) updates.set(category.id, [...new Set(next)])
+  }
+
+  return applyCategoryMembershipUpdates(prefs, updates)
+}
+
+/** Move one source from its current ordinary category to another category. */
+export function moveSourceBetweenCategories(
+  prefs: Preferences,
+  sourceId: string,
+  fromCategoryId: CategoryId,
+  targetCategoryId: CategoryId,
+): Preferences {
+  if (fromCategoryId === targetCategoryId || isAggregateCategoryId(fromCategoryId) ||
+      !isValidCategoryTarget(prefs, fromCategoryId) || !isValidCategoryTarget(prefs, targetCategoryId) ||
+      !allRegisteredSources(prefs).some((source) => source.id === sourceId)) return prefs
+
+  const fromIds = categorySourceIds(fromCategoryId, prefs)
+  if (!fromIds.includes(sourceId)) return prefs
+  const targetIds = categorySourceIds(targetCategoryId, prefs)
+  const nextTargetIds = targetIds.includes(sourceId) ? [...targetIds] : [...targetIds, sourceId]
+  const updates = new Map<CategoryId, string[]>([
+    [fromCategoryId, fromIds.filter((id) => id !== sourceId)],
+  ])
+  if (!sameIds(targetIds, nextTargetIds)) updates.set(targetCategoryId, nextTargetIds)
+  return applyCategoryMembershipUpdates(prefs, updates)
 }
 
 /** 当前预设内收藏/取消收藏信源。 */
@@ -453,7 +591,9 @@ export function updateCustomCategory(
       ? uniqueValid(patch.sourceIds, knownSourceIds)
       : (current.sourceIds ?? [])
 
-  if (!sourceIds.length) return prefs
+  // A previously emptied category may still be renamed. Explicitly replacing
+  // its source list with an empty list remains invalid in the category editor.
+  if (patch.sourceIds !== undefined && !sourceIds.length) return prefs
 
   const updated: NewsCategory = {
     ...current,

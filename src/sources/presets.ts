@@ -95,8 +95,10 @@ function normalizeCustomCategories(raw: unknown): NewsCategory[] {
     const rawLabel = typeof record.label === 'string' ? record.label.trim() : ''
     const rawShort = typeof record.short === 'string' ? record.short.trim() : ''
     if (!rawId || !rawLabel) continue
+    // Empty custom categories are valid after moving their last source away.
+    // Preserve them in snapshots so switching presets does not silently discard
+    // a user's category container.
     const sourceIds = uniqueValidSourceIds(record.sourceIds)
-    if (!sourceIds.length) continue
     result.push({
       id: rawId,
       label: rawLabel,

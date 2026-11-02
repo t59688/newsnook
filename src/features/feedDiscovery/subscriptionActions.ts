@@ -66,17 +66,28 @@ export function findSubscriptionDuplicate(
   return null
 }
 
+export function setCustomSourcesPaused(
+  prefs: Preferences,
+  sourceIds: readonly string[],
+  paused: boolean,
+): Preferences {
+  if (!sourceIds.length) return prefs
+  const requested = new Set(sourceIds)
+  let changed = false
+  const nextSources = (prefs.customSources ?? []).map((source) => {
+    if (!requested.has(source.id) || source.paused === paused) return source
+    changed = true
+    return { ...source, paused }
+  })
+  return changed ? { ...prefs, customSources: nextSources } : prefs
+}
+
 export function setCustomSourcePaused(
   prefs: Preferences,
   sourceId: string,
   paused: boolean,
 ): Preferences {
-  const sources = prefs.customSources ?? []
-  const index = sources.findIndex((source) => source.id === sourceId)
-  if (index < 0 || sources[index].paused === paused) return prefs
-  const nextSources = [...sources]
-  nextSources[index] = { ...sources[index], paused }
-  return { ...prefs, customSources: nextSources }
+  return setCustomSourcesPaused(prefs, [sourceId], paused)
 }
 
 export function replaceCustomSourceInstance(

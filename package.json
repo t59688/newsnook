@@ -32,6 +32,7 @@
     "test:custom-category": "rolldown scripts/custom-category-lifecycle.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/custom-category-lifecycle.test.mjs && node node_modules/.cache/newsnook/custom-category-lifecycle.test.mjs",
     "test:category-source-usage": "npx tsx scripts/category-source-usage.test.ts",
     "test:custom-sources": "npx tsx scripts/custom-sources-opml.test.ts && npx tsx scripts/custom-sources-rsshub-ui.test.tsx",
+    "test:subscription-management": "npx tsx scripts/subscription-category-management.test.ts && npx tsx scripts/subscription-management-ui.test.tsx && npx tsx scripts/source-filter-chips-management.test.tsx",
     "test:feed-discovery": "npx tsx scripts/feed-discovery.test.ts && npx tsx scripts/feed-discovery-runtime.test.ts && npx tsx scripts/feed-discovery-online.test.ts && npx tsx scripts/content-link-discovery.test.ts && npx tsx scripts/feed-discovery-ui.test.tsx && npx tsx scripts/rsshub.test.ts && npx tsx scripts/rsshub-auto-probe.test.ts && npx tsx scripts/rsshub-ui.test.tsx",
     "test:rsshub": "npx tsx scripts/rsshub.test.ts && npx tsx scripts/rsshub-auto-probe.test.ts && npx tsx scripts/rsshub-ui.test.tsx",
     "test:framework-detect": "npx tsx scripts/framework-detect.test.ts",

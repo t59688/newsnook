@@ -1,11 +1,12 @@
 import { useState } from 'react'
-import { Bookmark, BookmarkCheck, CircleMinus, Pencil } from 'lucide-react'
+import { Bookmark, BookmarkCheck, CircleMinus, FolderInput, Pencil } from 'lucide-react'
 
 import { useLongPressAction } from '../hooks/useLongPressAction'
 import type { Point } from '../lib/contextActions'
+import type { NewsCategory } from '../sources/categories'
 import type { NewsSource } from '../sources/registry'
 import { ContextActionMenu, type ContextActionItem } from './ContextActionMenu'
-import { PromptDialog } from './ConfirmDialog'
+import { OptionPickerDialog, PromptDialog } from './ConfirmDialog'
 
 interface Props {
   sources: NewsSource[]
@@ -15,6 +16,8 @@ interface Props {
   onToggleFavorite?: (sourceId: string) => void
   onRemoveSource?: (sourceId: string) => void
   onRenameSource?: (sourceId: string, name: string) => void
+  moveTargets?: NewsCategory[]
+  onMoveSource?: (sourceId: string, targetCategoryId: string) => void
   /** 可选：每个信源的文章数量统计 */
   counts?: Record<string, number>
 }
@@ -27,10 +30,14 @@ export function SourceFilterChips({
   onToggleFavorite,
   onRemoveSource,
   onRenameSource,
+  moveTargets = [],
+  onMoveSource,
   counts,
 }: Props) {
   const [actionMenu, setActionMenu] = useState<{ sourceId: string; anchor: Point } | null>(null)
   const [renameSourceId, setRenameSourceId] = useState<string | null>(null)
+  const [moveSourceId, setMoveSourceId] = useState<string | null>(null)
+  const [moveTargetCategoryId, setMoveTargetCategoryId] = useState('')
   const longPress = useLongPressAction<string>((sourceId, anchor) => {
     setActionMenu({ sourceId, anchor })
   })
@@ -60,6 +67,17 @@ export function SourceFilterChips({
                 onSelect: () => onToggleFavorite(actionSource.id),
               },
             ]
+          : []),
+        ...(onMoveSource && moveTargets.length
+          ? [{
+              id: 'move',
+              label: '移动到分类',
+              icon: FolderInput,
+              onSelect: () => {
+                setMoveSourceId(actionSource.id)
+                setMoveTargetCategoryId(moveTargets[0]?.id ?? '')
+              },
+            }]
           : []),
         ...(onRemoveSource
           ? [
@@ -149,6 +167,19 @@ export function SourceFilterChips({
         caption="当前预设 · 信源管理"
         actions={actionItems}
         onClose={() => setActionMenu(null)}
+      />
+      <OptionPickerDialog
+        open={Boolean(moveSourceId && onMoveSource && moveTargets.length)}
+        title="移动到分类"
+        value={moveTargets.some((category) => category.id === moveTargetCategoryId)
+          ? moveTargetCategoryId
+          : moveTargets[0]?.id ?? ''}
+        options={moveTargets.map((category) => ({ id: category.id, label: category.label }))}
+        onCancel={() => setMoveSourceId(null)}
+        onChange={(targetCategoryId) => {
+          if (moveSourceId && onMoveSource) onMoveSource(moveSourceId, targetCategoryId)
+          setMoveSourceId(null)
+        }}
       />
       <PromptDialog
         open={Boolean(renameSource && onRenameSource)}
