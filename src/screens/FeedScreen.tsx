@@ -56,6 +56,9 @@ interface Props {
   onCategoryChange?: (id: CategoryId) => void
   /** 当前分类下可供筛选的信源列表 */
   availableSources?: NewsSource[]
+  /** 当前分类可移动到的普通分类（不含聚合分类与当前分类） */
+  moveTargetCategories?: NewsCategory[]
+  onMoveSourceToCategory?: (sourceId: string, targetCategoryId: CategoryId) => void
   /** 当前分类下选中的单个信源 ID（null 为全部） */
   selectedSourceId?: string | null
   /** 切换选中的单个信源 */
@@ -221,6 +224,8 @@ export const FeedScreen = memo(function FeedScreen({
   categoryId,
   onCategoryChange,
   availableSources,
+  moveTargetCategories,
+  onMoveSourceToCategory,
   selectedSourceId,
   onSelectSource,
   favoriteSourceIds,
@@ -979,6 +984,8 @@ export const FeedScreen = memo(function FeedScreen({
               onToggleFavorite={onToggleFavoriteSource}
               onRenameSource={onRenameSource}
               onRemoveSource={onRemoveSource}
+              moveTargets={moveTargetCategories}
+              onMoveSource={onMoveSourceToCategory}
             />
           </div>
         )}

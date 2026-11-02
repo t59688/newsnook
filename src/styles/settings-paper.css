@@ -319,7 +319,15 @@ html[data-theme='dark'][data-scheme='ink'] .paper-settings-shell {
   padding-bottom: 13px;
   border: 0;
 }
-.paper-settings-section-content > div.page-x.flex.items-center .font-mono {
+.paper-settings-section-content .custom-sources-filter-toolbar {
+  min-height: 57px;
+  padding-top: 13px;
+  padding-bottom: 13px;
+  border: 0;
+  align-items: center;
+}
+.paper-settings-section-content > div.page-x.flex.items-center .font-mono,
+.paper-settings-section-content .custom-sources-filter-toolbar .font-mono {
   font-family: var(--font-body);
   font-size: 12px;
   letter-spacing: 0;

@@ -170,8 +170,9 @@ export function normalizePreferences(raw: unknown): Preferences {
       const rawShort = typeof item.short === 'string' ? item.short.trim() : ''
       if (!rawId || !rawLabel) return
 
+      // Empty categories can remain after the last source is moved elsewhere.
+      // Keep them in normalized preferences so they survive app restarts.
       const sourceIds = uniqueValidSourceIds(item.sourceIds, knownSourceIds)
-      if (!sourceIds.length) return
 
       customCategories.push({
         id: rawId,

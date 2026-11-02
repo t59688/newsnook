@@ -102,10 +102,12 @@ import { FAVORITES_CATEGORY_ID, RECOMMEND_CATEGORY_ID, type CategoryId } from '.
 import { applySnapshotToPrefs, removeSourcesFromPresets } from './sources/presets'
 import {
   FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   FONT_FAMILY_OPTIONS,
   FONT_SCALE_OPTIONS,
   addCustomCategory,
   addCustomSource,
+  addSourcesToCategory,
   allRegisteredSources,
   automaticSourceIds,
   batchImportSourcesAndCategories,
@@ -122,6 +124,8 @@ import {
   setAutoRefreshOnCategorySwitch,
   setCategoryOrder,
   moveCategory,
+  moveSourceBetweenCategories,
+  moveSourcesToCategory,
   moveCmsSource,
   setEinkMode,
   setHomeFeedLayout,
@@ -146,7 +150,7 @@ import {
   type TypographyPrefs,
 } from './sources/preferences'
 import { SITES, SOURCES, findSite, findSource, makeCustomSourceId } from './sources/registry'
-import { findSubscriptionDuplicate, replaceCustomSourceInstance, setCustomSourcePaused } from './features/feedDiscovery/subscriptionActions'
+import { findSubscriptionDuplicate, replaceCustomSourceInstance, setCustomSourcePaused, setCustomSourcesPaused } from './features/feedDiscovery/subscriptionActions'
 import { SettingsShell } from './components/SettingsShell'
 
 // The home feed is the only tab required for a normal cold start.
@@ -928,6 +932,22 @@ export default function App() {
     [categoryId, update],
   )
 
+  const handleMoveSourceToCategory = useCallback(
+    (sourceId: string, targetCategoryId: CategoryId) => {
+      if (categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID) return
+      if (categoryId === FOLLOWS_ENABLED_SOURCES) {
+        // Moving out of 综合 means removing the source from the enabled-channel
+        // aggregate and assigning it to the chosen ordinary category.
+        update((prev) => addSourcesToCategory(prev, [sourceId], targetCategoryId))
+        setEnabledIds((prev) => prev.filter((id) => id !== sourceId))
+      } else {
+        update((prev) => moveSourceBetweenCategories(prev, sourceId, categoryId, targetCategoryId))
+      }
+      setCategoryFilterSourceId((prev) => (prev === sourceId ? null : prev))
+    },
+    [categoryId, update],
+  )
+
   const handleRemoveCategory = useCallback(
     (id: CategoryId) => update((prev) => toggleCategoryVisible(prev, id)),
     [update],
@@ -1634,6 +1654,15 @@ export default function App() {
             setEnabledIds((prev) => prev.filter((id) => !deleted.has(id)))
             presets.removeSourceReferences(sourceIds)
           }}
+          onMoveCustomSourcesToCategory={(sourceIds, categoryId) =>
+            update((prev) => moveSourcesToCategory(prev, sourceIds, categoryId))
+          }
+          onAddCustomSourcesToCategory={(sourceIds, categoryId) =>
+            update((prev) => addSourcesToCategory(prev, sourceIds, categoryId))
+          }
+          onSetCustomSourcesPaused={(sourceIds, paused) =>
+            update((prev) => setCustomSourcesPaused(prev, sourceIds, paused))
+          }
           onBatchImport={(sources, categories) =>
             update((prev) => batchImportSourcesAndCategories(prev, sources, categories))
           }
@@ -1963,6 +1992,18 @@ export default function App() {
           categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID
             ? undefined
             : handleRemoveCategorySource
+        }
+        moveTargetCategories={
+          categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID
+            ? []
+            : regularCategories.filter(
+                (category) => category.id !== categoryId && !isAggregateCategoryId(category.id),
+              )
+        }
+        onMoveSourceToCategory={
+          categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID
+            ? undefined
+            : handleMoveSourceToCategory
         }
         onRemoveCategory={handleRemoveCategory}
         onRenameCategory={handleRenameCategory}
