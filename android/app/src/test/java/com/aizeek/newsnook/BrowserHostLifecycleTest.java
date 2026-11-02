@@ -24,7 +24,11 @@ import org.robolectric.Robolectric;
 import org.robolectric.RobolectricTestRunner;
 import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
+import org.robolectric.annotation.Implementation;
+import org.robolectric.annotation.Implements;
 import org.robolectric.annotation.LooperMode;
+import org.robolectric.annotation.RealObject;
+import org.robolectric.shadow.api.Shadow;
 import org.robolectric.shadows.ShadowDialog;
 import org.robolectric.shadows.ShadowWebView;
 
@@ -340,13 +344,23 @@ public class BrowserHostLifecycleTest {
         return call.result;
     }
 
+    @Implements(WebView.class)
+    public static class LongClickableWebView extends ShadowWebView {
+        @RealObject private WebView realWebView;
+        @Implementation protected boolean performLongClick() {
+            return Shadow.directlyOn(realWebView, View.class, "performLongClick");
+        }
+    }
+
     private PopupWindow linkContextPopup() throws Exception {
         Field popup = BrowserHostPlugin.class.getDeclaredField("linkContextPopup");
         popup.setAccessible(true);
         return (PopupWindow) popup.get(host);
     }
 
-    @Test public void longPressedWebLinkUsesCustomChromeAndOpensInANewBackgroundTab() throws Exception {
+    @Test
+    @Config(shadows = LongClickableWebView.class)
+    public void longPressedWebLinkUsesCustomChromeAndOpensInANewBackgroundTab() throws Exception {
         assertNull(open("https://example.com/article").error);
         WebView article = currentView();
         int articleTabId = state().getInt("tabId");
@@ -378,7 +392,9 @@ public class BrowserHostLifecycleTest {
         assertSame(article, currentView());
     }
 
-    @Test public void longPressedWebLinkCanOpenAndActivateANewTab() throws Exception {
+    @Test
+    @Config(shadows = LongClickableWebView.class)
+    public void longPressedWebLinkCanOpenAndActivateANewTab() throws Exception {
         assertNull(open("https://example.com/article").error);
         WebView article = currentView();
         int articleTabId = state().getInt("tabId");
