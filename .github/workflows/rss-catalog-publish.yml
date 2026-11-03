@@ -16,6 +16,10 @@ on:
         description: '发布到 R2（关闭则只构建与校验）'
         default: false
         type: boolean
+      configure_cors:
+        description: '配置公开只读 CORS（需要桶配置权限，仅首次设置时使用）'
+        default: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -53,7 +57,7 @@ jobs:
           name: rss-catalog-${{ github.run_number }}
           path: ${{ runner.temp }}/rss-catalog/
       - name: Ensure public catalog CORS
-        if: inputs.publish
+        if: inputs.publish && inputs.configure_cors
         env:
           R2_BUCKET: newsnook-update
           R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
@@ -72,6 +76,7 @@ jobs:
               echo '{"CORSRules":[]}' > "$BEFORE"
             else
               echo 'Unable to read existing R2 CORS; existing configuration was not changed'
+              sed -n 's/.*An error occurred (\([^)]*\)).*/R2 CORS error code: \1/p' "$RUNNER_TEMP/rss-cors-error.txt"
               exit 1
             fi
           fi
