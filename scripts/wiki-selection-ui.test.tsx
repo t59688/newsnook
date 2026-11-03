@@ -136,6 +136,7 @@ try {
   await act(async () => searchBtn.click())
   const searchSheet = document.querySelector('.wiki-sheet-search')
   assert.ok(searchSheet, '点击搜索按钮弹出内置浏览器搜索半窗')
+  assert.equal(memory.has('newsnook:browser:history:v1'), false, '划词搜索不能写入普通浏览器历史')
   assert.equal(searchSheet.classList.contains('wiki-sheet-expanded'), false, '默认呈半窗状态')
 
   const expandBtn = searchSheet.querySelector<HTMLButtonElement>('[aria-label="展开为全屏"]')

@@ -564,6 +564,24 @@ public class BrowserHostLifecycleTest {
         }
     }
 
+    @Test
+    @Config(instrumentedPackages = {"androidx.webkit"}, shadows = {DocumentStartFeatures.class})
+    public void transientSearchFailsClosedWithoutMultiProfileAndDoesNotChangeBrowserSettings() throws Exception {
+        assertNull(open("https://example.com/normal").error);
+        WebView existing = currentView();
+        Call temporary = new Call("open", new JSObject()
+            .put("url", "https://www.google.com/search?q=test")
+            .put("embedded", true).put("transientSearch", true)
+            .put("settings", new JSObject().put("privateMode", true)));
+        host.open(temporary);
+        await(temporary);
+        assertNotNull("unsupported WebView must refuse shared-data fallback", temporary.error);
+        assertTrue(temporary.error.contains("不支持隔离搜索"));
+        assertNull("no shared-profile page is opened", currentView());
+        assertFalse("temporary request must not mutate saved browser privacy", BrowserHostPlugin.isPrivacyModeEnabled(activity));
+        assertNotNull(existing);
+    }
+
     @org.robolectric.annotation.Implements(value = androidx.webkit.WebViewFeature.class, isInAndroidSdk = false)
     public static class DocumentStartFeatures {
         @org.robolectric.annotation.Implementation public static boolean isFeatureSupported(String feature) {

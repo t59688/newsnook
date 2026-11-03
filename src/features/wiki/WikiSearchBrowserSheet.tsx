@@ -18,7 +18,6 @@ import {
   BROWSER_KEYS,
   loadBrowserPreferences,
   loadBrowserSearchEngine,
-  readBrowserList,
   resolveBrowserAddress,
   writeBrowserPreference,
   type BrowserSearchChoice,
@@ -28,10 +27,6 @@ import {
   type BrowserSearchProvider,
 } from '../browser/browserSearchCatalog'
 import { getBrowserBrandIcon } from '../browser/browserBrandIcons'
-import {
-  normalizeBrowserVisits,
-  saveBrowserVisit,
-} from '../browser/browserHistory'
 import { useBrowserSession } from '../browser/useBrowserSession'
 import { WikiSheetGrabber } from './WikiSheetGrabber'
 
@@ -78,27 +73,13 @@ export function WikiSearchBrowserSheet({
     )
   }, [term, searchEngine])
 
-  const recordVisit = useCallback(
-    (url: string, title: string) => {
-      if (preferences.privateMode) return
-      try {
-        const current = normalizeBrowserVisits(readBrowserList(BROWSER_KEYS.history))
-        const next = saveBrowserVisit(current, url, title)
-        writeBrowserPreference(BROWSER_KEYS.history, next)
-      } catch {
-        // Ignore storage failure
-      }
-    },
-    [preferences.privateMode],
-  )
-
   const session = useBrowserSession(
     viewport,
     false,
-    recordVisit,
+    () => {},
     false,
     undefined,
-    { settings: preferences },
+    { settings: preferences, transientSearch: true },
   )
 
   const sessionRef = useRef(session)
@@ -143,6 +124,7 @@ export function WikiSearchBrowserSheet({
   }, [onClose])
 
   const isAndroid = Capacitor.getPlatform() === 'android'
+  const searchError = session.error || session.state.error
 
   const handleOpenFullBrowser = async () => {
     if (!onOpenInFullBrowser || fullBrowserOpeningRef.current) return
@@ -341,17 +323,28 @@ export function WikiSearchBrowserSheet({
           <div ref={viewport} data-browser-viewport className="h-full w-full overflow-hidden bg-ink" />
         )}
 
-        {session.state.error && isAndroid && (
+        {searchError && isAndroid && (
           <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-ink">
-            <p className="mb-3 text-[14px] text-paper-muted">{session.state.error}</p>
-            <button
-              type="button"
-              onClick={() => void session.command('reload')}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-haze px-3 py-1.5 text-[13px]"
-            >
-              <RefreshCw size={14} />
-              <span>重新加载</span>
-            </button>
+            <p className="mb-3 text-[14px] text-paper-muted">{searchError}</p>
+            {searchError.includes('不支持隔离搜索') && onOpenInFullBrowser ? (
+              <button
+                type="button"
+                onClick={() => { void handleOpenFullBrowser() }}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-haze px-3 py-1.5 text-[13px]"
+              >
+                <ExternalLink size={14} />
+                <span>在完整浏览器中打开</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => void session.command('reload')}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-haze px-3 py-1.5 text-[13px]"
+              >
+                <RefreshCw size={14} />
+                <span>重新加载</span>
+              </button>
+            )}
           </div>
         )}
       </div>

@@ -45,7 +45,7 @@ export function useBrowserSession(
   onVisit: (url: string, title: string) => void,
   bottomAddress: boolean,
   recoverySession?: BrowserRecoverySession,
-  options: {settings?: BrowserPreferences; initialUrl?: string; agentSheetRef?: RefObject<HTMLElement | null>; agentSheetVisible?: boolean; agentOperating?: boolean} = {},
+  options: {settings?: BrowserPreferences; initialUrl?: string; transientSearch?: boolean; agentSheetRef?: RefObject<HTMLElement | null>; agentSheetVisible?: boolean; agentOperating?: boolean} = {},
 ) {
   const initialEntry: InitialBrowserEntry = options.initialUrl && /^https?:\/\//i.test(options.initialUrl) ? options.initialUrl
     : recoverySession && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).privateMode && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).incognitoMode ? recoverySession : null
@@ -187,7 +187,7 @@ export function useBrowserSession(
           stateRef.current = next
           return next
         })
-        if (!settingsRef.current.privateMode && !settingsRef.current.incognitoMode && !event.privateMode && event.recordHistory !== false && event.url && /^https?:\/\//i.test(event.url) && event.phase === 'end' && !event.error) {
+        if (!options.transientSearch && !settingsRef.current.privateMode && !settingsRef.current.incognitoMode && !event.privateMode && event.recordHistory !== false && event.url && /^https?:\/\//i.test(event.url) && event.phase === 'end' && !event.error) {
           visit.current(event.url, event.title || event.url)
         }
         if (opened.current) void refresh().catch(() => undefined)
@@ -337,13 +337,13 @@ export function useBrowserSession(
     const generation = epoch.current
     if (Capacitor.getPlatform() !== 'android') throw new Error('请在 Android 应用中打开网页')
     if (opened.current && !snapshot) {
-      await nativeBrowser.updateScripts({scripts: loadUserScripts().filter(script => script.enabled)})
+      await nativeBrowser.updateScripts({scripts: options.transientSearch ? [] : loadUserScripts().filter(script => script.enabled)})
       await nativeBrowser.navigate({action: 'url', url})
     } else {
       initialSession.current.visible = null
       await nativeBrowser.open({
-        url, scripts: loadUserScripts().filter(script => script.enabled),
-        settings: settingsRef.current,
+        url, scripts: options.transientSearch ? [] : loadUserScripts().filter(script => script.enabled),
+        settings: settingsRef.current, transientSearch: options.transientSearch === true,
         embedded: true, visible: false, ...getBounds(), palette: browserThemePalette(),
         ...(!settingsRef.current.privateMode && !settingsRef.current.incognitoMode && snapshot ? {recoverySession: snapshot} : {}),
       })
@@ -352,7 +352,7 @@ export function useBrowserSession(
     if (live.current && !closing.current && generation === epoch.current && initialSession.current.entry === (snapshot ?? url)) {
       initialSession.current.commandAcknowledged = true
     }
-  }, [getBounds])
+  }, [getBounds, options.transientSearch])
 
   useEffect(() => {
     if (!recoverySession || settingsRef.current.privateMode || settingsRef.current.incognitoMode || recoveryStarted.current) return

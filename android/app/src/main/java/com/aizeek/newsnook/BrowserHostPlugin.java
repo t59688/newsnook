@@ -50,6 +50,8 @@ import android.webkit.WebSettings;
 import android.webkit.WebStorage;
 import androidx.webkit.WebStorageCompat;
 import androidx.webkit.WebViewFeature;
+import androidx.webkit.WebViewCompat;
+import androidx.webkit.ProfileStore;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import androidx.activity.result.ActivityResultLauncher;
@@ -73,6 +75,7 @@ import java.io.ByteArrayOutputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -89,6 +92,7 @@ public class BrowserHostPlugin extends Plugin {
     private static final String BOOKMARKS = "bookmarks-v1";
     private static final String RESTORED_PAGE_ERROR = "网页进程已恢复，请重新加载此页";
     private static final String SITE_DATA_CLEARING = "正在清理该站点数据…";
+    private static final String TEMP_SEARCH_PREFIX = "newsnook-temp-search-";
     // A one-time, memory-only handoff between the retired and recreated Bridges.
     private static final AtomicReference<JSObject> pendingRecoverySession = new AtomicReference<>();
 
@@ -319,6 +323,8 @@ public class BrowserHostPlugin extends Plugin {
     private SiteDataClear siteDataClear;
     private Dialog dialog;
     private boolean embeddedMode;
+    private boolean transientSearch;
+    private String transientSearchProfile;
     private FrameLayout pageFrame;
     private LinearLayout root;
     private EditText address;
@@ -398,7 +404,7 @@ public class BrowserHostPlugin extends Plugin {
     private boolean privateMode() { return isPrivacyModeEnabled(getContext()); }
 
     private boolean recordingDisabled() {
-        return privateMode() || getContext().getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE)
+        return transientSearch || privateMode() || getContext().getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE)
             .getBoolean("incognito-enabled", false);
     }
 
@@ -747,6 +753,19 @@ public class BrowserHostPlugin extends Plugin {
         catch (Exception error) { call.reject("无法读取网页图片"); }
     }
 
+    /** Remove orphaned temporary profiles from an interrupted prior search. */
+    private void removeAbandonedSearchProfiles() {
+        if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return;
+        ProfileStore store = ProfileStore.getInstance();
+        for (String name : store.getAllProfileNames()) {
+            if (!name.startsWith(TEMP_SEARCH_PREFIX)) continue;
+            try { store.deleteProfile(name); }
+            catch (RuntimeException error) {
+                android.util.Log.w("NewsNookBrowser", "Cannot remove abandoned search profile", error);
+            }
+        }
+    }
+
     @PluginMethod public void open(PluginCall call) {
         final BrowserSettings requestedSettings;
         try {
@@ -764,15 +783,25 @@ public class BrowserHostPlugin extends Plugin {
         JSArray scripts = call.getArray("scripts");
         JSObject palette = call.getObject("palette");
         boolean embed = Boolean.TRUE.equals(call.getBoolean("embedded", false));
+        boolean temporary = Boolean.TRUE.equals(call.getBoolean("transientSearch", false));
         boolean visible = Boolean.TRUE.equals(call.getBoolean("visible", true));
         float top = call.getFloat("top", 0f);
         float bottom = call.getFloat("bottom", 0f);
         float occludedBottom = call.getFloat("occludedBottom", 0f);
         onUi(call, () -> {
-            savePrivacyPreference(requestedSettings.privateMode, requestedSettings.incognitoMode);
             closeNative();
             try {
+                if (temporary && !WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) {
+                    call.reject("当前 Android WebView 不支持隔离搜索，请升级系统 WebView 或使用完整浏览器");
+                    return;
+                }
+                if (!temporary) savePrivacyPreference(requestedSettings.privateMode, requestedSettings.incognitoMode);
                 closing = false;
+                if (temporary) {
+                    removeAbandonedSearchProfiles();
+                    transientSearch = true;
+                    transientSearchProfile = TEMP_SEARCH_PREFIX + UUID.randomUUID();
+                }
                 embeddedMode = embed;
                 embeddedVisible = visible;
                 scriptSnapshot = scripts;
@@ -1697,12 +1726,17 @@ public class BrowserHostPlugin extends Plugin {
             }
             @Override public android.view.inputmethod.InputConnection onCreateInputConnection(EditorInfo info) {
                 android.view.inputmethod.InputConnection connection = super.onCreateInputConnection(info);
-                if (privateMode() && Build.VERSION.SDK_INT >= 26)
+                if ((privateMode() || transientSearch) && Build.VERSION.SDK_INT >= 26)
                     info.imeOptions |= EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING;
                 return connection;
             }
         };
-        if (privateMode()) {
+        if (transientSearchProfile != null) {
+            // Must precede WebSettings, clients, and navigation: no default-profile data may be accessed.
+            try { WebViewCompat.setProfile(view, transientSearchProfile); }
+            catch (RuntimeException error) { view.destroy(); throw error; }
+        }
+        if (privateMode() || transientSearch) {
             view.setSaveEnabled(false);
             view.setSaveFromParentEnabled(false);
             if (Build.VERSION.SDK_INT >= 26)
@@ -2783,7 +2817,7 @@ public class BrowserHostPlugin extends Plugin {
         settings.setTextZoom(browserSettings.textZoom);
         settings.setMediaPlaybackRequiresUserGesture(browserSettings.mediaPlaybackRequiresUserGesture);
         CookieManager.getInstance().setAcceptThirdPartyCookies(tab.webView, browserSettings.thirdPartyCookiesEnabled);
-        boolean privacy = privateMode();
+        boolean privacy = privateMode() || transientSearch;
         if (recordingDisabled()) tab.recordHistory = false;
         settings.setSaveFormData(!privacy);
         settings.setCacheMode(privacy ? WebSettings.LOAD_NO_CACHE : WebSettings.LOAD_DEFAULT);
@@ -3085,6 +3119,13 @@ public class BrowserHostPlugin extends Plugin {
         List<Tab> released = new ArrayList<>(tabs);
         tabs.clear(); current=null;
         for (Tab tab : released) releaseTab(tab);
+        String retiredSearchProfile = transientSearchProfile;
+        transientSearchProfile = null;
+        transientSearch = false;
+        if (retiredSearchProfile != null) {
+            try { ProfileStore.getInstance().deleteProfile(retiredSearchProfile); }
+            catch (RuntimeException error) { android.util.Log.w("NewsNookBrowser", "Temporary search cleanup deferred", error); }
+        }
         finishAgentDrain(null);
         nextTabId = 1;
         scriptSnapshot=null; address=null; titleView=null; tabCounter=null; menuButton=null;

@@ -37,7 +37,7 @@ export interface BrowserRecoverySession {
 export interface BrowserFindResult {tabId: number; activeMatch: number; count: number; done: boolean}
 export type BrowserCommand = 'back' | 'forward' | 'reload' | 'stop' | 'desktop' | 'new' | 'home' | 'scanMedia' | 'downloads' | 'scriptMenu'
 interface NativeBrowser {
-  open(args: {url: string; scripts: ReturnType<typeof loadUserScripts>; embedded: true; visible: boolean; top: number; bottom: number; occludedBottom: number; palette: Record<string, string>; settings: BrowserPreferences; recoverySession?: BrowserRecoverySession}): Promise<void>
+  open(args: {url: string; scripts: ReturnType<typeof loadUserScripts>; embedded: true; visible: boolean; top: number; bottom: number; occludedBottom: number; palette: Record<string, string>; settings: BrowserPreferences; recoverySession?: BrowserRecoverySession; transientSearch?: boolean}): Promise<void>
   takeRecoverySession(): Promise<{session: BrowserRecoverySession | null}>
   navigate(args: {action: BrowserCommand | 'url'; url?: string}): Promise<void>
   state(): Promise<BrowserState>
