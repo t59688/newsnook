@@ -465,20 +465,32 @@ public class BrowserHostPlugin extends Plugin {
             return;
         }
         String nextProfile = isolatedBrowsing(requested) ? TEMP_BROWSER_PREFIX + UUID.randomUUID() : null;
+        Tab preparedTab = null;
+        WebView preparedView = null;
         if (nextProfile != null) {
             removeAbandonedTemporaryProfiles();
-            // Verify the provider before discarding live tabs or mutating persisted mode settings.
-            WebView probe = new WebView(getActivity());
-            try { assignBrowserProfile(probe, nextProfile); }
-            catch (RuntimeException error) {
-                try { probe.destroy(); } catch (RuntimeException ignored) {}
+            // Bind the actual replacement view before changing the stored mode or destroying live tabs.
+            // Reusing this instance avoids constructing a second, throwaway WebView.
+            preparedTab = createBrowserTab("about:blank", nextTabId, requested);
+            try {
+                preparedView = createBrowserWebView(preparedTab);
+                assignBrowserProfile(preparedView, nextProfile);
+            } catch (RuntimeException error) {
+                if (preparedView != null) {
+                    try { preparedView.destroy(); } catch (RuntimeException ignored) {}
+                }
                 disposeTemporaryProfile(nextProfile);
                 throw error;
             }
-            probe.destroy();
         }
         try { savePrivacyPreference(requested.privateMode, requested.incognitoMode); }
-        catch (RuntimeException error) { disposeTemporaryProfile(nextProfile); throw error; }
+        catch (RuntimeException error) {
+            if (preparedView != null) {
+                try { preparedView.destroy(); } catch (RuntimeException ignored) {}
+            }
+            disposeTemporaryProfile(nextProfile);
+            throw error;
+        }
 
         // Never transfer private navigation, back stack, forms or open tabs into another mode.
         for (Tab tab : tabs) tab.recordHistory = false;
@@ -492,7 +504,14 @@ public class BrowserHostPlugin extends Plugin {
         temporaryProfileName = nextProfile;
         browserSettings = requested;
         disposeTemporaryProfile(oldProfile);
-        if (!retired.isEmpty()) createTab("about:blank", null);
+        if (!retired.isEmpty()) {
+            if (preparedView == null) createTab("about:blank", null);
+            else {
+                nextTabId++;
+                tabs.add(preparedTab);
+                initializeTab(preparedTab, true, preparedView);
+            }
+        }
     }
 
     @PluginMethod public void updateSettings(PluginCall call) {
@@ -1757,6 +1776,17 @@ public class BrowserHostPlugin extends Plugin {
         return isHttpUrl(candidate) ? candidate : null;
     }
 
+    private Tab createBrowserTab(String url, int id, BrowserSettings settings) {
+        Tab tab = new Tab(url, id);
+        tab.userAgentMode = settings.userAgentMode;
+        tab.desktop = "desktop".equals(tab.userAgentMode);
+        if (!embeddedMode && preferences.getBoolean("desktop-default", false)) {
+            tab.desktop = true;
+            tab.userAgentMode = "desktop";
+        }
+        return tab;
+    }
+
     private void createTab(String url, PluginCall call) {
         createTab(url, call, true);
     }
@@ -1767,13 +1797,7 @@ public class BrowserHostPlugin extends Plugin {
             Toast.makeText(getContext(), "最多同时打开 6 个标签页", Toast.LENGTH_SHORT).show();
             return;
         }
-        Tab tab = new Tab(url, nextTabId++);
-        tab.userAgentMode = browserSettings.userAgentMode;
-        tab.desktop = "desktop".equals(tab.userAgentMode);
-        if (!embeddedMode && preferences.getBoolean("desktop-default", false)) {
-            tab.desktop = true;
-            tab.userAgentMode = "desktop";
-        }
+        Tab tab = createBrowserTab(url, nextTabId++, browserSettings);
         tab.pendingOpen = call;
         tabs.add(tab);
         initializeTab(tab, activate);
@@ -1789,13 +1813,11 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void initializeTab(Tab tab, boolean activate) {
-        if (deferForSiteClear(tab, tab.url)) {
-            if (activate) selectTab(tab);
-            return;
-        }
-        tab.siteDataClearing = false;
-        tab.recreateAfterSiteClear = false;
-        WebView view = new WebView(getActivity()) {
+        initializeTab(tab, activate, null);
+    }
+
+    private WebView createBrowserWebView(Tab tab) {
+        return new WebView(getActivity()) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN && (tab.agentInput == null || !tab.agentInput.isDispatching())
                         && agentOwner.tabId() == tab.id) pauseAgentForHuman("user_key");
@@ -1818,7 +1840,17 @@ public class BrowserHostPlugin extends Plugin {
                 return connection;
             }
         };
-        if (temporaryProfileName != null) {
+    }
+
+    private void initializeTab(Tab tab, boolean activate, WebView preparedView) {
+        if (deferForSiteClear(tab, tab.url)) {
+            if (activate) selectTab(tab);
+            return;
+        }
+        tab.siteDataClearing = false;
+        tab.recreateAfterSiteClear = false;
+        WebView view = preparedView == null ? createBrowserWebView(tab) : preparedView;
+        if (preparedView == null && temporaryProfileName != null) {
             // Assign before WebSettings, clients and navigation: never read default-profile site data.
             try { assignBrowserProfile(view, temporaryProfileName); }
             catch (RuntimeException error) { view.destroy(); throw error; }
@@ -2556,16 +2588,48 @@ public class BrowserHostPlugin extends Plugin {
         animator.start();
     }
 
+    private void finishPreparedNavigation(Tab tab, WebView view, int version, String warning) {
+        tab.scriptVersion = version;
+        tab.preparing = false;
+        Runnable pending = tab.pendingNavigation;
+        tab.pendingNavigation = null;
+        if (pending != null) {
+            tab.hasLoaded = true;
+            pending.run();
+        } else if (!tab.hasLoaded) {
+            tab.hasLoaded = true;
+            view.loadUrl(tab.url);
+        }
+        if (warning != null) Toast.makeText(getContext(), warning, Toast.LENGTH_LONG).show();
+        resolvePendingOpen(tab);
+        if (current == tab) { updateChrome(); sendNavigation(tab.url, "state"); }
+    }
+
     private void prepareRuntime(Tab tab) {
         final WebView view = tab.webView;
         if (!isLive(tab, view)) return;
-        if (tab.preparingRuntime != null) tab.preparingRuntime.close();
-        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view, recordingDisabled());
+        if (tab.preparingRuntime != null) {
+            tab.preparingRuntime.close();
+            tab.preparingRuntime = null;
+        }
         final JSArray snapshot = scriptSnapshot;
         final int version = scriptVersion;
-        tab.preparingRuntime = runtime;
         tab.preparing = true;
         if (current == tab) { updateChrome(); sendNavigation(tab.url, "state"); }
+        if (snapshot == null || snapshot.length() == 0) {
+            // Keep open asynchronous, but do not allocate a script runtime or background thread.
+            mainHandler.post(() -> {
+                if (!isLive(tab, view) || !activityAvailable() || tab.preparingRuntime != null
+                        || (tab.scriptVersion == version && !tab.preparing)) return;
+                if (version != scriptVersion) { prepareRuntime(tab); return; }
+                if (tab.runtime != null) tab.runtime.close();
+                tab.runtime = null;
+                finishPreparedNavigation(tab, view, version, null);
+            });
+            return;
+        }
+        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view, recordingDisabled());
+        tab.preparingRuntime = runtime;
         new Thread(() -> {
             String warning = null;
             try { runtime.prepare(snapshot); }
@@ -2598,20 +2662,7 @@ public class BrowserHostPlugin extends Plugin {
                     if (!recordingDisabled()) android.util.Log.w("NewsNookBrowser", "Userscript installation failed", error);
                     Toast.makeText(getContext(), "脚本功能不可用，请检查脚本或更新系统 WebView", Toast.LENGTH_LONG).show();
                 }
-                tab.scriptVersion = version;
-                tab.preparing = false;
-                Runnable pending = tab.pendingNavigation;
-                tab.pendingNavigation = null;
-                if (pending != null) {
-                    tab.hasLoaded = true;
-                    pending.run();
-                } else if (!tab.hasLoaded) {
-                    tab.hasLoaded = true;
-                    view.loadUrl(tab.url);
-                }
-                if (resultWarning != null) Toast.makeText(getContext(), resultWarning, Toast.LENGTH_LONG).show();
-                resolvePendingOpen(tab);
-                if (current == tab) { updateChrome(); sendNavigation(tab.url, "state"); }
+                finishPreparedNavigation(tab, view, version, resultWarning);
             });
         }, "NewsNookScriptPrepare").start();
     }

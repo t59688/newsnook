@@ -177,6 +177,7 @@ public class BrowserHostLifecycleTest {
         assertNotEquals(oldTabId, state().getInt("tabId"));
         String profile = host.assignedProfiles.get(isolated);
         assertTrue(profile.startsWith("newsnook-temp-browser-"));
+        assertEquals("profile validation must reuse the actual WebView instead of allocating a probe", 1, host.assignedProfiles.size());
         assertEquals("about:blank", state().getString("url"));
         assertFalse(state().getBoolean("recordHistory", true));
         assertTrue(state().getBoolean("privateMode", false));
@@ -255,6 +256,7 @@ public class BrowserHostLifecycleTest {
         assertNull(stricter.error);
         String currentProfile = host.assignedProfiles.get(currentView());
         assertNotEquals(previous, currentProfile);
+        assertEquals("each isolated mode receives exactly one profile-bound WebView", 2, host.assignedProfiles.size());
         assertTrue(host.deletedProfiles.contains(previous));
         assertEquals("about:blank", state().getString("url"));
         assertEquals(android.webkit.WebSettings.LOAD_NO_CACHE, currentView().getSettings().getCacheMode());
@@ -692,7 +694,7 @@ public class BrowserHostLifecycleTest {
 
     @Test
     @Config(instrumentedPackages = {"androidx.webkit"}, shadows = {DocumentStartFeatures.class, DocumentStartBindings.class})
-    public void updatingScriptsKeepsTheWebViewAndClosesThePreviousRuntime() throws Exception {
+    public void emptyScriptFastPathPreservesLiveUpdatesAndClosesRemovedRuntime() throws Exception {
         assertNull(open("https://example.com/").error);
         WebView view = currentView();
         Field currentField = BrowserHostPlugin.class.getDeclaredField("current");
@@ -700,30 +702,47 @@ public class BrowserHostLifecycleTest {
         Object tab = currentField.get(host);
         Field runtimeField = tab.getClass().getDeclaredField("runtime");
         runtimeField.setAccessible(true);
-        UserscriptRuntime previous = (UserscriptRuntime) runtimeField.get(tab);
+        assertNull("empty script snapshots must not allocate a UserscriptRuntime", runtimeField.get(tab));
         Call unchanged = new Call("updateScripts", new JSObject().put("scripts", new com.getcapacitor.JSArray()));
         host.updateScripts(unchanged);
         assertTrue(unchanged.resolved);
-        assertSame("unchanged snapshots keep the existing page runtime alive", previous, runtimeField.get(tab));
-        com.getcapacitor.JSArray changed = new com.getcapacitor.JSArray();
-        changed.put(new JSObject().put("id", "us-reload-script").put("name", "Reload script").put("enabled", true)
+        assertNull(runtimeField.get(tab));
+        com.getcapacitor.JSArray enabled = new com.getcapacitor.JSArray();
+        enabled.put(new JSObject().put("id", "us-reload-script").put("name", "Reload script").put("enabled", true)
             .put("source", "void 0").put("matches", new com.getcapacitor.JSArray().put("https://example.com/*"))
             .put("grants", new com.getcapacitor.JSArray().put("none")));
-        Call update = new Call("updateScripts", new JSObject().put("scripts", changed));
+        Call update = new Call("updateScripts", new JSObject().put("scripts", enabled));
         host.updateScripts(update);
         assertTrue(update.resolved);
-        assertSame("saving a changed script preserves the current document runtime until navigation", previous, runtimeField.get(tab));
+        assertNull("new scripts must not mutate a live document before navigation", runtimeField.get(tab));
         Call navigate = new Call("navigate", new JSObject().put("action", "url").put("url", "https://example.com/updated"));
         host.navigate(navigate);
         long deadline = System.nanoTime() + 5_000_000_000L;
-        while (!"https://example.com/updated".equals(view.getUrl()) && System.nanoTime() < deadline) {
+        while ((runtimeField.get(tab) == null || !"https://example.com/updated".equals(view.getUrl()))
+                && System.nanoTime() < deadline) {
             Shadows.shadowOf(Looper.getMainLooper()).idle();
             Thread.sleep(5);
         }
         assertEquals("https://example.com/updated", view.getUrl());
-        assertSame("script updates must preserve the WebView's navigation history", view, currentView());
-        assertFalse("the previous runtime must not retain privileged callbacks", previous.install());
-        assertNotSame(previous, runtimeField.get(tab));
+        assertSame("scripts must not replace the WebView", view, currentView());
+        UserscriptRuntime installed = (UserscriptRuntime) runtimeField.get(tab);
+        assertNotNull("enabled scripts must still install their native runtime", installed);
+        assertEquals(1, state().getInt("matchedScriptCount"));
+        Call removed = new Call("updateScripts", new JSObject().put("scripts", new com.getcapacitor.JSArray()));
+        host.updateScripts(removed);
+        assertTrue(removed.resolved);
+        assertSame("removal only applies at the next navigation", installed, runtimeField.get(tab));
+        host.navigate(new Call("navigate", new JSObject().put("action", "url").put("url", "https://example.com/after-removal")));
+        deadline = System.nanoTime() + 5_000_000_000L;
+        while ((!"https://example.com/after-removal".equals(view.getUrl()) || runtimeField.get(tab) != null)
+                && System.nanoTime() < deadline) {
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            Thread.sleep(5);
+        }
+        assertEquals("https://example.com/after-removal", view.getUrl());
+        assertNull("empty scripts must retire the old runtime", runtimeField.get(tab));
+        assertFalse("removed scripts must not retain privileged callbacks", installed.install());
+        assertEquals(0, state().getInt("matchedScriptCount"));
     }
 
     @Test
