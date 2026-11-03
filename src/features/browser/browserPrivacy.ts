@@ -4,6 +4,7 @@ export interface BrowserPrivacyCapabilities {
   privateMode: boolean
   clearSiteData: boolean
   sharedSiteData?: boolean
+  isolatedProfiles?: boolean
   reason?: string
 }
 

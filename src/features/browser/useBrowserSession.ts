@@ -228,7 +228,7 @@ export function useBrowserSession(
       handles.forEach(handle => { void handle.remove().catch(() => undefined) })
       if (!closing.current) void nativeBrowser.close().catch(() => undefined)
     }
-  }, [refresh, invalidateImages, settleInitialSession])
+  }, [refresh, invalidateImages, settleInitialSession, options.transientSearch])
 
   const visible = ready && /^https?:\/\//i.test(state.url || '') && !state.error && !covered
   useLayoutEffect(() => {

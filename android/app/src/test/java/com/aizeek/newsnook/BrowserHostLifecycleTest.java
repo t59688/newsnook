@@ -57,6 +57,18 @@ public class BrowserHostLifecycleTest {
     private final class Host extends BrowserHostPlugin {
         final List<String> events = new ArrayList<>();
         final List<JSObject> payloads = new ArrayList<>();
+        boolean supportsProfiles = true;
+        boolean failProfileBinding;
+        final java.util.Map<WebView, String> assignedProfiles = new java.util.IdentityHashMap<>();
+        final List<String> deletedProfiles = new ArrayList<>();
+        final List<String> orphanedProfiles = new ArrayList<>();
+        @Override boolean supportsBrowserProfiles() { return supportsProfiles; }
+        @Override void assignBrowserProfile(WebView view, String name) {
+            if (failProfileBinding) throw new IllegalStateException("test profile binding failure");
+            assignedProfiles.put(view, name);
+        }
+        @Override List<String> browserProfileNames() { return new ArrayList<>(orphanedProfiles); }
+        @Override boolean deleteBrowserProfile(String name) { deletedProfiles.add(name); return true; }
         @Override public AppCompatActivity getActivity() { return activity; }
         @Override public Context getContext() { return activity; }
         @Override protected void notifyListeners(String name, JSObject data) {
@@ -151,58 +163,151 @@ public class BrowserHostLifecycleTest {
         assertTrue(android.webkit.CookieManager.getInstance().acceptThirdPartyCookies(view));
     }
 
-    @Test public void privacySettingKeepsThePageAndNeverBackfillsPrivateVisits() throws Exception {
+    @Test public void privacySwitchReplacesWebViewsAndNeverBackfillsOldVisits() throws Exception {
         assertNull(open("https://example.com/ordinary").error);
-        WebView view = currentView();
-        view.getWebViewClient().onPageStarted(view, "https://example.com/ordinary", null);
-        int id = state().getInt("tabId");
+        WebView ordinary = currentView();
+        int oldTabId = state().getInt("tabId");
+        ordinary.getWebViewClient().onPageStarted(ordinary, "https://example.com/ordinary", null);
         Call enabled = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("privateMode", true)));
         host.updateSettings(enabled);
         await(enabled);
         assertNull(enabled.error);
-        assertSame("privacy is a recording policy for the current WebView", view, currentView());
-        assertEquals(id, state().getInt("tabId"));
-        assertTrue("privacy persists without creating another Activity", state().getBoolean("privateMode", false));
-        assertTrue(activity.getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE).getBoolean("privacy-enabled", false));
-        view.getWebViewClient().onPageStarted(view, "https://example.com/private", null);
-        Call disabled = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("privateMode", false)));
+        WebView isolated = currentView();
+        assertNotSame("privacy must not reuse a WebView's default profile", ordinary, isolated);
+        assertNotEquals(oldTabId, state().getInt("tabId"));
+        String profile = host.assignedProfiles.get(isolated);
+        assertTrue(profile.startsWith("newsnook-temp-browser-"));
+        assertEquals("about:blank", state().getString("url"));
+        assertFalse(state().getBoolean("recordHistory", true));
+        assertTrue(state().getBoolean("privateMode", false));
+        assertEquals(android.webkit.WebSettings.LOAD_NO_CACHE, isolated.getSettings().getCacheMode());
+        isolated.getWebViewClient().onPageStarted(isolated, "https://example.com/secret", null);
+        host.captureRecoverySession();
+        Call recovery = new Call("takeRecoverySession", new JSObject());
+        host.takeRecoverySession(recovery);
+        assertTrue("private tabs must never enter recovery", recovery.result.isNull("session"));
+        Call disabled = new Call("updateSettings", new JSObject().put("settings", new JSObject()));
         host.updateSettings(disabled);
         await(disabled);
-        view.getWebViewClient().onPageFinished(view, "https://example.com/private");
-        assertFalse("a late private page completion cannot become public history", state().getBoolean("recordHistory", true));
-        host.captureRecoverySession();
-        Call privateRecovery = new Call("takeRecoverySession", new JSObject());
-        host.takeRecoverySession(privateRecovery);
-        assertTrue("private document metadata cannot enter recovery after the switch is off", privateRecovery.result.isNull("session"));
-        view.getWebViewClient().onPageStarted(view, "https://example.com/next-public", null);
-        view.getWebViewClient().onPageFinished(view, "https://example.com/next-public");
-        assertTrue("a new public navigation can be recorded", state().getBoolean("recordHistory", false));
+        assertNull(disabled.error);
+        assertNotSame(isolated, currentView());
+        assertEquals("about:blank", state().getString("url"));
+        assertTrue(host.deletedProfiles.contains(profile));
+        int completed = completedNavigations();
+        isolated.getWebViewClient().onPageFinished(isolated, "https://example.com/secret");
+        assertEquals("late private callbacks must be ignored", completed, completedNavigations());
+        WebView publicView = currentView();
+        publicView.getWebViewClient().onPageStarted(publicView, "https://example.com/next-public", null);
+        assertTrue(state().getBoolean("recordHistory", false));
     }
 
-    @Test public void incognitoKeepsCacheAndCookiesButExcludesHistoryAndRecovery() throws Exception {
+    @Test public void incognitoUsesDisposableSessionSharedAcrossTabsAndResetsBetweenOpens() throws Exception {
         assertNull(open("https://example.com/ordinary").error);
-        WebView view = currentView();
-        android.webkit.CookieManager.getInstance().setCookie("https://example.com", "session=retained");
+        WebView publicView = currentView();
+        android.webkit.CookieManager.getInstance().setCookie("https://example.com", "normal_cookie=retained");
         Call enabled = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("incognitoMode", true)));
         host.updateSettings(enabled);
         await(enabled);
         assertNull(enabled.error);
-        assertSame(view, currentView());
-        assertEquals(android.webkit.WebSettings.LOAD_DEFAULT, view.getSettings().getCacheMode());
-        assertEquals("session=retained", android.webkit.CookieManager.getInstance().getCookie("https://example.com"));
-        view.getWebViewClient().onPageStarted(view, "https://example.com/unrecorded", null);
+        WebView first = currentView();
+        assertNotSame(publicView, first);
+        String profile = host.assignedProfiles.get(first);
+        assertTrue(profile.startsWith("newsnook-temp-browser-"));
         assertFalse(state().getBoolean("recordHistory", true));
+        assertEquals("about:blank", state().getString("url"));
+        assertEquals(android.webkit.WebSettings.LOAD_DEFAULT, first.getSettings().getCacheMode());
+        Call secondTab = new Call("navigate", new JSObject().put("action", "new"));
+        host.navigate(secondTab);
+        await(secondTab);
+        assertEquals(profile, host.assignedProfiles.get(currentView()));
+        Call clear = new Call("clearSiteData", new JSObject().put("url", "https://example.com"));
+        host.clearSiteData(clear);
+        await(clear);
+        assertNotNull("site cleanup must not touch the normal profile", clear.error);
+        assertTrue(android.webkit.CookieManager.getInstance().getCookie("https://example.com").contains("normal_cookie=retained"));
         host.captureRecoverySession();
         Call recovery = new Call("takeRecoverySession", new JSObject());
         host.takeRecoverySession(recovery);
         assertTrue(recovery.result.isNull("session"));
-        Call disabled = new Call("updateSettings", new JSObject().put("settings", new JSObject()));
-        host.updateSettings(disabled);
-        await(disabled);
-        view.getWebViewClient().onPageFinished(view, "https://example.com/unrecorded");
-        assertFalse("late completions must not backfill history", state().getBoolean("recordHistory", true));
-        view.getWebViewClient().onPageStarted(view, "https://example.com/public", null);
-        assertTrue(state().getBoolean("recordHistory", false));
+        Call closing = new Call("close", new JSObject());
+        host.close(closing);
+        await(closing);
+        assertTrue(host.deletedProfiles.contains(profile));
+        Call nextOpen = new Call("open", new JSObject().put("url", "about:blank").put("embedded", true)
+            .put("settings", new JSObject().put("incognitoMode", true)));
+        host.open(nextOpen);
+        await(nextOpen);
+        assertNull(nextOpen.error);
+        assertNotEquals("new browser session must not reuse previous site's cookies", profile,
+            host.assignedProfiles.get(currentView()));
+    }
+
+    @Test public void switchingBetweenPrivateModesRotatesTemporaryIdentity() throws Exception {
+        Call initial = new Call("open", new JSObject().put("url", "https://example.com/secret")
+            .put("embedded", true).put("settings", new JSObject().put("incognitoMode", true)));
+        host.open(initial);
+        await(initial);
+        assertNull(initial.error);
+        String previous = host.assignedProfiles.get(currentView());
+        Call stricter = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("privateMode", true)));
+        host.updateSettings(stricter);
+        await(stricter);
+        assertNull(stricter.error);
+        String currentProfile = host.assignedProfiles.get(currentView());
+        assertNotEquals(previous, currentProfile);
+        assertTrue(host.deletedProfiles.contains(previous));
+        assertEquals("about:blank", state().getString("url"));
+        assertEquals(android.webkit.WebSettings.LOAD_NO_CACHE, currentView().getSettings().getCacheMode());
+        assertFalse(state().getBoolean("recordHistory", true));
+    }
+
+    @Test public void emptyHomeModeSwitchOnlySavesPreferenceUntilFirstPage() throws Exception {
+        Call enable = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("incognitoMode", true)));
+        host.updateSettings(enable);
+        await(enable);
+        assertNull(enable.error);
+        assertNull(currentView());
+        assertTrue("no browser WebView exists yet", host.assignedProfiles.isEmpty());
+        assertTrue("no orphaned profile should be generated", host.deletedProfiles.isEmpty());
+        Call opening = new Call("open", new JSObject().put("url", "https://www.google.com/")
+            .put("embedded", true).put("settings", new JSObject().put("incognitoMode", true)));
+        host.open(opening);
+        await(opening);
+        assertNull(opening.error);
+        assertTrue(host.assignedProfiles.get(currentView()).startsWith("newsnook-temp-browser-"));
+    }
+
+    @Test public void normalBrowserStartupRemovesOnlyOwnedAbandonedProfiles() throws Exception {
+        host.orphanedProfiles.add("newsnook-temp-browser-orphan");
+        host.orphanedProfiles.add("newsnook-temp-search-orphan");
+        host.orphanedProfiles.add("user-owned-profile");
+        assertNull(open("https://example.com/normal").error);
+        assertTrue(host.deletedProfiles.contains("newsnook-temp-browser-orphan"));
+        assertTrue(host.deletedProfiles.contains("newsnook-temp-search-orphan"));
+        assertFalse(host.deletedProfiles.contains("user-owned-profile"));
+        assertFalse("normal WebView must remain on default profile", host.assignedProfiles.containsKey(currentView()));
+    }
+
+    @Test public void unsupportedProfilesRejectModeChangesWithoutReplacingCurrentTab() throws Exception {
+        assertNull(open("https://example.com/normal").error);
+        WebView ordinary = currentView();
+        host.supportsProfiles = false;
+        for (String mode : new String[] {"incognitoMode", "privateMode"}) {
+            Call change = new Call("updateSettings", new JSObject().put("settings", new JSObject().put(mode, true)));
+            host.updateSettings(change);
+            await(change);
+            assertTrue("unsupported modes must be rejected", change.error.contains("不支持隔离"));
+            assertSame(ordinary, currentView());
+            assertFalse(BrowserHostPlugin.isPrivacyModeEnabled(activity));
+            assertFalse(activity.getSharedPreferences("newsnook-native-browser", Context.MODE_PRIVATE)
+                .getBoolean("incognito-enabled", false));
+            Call openPrivate = new Call("open", new JSObject().put("url", "https://www.google.com/")
+                .put("embedded", true).put("settings", new JSObject().put(mode, true)));
+            host.open(openPrivate);
+            await(openPrivate);
+            assertNotNull(openPrivate.error);
+            assertSame("private launch must not close a normal tab", ordinary, currentView());
+        }
     }
 
     @Test public void mobileAgentChoicesAreAcceptedAndHaveConsistentPageSettings() throws Exception {
@@ -524,44 +629,25 @@ public class BrowserHostLifecycleTest {
         assertEquals(events, host.events.size());
     }
 
-    @Test
-    @Config(shadows = CookiesWithPerViewPolicy.class)
-    public void failedPrivacyChangeRestoresAllTabsAndThePersistedPreference() throws Exception {
+    @Test public void failedProfileCreationLeavesCurrentTabsAndPreferencesUnchanged() throws Exception {
         assertNull(open("https://example.com/one").error);
         WebView first = currentView();
         Call add = new Call("navigate", new JSObject().put("action", "new"));
         host.navigate(add);
         await(add);
         WebView second = currentView();
+        host.failProfileBinding = true;
         Call enable = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("privateMode", true)));
         host.updateSettings(enable);
         await(enable);
-        assertNull(enable.error);
-        CookiesWithPerViewPolicy.failOnPolicyCall = 2;
-        Call disable = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("privateMode", false)));
-        host.updateSettings(disable);
-        await(disable);
-        assertNotNull("a partial provider failure is reported", disable.error);
-        assertTrue(BrowserHostPlugin.isPrivacyModeEnabled(activity));
-        assertTrue(state().getBoolean("privateMode"));
-        assertFalse(state().getBoolean("recordHistory"));
+        assertNotNull("profile creation failure must abort before changing any live tabs", enable.error);
+        assertFalse(BrowserHostPlugin.isPrivacyModeEnabled(activity));
         assertSame(second, currentView());
-        assertEquals(android.webkit.WebSettings.LOAD_NO_CACHE, first.getSettings().getCacheMode());
-        assertEquals(android.webkit.WebSettings.LOAD_NO_CACHE, second.getSettings().getCacheMode());
-        Field settings = BrowserHostPlugin.class.getDeclaredField("browserSettings");
-        settings.setAccessible(true);
-        assertTrue(((BrowserHostPlugin.BrowserSettings) settings.get(host)).privateMode);
-        Field allTabs = BrowserHostPlugin.class.getDeclaredField("tabs");
-        allTabs.setAccessible(true);
-        for (Object tab : (List<?>) allTabs.get(host)) {
-            Field runtime = tab.getClass().getDeclaredField("runtime");
-            runtime.setAccessible(true);
-            UserscriptRuntime value = (UserscriptRuntime) runtime.get(tab);
-            if (value == null) continue;
-            Field mode = UserscriptRuntime.class.getDeclaredField("privateMode");
-            mode.setAccessible(true);
-            assertTrue("every existing runtime returns to temporary storage", mode.getBoolean(value));
-        }
+        assertEquals(2, tabs().getJSONArray("tabs").length());
+        assertFalse(state().getBoolean("privateMode", true));
+        assertEquals(android.webkit.WebSettings.LOAD_DEFAULT, first.getSettings().getCacheMode());
+        assertEquals(android.webkit.WebSettings.LOAD_DEFAULT, second.getSettings().getCacheMode());
+        assertEquals(1, host.deletedProfiles.size());
     }
 
     @Test
@@ -569,6 +655,7 @@ public class BrowserHostLifecycleTest {
     public void transientSearchFailsClosedWithoutMultiProfileAndDoesNotChangeBrowserSettings() throws Exception {
         assertNull(open("https://example.com/normal").error);
         WebView existing = currentView();
+        host.supportsProfiles = false;
         Call temporary = new Call("open", new JSObject()
             .put("url", "https://www.google.com/search?q=test")
             .put("embedded", true).put("transientSearch", true)
@@ -577,9 +664,8 @@ public class BrowserHostLifecycleTest {
         await(temporary);
         assertNotNull("unsupported WebView must refuse shared-data fallback", temporary.error);
         assertTrue(temporary.error.contains("不支持隔离搜索"));
-        assertNull("no shared-profile page is opened", currentView());
+        assertSame("rejecting unsupported isolation must preserve the existing normal tab", existing, currentView());
         assertFalse("temporary request must not mutate saved browser privacy", BrowserHostPlugin.isPrivacyModeEnabled(activity));
-        assertNotNull(existing);
     }
 
     @org.robolectric.annotation.Implements(value = androidx.webkit.WebViewFeature.class, isInAndroidSdk = false)

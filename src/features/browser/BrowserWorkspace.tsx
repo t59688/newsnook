@@ -98,6 +98,7 @@ export function BrowserWorkspace({
   preferencesRef.current = preferences
   const privateMode = preferences.privateMode
   const privateBookmarks = privateMode || preferences.incognitoMode
+  const historyHidden = privateBookmarks
   const recordingDisabledRef = useRef(privateMode || preferences.incognitoMode)
   recordingDisabledRef.current = privateMode || preferences.incognitoMode
   const privateModeRef = useRef(privateMode)
@@ -114,13 +115,13 @@ export function BrowserWorkspace({
   }, [])
   useLayoutEffect(() => {
     workspaceLive.current = true
-    applyPrivacyGuard(privateMode)
+    applyPrivacyGuard(historyHidden)
     return () => {
       workspaceLive.current = false
       privacyLogRelease.current?.()
       privacyLogRelease.current = null
     }
-  }, [privateMode, applyPrivacyGuard])
+  }, [historyHidden, applyPrivacyGuard])
   const [capabilities, setCapabilities] = useState<BrowserPrivacyCapabilities>({privateMode: true, clearSiteData: false, sharedSiteData: true})
   const prevTabsCount = useRef(0)
   const tabMotionRevision = useRef(0)
@@ -205,8 +206,10 @@ export function BrowserWorkspace({
   const current = session.state.url || ''
   const currentUrlRef = useRef(current)
   currentUrlRef.current = current
-  const capabilitiesRef = useRef(capabilities)
-  capabilitiesRef.current = capabilities
+  const effectiveCapabilities = {...capabilities, clearSiteData: capabilities.clearSiteData && !historyHidden,
+    sharedSiteData: !historyHidden && capabilities.sharedSiteData}
+  const capabilitiesRef = useRef(effectiveCapabilities)
+  capabilitiesRef.current = effectiveCapabilities
   const clearPageFind = session.clearFind
   useEffect(() => {setFindOpen(false); clearPageFind()}, [current, session.state.tabId, clearPageFind])
   const active = /^https?:\/\//i.test(current)
@@ -421,10 +424,10 @@ export function BrowserWorkspace({
     const previous = preferencesRef.current
     recordingDisabledRef.current = previous.privateMode || previous.incognitoMode || next.privateMode || next.incognitoMode
     // Stop recording before the asynchronous native acknowledgement; resume only after persistence.
-    applyPrivacyGuard(previous.privateMode || next.privateMode)
+    applyPrivacyGuard(previous.privateMode || previous.incognitoMode || next.privateMode || next.incognitoMode)
     if (!(await session.updateSettings(next))) {
       recordingDisabledRef.current = previous.privateMode || previous.incognitoMode
-      applyPrivacyGuard(previous.privateMode)
+      applyPrivacyGuard(previous.privateMode || previous.incognitoMode)
       return false
     }
     try {
@@ -432,12 +435,12 @@ export function BrowserWorkspace({
       preferencesRef.current = confirmed
       recordingDisabledRef.current = confirmed.privateMode || confirmed.incognitoMode
       setPreferences(confirmed)
-      applyPrivacyGuard(confirmed.privateMode)
+      applyPrivacyGuard(confirmed.privateMode || confirmed.incognitoMode)
       return true
     } catch (error) {
       await session.updateSettings(previous)
       recordingDisabledRef.current = previous.privateMode || previous.incognitoMode
-      applyPrivacyGuard(previous.privateMode)
+      applyPrivacyGuard(previous.privateMode || previous.incognitoMode)
       setNotice({message: error instanceof Error ? error.message : '保存失败，请重试', error: true})
       return false
     }
@@ -499,7 +502,7 @@ export function BrowserWorkspace({
   const menuItems: {label: string; icon: typeof Bookmark; action: () => void; disabled?: boolean; selected?: boolean; badge?: string}[] = [
     {label: marked ? '已加书签' : '添加书签', icon: marked ? BookmarkCheck : Bookmark, action: toggleBookmark, disabled: !active, selected: marked},
     {label:'书签', icon:Bookmark, action:() => openPanel('bookmarks')},
-    {label:'浏览历史', icon:Clock3, action:() => openPanel('history')},
+    {label:'浏览历史', icon:Clock3, action:() => openPanel('history'), disabled:historyHidden},
     {label:'下载管理', icon:Download, action:() => runCommand('downloads')},
     {label:'主页', icon:Home, action:goHome, disabled:session.pending},
     {label:'媒体资源', icon:Film, action:openMediaPanel, disabled:!active, badge:currentResources.length ? String(currentResources.length) : undefined},
@@ -512,8 +515,8 @@ export function BrowserWorkspace({
     {label:'看图模式', icon:Images, action:showImages, disabled:!active},
     {label:'页内查找', icon:ScanText, action:openFind, disabled:!active},
     {label:'分享网页', icon:Share2, action:() => {void sharePage()}, disabled:!active},
-    {label:'隐私模式', icon:Shield, action:() => {void changePrivateMode(!privateMode)}, disabled:session.pending, selected:privateMode},
-    {label:'无痕模式', icon:ShieldCheck, action:() => {void updatePreferences({...preferences, incognitoMode: !preferences.incognitoMode, privateMode: false})}, disabled:session.pending, selected:preferences.incognitoMode},
+    {label:'隐私模式', icon:Shield, action:() => {void changePrivateMode(!privateMode)}, disabled:session.pending || (capabilities.isolatedProfiles === false && !privateMode), selected:privateMode},
+    {label:'无痕模式', icon:ShieldCheck, action:() => {void updatePreferences({...preferences, incognitoMode: !preferences.incognitoMode, privateMode: false})}, disabled:session.pending || (capabilities.isolatedProfiles === false && !preferences.incognitoMode), selected:preferences.incognitoMode},
     {label:'浏览设置', icon:Settings2, action:() => openPanel('settings')},
     {label:'返回有所闻', icon:LogOut, action:close},
   ]
@@ -599,7 +602,7 @@ export function BrowserWorkspace({
       onClose={()=>{setAgentOpen(false);setAgentMinimized(false);setAgentBusy(false)}}/>}
     {bottomAddress && toolbar}
 
-    {searchOpen && <BrowserSearchPanel privateMode={privateMode} current={active ? current : ''} initialValue={active ? current : ''} engine={search} history={history}
+    {searchOpen && <BrowserSearchPanel privateMode={historyHidden} current={active ? current : ''} initialValue={active ? current : ''} engine={search} history={history}
       pending={session.pending} error={session.error} onClose={() => {setSearchOpen(false); session.setError('')}}
       onOpen={openAddress} onEngineChange={saveSearchEngine} onCopy={value => {void copy(value)}}/>}
 
@@ -629,7 +632,7 @@ export function BrowserWorkspace({
       onSelect={tab => finishTabChange(session.activate(tab))}
       onRemove={tab => {void session.remove(tab).then(ok => {if (ok && playing?.tabId === tab.id) setPlaying(null)})}}
       onNew={() => finishTabChange(session.command('new'))}/></BrowserFullPage>}
-    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateBookmarks} key={panel + ':' + privateMode + ':' + preferences.incognitoMode} kind={panel} entries={panel === 'history' ? history : marks}
+    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateBookmarks} key={panel + ':' + privateMode + ':' + preferences.incognitoMode} kind={panel} entries={panel === 'history' ? (historyHidden ? [] : history) : marks}
       privateEntries={privateBookmarks && panel === 'bookmarks' ? privateMarks : []}
       hiddenHostCount={hiddenHosts.length} onBack={() => setPanel(null)} onOpen={url => {void openAddress(url)}}
       onRemove={url => {if (panel === 'history') saveHistory(history.filter(item => item.url !== url)); else saveMarks('normal', marks.filter(item => item.url !== url))}}
@@ -639,13 +642,13 @@ export function BrowserWorkspace({
       onRestoreHidden={() => {if (persist(BROWSER_KEYS.hiddenHosts, [], () => setHiddenHosts([]))) setNotice({message:'首页网站已恢复'})}}
       onHistoryOptions={entry => setPlaceAction({kind:'history', entry})}/></BrowserFullPage>}
     {panel === 'settings' && <BrowserFullPage title="浏览器设置"><BrowserSettingsPanel search={search} bottomAddress={bottomAddress} desktop={session.state.desktop}
-      hasPage={active} pending={session.pending} historyCount={history.length} onBack={() => setPanel(null)}
+      hasPage={active} pending={session.pending} historyCount={historyHidden ? 0 : history.length} onBack={() => setPanel(null)}
       onSearchChange={saveSearchEngine}
       onAddressPositionChange={value => {saveAddressPosition(value?'bottom':'top')}}
       onDesktopChange={toggleDesktop} onClearHistory={() => confirmClear('history')}
       preferences={preferences} onPreferencesChange={updatePreferences} privateMode={privateMode}
-      onPrivateModeChange={changePrivateMode}
-      currentSite={active ? browserHostLabel(current) : undefined} onClearSiteData={active && capabilities.clearSiteData ? clearSite : undefined}/></BrowserFullPage>}
+      isolatedProfiles={capabilities.isolatedProfiles} error={session.error} onPrivateModeChange={changePrivateMode}
+      currentSite={active ? browserHostLabel(current) : undefined} onClearSiteData={active && effectiveCapabilities.clearSiteData ? clearSite : undefined}/></BrowserFullPage>}
     {panel === 'scripts' && <ScriptManager onClose={() => setPanel(null)}
       pageStatus={active ? {url:current, active:session.state.activeScriptCount ?? 0, matched:session.state.matchedScriptCount ?? 0, loading:session.state.loading ?? false} : undefined}
       onReload={active ? async () => {const ok = await session.command('reload'); if (ok) setPanel(null); return ok} : undefined}
@@ -667,7 +670,7 @@ export function BrowserWorkspace({
       <div className="divide-y divide-haze">
         <ActionRow icon={Copy} label="复制网址" onClick={() => {void copy(current)}}/>
         <ActionRow icon={Share2} label="分享网页" onClick={() => {void sharePage()}}/>
-        {capabilities.clearSiteData && <ActionRow icon={Trash2} label="清除此网站数据" onClick={clearSite}/>}
+        {effectiveCapabilities.clearSiteData && <ActionRow icon={Trash2} label="清除此网站数据" onClick={clearSite}/>}
       </div>
     </BrowserSheet>}
 

@@ -45,6 +45,7 @@ export function BrowserStartPage({
     </button>
     <div className="browser-start-navigation">
       {([{label:'书签',panel:'bookmarks',icon:Bookmark},{label:'历史',panel:'history',icon:Clock3},{label:'用户脚本',panel:'scripts',icon:ShieldCheck}] as const).map(item =>
+        (item.panel === 'history' && (privateMode || incognitoMode)) ? null :
         <button key={item.panel} type="button" onClick={() => onPanel(item.panel)}>
           <item.icon size={18} strokeWidth={1.8} aria-hidden="true"/><span>{item.label}</span>
         </button>)}
