@@ -52,6 +52,33 @@ jobs:
         with:
           name: rss-catalog-${{ github.run_number }}
           path: ${{ runner.temp }}/rss-catalog/
+      - name: Ensure public catalog CORS
+        if: inputs.publish
+        env:
+          R2_BUCKET: newsnook-update
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+          AWS_REQUEST_CHECKSUM_CALCULATION: when_required
+          AWS_RESPONSE_CHECKSUM_VALIDATION: when_required
+        shell: bash
+        run: |
+          ENDPOINT="https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com"
+          BEFORE="$RUNNER_TEMP/rss-cors-before.json"
+          AFTER="$RUNNER_TEMP/rss-cors-after.json"
+          if ! aws s3api get-bucket-cors --bucket "$R2_BUCKET" --endpoint-url "$ENDPOINT" > "$BEFORE" 2> "$RUNNER_TEMP/rss-cors-error.txt"; then
+            if grep -q 'NoSuchCORSConfiguration' "$RUNNER_TEMP/rss-cors-error.txt"; then
+              echo '{"CORSRules":[]}' > "$BEFORE"
+            else
+              echo 'Unable to read existing R2 CORS; existing configuration was not changed'
+              exit 1
+            fi
+          fi
+          jq '{CORSRules: ((.CORSRules // []) | if any(.[]; (.AllowedOrigins | index("*")) and (.AllowedMethods | index("GET")) and (.AllowedMethods | index("HEAD")) and (.AllowedHeaders // [] | index("*"))) then . else . + [{AllowedOrigins:["*"],AllowedMethods:["GET","HEAD"],AllowedHeaders:["*"],ExposeHeaders:["ETag","Content-Length"],MaxAgeSeconds:3600}] end)}' "$BEFORE" > "$AFTER"
+          if ! diff -q <(jq -Sc . "$BEFORE") <(jq -Sc . "$AFTER") > /dev/null; then
+            aws s3api put-bucket-cors --bucket "$R2_BUCKET" --endpoint-url "$ENDPOINT" --cors-configuration "file://$AFTER"
+          fi
       - name: Publish snapshot then manifest
         if: inputs.publish
         env:
