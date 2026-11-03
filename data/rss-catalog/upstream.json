@@ -2,18 +2,19 @@
   "metadata": {
     "name": "Global RSS Feed Catalog",
     "generated_at": "2026-11-03",
-    "total_feeds": 3493,
-    "input_records": 4088,
+    "total_feeds": 3494,
+    "input_records": 4089,
     "schema_version": 1,
-    "verification_scope": "Historical upstream metadata only, no independent live endpoint validation on 2026-11-03",
+    "verification_scope": "Historical upstream metadata for the original 3493 feeds; W3C Blog independently validated via HTTP and RSS parsing on 2026-11-03.",
     "validation_counts": {
       "unverified": 956,
       "upstream_parser_verified": 718,
-      "upstream_http_verified": 1819
+      "upstream_http_verified": 1819,
+      "live_verified": 1
     },
     "category_counts": {
       "World News": 740,
-      "Engineering & Technology": 348,
+      "Engineering & Technology": 349,
       "cn-podcasts": 300,
       "en-web-frontend": 296,
       "en-lifestyle": 172,
@@ -109,7 +110,7 @@
       "tidings": 718,
       "plenaryapp": 781,
       "rss-news-list": 519,
-      "specialized_manual": 83
+      "specialized_manual": 84
     },
     "repositories": {
       "awesome-rss-feeds-list": "https://github.com/xiangyugongzuoliu/awesome-rss-feeds-list",
@@ -62931,6 +62932,24 @@
         "method": "listed",
         "checked_at": null,
         "note": "Catalog listing only; no independent live request."
+      }
+    },
+    {
+      "id": "rss-03494",
+      "title": "W3C - Blog",
+      "url": "https://www.w3.org/blog/feed/",
+      "website": "https://www.w3.org/blog/",
+      "category": "Engineering & Technology",
+      "language": "en",
+      "region": null,
+      "source_repositories": [
+        "specialized_manual"
+      ],
+      "validation": {
+        "status": "live_verified",
+        "method": "http_feed_parse",
+        "checked_at": "2026-11-03T15:16:08.372Z",
+        "note": "HTTP 200 and valid RSS channel with 25 items confirmed during the catalog update acceptance test."
       }
     }
   ]
