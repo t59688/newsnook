@@ -5,7 +5,7 @@
     "total_feeds": 3494,
     "input_records": 4089,
     "schema_version": 1,
-    "verification_scope": "Historical upstream metadata for the original 3493 feeds; W3C Blog independently validated via HTTP and RSS parsing on 2026-11-03.",
+    "verification_scope": "Historical upstream metadata for the original 3493 feeds; GitHub Status independently validated via HTTP and RSS parsing on 2026-11-03.",
     "validation_counts": {
       "unverified": 956,
       "upstream_parser_verified": 718,
@@ -14,13 +14,13 @@
     },
     "category_counts": {
       "World News": 740,
-      "Engineering & Technology": 349,
+      "Engineering & Technology": 348,
       "cn-podcasts": 300,
       "en-web-frontend": 296,
       "en-lifestyle": 172,
       "cn-essays": 155,
       "Videos": 93,
-      "en-dev-tools": 80,
+      "en-dev-tools": 81,
       "en-ai-tools": 77,
       "Podcasts": 73,
       "en-ai-research": 71,
@@ -62936,10 +62936,10 @@
     },
     {
       "id": "rss-03494",
-      "title": "W3C - Blog",
-      "url": "https://www.w3.org/blog/feed/",
-      "website": "https://www.w3.org/blog/",
-      "category": "Engineering & Technology",
+      "title": "GitHub Status - Incident History",
+      "url": "https://www.githubstatus.com/history.rss",
+      "website": "https://www.githubstatus.com/",
+      "category": "en-dev-tools",
       "language": "en",
       "region": null,
       "source_repositories": [
@@ -62948,8 +62948,8 @@
       "validation": {
         "status": "live_verified",
         "method": "http_feed_parse",
-        "checked_at": "2026-11-03T15:16:08.372Z",
-        "note": "HTTP 200 and valid RSS channel with 25 items confirmed during the catalog update acceptance test."
+        "checked_at": "2026-11-03T15:31:28.182Z",
+        "note": "Official GitHub Status RSS: HTTP 200, valid XML and nonempty channel verified during production catalog acceptance."
       }
     }
   ]
