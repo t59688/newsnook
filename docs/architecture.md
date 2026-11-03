@@ -171,11 +171,13 @@ PresetSwitcher / 切换布局
 
 ### 7.4 RSS 订阅商店
 
+`features/rssCatalog/` 提供与 Feedly/网址发现独立的本地 RSS 目录：按需加载内置种子，优先使用 `newsnook:rss-catalog` IndexedDB 中已验证的快照；关键词、专题和语言筛选全部在本机完成。首屏可用后的空闲维护与目录打开时检查 R2 固定 manifest，1 小时节流、失败一小时退避；只在哈希变化时下载完整快照。结构、字节大小、SHA-256、数量与日期全部验证且 IndexedDB 事务提交成功才切换。远端目录不是已订阅状态，不进入 Preferences、配置备份、Cloud Sync、正文或列表缓存。读取失败使用内置种子，更新失败保留旧版本。详细发布与部署约定见订阅商店文档。
+
 `features/feedDiscovery/onlineSearch.ts` 使用 Feedly 按关键词检索少量 Feed 地址；输入网址时，经 `siteDiscovery.ts` 直连目标网站发现，必要时调用 Feedsearch，同时按需读取 RSSHub Radar 官方规则进行网址→路由模板匹配。沿已有原生 HTTP / Web 代理路径联网，搜索不依赖登录或 NewsNook Cloud；订阅前用 `preview.ts` 实际验证。远端 Radar 规则仅在需要时下载、放入有界进程内缓存，不恢复先前离线 RSSHub/RSS-Bridge 全量目录快照。未订阅候选仅留页面/导航内存。订阅仍使用 `kind: 'feed'`，同时在 `discovery.generator = 'rsshub'` 保存逻辑路由与实例 ID；实例设置作为 Preferences 普通同步设置随可选云同步及本地备份保存。
 
 `features/rsshub/` 独立处理公开/自定义实例配置、静态 Radar 匹配、手动更换绑定和同信任组内的限次故障回退；不执行远端 JS 路由逻辑、不接受任意私网实例地址。`fetchSourceText` 复用现有 RSS 网络与缓存入口，URL 更换不更换 sourceId（保持阅读状态与预设引用），普通 RSS 刷新不触发 RSSHub 目录请求。
 
-旧 IndexedDB `newsnook:feed-discovery` 与目录小配置在商店启动时清理；目录缓存统计、目录备份和快照生成脚本已移除，已有订阅与正文缓存不受迁移影响。
+旧 IndexedDB `newsnook:feed-discovery` 与旧目录小配置继续在商店启动时清理，不影响新 `newsnook:rss-catalog` 数据库。已有订阅与正文缓存不受迁移影响。
 
 自建源可选 `paused`（缺省 false）与 `discovery` 元数据经过偏好归一化、备份、同步 projection/merge 和共享 contracts。暂停独立于综合 `enabledIds` 与分类成员关系：缓存仍展示，自动列表抓取、滚动加载、推荐候选、稍后读正文补齐和预存请求跳过暂停源。预存网络计划与保留窗口分离，暂停不会回收其已有正文。手动预览与主动阅读仍可联网。旧版本接受旧订阅数据，但不具备暂停语义，旧客户端重新写回订阅可能丢掉新字段。
 

@@ -16,6 +16,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { SegmentedControl } from '../../components/SegmentedControl'
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { FeedStorePicker } from '../../features/feedDiscovery/FeedStorePicker'
+import { RssCatalogBrowser } from '../../features/rssCatalog/RssCatalogBrowser'
 import { searchOnlineFeeds, websiteSearchUrl } from '../../features/feedDiscovery/onlineSearch'
 import { RssHubInstancesScreen } from '../../features/rsshub/RssHubInstancesScreen'
 import { RssHubSubscriptionRebindScreen } from '../../features/rsshub/RssHubSubscriptionRebindScreen'
@@ -59,7 +60,7 @@ interface Props {
   initialQuery?: string
 }
 
-type DiscoveryMode = 'keyword' | 'website'
+type DiscoveryMode = 'catalog' | 'keyword' | 'website'
 
 const WEBSITE_EXAMPLES = [
   { label: 'B 站 UP 主', value: 'https://space.bilibili.com/1161918898' },
@@ -86,7 +87,7 @@ function isWebsiteUrl(value: string): boolean {
 export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onSubscribeMany, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
   const [tab, setTab] = useState<'discover' | 'subscribed'>('discover')
   const [query, setQuery] = useState(initialQuery)
-  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>(() => isWebsiteUrl(initialQuery) ? 'website' : 'keyword')
+  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>(() => !initialQuery.trim() ? 'catalog' : isWebsiteUrl(initialQuery) ? 'website' : 'keyword')
   const [results, setResults] = useState<FeedDiscoveryEntry[]>([])
   const [searchedQuery, setSearchedQuery] = useState('')
   const [probes, setProbes] = useState<Record<string, RssHubProbeResult>>({})
@@ -340,7 +341,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     results.some((item) => item.providerId === 'feedsearch') ? { href: 'https://feedsearch.dev/', label: '网站发现由 Feedsearch 提供' } : null,
   ].filter(Boolean) as Array<{ href: string; label: string }>
 
-  return <SettingsShell title="RSS 订阅商店" caption="在线查找订阅地址 · 订阅后由本机直连来源" onBack={onBack}>
+  return <SettingsShell title="RSS 订阅商店" caption="发现自己的阅读地图 · 订阅后由本机直连来源" onBack={onBack}>
     <div className="page-x space-y-5 pt-4">
       <SegmentedControl
         label="订阅商店分页"
@@ -356,6 +357,12 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
         <div role="group" aria-label="选择发现方式" className="space-y-2.5">
           <p className="px-0.5 text-[12.5px] font-medium text-paper">你想如何添加内容？</p>
           <div className="grid grid-cols-2 gap-2.5">
+            <button type="button" aria-pressed={discoveryMode === 'catalog'}
+              onClick={() => switchDiscoveryMode('catalog')}
+              className={`col-span-2 flex min-h-[76px] items-center justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'catalog' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
+              <span><span className="block font-display text-lg text-paper">RSS 目录</span><span className="mt-1 block text-[11px] text-paper-faint">按兴趣探索 · 本地即时搜索 · 离线可用</span></span>
+              <ArrowRight aria-hidden="true" size={18} className="shrink-0 text-cinnabar-soft" />
+            </button>
             <button type="button" aria-pressed={discoveryMode === 'keyword'}
               onClick={() => switchDiscoveryMode('keyword')}
               className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'keyword' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
@@ -378,7 +385,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
         </div>
       ) : null}
 
-      <form
+      {tab === 'discover' && discoveryMode === 'catalog' ? <RssCatalogBrowser onSelect={openEntry} duplicateLabel={duplicateLabel} /> : <form
         className="space-y-2.5"
         onSubmit={(event) => { event.preventDefault(); if (tab === 'discover') void search() }}
       >
@@ -449,7 +456,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
             ) : null}
           </>
         ) : null}
-      </form>
+      </form>}
 
       {tab === 'discover' && discoveryMode === 'website' && onUpdateRssHubInstances ? (
         <div className="flex items-center gap-2.5 rounded-xl border border-haze/70 bg-ink-raised/35 px-3.5 py-2.5">

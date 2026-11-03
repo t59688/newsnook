@@ -37,6 +37,7 @@ import { dismissTopHardwareBackLayer } from './lib/hardwareBackStack'
 import { useLaterArticles } from './hooks/useLaterArticles'
 import { log } from './lib/logger'
 import { scheduleIdleWork } from './lib/idleWork'
+import { startCatalogMaintenance } from './features/rssCatalog/maintenance'
 import {
   buildReadingProfile,
   collectReadArticles,
@@ -329,6 +330,10 @@ export default function App() {
   const [browserOpen, setBrowserOpen] = useState(false)
   useStartupBlocker(!launchUrlReady)
   const startupReady = useStartupReady()
+  useEffect(() => {
+    if (!startupReady) return
+    return startCatalogMaintenance()
+  }, [startupReady])
   const speedReadConfig = useMemo(
     () => resolveAiFeatureConfig({ ai: prefs.translation.ai }, 'speedRead'),
     [prefs.translation.ai],

@@ -349,7 +349,9 @@ html[data-theme='dark'][data-scheme='ink'] .paper-settings-shell {
 .paper-settings-shell-scroll :is(input:not([type="checkbox"]), textarea, select) {
   font-size: max(13px, 1em);
 }
-.paper-settings-shell-scroll :is(input:not([type="checkbox"]), textarea, select):focus-visible {
+/* Composite fields use their surrounding focus-within border; standalone fields
+   may use focus:border-* instead. Respect these explicit outline opt-outs. */
+.paper-settings-shell-scroll :is(input:not([type="checkbox"]), textarea, select):focus-visible:not([class*="outline-none"]) {
   outline: 2px solid var(--tone-cinnabar);
   outline-offset: 2px;
 }
