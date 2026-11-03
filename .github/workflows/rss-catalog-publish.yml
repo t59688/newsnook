@@ -1,0 +1,62 @@
+name: Publish RSS Catalog
+run-name: RSS Catalog · ${{ inputs.version || github.run_number }}
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: '包含目录与发布脚本的分支或提交'
+        default: beta
+        required: true
+        type: string
+      version:
+        description: '目录版本（留空自动生成）'
+        required: false
+        type: string
+      publish:
+        description: '发布到 R2（关闭则只构建与校验）'
+        default: false
+        type: boolean
+permissions:
+  contents: read
+concurrency:
+  group: rss-catalog-publish
+  cancel-in-progress: false
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      CATALOG_VERSION: ${{ inputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Validate publication inputs
+        run: |
+          node --import tsx scripts/rss-catalog.test.ts
+          node --import tsx scripts/rss-catalog-import.test.ts
+          node --import tsx scripts/rss-catalog-release.test.ts
+      - name: Build catalog
+        shell: bash
+        run: |
+          VERSION="${CATALOG_VERSION:-$(date -u +%Y.%m.%d).${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}}"
+          [[ "$VERSION" =~ ^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$ ]] || { echo 'Invalid catalog version'; exit 1; }
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
+          node --import tsx scripts/rss-catalog-release.ts --version "$VERSION" --out "$RUNNER_TEMP/rss-catalog"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rss-catalog-${{ github.run_number }}
+          path: ${{ runner.temp }}/rss-catalog/
+      - name: Publish snapshot then manifest
+        if: inputs.publish
+        env:
+          R2_BUCKET: newsnook-update
+          R2_ACCOUNT_ID: ${{ vars.R2_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: node --import tsx scripts/rss-catalog-release.ts --publish --version "$RELEASE_VERSION" --out "$RUNNER_TEMP/rss-catalog"
