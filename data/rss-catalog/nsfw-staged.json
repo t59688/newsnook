@@ -3,40 +3,7 @@
     "name": "Global RSS Feed Catalog",
     "generated_at": "2026-11-04",
     "total_feeds": 97,
-    "input_records": 6641,
-    "schema_version": 1,
-    "verification_scope": "Full audit of 6641 candidates; only parsed RSS/Atom/JSON Feed with latest dated item <= 90d. Staged only; not shipped to existing clients. Network errors are not asserted permanently dead.",
-    "validation_counts": {
-      "live_verified": 97
-    },
-    "category_counts": {
-      "Sexual Health & Relationships": 24,
-      "Photography": 27,
-      "Culture & Ideas": 8,
-      "News": 29,
-      "Fashion": 9
-    },
-    "source_counts": {
-      "feedspot-public-directory": 95,
-      "publisher-discovery": 2
-    },
-    "repositories": {
-      "awesome-rss-feeds-list": "https://github.com/xiangyugongzuoliu/awesome-rss-feeds-list",
-      "tidings": "https://github.com/fuxiaoai/tidings-rss",
-      "plenaryapp": "https://github.com/plenaryapp/awesome-rss-feeds",
-      "rss-news-list": "https://github.com/vandenbroucke/rss-news-list",
-      "lovexw/chinese-independent-blogs": "https://github.com/lovexw/chinese-independent-blogs",
-      "ooh.directory": "https://ooh.directory/",
-      "kagi/smallweb": "https://github.com/kagisearch/smallweb",
-      "sg-s/science-journal-feeds": "https://github.com/sg-s/science-journal-feeds",
-      "feedspot-public-directory": "https://rss.feedspot.com/",
-      "publisher-discovery": "https://feeder.co/discover/find"
-    },
-    "notes": [
-      "Audited on 2026-11-04; later network availability and publication frequency may change.",
-      "Image/video hints refer to feed metadata only; media payloads were not downloaded.",
-      "NSFW candidates are staged separately and excluded from the v1 public catalog."
-    ]
+    "schema_version": 1
   },
   "feeds": [
     {
@@ -46,22 +13,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-02T18:30:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T18:30:00Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06272",
@@ -70,22 +26,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-26T16:00:38Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-26T16:00:38Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06273",
@@ -94,22 +39,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-29T09:31:52Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-29T09:31:52Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06274",
@@ -118,22 +52,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 11 items; latest 2026-10-29T00:31:16Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-29T00:31:16Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06275",
@@ -142,22 +65,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-23T13:00:30Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-23T13:00:30Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06276",
@@ -166,22 +78,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 100 items; latest 2026-11-03T09:16:12Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T09:16:12Z",
-      "posts_30d": 8
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06277",
@@ -190,22 +91,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 6 items; latest 2026-11-02T14:30:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T14:30:00Z",
-      "posts_30d": 6
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06278",
@@ -214,22 +104,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-08-17T22:22:07Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-08-17T22:22:07Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06279",
@@ -238,22 +117,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-29T13:00:46Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-10-29T13:00:46Z",
-      "posts_30d": 8
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06280",
@@ -262,22 +130,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-08-31T23:51:31Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-08-31T23:51:31Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06281",
@@ -286,22 +143,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-02T15:00:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T15:00:00Z",
-      "posts_30d": 5
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06282",
@@ -310,22 +156,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 1 items; latest 2026-08-06T13:02:09Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-08-06T13:02:09Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06283",
@@ -334,22 +169,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-28T20:00:57Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-10-28T20:00:57Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06284",
@@ -358,22 +182,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-11-03T20:23:34Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T20:23:34Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06285",
@@ -382,22 +195,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-31T17:33:55Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-10-31T17:33:55Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06286",
@@ -406,22 +208,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-09-03T22:32:32Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-03T22:32:32Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06287",
@@ -430,22 +221,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 9 items; latest 2026-10-26T20:07:52Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-10-26T20:07:52Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06289",
@@ -454,22 +234,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-30T23:51:45Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-30T23:51:45Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06290",
@@ -478,22 +247,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 3 items; latest 2026-10-31T22:50:31Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-31T22:50:31Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06291",
@@ -502,22 +260,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 5 items; latest 2026-10-29T19:12:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-29T19:12:00Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06292",
@@ -526,22 +273,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-13T19:04:21Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-13T19:04:21Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06293",
@@ -550,22 +286,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 9 items; latest 2026-10-29T11:00:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-29T11:00:00Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06294",
@@ -574,22 +299,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 14 items; latest 2026-10-27T22:16:39Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-27T22:16:39Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06296",
@@ -598,22 +312,11 @@
       "category": "Sexual Health & Relationships",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 3 items; latest 2026-11-03T18:49:44Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "两性/亲密关系",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T18:49:44Z",
-      "posts_30d": 3
+      "nsfw": true,
+      "subtopic": "两性/亲密关系",
+      "content_type": "article"
     },
     {
       "id": "rss-06311",
@@ -622,22 +325,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-08-23T22:40:57Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-08-23T22:40:57Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06312",
@@ -646,22 +338,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-11-02T12:55:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T12:55:00Z",
-      "posts_30d": 17
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06313",
@@ -670,22 +351,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-09-03T18:46:45Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-03T18:46:45Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06314",
@@ -694,22 +364,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-11-03T19:11:54Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T19:11:54Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06316",
@@ -718,22 +377,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-06T03:32:29Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-06T03:32:29Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06317",
@@ -742,22 +390,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-05T20:00:10Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-05T20:00:10Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06318",
@@ -766,22 +403,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-09-17T18:24:52Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-17T18:24:52Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06319",
@@ -790,22 +416,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-21T14:26:21Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-21T14:26:21Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06320",
@@ -814,22 +429,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-23T22:49:15Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-23T22:49:15Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06321",
@@ -838,22 +442,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-07T16:25:59Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-07T16:25:59Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06322",
@@ -862,22 +455,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-08-26T14:05:25Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-08-26T14:05:25Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06324",
@@ -886,22 +468,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-19T10:50:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-19T10:50:00Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06325",
@@ -910,22 +481,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-09-28T19:33:52Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-09-28T19:33:52Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06326",
@@ -934,22 +494,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-07T22:37:56Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-07T22:37:56Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06327",
@@ -958,22 +507,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-11-03T15:47:38Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T15:47:38Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06328",
@@ -982,22 +520,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-08-06T00:42:10Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-08-06T00:42:10Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06330",
@@ -1006,22 +533,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-08-13T06:04:28Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-08-13T06:04:28Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06331",
@@ -1030,22 +546,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-09-04T16:13:43Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-04T16:13:43Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06332",
@@ -1054,22 +559,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-09-04T09:31:26Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "私房/人像写真",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-04T09:31:26Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "私房/人像写真",
+      "content_type": "image"
     },
     {
       "id": "rss-06333",
@@ -1078,22 +572,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 25 items; latest 2026-11-03T14:32:45Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人摄影",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-11-03T14:32:45Z",
-      "posts_30d": 21
+      "nsfw": true,
+      "subtopic": "成人摄影",
+      "content_type": "image"
     },
     {
       "id": "rss-06334",
@@ -1102,22 +585,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-09-17T21:46:11Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人摄影",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-17T21:46:11Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人摄影",
+      "content_type": "image"
     },
     {
       "id": "rss-06335",
@@ -1126,22 +598,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-11-02T14:03:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人摄影",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-11-02T14:03:00Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "成人摄影",
+      "content_type": "image"
     },
     {
       "id": "rss-06336",
@@ -1150,22 +611,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-21T17:45:28Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人摄影",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-21T17:45:28Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "成人摄影",
+      "content_type": "image"
     },
     {
       "id": "rss-06337",
@@ -1174,22 +624,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-23T14:07:59Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人摄影",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-10-23T14:07:59Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "成人摄影",
+      "content_type": "image"
     },
     {
       "id": "rss-06338",
@@ -1198,22 +637,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 9 items; latest 2026-10-01T02:12:41Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人摄影",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-01T02:12:41Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人摄影",
+      "content_type": "image"
     },
     {
       "id": "rss-06339",
@@ -1222,22 +650,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 5 items; latest 2026-09-28T14:04:54Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人摄影",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-28T14:04:54Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人摄影",
+      "content_type": "image"
     },
     {
       "id": "rss-06359",
@@ -1246,22 +663,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-19T04:06:52Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-19T04:06:52Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06360",
@@ -1270,22 +676,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 12 items; latest 2026-11-03T10:00:54Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T10:00:54Z",
-      "posts_30d": 12
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06361",
@@ -1294,22 +689,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 40 items; latest 2026-10-30T12:45:23Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-30T12:45:23Z",
-      "posts_30d": 2
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06362",
@@ -1318,22 +702,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T14:27:45Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T14:27:45Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06363",
@@ -1342,22 +715,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T16:30:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T16:30:00Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06364",
@@ -1366,22 +728,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-11-03T19:54:19Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T19:54:19Z",
-      "posts_30d": 9
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06365",
@@ -1390,22 +741,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-02T15:59:10Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T15:59:10Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06366",
@@ -1414,22 +754,11 @@
       "category": "Culture & Ideas",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 25 items; latest 2026-08-30T13:59:48Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人文学",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-08-30T13:59:48Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人文学",
+      "content_type": "article"
     },
     {
       "id": "rss-06367",
@@ -1438,22 +767,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 15 items; latest 2026-11-04T00:16:01Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-04T00:16:01Z",
-      "posts_30d": 15
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06368",
@@ -1462,22 +780,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 48 items; latest 2026-11-03T19:37:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T19:37:00Z",
-      "posts_30d": 48
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06369",
@@ -1486,22 +793,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T16:23:33Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T16:23:33Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06370",
@@ -1510,22 +806,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-04T01:16:43Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-04T01:16:43Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06371",
@@ -1534,22 +819,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-01T11:56:12Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-01T11:56:12Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06372",
@@ -1558,22 +832,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-27T14:52:17Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-10-27T14:52:17Z",
-      "posts_30d": 6
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06373",
@@ -1582,22 +845,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-27T22:56:01Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-27T22:56:01Z",
-      "posts_30d": 11
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06374",
@@ -1606,22 +858,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-09-16T09:58:24Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-16T09:58:24Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06375",
@@ -1630,22 +871,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-09-28T09:23:23Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-09-28T09:23:23Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06376",
@@ -1654,22 +884,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-21T21:08:45Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-21T21:08:45Z",
-      "posts_30d": 5
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06377",
@@ -1678,22 +897,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T14:29:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-11-03T14:29:00Z",
-      "posts_30d": 3
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06378",
@@ -1702,22 +910,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T14:31:17Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T14:31:17Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06379",
@@ -1726,22 +923,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 6 items; latest 2026-10-29T14:23:19Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-10-29T14:23:19Z",
-      "posts_30d": 6
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06380",
@@ -1750,22 +936,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-14T14:09:09Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-14T14:09:09Z",
-      "posts_30d": 3
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06381",
@@ -1774,22 +949,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-10-30T16:00:10Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-30T16:00:10Z",
-      "posts_30d": 3
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06382",
@@ -1798,22 +962,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-03T09:06:37Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-03T09:06:37Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06383",
@@ -1822,22 +975,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 20 items; latest 2026-11-03T07:10:02Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T07:10:02Z",
-      "posts_30d": 6
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06384",
@@ -1846,22 +988,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-08-30T23:17:03Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-08-30T23:17:03Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06385",
@@ -1870,22 +1001,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-29T21:02:59Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-29T21:02:59Z",
-      "posts_30d": 8
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06386",
@@ -1894,22 +1014,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-24T07:11:32Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-24T07:11:32Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06387",
@@ -1918,22 +1027,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-04T01:21:53Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-04T01:21:53Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06388",
@@ -1942,22 +1040,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T18:35:21Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-11-03T18:35:21Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06389",
@@ -1966,22 +1053,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-01T09:25:26Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-01T09:25:26Z",
-      "posts_30d": 8
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06390",
@@ -1990,22 +1066,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-26T22:30:52Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-26T22:30:52Z",
-      "posts_30d": 7
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06391",
@@ -2014,22 +1079,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T13:00:51Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T13:00:51Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06392",
@@ -2038,22 +1092,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-02T10:09:18Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T10:09:18Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06393",
@@ -2062,22 +1105,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T16:54:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T16:54:00Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06394",
@@ -2086,22 +1118,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T22:00:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T22:00:00Z",
-      "posts_30d": 7
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06553",
@@ -2110,22 +1131,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 6 items; latest 2026-11-01T21:01:21Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-01T21:01:21Z",
-      "posts_30d": 6
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "image"
     },
     {
       "id": "rss-06554",
@@ -2134,22 +1144,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 50 items; latest 2026-09-18T07:15:32Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-18T07:15:32Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "article"
     },
     {
       "id": "rss-06555",
@@ -2158,22 +1157,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed atom, 30 items; latest 2026-10-12T05:40:52Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-12T05:40:52Z",
-      "posts_30d": 3
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "image"
     },
     {
       "id": "rss-06556",
@@ -2182,22 +1170,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-02T07:51:06Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "article",
       "has_image_in_feed": false,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T07:51:06Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "article"
     },
     {
       "id": "rss-06557",
@@ -2206,22 +1183,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-08-30T18:41:46Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-08-30T18:41:46Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "image"
     },
     {
       "id": "rss-06558",
@@ -2230,22 +1196,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-11-03T04:13:43Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-03T04:13:43Z",
-      "posts_30d": 10
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "image"
     },
     {
       "id": "rss-06559",
@@ -2254,22 +1209,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 10 items; latest 2026-10-20T12:45:50Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-10-20T12:45:50Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "image"
     },
     {
       "id": "rss-06560",
@@ -2278,22 +1222,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 26 items; latest 2026-11-02T19:08:34Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-02T19:08:34Z",
-      "posts_30d": 1
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "image"
     },
     {
       "id": "rss-06561",
@@ -2302,22 +1235,11 @@
       "category": "Fashion",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "feedspot-public-directory"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 31 items; latest 2026-09-29T07:15:00Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "内衣时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-09-29T07:15:00Z",
-      "posts_30d": 0
+      "nsfw": true,
+      "subtopic": "内衣时尚",
+      "content_type": "image"
     },
     {
       "id": "rss-06639",
@@ -2326,22 +1248,11 @@
       "category": "News",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "publisher-discovery"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 30 items; latest 2026-11-04T01:00:38Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "成人行业资讯",
-      "content_type": "article",
       "has_image_in_feed": true,
       "has_video_in_feed": false,
-      "upstream_latest_item_at": "2026-11-04T01:00:38Z",
-      "posts_30d": 28
+      "nsfw": true,
+      "subtopic": "成人行业资讯",
+      "content_type": "article"
     },
     {
       "id": "rss-06640",
@@ -2350,22 +1261,11 @@
       "category": "Photography",
       "language": "en",
       "region": null,
-      "source_repositories": [
-        "publisher-discovery"
-      ],
-      "validation": {
-        "status": "live_verified",
-        "method": "rss_verify_v2",
-        "checked_at": "2026-11-04T01:09:38Z",
-        "note": "HTTP 200, parsed rss2, 4 items; latest 2026-11-03T16:47:41Z; activity <= 90 days."
-      },
-      "nsfw": true,
-      "subtopic": "摄影与时尚",
-      "content_type": "image",
       "has_image_in_feed": true,
       "has_video_in_feed": true,
-      "upstream_latest_item_at": "2026-11-03T16:47:41Z",
-      "posts_30d": 4
+      "nsfw": true,
+      "subtopic": "摄影与时尚",
+      "content_type": "image"
     }
   ]
 }

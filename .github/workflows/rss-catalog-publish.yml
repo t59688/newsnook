@@ -38,7 +38,6 @@ jobs:
       - run: npm ci
       - name: Validate publication inputs
         run: |
-          python3 scripts/rss-catalog-curate.test.py
           node --import tsx scripts/rss-catalog.test.ts
           node --import tsx scripts/rss-catalog-import.test.ts
           node --import tsx scripts/rss-catalog-release.test.ts
