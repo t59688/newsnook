@@ -8,10 +8,6 @@ import type { CatalogService } from './service'
 import type { CatalogFeed } from './schema'
 
 const PAGE_SIZE = 30
-const NSFW_VISIBILITY_KEY = 'newsnook:rss-catalog:show-nsfw'
-function readNsfwVisibility(): boolean {
-  try { return typeof localStorage !== 'undefined' && localStorage.getItem(NSFW_VISIBILITY_KEY) === 'true' } catch { return false }
-}
 const languageName = (code: string) => {
   if (code === 'und') return '未标注语言'
   if (code === 'zh') return '中文'
@@ -27,7 +23,6 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service = rssCatal
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('')
   const [language, setLanguage] = useState('')
-  const [showNsfw, setShowNsfw] = useState(readNsfwVisibility)
   const [limit, setLimit] = useState(PAGE_SIZE)
   const [status, setStatus] = useState('正在打开本地目录…')
   const [failed, setFailed] = useState(false)
@@ -48,21 +43,13 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service = rssCatal
   }, [service, attempt])
   const feeds = state?.catalog.feeds
   const index = useMemo(() => createCatalogIndex(feeds ?? []), [feeds])
-  const nsfwCount = useMemo(() => feeds?.filter((feed) => feed.nsfw).length ?? 0, [feeds])
-  const visibleFeeds = useMemo(() => showNsfw ? feeds : feeds?.filter((feed) => !feed.nsfw), [feeds, showNsfw])
   const categories = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const feed of visibleFeeds ?? []) counts.set(feed.category, (counts.get(feed.category) ?? 0) + 1)
+    for (const feed of feeds ?? []) counts.set(feed.category, (counts.get(feed.category) ?? 0) + 1)
     return [...counts].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0], 'zh-CN'))
-  }, [visibleFeeds])
-  const languages = useMemo(() => [...new Set(visibleFeeds?.map((feed) => feed.language))].sort(), [visibleFeeds])
-  const results = useMemo(() => searchCatalog(index, { query, category, language, includeNsfw: showNsfw }), [index, query, category, language, showNsfw])
-  const toggleNsfw = () => {
-    const next = !showNsfw
-    setShowNsfw(next)
-    setLimit(PAGE_SIZE)
-    try { localStorage.setItem(NSFW_VISIBILITY_KEY, String(next)) } catch { /* local setting remains usable for this session */ }
-  }
+  }, [feeds])
+  const languages = useMemo(() => [...new Set(feeds?.map((feed) => feed.language))].sort(), [feeds])
+  const results = useMemo(() => searchCatalog(index, { query, category, language }), [index, query, category, language])
   const reset = () => { setQuery(''); setCategory(''); setLanguage(''); setLimit(PAGE_SIZE) }
   return <section aria-label="RSS 目录" className="space-y-4">
     {/* 紧凑精致的概览卡片 */}
@@ -75,7 +62,7 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service = rssCatal
           <p className="mt-1 text-[11px] leading-relaxed text-paper-faint">精选各领域优质源 · 本机离线即搜</p>
         </div>
         <dl className="flex shrink-0 gap-4 border-l border-haze/70 pl-3.5 text-right font-mono text-paper">
-          <div><dt className="text-[9.5px] text-paper-faint">订阅源</dt><dd className="mt-0.5 text-sm font-semibold">{visibleFeeds?.length.toLocaleString() ?? '—'}</dd></div>
+          <div><dt className="text-[9.5px] text-paper-faint">订阅源</dt><dd className="mt-0.5 text-sm font-semibold">{feeds?.length.toLocaleString() ?? '—'}</dd></div>
           <div><dt className="text-[9.5px] text-paper-faint">专题</dt><dd className="mt-0.5 text-sm font-semibold">{categories.length || '—'}</dd></div>
           <div><dt className="text-[9.5px] text-paper-faint">语言</dt><dd className="mt-0.5 text-sm font-semibold">{languages.length || '—'}</dd></div>
         </dl>
@@ -100,17 +87,6 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service = rssCatal
           <FeedStorePicker title="目录语言" value={language} options={[{ id: '', label: '全部语言' }, ...languages.map((code) => ({ id: code, label: languageName(code) }))]} onChange={(value) => { setLanguage(value); setLimit(PAGE_SIZE) }} />
         </div>
       </div>
-      {nsfwCount > 0 ? <div className="flex min-h-14 items-center justify-between gap-3 rounded-xl border border-haze/75 bg-ink-raised/45 px-3.5 py-2.5">
-        <div className="min-w-0">
-          <p className="text-[12px] font-medium text-paper">显示成人内容（NSFW）</p>
-          <p className="mt-0.5 text-[10.5px] leading-relaxed text-paper-faint">默认隐藏 · {nsfwCount} 个可能包含成人内容的来源</p>
-        </div>
-        <button type="button" role="switch" aria-label="显示成人内容（NSFW）" aria-checked={showNsfw} onClick={toggleNsfw} className="grid min-h-11 min-w-12 shrink-0 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar">
-          <span aria-hidden="true" className={`flex h-7 w-12 items-center rounded-full p-0.5 transition-colors ${showNsfw ? 'bg-cinnabar' : 'bg-haze'}`}>
-            <span className={`size-6 rounded-full bg-paper shadow-sm transition-transform ${showNsfw ? 'translate-x-5' : ''}`} />
-          </span>
-        </button>
-      </div> : null}
       <div role="group" aria-label="目录专题" className="flex max-h-40 flex-wrap gap-1.5 overflow-y-auto p-0.5">
         <button type="button" aria-pressed={!category} onClick={() => { setCategory(''); setLimit(PAGE_SIZE) }} className={`min-h-9 rounded-full border px-3 text-[11.5px] transition-colors ${!category ? 'border-cinnabar/50 bg-cinnabar/12 font-medium text-cinnabar-soft shadow-xs' : 'border-haze/75 bg-ink-raised/40 text-paper-muted hover:border-cinnabar/30 hover:text-paper'}`}>全部专题</button>
         {categories.map(([name, count]) => <button key={name} type="button" aria-pressed={category === name} onClick={() => { setCategory(category === name ? '' : name); setLimit(PAGE_SIZE) }} className={`min-h-9 rounded-full border px-3 text-[11.5px] transition-colors ${category === name ? 'border-cinnabar/50 bg-cinnabar/12 font-medium text-cinnabar-soft shadow-xs' : 'border-haze/75 bg-ink-raised/40 text-paper-muted hover:border-cinnabar/30 hover:text-paper'}`}><span>{name}</span><span aria-hidden="true" className="ml-1.5 font-mono text-[10px] opacity-60">{count}</span></button>)}

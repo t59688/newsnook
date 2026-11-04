@@ -20,8 +20,7 @@ assert.equal(catalog.feeds.filter((feed) => feed.language === 'zh').length, sour
 assert.equal(catalog.feeds.filter((feed) => feed.language === 'und').length, source.feeds.filter((feed: { language: string }) => feed.language === 'und').length, 'do not guess missing languages')
 assert.equal(catalog.feeds.some((feed) => /^(cn|en)-/.test(feed.category)), false)
 assert.ok(catalog.feeds.some((feed) => sensitiveSource.some((adult: { id: string }) => adult.id === feed.id)), 'NSFW feeds must reach the client')
-assert.ok(catalog.feeds.filter((feed) => feed.nsfw).every((feed) => !searchCatalog(createCatalogIndex(catalog.feeds), { query: feed.title }).some((entry) => entry.id === feed.id)), 'default search hides NSFW sources')
-assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: 'Couture Boudoir', includeNsfw: true }).some((feed) => feed.nsfw), 'explicit opt-in reveals NSFW sources')
+assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: 'Couture Boudoir' }).some((feed) => feed.nsfw), 'all sources are directly searchable without a separate filter')
 for (const [flag, keyword] of [['has_image_in_feed', '图文'], ['has_video_in_feed', '视频']] as const) {
   const candidate = source.feeds.find((feed: Record<string, unknown>) => feed[flag] === true)
   assert.ok(candidate, `catalog must contain audited ${keyword} feeds`)
