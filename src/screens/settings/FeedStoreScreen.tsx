@@ -112,9 +112,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
   const [routeInputs, setRouteInputs] = useState<Record<string, string>>({})
   const [selectedInstanceId, setSelectedInstanceId] = useState('')
   const instances = normalizeRssHubInstances(prefs.rsshubInstances)
-  const selectedInstance = selectedInstanceId
-    ? instances.find((item) => item.id === selectedInstanceId && item.enabled)
-    : instances.find((item) => item.enabled)
+  const selectedInstance = instances.find((item) => item.id === selectedInstanceId && item.enabled)
+    ?? instances.find((item) => item.enabled)
   const routeResolution = entry?.type === 'rsshub' && entry.routeTemplate
     ? resolveRssHubRadarTarget(entry.routeTemplate, { ...entry.parameters, ...routeInputs })
     : null

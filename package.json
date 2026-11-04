@@ -252,6 +252,7 @@
     "@vitejs/plugin-react": "^6.0.4",
     "lightningcss": "^1.33.0",
     "oxlint": "^1.75.0",
+    "pinyin-pro": "^3.29.5",
     "playwright": "1.62.1",
     "socks-proxy-agent": "^10.1.0",
     "tsx": "^4.23.12",

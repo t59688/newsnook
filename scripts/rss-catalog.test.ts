@@ -28,4 +28,16 @@ assert.equal(searchCatalog(mixed, {}).length, 2, 'all sources are searchable wit
 assert.equal(searchCatalog(mixed, { query: 'Portrait Studio' })[0].id, 'adult')
 assert.equal(searchCatalog(mixed, { query: 'nsfw' })[0].id, 'adult', 'source metadata remains searchable')
 assert.equal(searchCatalog(mixed, { query: '成人内容' })[0].id, 'adult')
+
+const upgraded = { ...feed, id: 'creator', url: 'https://rsshub-balancer.virworks.moe/bilibili/user/video/946974',
+  title: '影视飓风 · Bilibili 空间', aliases: ['MediaStorm', 'ying shi ju feng', 'yingshijufeng'],
+  platform: 'bilibili', creatorId: '946974', rsshubRoute: '/bilibili/user/video/946974' }
+assert.deepEqual(parseCatalog({ ...catalog, revision: 20261104004, feeds: [upgraded] }).feeds[0], upgraded)
+assert.throws(() => parseCatalog({ ...catalog, feeds: [{ ...upgraded, rsshubRoute: '/../private' }] }))
+assert.throws(() => parseCatalog({ ...catalog, revision: -1 }))
+const sourceIndex = createCatalogIndex([upgraded, { ...feed, id: 'other', title: '影视工作室', url: 'https://example.org/film' }])
+for (const term of ['影视飓风', '影视剧风', '946974', 'MediaStorm', 'yingshijufeng']) {
+  assert.equal(searchCatalog(sourceIndex, { query: term })[0]?.id, 'creator', term)
+}
+assert.equal(searchCatalog(sourceIndex, { query: '电影' }).length, 0, 'unrelated fuzzy suggestions must not appear')
 console.log('rss catalog schema/search: ok')

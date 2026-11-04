@@ -6,7 +6,7 @@ import { createCatalogIndex, searchCatalog } from '../src/features/rssCatalog/se
 const source = JSON.parse(readFileSync(new URL('../data/rss-catalog/upstream.json', import.meta.url), 'utf8'))
 const catalog = normalizeUpstreamCatalog(source)
 const sensitiveSource = source.feeds.filter((feed: { nsfw?: boolean }) => feed.nsfw === true)
-assert.equal(source.feeds.length, 4791, 'one authoritative source contains both regular and NSFW feeds')
+assert.equal(source.feeds.length, 6509, 'one authoritative source contains both regular and NSFW feeds')
 assert.equal(sensitiveSource.length, 104)
 assert.equal(catalog.feeds.length, source.feeds.length, 'all sources must reach the searchable catalog')
 assert.equal(catalog.feeds.filter((feed) => feed.nsfw).length, sensitiveSource.length)
@@ -17,6 +17,23 @@ assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: 'SpaceNews' 
 assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: '开源中国' }).some((feed) => feed.title.includes('开源中国')), 'new open source source is discoverable')
 assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: 'TED Talks' }).some((feed) => feed.title.includes('TED Talks')), 'new video source is discoverable')
 assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: '影视飓风' }).some((feed) => feed.title.includes('影视飓风')), 'bilibili video source is discoverable')
+const offlineIndex = createCatalogIndex(catalog.feeds)
+const creator = catalog.feeds.find((feed) => feed.id === 'rss-06762')!
+assert.equal(creator.creatorId, '946974')
+assert.equal(creator.rsshubRoute, '/bilibili/user/video/946974')
+for (const query of ['影视剧风', '946974', 'MediaStorm', 'yingshijufeng', 'ying shi ju feng']) {
+  assert.equal(searchCatalog(offlineIndex, { query })[0]?.id, creator.id, query)
+}
+assert.ok(searchCatalog(offlineIndex, { query: '微信公众号' }).length >= 290)
+assert.ok(searchCatalog(offlineIndex, { query: 'B站' }).length >= 18)
+assert.ok(searchCatalog(offlineIndex, { query: '88461692' }).some((feed) => feed.title.includes('3Blue1Brown')))
+const nativeYouTube = catalog.feeds.find((feed) => feed.title === '3Blue1Brown' && feed.url.includes('youtube.com/feeds/videos.xml'))!
+assert.equal(nativeYouTube.platform, 'youtube', 'native YouTube feeds expose a searchable platform identity')
+assert.ok(nativeYouTube.creatorId?.startsWith('UC'))
+assert.equal(searchCatalog(offlineIndex, { query: nativeYouTube.creatorId! })[0]?.id, nativeYouTube.id)
+
+assert.equal(catalog.feeds.filter((feed) => feed.id.startsWith('rss-08')).length > 400, true, 'cross-platform creators are bundled without any network request')
+
 assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: '罗翔' }).some((feed) => feed.title.includes('罗翔')), 'bilibili education source is discoverable')
 assert.ok(searchCatalog(createCatalogIndex(catalog.feeds), { query: '财联社' }).some((feed) => feed.title.includes('财联社')), 'financial telegraph source is discoverable')
 const chinesePhotoIds = new Set(Array.from({ length: 20 }, (_, index) => `rss-${String(6642 + index).padStart(5, '0')}`))

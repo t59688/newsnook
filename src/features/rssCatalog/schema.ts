@@ -1,4 +1,6 @@
 /** Shared by the offline client and the release script. No runtime dependencies. */
+import { validateRssHubRoutePath } from '../rsshub/instances'
+
 export const CATALOG_BASE = 'https://news-update.aizeek.com/rss-catalog/v1/'
 export const MAX_CATALOG_BYTES = 8 * 1024 * 1024
 export interface CatalogFeed {
@@ -11,8 +13,11 @@ export interface CatalogFeed {
   aliases: string[]
   tags: string[]
   nsfw: boolean
+  platform?: string
+  creatorId?: string
+  rsshubRoute?: string
 }
-export interface RssCatalog { schemaVersion: 1; generatedAt: string; feeds: CatalogFeed[] }
+export interface RssCatalog { schemaVersion: 1; generatedAt: string; revision?: number; feeds: CatalogFeed[] }
 export interface CatalogManifest {
   manifestSchema: 1
   catalog: { version: string; schemaVersion: 1; generatedAt: string; feedCount: number; size: number; sha256: string; url: string }
@@ -34,6 +39,14 @@ function strings(value: unknown): string[] {
   if (!Array.isArray(value) || value.length > 30) throw new Error('RSS 目录关键词无效')
   return value.map((item) => string(item, 100))
 }
+function optionalString(value: unknown, max = 100): string | undefined {
+  return value === undefined ? undefined : string(value, max)
+}
+function optionalRoute(value: unknown): string | undefined {
+  if (value === undefined) return undefined
+  return validateRssHubRoutePath(string(value, 700))
+}
+
 export function catalogFeedUrl(value: unknown): string {
   const url = new URL(string(value, 2048))
   if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.hash) throw new Error('RSS 目录地址无效')
@@ -51,9 +64,10 @@ export function parseCatalog(value: unknown): RssCatalog {
     if (ids.has(id) || urls.has(url)) throw new Error('RSS 目录包含重复来源')
     ids.add(id); urls.add(url)
     if (typeof row.nsfw !== 'boolean') throw new Error('RSS 目录 NSFW 标记无效')
-    return { id, url, title: string(row.title), category: string(row.category, 100), language: string(row.language, 35), region: string(row.region, 100), aliases: strings(row.aliases), tags: strings(row.tags), nsfw: row.nsfw }
+    return { id, url, title: string(row.title), category: string(row.category, 100), language: string(row.language, 35), region: string(row.region, 100), aliases: strings(row.aliases), tags: strings(row.tags), nsfw: row.nsfw, ...(row.platform === undefined ? {} : { platform: optionalString(row.platform, 60) }), ...(row.creatorId === undefined ? {} : { creatorId: optionalString(row.creatorId, 100) }), ...(row.rsshubRoute === undefined ? {} : { rsshubRoute: optionalRoute(row.rsshubRoute) }) }
   })
-  return { schemaVersion: 1, generatedAt: date(root.generatedAt), feeds }
+  if (root.revision !== undefined && (!Number.isSafeInteger(root.revision) || Number(root.revision) < 1)) throw new Error('RSS 目录修订号无效')
+  return { schemaVersion: 1, generatedAt: date(root.generatedAt), ...(root.revision === undefined ? {} : { revision: root.revision as number }), feeds }
 }
 export function parseManifest(value: unknown): CatalogManifest {
   const root = object(value)

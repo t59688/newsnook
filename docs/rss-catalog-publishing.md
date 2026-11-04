@@ -4,13 +4,22 @@
 
 维护数据保存在 `data/rss-catalog/upstream.json`；`scripts/rss-catalog-import.ts` 确定性生成 `src/features/rssCatalog/seed.json`。应用仅打包精简种子，维护文件、验证明细和归一化映射不进入 APK。
 
-`data/rss-catalog/upstream.json` 是唯一维护源，包含 **4,791 条** RSS、Atom、JSON Feed，其中 **104 条**含 `nsfw: true` 标记。导入器校验所有来源并生成同样 **4,791 条**的离线种子；发布器直接使用相同的完整目录，可独立更新 R2，无需重新发布 APK。没有第二份 NSFW 数据文件、兼容目录或独立发布链路。源文件只保留运行需要的字段，网络审计过程保存在仓库外。
+`data/rss-catalog/upstream.json` 是唯一维护源，包含 **6,509 条** RSS、Atom、JSON Feed，其中 **104 条**含 `nsfw: true` 标记。导入器校验所有来源并生成同样 **6,509 条**的离线种子；发布器直接使用相同的完整目录，可独立更新 R2，无需重新发布 APK。没有第二份 NSFW 数据文件、兼容目录或独立发布链路。源文件只保留运行需要的字段，网络审计过程保存在仓库外。
 
-**内容标记**：客户端目录条目保留 `nsfw: boolean`（未标记的来源归一化为 `false`），用于来源列表中的小型提示标签和元数据检索。目录没有 NSFW 开关、显隐状态或搜索过滤：全部 4,791 条来源直接参与搜索、分类统计、预览与订阅。缺少 `nsfw` 字段的旧目录缓存校验失败后，客户端直接使用新离线种子，再由常规 R2 更新恢复网络快照。
+### 离线创作者来源索引（2026-11-04）
+
+唯一维护目录合入经验证的 1,717 条跨平台来源，并加入 3Blue1Brown 的 B 站投稿订阅。目录收录原生 RSS 与已解析的 RSSHub 路由，搜索用户无需先去网址模式转换。上游可为每个来源附加 platform、creator_id、rsshub_route、aliases、tags。导入器执行格式验证，归一化为客户端的 platform、creatorId、rsshubRoute。中文名称拼音及无空格拼音在构建时通过 pinyin-pro 生成；运行时 WebView 无须加载拼音库。
+
+本地搜索匹配创作者名、别名、UID、拼音、专题及标签；仅当精确查询没有命中时，针对长度足够的单词执行单字符错字容错，不做 UID 模糊匹配。搜索不向任何网站发网络请求。RSSHub 来源选择后沿用 RSS 商店已有实例管理、探测、预览、订阅以及故障切换，原生 RSS 继续按原流程处理，不建设第二套转换系统。
+
+内置目录的 metadata.revision 单调递增，对应生成快照的 revision。应用启动对比本地缓存与内置种子的日期和修订号，不让旧 R2/IndexedDB 完整快照盖过更新的 APK 离线目录；在线也只接受同等或更新修订号的完整快照。R2 仍使用固定 Manifest + 哈希快照，后续可以独立更新。此次新增尚未发布到 R2，也没有发布新 APK；上一在线版本为 4,665 条。
+
+
+**内容标记**：客户端目录条目保留 `nsfw: boolean`（未标记的来源归一化为 `false`），用于来源列表中的小型提示标签和元数据检索。目录没有 NSFW 开关、显隐状态或搜索过滤：全部 6,509 条来源直接参与搜索、分类统计、预览与订阅。缺少 `nsfw` 字段的旧目录缓存校验失败后，客户端直接使用新离线种子，再由常规 R2 更新恢复网络快照。
 
 **每个 APK 都携带一份内置种子**，保证任何版本的新安装都可离线查找。安装包中的种子只在没有有效远程缓存时使用；已下载的 R2 快照始终优先，不会被 APK 中的种子覆盖。后续仅更新目录时，发布 R2 快照即可，无需重发 APK；下一次发 APK 时可以同时更新内置种子，供新的安装使用。
 
-生成后的输入结构：`{ schemaVersion: 1, generatedAt: ISO时间, feeds: [...] }`，每条包含 `id/title/url/category/language/region/aliases/tags/nsfw`。`id` 应保持稳定，修正地址时不更换 id。上游有新分类/地区时扩展导入脚本映射，未映射值会报错，避免直接显示内部分类键。未知语言使用 `und`，不要根据标题猜测语言；禁止添加凭证或需要登录的私密 Feed。重复 id/URL、非 HTTP(S)、URL 凭据、非法字段及空目录都会拒绝发布，不会静默丢弃数据。目录最大 8 MiB / 50,000 条。
+生成后的输入结构：`{ schemaVersion: 1, generatedAt: ISO时间, feeds: [...] }`，每条包含 `id/title/url/category/language/region/aliases/tags/nsfw`。`id` 应保持稳定，修正地址时不更换 id。 上游 metadata.revision 须随完整目录单调递增，与下一次 RSS Catalog 发布版本相匹配，例如 2026.11.04.4 对应 20261104004。上游有新分类/地区时扩展导入脚本映射，未映射值会报错，避免直接显示内部分类键。未知语言使用 `und`，不要根据标题猜测语言；禁止添加凭证或需要登录的私密 Feed。重复 id/URL、非 HTTP(S)、URL 凭据、非法字段及空目录都会拒绝发布，不会静默丢弃数据。目录最大 8 MiB / 50,000 条。
 
 客户端从内置种子或 IndexedDB `newsnook:rss-catalog` 读取快照。在首屏可用后的空闲时机与进入目录时，检查固定地址 `https://news-update.aizeek.com/rss-catalog/v1/manifest.json`。按用户最终要求，成功检查后 1 小时内不重复联网；运行中的应用每小时尝试维护，失败在进程内退避一小时。下次冷启动失败退避重新计时。关键词不发网络请求；预览与订阅读取原站。后台更新不弹窗、不修改已有订阅。
 
@@ -27,9 +36,9 @@
 node --import tsx scripts/rss-catalog-import.ts
 node --import tsx scripts/rss-catalog-import.test.ts
 node --import tsx scripts/rss-catalog-release.test.ts
-node --import tsx scripts/rss-catalog-release.ts --version 2026.11.04.3
+node --import tsx scripts/rss-catalog-release.ts --version 2026.11.04.4
 # 可先指定另一份已经归一化的数据，仅构建不会写入 R2
-node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json --version 2026.11.04.3
+node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json --version 2026.11.04.4
 ```
 
 产物默认在 `node_modules/.cache/newsnook/rss-catalog/`。确认内容后，配置环境变量并安装 AWS CLI：
@@ -39,7 +48,7 @@ node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json -
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`，仅授予目标 bucket 必要读写权限
 
 ```bash
-node --import tsx scripts/rss-catalog-release.ts --publish --version 2026.11.04.3
+node --import tsx scripts/rss-catalog-release.ts --publish --version 2026.11.04.4
 node --import tsx scripts/rss-catalog-verify.ts --manifest node_modules/.cache/newsnook/rss-catalog/manifest.json
 ```
 

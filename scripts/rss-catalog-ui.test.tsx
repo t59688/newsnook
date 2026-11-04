@@ -3,6 +3,21 @@ import { parseHTML } from 'linkedom'
 import React, { act } from 'react'
 import { CatalogService } from '../src/features/rssCatalog/service'
 import { RssCatalogBrowser } from '../src/features/rssCatalog/RssCatalogBrowser'
+import { catalogEntryFor } from '../src/features/rssCatalog/entry'
+const resolved = catalogEntryFor({ id: 'bili', title: '影视飓风', url: 'https://rsshub-balancer.virworks.moe/bilibili/user/video/946974', category: '视频', language: 'zh', region: '未标注', aliases: [], tags: [], nsfw: false })
+assert.equal(resolved.type, 'rsshub')
+assert.equal(resolved.routePath, '/bilibili/user/video/946974')
+assert.equal(resolved.instanceId, 'virworks')
+assert.equal(resolved.siteUrl, 'https://space.bilibili.com/946974')
+const importedMirror = catalogEntryFor({ id: 'mirror', title: '远端来源', url: 'https://rss.materium.io/telegram/channel/News', category: '社区', language: 'zh', region: '未标注', aliases: [], tags: [], nsfw: false })
+assert.equal(importedMirror.type, 'rsshub')
+assert.equal(importedMirror.instanceId, 'materium')
+assert.equal(importedMirror.routePath, '/telegram/channel/News')
+const officialDemo = catalogEntryFor({ id: 'official', title: '演示实例', url: 'https://rsshub.app/bilibili/user/video/1234', category: '视频', language: 'zh', region: '未标注', aliases: [], tags: [], nsfw: false })
+assert.equal(officialDemo.type, 'rsshub')
+assert.equal(officialDemo.instanceId, undefined, 'disabled demo instance cannot prevent automatic fallback to enabled public instances')
+
+assert.equal(catalogEntryFor({ id: 'rss', title: '普通 RSS', url: 'https://example.org/feed', category: '新闻', language: 'zh', region: '未标注', aliases: [], tags: [], nsfw: false }).type, 'direct')
 const { window } = parseHTML('<html><body><div id="root"></div></body></html>')
 Object.assign(globalThis, { window, document: window.document, HTMLElement: window.HTMLElement, React, IS_REACT_ACT_ENVIRONMENT: true })
 const { createRoot } = await import('react-dom/client')

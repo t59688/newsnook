@@ -2,20 +2,23 @@ import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { ArrowUpRight, BookOpen, Check, Globe2, Search, X } from 'lucide-react'
 import type { FeedDiscoveryEntry } from '../feedDiscovery/types'
 import { FeedStorePicker } from '../feedDiscovery/FeedStorePicker'
+import { catalogEntryFor } from './entry'
 import { createCatalogIndex, searchCatalog } from './search'
 import { rssCatalogService } from './runtime'
 import type { CatalogService } from './service'
-import type { CatalogFeed } from './schema'
 
 const PAGE_SIZE = 30
+const platformNames: Record<string, string> = {
+  bilibili: 'B站', wechat: '微信公众号', youtube: 'YouTube',
+  telegram: 'Telegram', douban: '豆瓣', jike: '即刻',
+  weibo: '微博', zhihu: '知乎', reddit: 'Reddit', webcomic: '漫画',
+}
+
 const languageName = (code: string) => {
   if (code === 'und') return '未标注语言'
   if (code === 'zh') return '中文'
   if (code === 'en') return '英文'
   try { return new Intl.DisplayNames(['zh-CN'], { type: 'language' }).of(code) ?? code } catch { return code }
-}
-function entryFor(feed: CatalogFeed): FeedDiscoveryEntry {
-  return { providerId: 'rss-catalog', entryId: feed.id, type: 'direct', title: feed.title, feedUrl: feed.url, categories: [feed.category], description: [feed.region, ...feed.tags].join(' · '), statusNote: '目录收录不代表当前可用，订阅前请检测并预览。' }
 }
 interface Props { onSelect(entry: FeedDiscoveryEntry): void; duplicateLabel(entry: FeedDiscoveryEntry): string | null | undefined; service?: CatalogService }
 export function RssCatalogBrowser({ onSelect, duplicateLabel, service = rssCatalogService }: Props) {
@@ -105,13 +108,13 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service = rssCatal
     {/* 列表 */}
     <div className="divide-y divide-haze/70 border-b border-haze/70">
       {results.slice(0, limit).map((feed) => {
-        const entry = entryFor(feed)
+        const entry = catalogEntryFor(feed)
         const duplicate = duplicateLabel(entry)
         let hostname = ''
         try { hostname = new URL(feed.url).hostname } catch {}
         return <button data-catalog-feed key={feed.id} type="button" onClick={() => onSelect(entry)} className="group flex min-h-[76px] w-full items-start gap-3 py-3.5 text-left transition-colors hover:bg-paper/3 focus-visible:outline-2 focus-visible:outline-cinnabar">
           <span aria-hidden="true" className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-xl border border-cinnabar/20 bg-cinnabar/8 font-display text-base font-medium text-cinnabar-soft transition-colors group-hover:border-cinnabar/40 group-hover:bg-cinnabar/12">{feed.title.slice(0, 1)}</span>
-          <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-medium leading-snug text-paper transition-colors group-hover:text-cinnabar-soft">{feed.title}{feed.nsfw ? <span className="rounded border border-cinnabar/35 px-1.5 py-0.5 font-mono text-[9px] font-medium leading-none text-cinnabar-soft">NSFW</span> : null}</span><span className="mt-1 flex items-center gap-1.5 text-[11px] text-paper-faint"><Globe2 size={11} className="shrink-0" /><span className="truncate">{hostname}</span></span><span className="mt-1.5 block text-[10.5px] text-paper-muted">{feed.category} · {languageName(feed.language)}{feed.region !== 'Global' && feed.region !== '未标注' ? ' · ' + feed.region : ''}</span></span>
+          <span className="min-w-0 flex-1"><span className="flex flex-wrap items-center gap-1.5 text-[13.5px] font-medium leading-snug text-paper transition-colors group-hover:text-cinnabar-soft">{feed.title}{feed.nsfw ? <span className="rounded border border-cinnabar/35 px-1.5 py-0.5 font-mono text-[9px] font-medium leading-none text-cinnabar-soft">NSFW</span> : null}</span><span className="mt-1 flex items-center gap-1.5 text-[11px] text-paper-faint"><Globe2 size={11} className="shrink-0" /><span className="truncate">{hostname}</span></span><span className="mt-1.5 block text-[10.5px] text-paper-muted">{feed.platform ? (platformNames[feed.platform] ?? feed.platform) + ' · ' : ''}{feed.category} · {languageName(feed.language)}{feed.region !== 'Global' && feed.region !== '未标注' ? ' · ' + feed.region : ''}</span></span>
           <span className="flex shrink-0 flex-col items-end justify-between gap-2.5 self-stretch pt-0.5">{duplicate ? <span className="flex items-center gap-1 rounded-full bg-cinnabar/10 px-2 py-0.5 text-[10px] text-cinnabar-soft"><Check size={11} strokeWidth={2} />{duplicate}</span> : <span className="inline-flex items-center gap-0.5 text-[10.5px] text-paper-faint transition-colors group-hover:text-cinnabar-soft">预览订阅<ArrowUpRight aria-hidden="true" size={13} className="shrink-0 text-paper-faint group-hover:text-cinnabar-soft" /></span>}</span>
         </button>
       })}
