@@ -1553,7 +1553,6 @@ export default function App() {
             }
             let nextPrefs = addCustomSource(prefs, source, targetCatId).nextPrefs
             if (targetCatId && nextPrefs.hiddenCategoryIds.includes(targetCatId)) nextPrefs = toggleCategoryVisible(nextPrefs, targetCatId)
-            if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             const sourceId = makeCustomSourceId(source.url)
             const nextEnabled = addToMix && !enabledIds.includes(sourceId) ? [...enabledIds, sourceId] : enabledIds
             try {
@@ -1583,7 +1582,6 @@ export default function App() {
             }
             if (!added) return { ok: false, message: '所选频道已经订阅，无需重复添加。' }
             if (targetCatId && nextPrefs.hiddenCategoryIds.includes(targetCatId)) nextPrefs = toggleCategoryVisible(nextPrefs, targetCatId)
-            if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             try {
               saveSubscriptionState(sanitizeForPersistence(nextPrefs), nextEnabled)
             } catch {
@@ -1600,7 +1598,6 @@ export default function App() {
             const ids = sourceIdsForCategoryWithPrefs(targetCatId, prefs, enabledIds)
             let nextPrefs = targetCatId === FOLLOWS_ENABLED_SOURCES || ids.includes(sourceId) ? prefs : toggleCategorySource(prefs, targetCatId, sourceId)
             if (nextPrefs.hiddenCategoryIds.includes(targetCatId)) nextPrefs = toggleCategoryVisible(nextPrefs, targetCatId)
-            if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             const nextEnabled = (targetCatId === FOLLOWS_ENABLED_SOURCES || addToMix) && !enabledIds.includes(sourceId) ? [...enabledIds, sourceId] : enabledIds
             try { saveSubscriptionState(sanitizeForPersistence(nextPrefs), nextEnabled) } catch { return { ok: false, message: '订阅保存失败，请检查本机存储空间后重试。' } }
             replacePreferences(nextPrefs)

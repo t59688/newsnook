@@ -801,7 +801,7 @@ export function PresetListScreen({
       <PromptDialog
         open={dialog?.type === 'createBlank'}
         title="创建空白预设"
-        message="从空白开始：仅保留综合分类，信源全空，不基于任何内置场景。"
+        message="从空白开始：信源全空，包含一个初始「我的关注」分类，不基于任何内置场景。"
         label="预设名称"
         defaultValue="未命名预设"
         confirmLabel="创建"

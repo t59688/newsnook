@@ -480,6 +480,9 @@ assert.deepEqual(
 const blank = createBlankUserPreset(fresh, '空白台')
 assert.deepEqual(blank.preset.snapshot, emptyLayoutSnapshot())
 assert.equal(blank.state.activePresetId, blank.preset.id)
+assert.ok(blank.preset.snapshot.hiddenCategoryIds.includes('mix'), 'blank preset must hide mix')
+assert.equal(blank.preset.snapshot.customCategories[0]?.id, 'custom_inbox')
+assert.deepEqual(blank.preset.snapshot.categoryOrder, ['custom_inbox'])
 
 const renamedBuiltin = renameUserPreset(fresh, BUILTIN_DEFAULT_ID, '内置改名')
 assert.equal(renamedBuiltin, fresh)
