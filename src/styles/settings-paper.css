@@ -260,11 +260,15 @@ html[data-theme='dark'][data-scheme='ink'] .paper-settings-shell {
   border-radius: 17px;
   box-shadow: 0 4px 18px -15px rgb(0 0 0 / .16);
 }
+.paper-settings-section--plain .paper-settings-section-heading {
+  padding-left: 0;
+  padding-right: 0;
+}
 .paper-settings-section--plain .paper-settings-section-content {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 .paper-settings-section-content > .page-x {
   padding-left: 14px;

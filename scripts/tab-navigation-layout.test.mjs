@@ -6,6 +6,7 @@ const { chromium } = createRequire(import.meta.url)('playwright')
 const server = await createServer({ server: { port: 0, host: '127.0.0.1' } })
 let browser
 let releasePage
+let releaseStore
 try {
   await server.listen()
   browser = await chromium.launch({
@@ -25,6 +26,11 @@ try {
     await pageReleased
     await route.continue()
   })
+  const storeReleased = new Promise(resolve => { releaseStore = resolve })
+  await page.route('**/src/screens/settings/FeedStoreScreen.tsx*', async route => {
+    await storeReleased
+    await route.continue()
+  })
   await page.route('**/api/**', route => route.fulfill({ status: 200, contentType: 'application/rss+xml', body: '<rss version="2.0"><channel><title>Test</title></channel></rss>' }))
   await page.goto(server.resolvedUrls.local[0])
   const dock = page.locator('[data-surface="tabbar"]')
@@ -42,6 +48,17 @@ try {
     'keep the current page visible while the next tab loads')
   releasePage()
   await page.getByRole('heading', { name: '设置', exact: true }).waitFor()
+  await page.getByRole('button', { name: /RSS 订阅商店/ }).click()
+  await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))))
+  assert.equal(await page.getByText('正在加载…', { exact: true }).count(), 0,
+    'a cold RSS store must not replace the settings menu with a loading placeholder')
+  assert.equal(await page.getByRole('heading', { name: '设置', exact: true }).isVisible(), true,
+    'the settings menu remains usable until a cold destination is ready')
+  releaseStore()
+  await page.getByRole('heading', { name: 'RSS 订阅商店', exact: true }).waitFor()
+  await page.getByRole('searchbox').first().waitFor()
+  await page.getByRole('button', { name: '返回', exact: true }).click()
+  await page.getByRole('heading', { name: '设置', exact: true }).waitFor()
   assert.ok(Math.abs((await dock.boundingBox()).y - initialDock.y) < 1,
     'the loaded settings page keeps the same dock position')
   await page.getByRole('button', { name: '速闻', exact: true }).click()
@@ -50,6 +67,7 @@ try {
   console.log('Cold and warm tab navigation preserve content and dock geometry')
 } finally {
   releasePage?.()
+  releaseStore?.()
   await browser?.close()
   await server.close()
 }

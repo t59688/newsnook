@@ -18,14 +18,14 @@
 
 /* 14px 文人古典倒角，温和宣纸微漫反射 */
 html[data-scheme='ink'] .paper-settings-panel,
-html[data-scheme='ink'] .paper-settings-section-content,
+html[data-scheme='ink'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='ink'] .paper-settings-shortcut {
   border-radius: 14px !important;
   border: 1px solid rgba(180, 61, 38, 0.12) !important;
   box-shadow: 0 4px 16px -8px rgba(72, 58, 38, 0.08) !important;
 }
 html[data-scheme='ink'][data-theme='dark'] .paper-settings-panel,
-html[data-scheme='ink'][data-theme='dark'] .paper-settings-section-content,
+html[data-scheme='ink'][data-theme='dark'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='ink'][data-theme='dark'] .paper-settings-shortcut {
   border: 1px solid rgba(196, 92, 74, 0.14) !important;
   box-shadow: 0 4px 16px -8px rgba(0, 0, 0, 0.5) !important;
@@ -60,14 +60,14 @@ html[data-scheme='ink'][data-theme='dark'] .paper-settings-brand-dot {
 
 /* 8px 紧致工业几何，严谨工差与纯净留白 */
 html[data-scheme='pearl'] .paper-settings-panel,
-html[data-scheme='pearl'] .paper-settings-section-content,
+html[data-scheme='pearl'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='pearl'] .paper-settings-shortcut {
   border-radius: 8px !important;
   border: 1px solid rgba(24, 86, 243, 0.1) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03), 0 6px 18px -8px rgba(24, 86, 243, 0.06) !important;
 }
 html[data-scheme='pearl'][data-theme='dark'] .paper-settings-panel,
-html[data-scheme='pearl'][data-theme='dark'] .paper-settings-section-content,
+html[data-scheme='pearl'][data-theme='dark'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='pearl'][data-theme='dark'] .paper-settings-shortcut {
   border: 1px solid rgba(56, 123, 255, 0.12) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3), 0 6px 18px -8px rgba(0, 0, 0, 0.5) !important;
@@ -115,14 +115,14 @@ html[data-scheme='pearl'][data-theme='dark'] .paper-settings-brand-dot {
 
 /* 14px 经典陶土温润倒角，暖调羊皮与陶砂质感 */
 html[data-scheme='amber'] .paper-settings-panel,
-html[data-scheme='amber'] .paper-settings-section-content,
+html[data-scheme='amber'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='amber'] .paper-settings-shortcut {
   border-radius: 14px !important;
   border: 1px solid rgba(196, 72, 32, 0.14) !important;
   box-shadow: 0 6px 20px -8px rgba(196, 72, 32, 0.08) !important;
 }
 html[data-scheme='amber'][data-theme='dark'] .paper-settings-panel,
-html[data-scheme='amber'][data-theme='dark'] .paper-settings-section-content,
+html[data-scheme='amber'][data-theme='dark'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='amber'][data-theme='dark'] .paper-settings-shortcut {
   border: 1px solid rgba(224, 101, 62, 0.16) !important;
   box-shadow: 0 6px 20px -8px rgba(0, 0, 0, 0.5) !important;
@@ -157,14 +157,14 @@ html[data-scheme='amber'][data-theme='dark'] .paper-settings-brand-dot {
 
 /* 20px 饱满玉润圆弧，如青瓷胎骨般柔和清凉 */
 html[data-scheme='celadon'] .paper-settings-panel,
-html[data-scheme='celadon'] .paper-settings-section-content,
+html[data-scheme='celadon'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='celadon'] .paper-settings-shortcut {
   border-radius: 20px !important;
   border: 1px solid rgba(27, 115, 78, 0.14) !important;
   box-shadow: 0 8px 24px -12px rgba(27, 115, 78, 0.08) !important;
 }
 html[data-scheme='celadon'][data-theme='dark'] .paper-settings-panel,
-html[data-scheme='celadon'][data-theme='dark'] .paper-settings-section-content,
+html[data-scheme='celadon'][data-theme='dark'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='celadon'][data-theme='dark'] .paper-settings-shortcut {
   border: 1px solid rgba(59, 181, 126, 0.16) !important;
   box-shadow: 0 8px 24px -12px rgba(0, 0, 0, 0.45) !important;
@@ -206,14 +206,14 @@ html[data-scheme='celadon'][data-theme='dark'] .paper-settings-brand-dot {
 
 /* 16px 优雅舒展流线，如丝绒微光弥散 */
 html[data-scheme='dusk'] .paper-settings-panel,
-html[data-scheme='dusk'] .paper-settings-section-content,
+html[data-scheme='dusk'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='dusk'] .paper-settings-shortcut {
   border-radius: 16px !important;
   border: 1px solid rgba(126, 59, 168, 0.14) !important;
   box-shadow: 0 8px 24px -10px rgba(126, 59, 168, 0.08) !important;
 }
 html[data-scheme='dusk'][data-theme='dark'] .paper-settings-panel,
-html[data-scheme='dusk'][data-theme='dark'] .paper-settings-section-content,
+html[data-scheme='dusk'][data-theme='dark'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content,
 html[data-scheme='dusk'][data-theme='dark'] .paper-settings-shortcut {
   border: 1px solid rgba(183, 110, 232, 0.16) !important;
   box-shadow: 0 8px 24px -10px rgba(0, 0, 0, 0.45) !important;

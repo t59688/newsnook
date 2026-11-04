@@ -59,14 +59,14 @@ html[data-scheme='buer'] .paper-settings-section-title {
 
 /* 设置卡片：优雅 12px 现代圆角，高精细致微线框，轻盈空气感 */
 html[data-scheme='buer'] .paper-settings-panel,
-html[data-scheme='buer'] .paper-settings-section-content {
+html[data-scheme='buer'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content {
   border-radius: 12px !important;
   border: 1px solid rgba(0, 0, 0, 0.07) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.02), 0 8px 24px -12px rgba(0, 0, 0, 0.04) !important;
   background: var(--tone-ink-raised) !important;
 }
 html[data-scheme='buer'][data-theme='dark'] .paper-settings-panel,
-html[data-scheme='buer'][data-theme='dark'] .paper-settings-section-content {
+html[data-scheme='buer'][data-theme='dark'] .paper-settings-section:not(.paper-settings-section--plain) .paper-settings-section-content {
   border: 1px solid rgba(255, 255, 255, 0.08) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 8px 24px -12px rgba(0, 0, 0, 0.6) !important;
 }
