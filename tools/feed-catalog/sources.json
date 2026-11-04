@@ -1,0 +1,9 @@
+{
+  "sources": [
+    { "url": "https://raw.githubusercontent.com/kagisearch/smallweb/main/smallweb.txt", "format": "text", "category": "Personal Blogs", "license": "MIT" },
+    { "url": "https://raw.githubusercontent.com/kagisearch/smallweb/main/smallyt.txt", "format": "text", "category": "Videos", "license": "MIT" },
+    { "url": "https://raw.githubusercontent.com/kagisearch/smallweb/main/smallcomic.txt", "format": "text", "category": "Personal Blogs", "license": "MIT" },
+    { "url": "https://raw.githubusercontent.com/lovexw/chinese-independent-blogs/main/blogs-original.csv", "format": "csv", "category": "Personal Blogs", "language": "zh", "license": "MIT" },
+    { "url": "https://raw.githubusercontent.com/SyMind/awesome-bilibili/master/README.md", "format": "markdown", "category": "Programming", "language": "zh", "license": "CC0-1.0" }
+  ]
+}

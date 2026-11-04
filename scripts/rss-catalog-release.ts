@@ -15,7 +15,7 @@ export function buildCatalogRelease(source: unknown, version: string): Release {
   catalog.feeds.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
   const payload = JSON.stringify(catalog)
   const size = Buffer.byteLength(payload)
-  if (size > MAX_CATALOG_BYTES) throw new Error('目录超过 8 MiB 发布上限')
+  if (size > MAX_CATALOG_BYTES) throw new Error('目录超过 32 MiB 发布上限')
   const sha256 = hash(payload)
   const key = `rss-catalog/v1/catalogs/sha256-${sha256}.json`
   const manifest = parseManifest({ manifestSchema: 1, catalog: { version, schemaVersion: 1, generatedAt: catalog.generatedAt, feedCount: catalog.feeds.length, size, sha256, url: '/' + key } })

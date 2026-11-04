@@ -15,7 +15,7 @@ const sha256 = 'a'.repeat(64)
 const manifest = { manifestSchema: 1, catalog: { version: '2026.11.03', schemaVersion: 1, generatedAt: catalog.generatedAt, feedCount: 1, size: 100, sha256, url: `/rss-catalog/v1/catalogs/sha256-${sha256}.json` } }
 assert.equal(parseManifest(manifest).catalog.sha256, sha256)
 assert.throws(() => parseManifest({ ...manifest, catalog: { ...manifest.catalog, url: 'https://other.example/a.json' } }))
-assert.throws(() => parseManifest({ ...manifest, catalog: { ...manifest.catalog, size: 9 * 1024 * 1024 } }))
+assert.throws(() => parseManifest({ ...manifest, catalog: { ...manifest.catalog, size: 33 * 1024 * 1024 } }))
 const index = createCatalogIndex([feed, { ...feed, id: 'zh', title: '科研', language: 'zh', url: 'https://example.cn/rss' }])
 assert.equal(searchCatalog(index, { query: '机器学习' }).length, 2)
 assert.equal(searchCatalog(index, { query: 'ＡＩ' })[0].id, 'ai')

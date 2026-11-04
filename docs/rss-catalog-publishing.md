@@ -19,7 +19,7 @@
 
 **每个 APK 都携带一份内置种子**，保证任何版本的新安装都可离线查找。安装包中的种子只在没有有效远程缓存时使用；已下载的 R2 快照始终优先，不会被 APK 中的种子覆盖。后续仅更新目录时，发布 R2 快照即可，无需重发 APK；下一次发 APK 时可以同时更新内置种子，供新的安装使用。
 
-生成后的输入结构：`{ schemaVersion: 1, generatedAt: ISO时间, feeds: [...] }`，每条包含 `id/title/url/category/language/region/aliases/tags/nsfw`。`id` 应保持稳定，修正地址时不更换 id。 上游 metadata.revision 须随完整目录单调递增，与下一次 RSS Catalog 发布版本相匹配，例如 2026.11.04.4 对应 20261104004。上游有新分类/地区时扩展导入脚本映射，未映射值会报错，避免直接显示内部分类键。未知语言使用 `und`，不要根据标题猜测语言；禁止添加凭证或需要登录的私密 Feed。重复 id/URL、非 HTTP(S)、URL 凭据、非法字段及空目录都会拒绝发布，不会静默丢弃数据。目录最大 8 MiB / 50,000 条。
+生成后的输入结构：`{ schemaVersion: 1, generatedAt: ISO时间, feeds: [...] }`，每条包含 `id/title/url/category/language/region/aliases/tags/nsfw`。`id` 应保持稳定，修正地址时不更换 id。 上游 metadata.revision 须随完整目录单调递增，与下一次 RSS Catalog 发布版本相匹配，例如 2026.11.04.4 对应 20261104004。上游有新分类/地区时扩展导入脚本映射，未映射值会报错，避免直接显示内部分类键。未知语言使用 `und`，不要根据标题猜测语言；禁止添加凭证或需要登录的私密 Feed。重复 id/URL、非 HTTP(S)、URL 凭据、非法字段及空目录都会拒绝发布，不会静默丢弃数据。目录最大 32 MiB / 100,000 条。旧客户端仍使用其内置的 8 MiB / 50,000 条上限，超限更新会拒绝并保留旧目录；正式发布大快照前需协调新客户端上线。
 
 客户端从内置种子或 IndexedDB `newsnook:rss-catalog` 读取快照。在首屏可用后的空闲时机与进入目录时，检查固定地址 `https://news-update.aizeek.com/rss-catalog/v1/manifest.json`。按用户最终要求，成功检查后 1 小时内不重复联网；运行中的应用每小时尝试维护，失败在进程内退避一小时。下次冷启动失败退避重新计时。关键词不发网络请求；预览与订阅读取原站。后台更新不弹窗、不修改已有订阅。
 
@@ -28,6 +28,20 @@
 新快照验证字节数、SHA-256、JSON 结构、记录数与日期后，通过一次 IndexedDB 事务替换；写盘失败保留旧版。旧 APK 内置种子不会覆盖新缓存。新库不受旧 `newsnook:feed-discovery` 清理影响。目录不进入 Preferences、备份或可选云同步；已有订阅、列表/正文缓存和阅读状态格式不变。
 
 ## 手动构建与发布
+
+### 两阶段数据建设（2026-11-04）
+
+先运行独立的 [公开来源采集与检查工具](../tools/feed-catalog/README.md)，只生成 `artifacts/feed-catalog/` 下的下载、候选和检查证据，不访问应用代码或权威目录。目录入口清单只维护公开数据集地址；真实来源条目仍只在 `data/rss-catalog/upstream.json` 维护。第二步在项目根目录离线导入报告：
+
+```bash
+npm run rss-catalog:merge -- --report artifacts/feed-catalog/report.json
+npm run rss-catalog:merge -- --report artifacts/feed-catalog/report.json --apply
+npm run rss-catalog:import
+```
+
+默认只显示增量；显式 apply 前，完整验证报告、出处、Feed 成功证据、平台身份、去重及最终发布体积。成功后原子写入唯一权威目录；重复导入不增加 revision，不变更原有条目或已订阅数据。随后用原有生成脚本产出内置种子和本地发布文件。此操作不推送 Git、不发布 R2/APK。
+
+不设置最近 90 天更新的收录门槛；Feed 格式合法即可保留低频或空来源。403/429/5xx、TLS、超时、单实例失败与身份暂不可确认不会删除来源。连续至少 3 次独立检查均为 404/410、跨度至少 7 天、原站身份也无法再确认，才标记永久失效；工具仅输出审查证据，桥接器不自动删除旧来源。第一次成功检查后才允许新增，不以临时失败或未检查候选冒充可订阅目录。
 
 编辑维护目录后生成内置种子并发布：
 

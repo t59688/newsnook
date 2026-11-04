@@ -2,7 +2,8 @@
 import { validateRssHubRoutePath } from '../rsshub/instances'
 
 export const CATALOG_BASE = 'https://news-update.aizeek.com/rss-catalog/v1/'
-export const MAX_CATALOG_BYTES = 8 * 1024 * 1024
+export const MAX_CATALOG_BYTES = 32 * 1024 * 1024
+export const MAX_CATALOG_FEEDS = 100_000
 export interface CatalogFeed {
   id: string
   title: string
@@ -54,7 +55,7 @@ export function catalogFeedUrl(value: unknown): string {
 }
 export function parseCatalog(value: unknown): RssCatalog {
   const root = object(value)
-  if (root.schemaVersion !== 1 || !Array.isArray(root.feeds) || !root.feeds.length || root.feeds.length > 50_000) throw new Error('不支持的 RSS 目录结构')
+  if (root.schemaVersion !== 1 || !Array.isArray(root.feeds) || !root.feeds.length || root.feeds.length > MAX_CATALOG_FEEDS) throw new Error('不支持的 RSS 目录结构')
   const ids = new Set<string>()
   const urls = new Set<string>()
   const feeds = root.feeds.map((raw): CatalogFeed => {
@@ -73,7 +74,7 @@ export function parseManifest(value: unknown): CatalogManifest {
   const root = object(value)
   const row = object(root.catalog)
   if (root.manifestSchema !== 1 || row.schemaVersion !== 1 || typeof row.sha256 !== 'string' || !/^[a-f0-9]{64}$/.test(row.sha256)) throw new Error('不支持的 RSS 目录清单')
-  if (!Number.isSafeInteger(row.feedCount) || Number(row.feedCount) < 1 || Number(row.feedCount) > 50_000 || !Number.isSafeInteger(row.size) || Number(row.size) < 1 || Number(row.size) > MAX_CATALOG_BYTES) throw new Error('RSS 目录大小无效')
+  if (!Number.isSafeInteger(row.feedCount) || Number(row.feedCount) < 1 || Number(row.feedCount) > MAX_CATALOG_FEEDS || !Number.isSafeInteger(row.size) || Number(row.size) < 1 || Number(row.size) > MAX_CATALOG_BYTES) throw new Error('RSS 目录大小无效')
   // The fixed path also prevents credentials or arbitrary remote endpoints.
   const url = `/rss-catalog/v1/catalogs/sha256-${row.sha256}.json`
   if (row.url !== url) throw new Error('RSS 目录快照路径无效')
