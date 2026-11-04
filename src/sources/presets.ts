@@ -427,6 +427,7 @@ export function emptyLayoutSnapshot(starterLabel = '我的关注'): LayoutSnapsh
     id: BLANK_PRESET_DEFAULT_CATEGORY_ID,
     label: starterLabel,
     short: starterLabel.slice(0, 4),
+    caption: '自定义关注来源',
   }
   return normalizeSnapshot({
     categoryTaxonomyVersion: CATEGORY_TAXONOMY_VERSION,
