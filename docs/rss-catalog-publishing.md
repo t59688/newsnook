@@ -4,13 +4,13 @@
 
 维护数据保存在 `data/rss-catalog/upstream.json`；`scripts/rss-catalog-import.ts` 确定性生成 `src/features/rssCatalog/seed.json`。应用仅打包精简种子，维护文件、验证明细和归一化映射不进入 APK。
 
-唯一的维护源 `data/rss-catalog/upstream.json` 收录 **4,645 条** RSS、Atom、JSON Feed，其中 **97 条**含 `nsfw: true` 标记。导入器校验全部来源的 ID、URL 及元数据，再自动生成面向现有 v1 客户端的 **4,548 条**常规来源快照（60 个中文专题）。仓库不维护第二份 NSFW 数据文件；源文件仅包含维护所需字段，网络审计过程保留在仓库外。
+`data/rss-catalog/upstream.json` 是唯一维护源，包含 **4,645 条** RSS、Atom、JSON Feed，其中 **97 条**含 `nsfw: true` 标记。导入器校验所有来源并生成同样 **4,645 条**的离线种子；发布器下一次发布时也直接使用这一完整目录。目前线上 R2 仍是上一次发布的 4,548 条版本，需在客户端更新后再切换快照。没有第二份 NSFW 数据文件、兼容目录或独立发布链路。源文件只保留运行需要的字段，网络审计过程保存在仓库外。
 
-**NSFW 兼容边界**：R2 v1 会被旧版 APK 加载，客户端尚无 NSFW 显隐设置。因此构建时过滤 `nsfw: true`，导出的 v1 种子和 R2 快照保持原样。发布器仍拒绝在 v1 快照中直接包含 NSFW 标记。未来客户端支持后再通过兼容的目录协议开放该字段，不向旧版客户端直接推送含成人标记的完整目录。
+**NSFW 显示**：客户端目录条目均包含 `nsfw: boolean`（未标记的来源归一化为 `false`）。目录搜索默认排除 NSFW，页面内的「显示成人内容（NSFW）」开关由用户主动开启，选择保存到本机，不随订阅备份或云同步。开关控制搜索结果、专题/语言计数与候选预览入口；普通 RSS 订阅流程不变。格式无旧版兼容分支：缺少 `nsfw` 字段的旧目录缓存校验失败后，客户端直接使用新离线种子，并由常规 R2 更新恢复网络快照。
 
 **每个 APK 都携带一份内置种子**，保证任何版本的新安装都可离线查找。安装包中的种子只在没有有效远程缓存时使用；已下载的 R2 快照始终优先，不会被 APK 中的种子覆盖。后续仅更新目录时，发布 R2 快照即可，无需重发 APK；下一次发 APK 时可以同时更新内置种子，供新的安装使用。
 
-生成后的输入结构：`{ schemaVersion: 1, generatedAt: ISO时间, feeds: [...] }`，每条包含 `id/title/url/category/language/region/aliases/tags`。`id` 应保持稳定，修正地址时不更换 id。上游有新分类/地区时扩展导入脚本映射，未映射值会报错，避免直接显示内部分类键。未知语言使用 `und`，不要根据标题猜测语言；禁止添加凭证或需要登录的私密 Feed。重复 id/URL、非 HTTP(S)、URL 凭据、非法字段及空目录都会拒绝发布，不会静默丢弃数据。目录最大 8 MiB / 50,000 条。
+生成后的输入结构：`{ schemaVersion: 1, generatedAt: ISO时间, feeds: [...] }`，每条包含 `id/title/url/category/language/region/aliases/tags/nsfw`。`id` 应保持稳定，修正地址时不更换 id。上游有新分类/地区时扩展导入脚本映射，未映射值会报错，避免直接显示内部分类键。未知语言使用 `und`，不要根据标题猜测语言；禁止添加凭证或需要登录的私密 Feed。重复 id/URL、非 HTTP(S)、URL 凭据、非法字段及空目录都会拒绝发布，不会静默丢弃数据。目录最大 8 MiB / 50,000 条。
 
 客户端从内置种子或 IndexedDB `newsnook:rss-catalog` 读取快照。在首屏可用后的空闲时机与进入目录时，检查固定地址 `https://news-update.aizeek.com/rss-catalog/v1/manifest.json`。按用户最终要求，成功检查后 1 小时内不重复联网；运行中的应用每小时尝试维护，失败在进程内退避一小时。下次冷启动失败退避重新计时。关键词不发网络请求；预览与订阅读取原站。后台更新不弹窗、不修改已有订阅。
 
@@ -27,9 +27,9 @@
 node --import tsx scripts/rss-catalog-import.ts
 node --import tsx scripts/rss-catalog-import.test.ts
 node --import tsx scripts/rss-catalog-release.test.ts
-node --import tsx scripts/rss-catalog-release.ts --version 2026.11.03.4
+node --import tsx scripts/rss-catalog-release.ts --version 2026.11.04.2
 # 可先指定另一份已经归一化的数据，仅构建不会写入 R2
-node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json --version 2026.11.03.4
+node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json --version 2026.11.04.2
 ```
 
 产物默认在 `node_modules/.cache/newsnook/rss-catalog/`。确认内容后，配置环境变量并安装 AWS CLI：
@@ -39,7 +39,7 @@ node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json -
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`，仅授予目标 bucket 必要读写权限
 
 ```bash
-node --import tsx scripts/rss-catalog-release.ts --publish --version 2026.11.03.4
+node --import tsx scripts/rss-catalog-release.ts --publish --version 2026.11.04.2
 node --import tsx scripts/rss-catalog-verify.ts --manifest node_modules/.cache/newsnook/rss-catalog/manifest.json
 ```
 
@@ -96,7 +96,7 @@ Pixel 6 Pro / Android 12（`emulator-5554`），安装当前 `1.9.2-beta.8` clou
 
 [首次发布 Action](https://github.com/t59688/newsnook/actions/runs/41661810310)、[第二版 Action](https://github.com/t59688/newsnook/actions/runs/41663864222)、[修正版 Action](https://github.com/t59688/newsnook/actions/runs/41664875598) 均成功。首次公开验证发现 CORS 缺失，修复后再次检查通过；配置修复过程中的失败任务没有覆盖有效目录。
 
-当前快照 SHA-256：`49409f796128cab9eae11afcab583274f91fb748c14ac1980969daebff67c26a`，完整 UTF-8 字节数 817,862。manifest 为 60 秒缓存头，快照为一年 immutable，公开读取返回 `Access-Control-Allow-Origin: *`。当前 Cloudflare 返回 `CF-Cache-Status: DYNAMIC`，边缘 JSON 缓存规则仍是后续性能配置项；传输压缩已生效，更新正确性不依赖 CDN 命中。
+当时（2026-11-03）的快照 SHA-256：`49409f796128cab9eae11afcab583274f91fb748c14ac1980969daebff67c26a`，完整 UTF-8 字节数 817,862。manifest 为 60 秒缓存头，快照为一年 immutable，公开读取返回 `Access-Control-Allow-Origin: *`。当前 Cloudflare 返回 `CF-Cache-Status: DYNAMIC`，边缘 JSON 缓存规则仍是后续性能配置项；传输压缩已生效，更新正确性不依赖 CDN 命中。
 
 模拟器使用原先安装的 cloud debug APK（内置 3,493 条），本次没有重装或升级 APK：
 

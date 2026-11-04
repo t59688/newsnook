@@ -1,14 +1,14 @@
 import assert from 'node:assert/strict'
 import { buildCatalogRelease, publishCatalogRelease } from './rss-catalog-release'
-const feed = { id: 'a', title: 'A', url: 'https://example.org/rss', category: '科技', language: 'en', region: 'Global', aliases: [], tags: [] }
+const feed = { id: 'a', title: 'A', url: 'https://example.org/rss', category: '科技', language: 'en', region: 'Global', aliases: [], tags: [], nsfw: false }
 const source = { schemaVersion: 1, generatedAt: '2026-11-03T00:00:00Z', feeds: [feed] }
 const release = buildCatalogRelease(source, '2026.11.03.1')
 assert.equal(buildCatalogRelease(source, '2026.11.03.2').payload, release.payload, 'release label does not change content hash')
 assert.equal(Buffer.byteLength(release.payload), release.manifest.catalog.size)
 assert.throws(() => buildCatalogRelease({ ...source, feeds: [] }, '1'))
 assert.throws(() => buildCatalogRelease(source, 'bad\nversion'))
-assert.throws(() => buildCatalogRelease({ ...source, feeds: [{ ...feed, nsfw: true }] }, '1'), /NSFW/, 'v1 publication must reject adult-labeled sources')
-assert.throws(() => buildCatalogRelease({ ...source, feeds: [{ ...feed, nsfw: 'true' }] }, '1'), /NSFW/, 'v1 publication must fail closed on malformed adult flags')
+assert.ok(buildCatalogRelease({ ...source, feeds: [{ ...feed, nsfw: true }] }, '1').payload.includes('"nsfw":true'), 'publication retains the NSFW marker')
+assert.throws(() => buildCatalogRelease({ ...source, feeds: [{ ...feed, nsfw: 'true' }] }, '1'), /NSFW/, 'invalid NSFW markers must fail validation')
 const operations: string[] = []
 let corrupt = true
 const store = {

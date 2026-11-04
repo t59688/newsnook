@@ -2,11 +2,13 @@ import assert from 'node:assert/strict'
 import { parseCatalog, parseManifest } from '../src/features/rssCatalog/schema'
 import { createCatalogIndex, searchCatalog } from '../src/features/rssCatalog/search'
 
-const feed = { id: 'ai', title: 'AI Research', url: 'https://example.org/rss', category: '人工智能', language: 'en', region: 'Global', aliases: ['机器学习'], tags: ['科研'] }
+const feed = { id: 'ai', title: 'AI Research', url: 'https://example.org/rss', category: '人工智能', language: 'en', region: 'Global', aliases: ['机器学习'], tags: ['科研'], nsfw: false }
 const catalog = { schemaVersion: 1, generatedAt: '2026-11-03T00:00:00Z', feeds: [feed] }
 assert.equal(parseCatalog(catalog).feeds.length, 1)
 assert.throws(() => parseCatalog({ ...catalog, schemaVersion: 2 }))
 assert.throws(() => parseCatalog({ ...catalog, feeds: [feed, feed] }))
+assert.throws(() => parseCatalog({ ...catalog, feeds: [{ ...feed, nsfw: undefined }] }), /NSFW/)
+assert.throws(() => parseCatalog({ ...catalog, feeds: [{ ...feed, nsfw: 'true' }] }), /NSFW/)
 assert.throws(() => parseCatalog({ ...catalog, feeds: [{ ...feed, url: 'javascript:alert(1)' }] }))
 assert.throws(() => parseCatalog({ ...catalog, feeds: [{ ...feed, url: 'https://user:password@example.org/' }] }))
 const sha256 = 'a'.repeat(64)
@@ -20,4 +22,12 @@ assert.equal(searchCatalog(index, { query: 'ＡＩ' })[0].id, 'ai')
 assert.equal(searchCatalog(index, { query: '科研', language: 'zh' })[0].id, 'zh')
 assert.equal(searchCatalog(index, { query: 'AI 不存在' }).length, 0)
 assert.equal(searchCatalog(index, { category: '不存在' }).length, 0)
+const adult = { ...feed, id: 'adult', url: 'https://example.org/adult', title: 'Portrait Studio', nsfw: true }
+const mixed = createCatalogIndex([feed, adult])
+assert.deepEqual(searchCatalog(mixed, {}).map((item) => item.id), ['ai'], 'default search excludes NSFW from every query')
+assert.equal(searchCatalog(mixed, { query: 'Portrait Studio' }).length, 0)
+assert.equal(searchCatalog(mixed, { query: 'Portrait Studio', includeNsfw: true })[0].id, 'adult')
+assert.equal(searchCatalog(mixed, { includeNsfw: true }).length, 2)
+assert.equal(searchCatalog(mixed, { query: 'nsfw', includeNsfw: true })[0].id, 'adult', 'NSFW is searchable only after opt-in')
+assert.equal(searchCatalog(mixed, { query: '成人内容' }).length, 0)
 console.log('rss catalog schema/search: ok')

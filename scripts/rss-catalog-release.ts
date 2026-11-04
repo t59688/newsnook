@@ -11,11 +11,6 @@ interface Release { key: string; payload: string; manifest: CatalogManifest }
 interface ObjectStore { put(key: string, body: string, cacheControl: string): Promise<void>; get(key: string): Promise<string> }
 export function buildCatalogRelease(source: unknown, version: string): Release {
   if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,99}$/.test(version)) throw new Error('目录版本仅支持字母、数字、点、下划线与短横线')
-  // Existing v1 apps cannot interpret NSFW flags. Never silently strip a true flag.
-  if (source && typeof source === 'object' && Array.isArray((source as { feeds?: unknown }).feeds) &&
-      (source as { feeds: unknown[] }).feeds.some((row) => row && typeof row === 'object' && ((row as { nsfw?: unknown }).nsfw != null && (row as { nsfw?: unknown }).nsfw !== false))) {
-    throw new Error('RSS 目录 v1 不支持直接发布 NSFW 来源')
-  }
   const catalog = parseCatalog(source)
   catalog.feeds.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
   const payload = JSON.stringify(catalog)

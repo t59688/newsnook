@@ -10,6 +10,7 @@ export interface CatalogFeed {
   region: string
   aliases: string[]
   tags: string[]
+  nsfw: boolean
 }
 export interface RssCatalog { schemaVersion: 1; generatedAt: string; feeds: CatalogFeed[] }
 export interface CatalogManifest {
@@ -49,7 +50,8 @@ export function parseCatalog(value: unknown): RssCatalog {
     const url = catalogFeedUrl(row.url)
     if (ids.has(id) || urls.has(url)) throw new Error('RSS 目录包含重复来源')
     ids.add(id); urls.add(url)
-    return { id, url, title: string(row.title), category: string(row.category, 100), language: string(row.language, 35), region: string(row.region, 100), aliases: strings(row.aliases), tags: strings(row.tags) }
+    if (typeof row.nsfw !== 'boolean') throw new Error('RSS 目录 NSFW 标记无效')
+    return { id, url, title: string(row.title), category: string(row.category, 100), language: string(row.language, 35), region: string(row.region, 100), aliases: strings(row.aliases), tags: strings(row.tags), nsfw: row.nsfw }
   })
   return { schemaVersion: 1, generatedAt: date(root.generatedAt), feeds }
 }
