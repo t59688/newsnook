@@ -1,0 +1,52 @@
+NewsNook RSS 目录数据来源说明（2026-11-04）
+
+目录条目仅包含公开名称、标识、标签和订阅地址；不包含文章或媒体内容。
+转换包括去重、规范化ID与地址、中英名称关联、按明确主题/实体类型粗分类及构建拼音索引。
+收录不代表账号认证、当前可访问或持续更新；文章与媒体许可仍属于各发布者。
+
+Wikidata：结构化数据 CC0-1.0，经 QLever Wikidata 公开镜像查询。
+https://www.wikidata.org/wiki/Wikidata:Licensing
+https://creativecommons.org/publicdomain/zero/1.0/
+
+TGrpg / awesome-telegram（原数据由 tgbox.cc 汇编）：CC-BY-4.0。
+https://github.com/TGrpg/awesome-telegram
+https://creativecommons.org/licenses/by/4.0/
+仅保留公开频道名称、用户名与标签，排除机器人/群组，未复制频道描述。
+
+ttttmr / Wechat2RSS：公开列出的名称及Feed URL事实字段；未声明许可（NOASSERTION）。
+https://github.com/ttttmr/Wechat2RSS
+未把服务生成的Feed ID当作微信原生账号ID，未复制文章/简介。
+
+SyMind / awesome-bilibili：CC0-1.0。
+https://github.com/SyMind/awesome-bilibili
+
+Kagi Small Web：MIT，Copyright (c) 2023 Kagi Search。
+https://github.com/kagisearch/smallweb
+中文独立博客：MIT，Copyright (c) 2019 Tim Qian。
+https://github.com/lovexw/chinese-independent-blogs
+上述MIT来源适用下方相同许可条款，版权归各自作者。
+
+Topic Play / YouTubeList：名称、明确频道ID与主题分类；未采用热度排序。
+https://github.com/topicplay/YouTubeList
+
+MIT License
+
+Copyright (c) 2020 Topic Play
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
