@@ -2,7 +2,7 @@
   "metadata": {
     "name": "Global RSS Feed Catalog",
     "generated_at": "2026-11-04",
-    "total_feeds": 4645,
+    "total_feeds": 4665,
     "schema_version": 1
   },
   "feeds": [
@@ -47282,6 +47282,226 @@
       "region": null,
       "has_image_in_feed": true,
       "has_video_in_feed": true
+    },
+    {
+      "id": "rss-06642",
+      "title": "CoserHub · Cosplay 图集",
+      "url": "https://coserhub.cc/feed.xml",
+      "category": "Photography",
+      "language": "zh",
+      "region": null,
+      "nsfw": true,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06643",
+      "title": "cos喵 · Cosplay 美图",
+      "url": "https://www.cosmeitu.com/feed",
+      "category": "Photography",
+      "language": "zh",
+      "region": null,
+      "nsfw": true,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06644",
+      "title": "番外社 · Cosplay 写真",
+      "url": "https://fanwaishe.com/feed/",
+      "category": "Photography",
+      "language": "zh",
+      "region": null,
+      "nsfw": true,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06645",
+      "title": "图集志 · 模特写真",
+      "url": "https://www.tujizhi.com/feed",
+      "category": "Photography",
+      "language": "zh",
+      "region": null,
+      "nsfw": true,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06646",
+      "title": "星梦 · Cosplay 图集",
+      "url": "https://www.yoogr.com/feed",
+      "category": "Photography",
+      "language": "zh",
+      "region": null,
+      "nsfw": true,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06647",
+      "title": "星梦 · Cosplay 专题",
+      "url": "https://www.yoogr.com/cos/feed",
+      "category": "Photography",
+      "language": "zh",
+      "region": null,
+      "nsfw": true,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06648",
+      "title": "星梦 · Cosplay 标签",
+      "url": "https://www.yoogr.com/tag/cosplay/feed",
+      "category": "Photography",
+      "language": "zh",
+      "region": null,
+      "nsfw": true,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06649",
+      "title": "pixivision 中文 · 插画特辑",
+      "url": "https://www.pixivision.net/zh/rss",
+      "category": "Culture & Ideas",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06650",
+      "title": "Vogue Taiwan · 时尚名人",
+      "url": "https://www.vogue.com.tw/feed/rss",
+      "category": "Fashion",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06651",
+      "title": "ELLE Taiwan · 综合",
+      "url": "https://www.elle.com/tw/rss/default.xml",
+      "category": "Fashion",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06652",
+      "title": "ELLE Taiwan · 时尚",
+      "url": "https://www.elle.com/tw/rss/fashion.xml",
+      "category": "Fashion",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06653",
+      "title": "ELLE Taiwan · 美容",
+      "url": "https://www.elle.com/tw/rss/beauty.xml",
+      "category": "Beauty",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06654",
+      "title": "ELLE Taiwan · 娱乐",
+      "url": "https://www.elle.com/tw/rss/entertainment.xml",
+      "category": "Movies",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06655",
+      "title": "Cosmopolitan Taiwan · 综合",
+      "url": "https://www.cosmopolitan.com/tw/rss/default.xml",
+      "category": "Fashion",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06656",
+      "title": "Harper’s Bazaar Taiwan · 综合",
+      "url": "https://www.harpersbazaar.com/tw/rss/default.xml",
+      "category": "Fashion",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06657",
+      "title": "Bella 儂儂 · 时尚生活",
+      "url": "https://www.bella.tw/feed",
+      "category": "Fashion",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06658",
+      "title": "ShoppingDesign · 设计生活",
+      "url": "https://www.shoppingdesign.com.tw/rss",
+      "category": "Culture & Ideas",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06659",
+      "title": "女人迷 · 两性与女性生活",
+      "url": "https://feeds.feedburner.com/womany",
+      "category": "Sexual Health & Relationships",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": false,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06660",
+      "title": "ETtoday 星光云 · 娱乐",
+      "url": "https://feeds.feedburner.com/ettoday/star",
+      "category": "Movies",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": true,
+      "has_video_in_feed": false
+    },
+    {
+      "id": "rss-06661",
+      "title": "自由时报 · 娱乐",
+      "url": "https://news.ltn.com.tw/rss/entertainment.xml",
+      "category": "Movies",
+      "language": "zh",
+      "region": null,
+      "nsfw": false,
+      "has_image_in_feed": false,
+      "has_video_in_feed": false
     }
   ]
 }
