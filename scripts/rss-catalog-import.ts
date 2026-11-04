@@ -111,10 +111,12 @@ export function normalizeUpstreamCatalog(value: unknown): RssCatalog {
   if (source.metadata?.schema_version !== 1 || !Array.isArray(source.feeds)) throw new Error('不支持的上游目录结构')
   if (source.metadata.total_feeds !== source.feeds.length) throw new Error('上游目录数量不一致')
   if (typeof source.metadata.generated_at !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(source.metadata.generated_at)) throw new Error('上游目录日期错误')
+  const nsfwIds = new Set<string>()
   const feeds = source.feeds.map((raw): CatalogFeed => {
     if (!raw || typeof raw !== 'object') throw new Error('上游来源格式错误')
     const row = raw as Record<string, unknown>
-    if (row.nsfw != null && row.nsfw !== false) throw new Error('RSS 目录 v1 不支持直接发布 NSFW 来源')
+    if (row.nsfw !== undefined && typeof row.nsfw !== 'boolean') throw new Error('RSS 目录 NSFW 标记格式错误')
+    if (row.nsfw === true) nsfwIds.add(row.id as string)
     const primary = topic(row.category)
     const alternate = row.alternative_categories == null ? [] : row.alternative_categories
     if (!Array.isArray(alternate) || !alternate.every((item) => typeof item === 'string')) throw new Error('上游备用分类格式错误')
@@ -127,8 +129,11 @@ export function normalizeUpstreamCatalog(value: unknown): RssCatalog {
       tags: [...new Set([...mapped.flatMap((item) => item.slice(1)), ...(row.has_image_in_feed === true ? ['图文', '图片'] : []), ...(row.has_video_in_feed === true ? ['视频'] : [])])],
     }
   })
-  feeds.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
-  return parseCatalog({ schemaVersion: 1, generatedAt: source.metadata.generated_at + 'T00:00:00Z', feeds })
+  // Validate IDs and URLs across the *entire* source before filtering the v1 view.
+  const validated = parseCatalog({ schemaVersion: 1, generatedAt: source.metadata.generated_at + 'T00:00:00Z', feeds })
+  const publicFeeds = validated.feeds.filter((feed) => !nsfwIds.has(feed.id))
+  publicFeeds.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
+  return parseCatalog({ ...validated, feeds: publicFeeds })
 }
 async function main() {
   const source = JSON.parse(await readFile(new URL('../data/rss-catalog/upstream.json', import.meta.url), 'utf8'))
