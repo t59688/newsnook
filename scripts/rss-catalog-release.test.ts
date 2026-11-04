@@ -7,6 +7,8 @@ assert.equal(buildCatalogRelease(source, '2026.11.03.2').payload, release.payloa
 assert.equal(Buffer.byteLength(release.payload), release.manifest.catalog.size)
 assert.throws(() => buildCatalogRelease({ ...source, feeds: [] }, '1'))
 assert.throws(() => buildCatalogRelease(source, 'bad\nversion'))
+assert.throws(() => buildCatalogRelease({ ...source, feeds: [{ ...feed, nsfw: true }] }, '1'), /NSFW/, 'v1 publication must reject adult-labeled sources')
+assert.throws(() => buildCatalogRelease({ ...source, feeds: [{ ...feed, nsfw: 'true' }] }, '1'), /NSFW/, 'v1 publication must fail closed on malformed adult flags')
 const operations: string[] = []
 let corrupt = true
 const store = {

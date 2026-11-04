@@ -15,11 +15,20 @@ assert.equal(catalog.feeds.find((feed) => feed.title.includes('GSMArena.com'))?.
 assert.equal(catalog.feeds.filter((feed) => feed.language === 'zh').length, source.feeds.filter((feed: { language: string }) => feed.language === 'zh').length)
 assert.equal(catalog.feeds.filter((feed) => feed.language === 'und').length, source.feeds.filter((feed: { language: string }) => feed.language === 'und').length, 'do not guess missing languages')
 assert.equal(catalog.feeds.some((feed) => /^(cn|en)-/.test(feed.category)), false)
+assert.equal(source.feeds.some((feed: { nsfw?: boolean }) => feed.nsfw === true), false, 'v1 catalog must not expose NSFW entries to older clients')
+for (const [flag, keyword] of [['has_image_in_feed', '图文'], ['has_video_in_feed', '视频']] as const) {
+  const candidate = source.feeds.find((feed: Record<string, unknown>) => feed[flag] === true)
+  assert.ok(candidate, `catalog must contain audited ${keyword} feeds`)
+  assert.ok(catalog.feeds.find((feed) => feed.id === candidate.id)?.tags.includes(keyword), `${keyword} searchable tag survives normalization`)
+}
 const index = createCatalogIndex(catalog.feeds)
 for (const query of ['农业', '人工智能', '机器学习', '农林', '历史', '汽车', '医学', '前端']) assert.ok(searchCatalog(index, { query }).length > 0, query)
 const broken = structuredClone(source)
 broken.feeds[0].category = 'unmapped category'
 assert.throws(() => normalizeUpstreamCatalog(broken), /分类/)
+const unsafe = structuredClone(source)
+unsafe.feeds[0].nsfw = true
+assert.throws(() => normalizeUpstreamCatalog(unsafe), /NSFW/, 'v1 import must reject adult-labeled sources')
 assert.throws(() => normalizeUpstreamCatalog({ ...source, metadata: { ...source.metadata, total_feeds: 1 } }), /数量/)
 assert.throws(() => normalizeUpstreamCatalog({ ...source, feeds: [...source.feeds, source.feeds[0]], metadata: { ...source.metadata, total_feeds: source.feeds.length + 1 } }))
 console.log(`rss catalog import: ${catalog.feeds.length} feeds, ${new Set(catalog.feeds.map((feed) => feed.category)).size} topics`)

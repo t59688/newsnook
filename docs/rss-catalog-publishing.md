@@ -2,9 +2,13 @@
 
 ## 数据与本地行为
 
-维护数据保存在 `data/rss-catalog/upstream.json`，以用户提供的 `global_rss_feeds_2026-11-03.json` 为基础，完整保留原始 3,493 条记录的来源、分类与历史验证信息，另有人工验活追加项。`scripts/rss-catalog-import.ts` 确定性生成 `src/features/rssCatalog/seed.json`；应用只打包精简种子，完整维护文件和归一化映射不进入 APK。
+维护数据保存在 `data/rss-catalog/upstream.json`；`scripts/rss-catalog-import.ts` 确定性生成 `src/features/rssCatalog/seed.json`。应用仅打包精简种子，维护文件、验证明细和归一化映射不进入 APK。
 
-当前包含 3,494 条，91 个原始主分类归一化为 61 个中文专题。语言保留原始标注：英文 1,443 条、中文 1,168 条、未标注 883 条；不猜测未知语言。原 ID、规范化后唯一 URL 和记录总数均校验。分类、备用分类和领域关键词支持中英文检索；地区代码统一显示为中文地区名称，缺失保留“未标注”。精简 JSON 为 817,863 字节（含末尾换行），gzip 实测 102,894 字节。收录与上游历史验证不代表当前实时可用，订阅前仍须预览。
+**2026-11-04 全量在线复核后的当前目录**：从 6,641 条候选中确认 4,680 条近 90 天有更新；按最终重定向 URL 去除 35 个重复来源后有 4,645 条，其中 97 条被人工目录标记为可能含 NSFW，暂存于 `data/rss-catalog/nsfw-staged.json`，不向旧版客户端发布。`upstream.json` 和 R2 v1 **只发布 4,548 条常规来源**（英文 3,176、中文 751、未标注语言 621），归一化为 60 个中文专题；种子 1,126,880 字节（含末尾换行）。当前来源均成功读取并解析，有最近 90 天内的文章日期，但不保证后续访问永远成功。不同于每月最少两篇的严格导出规则，这里保留符合 90 天标准的低频精品来源。
+
+筛选过程、状态分布与重定向去重见 `data/rss-catalog/audit-summary.json`；可复现脚本为 `scripts/rss-catalog-curate.py`，测试为 `scripts/rss-catalog-curate.test.py`。原始审计的 `report.json`、`results.csv` 与 6,641 条候选 JSON 不上传到 R2，需随维护证据一并保留。`http_403`、`http_429`、网络错误及低频旧源这次不纳入公开快照，但不可据此断言站点永久失效。原 ID 保留不重新编号，更新链接时使用目标站已验证的 HTTPS 重定向地址；只保留规范化后唯一 URL。通过 Feed 内容中图片/视频引用增加本地可搜的「图文」「视频」标签，未下载或检查媒体文件。
+
+**NSFW 兼容边界**：R2 v1 仍会被已安装的旧 APK 下载，旧版客户端不识别敏感内容标记。因此 v1 的导入器与发布器均拒绝含 `nsfw: true` 的来源，成人候选仅供将来的独立 opt-in 目录/新版客户端使用。不得直接把 `nsfw-staged.json` 合并进 v1 源或发布到既有公开 manifest。
 
 **每个 APK 都携带一份内置种子**，保证任何版本的新安装都可离线查找。安装包中的种子只在没有有效远程缓存时使用；已下载的 R2 快照始终优先，不会被 APK 中的种子覆盖。后续仅更新目录时，发布 R2 快照即可，无需重发 APK；下一次发 APK 时可以同时更新内置种子，供新的安装使用。
 
@@ -17,6 +21,15 @@
 新快照验证字节数、SHA-256、JSON 结构、记录数与日期后，通过一次 IndexedDB 事务替换；写盘失败保留旧版。旧 APK 内置种子不会覆盖新缓存。新库不受旧 `newsnook:feed-discovery` 清理影响。目录不进入 Preferences、备份或可选云同步；已有订阅、列表/正文缓存和阅读状态格式不变。
 
 ## 手动构建与发布
+
+根据 2026-11-04 的原始候选与终审结果重复生成目录时，执行（原始文件在仓库外保存）：
+
+```bash
+python3 scripts/rss-catalog-curate.py --input /path/to/upstream-merged-6641-proposed.json --results /path/to/results.csv --report /path/to/report.json --output data/rss-catalog/upstream.json --nsfw-out data/rss-catalog/nsfw-staged.json --summary-out data/rss-catalog/audit-summary.json
+python3 scripts/rss-catalog-curate.test.py
+```
+
+之后生成内置种子并发布：
 
 ```bash
 # 编辑 upstream.json 后先生成种子（CI 验证两者一致）
@@ -88,7 +101,7 @@ Pixel 6 Pro / Android 12（`emulator-5554`），安装当前 `1.9.2-beta.8` clou
 |---|---:|---|
 | `2026.11.03.1` | 3,493 | 首次发布，公开字节/hash/CORS 校验通过，模拟器保存同版本 |
 | `2026.11.03.2` | 3,494 | 加一条 W3C 地址，模拟器检测变化并真实下载；收尾发现末尾斜杠别名重复 |
-| `2026.11.03.3` | 3,494 | 将测试新增项替换为已验活 GitHub 官方状态 RSS，当前线上版本 |
+| `2026.11.03.3` | 3,494 | 将测试新增项替换为已验活 GitHub 官方状态 RSS，当时线上版本 |
 
 [首次发布 Action](https://github.com/t59688/newsnook/actions/runs/41661810310)、[第二版 Action](https://github.com/t59688/newsnook/actions/runs/41663864222)、[修正版 Action](https://github.com/t59688/newsnook/actions/runs/41664875598) 均成功。首次公开验证发现 CORS 缺失，修复后再次检查通过；配置修复过程中的失败任务没有覆盖有效目录。
 

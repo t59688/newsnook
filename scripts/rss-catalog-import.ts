@@ -114,6 +114,7 @@ export function normalizeUpstreamCatalog(value: unknown): RssCatalog {
   const feeds = source.feeds.map((raw): CatalogFeed => {
     if (!raw || typeof raw !== 'object') throw new Error('上游来源格式错误')
     const row = raw as Record<string, unknown>
+    if (row.nsfw != null && row.nsfw !== false) throw new Error('RSS 目录 v1 不支持直接发布 NSFW 来源')
     const primary = topic(row.category)
     const alternate = row.alternative_categories == null ? [] : row.alternative_categories
     if (!Array.isArray(alternate) || !alternate.every((item) => typeof item === 'string')) throw new Error('上游备用分类格式错误')
@@ -122,7 +123,8 @@ export function normalizeUpstreamCatalog(value: unknown): RssCatalog {
     return {
       id: row.id as string, title: row.title as string, url: row.url as string, category: primary[0], language: row.language as string, region: region(row.region),
       aliases: [...new Set([...categories, ...mapped.map((item) => item[0])])],
-      tags: [...new Set(mapped.flatMap((item) => item.slice(1)))],
+      // The audit checks feed metadata for image/video references; no media payload is downloaded.
+      tags: [...new Set([...mapped.flatMap((item) => item.slice(1)), ...(row.has_image_in_feed === true ? ['图文', '图片'] : []), ...(row.has_video_in_feed === true ? ['视频'] : [])])],
     }
   })
   feeds.sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0)
