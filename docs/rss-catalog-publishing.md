@@ -4,9 +4,9 @@
 
 维护数据保存在 `data/rss-catalog/upstream.json`；`scripts/rss-catalog-import.ts` 确定性生成 `src/features/rssCatalog/seed.json`。应用仅打包精简种子，维护文件、验证明细和归一化映射不进入 APK。
 
-`data/rss-catalog/upstream.json` 是唯一维护源，包含 **4,645 条** RSS、Atom、JSON Feed，其中 **97 条**含 `nsfw: true` 标记。导入器校验所有来源并生成同样 **4,645 条**的离线种子；发布器下一次发布时也直接使用这一完整目录。目前线上 R2 仍是上一次发布的 4,548 条版本，需在客户端更新后再切换快照。没有第二份 NSFW 数据文件、兼容目录或独立发布链路。源文件只保留运行需要的字段，网络审计过程保存在仓库外。
+`data/rss-catalog/upstream.json` 是唯一维护源，包含 **4,665 条** RSS、Atom、JSON Feed，其中 **104 条**含 `nsfw: true` 标记。导入器校验所有来源并生成同样 **4,665 条**的离线种子；发布器直接使用相同的完整目录，可独立更新 R2，无需重新发布 APK。没有第二份 NSFW 数据文件、兼容目录或独立发布链路。源文件只保留运行需要的字段，网络审计过程保存在仓库外。
 
-**内容标记**：客户端目录条目保留 `nsfw: boolean`（未标记的来源归一化为 `false`），用于来源列表中的小型提示标签和元数据检索。目录没有 NSFW 开关、显隐状态或搜索过滤：全部 4,645 条来源直接参与搜索、分类统计、预览与订阅。缺少 `nsfw` 字段的旧目录缓存校验失败后，客户端直接使用新离线种子，再由常规 R2 更新恢复网络快照。
+**内容标记**：客户端目录条目保留 `nsfw: boolean`（未标记的来源归一化为 `false`），用于来源列表中的小型提示标签和元数据检索。目录没有 NSFW 开关、显隐状态或搜索过滤：全部 4,665 条来源直接参与搜索、分类统计、预览与订阅。缺少 `nsfw` 字段的旧目录缓存校验失败后，客户端直接使用新离线种子，再由常规 R2 更新恢复网络快照。
 
 **每个 APK 都携带一份内置种子**，保证任何版本的新安装都可离线查找。安装包中的种子只在没有有效远程缓存时使用；已下载的 R2 快照始终优先，不会被 APK 中的种子覆盖。后续仅更新目录时，发布 R2 快照即可，无需重发 APK；下一次发 APK 时可以同时更新内置种子，供新的安装使用。
 
@@ -27,9 +27,9 @@
 node --import tsx scripts/rss-catalog-import.ts
 node --import tsx scripts/rss-catalog-import.test.ts
 node --import tsx scripts/rss-catalog-release.test.ts
-node --import tsx scripts/rss-catalog-release.ts --version 2026.11.04.2
+node --import tsx scripts/rss-catalog-release.ts --version 2026.11.04.3
 # 可先指定另一份已经归一化的数据，仅构建不会写入 R2
-node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json --version 2026.11.04.2
+node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json --version 2026.11.04.3
 ```
 
 产物默认在 `node_modules/.cache/newsnook/rss-catalog/`。确认内容后，配置环境变量并安装 AWS CLI：
@@ -39,7 +39,7 @@ node --import tsx scripts/rss-catalog-release.ts --input /path/to/catalog.json -
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`，仅授予目标 bucket 必要读写权限
 
 ```bash
-node --import tsx scripts/rss-catalog-release.ts --publish --version 2026.11.04.2
+node --import tsx scripts/rss-catalog-release.ts --publish --version 2026.11.04.3
 node --import tsx scripts/rss-catalog-verify.ts --manifest node_modules/.cache/newsnook/rss-catalog/manifest.json
 ```
 
