@@ -35,7 +35,9 @@ export { normalizePreferences } from './preferences/normalize'
 
 export {
   addCustomCategory,
+  addSourcesToCategory,
   allRegisteredCategories,
+  categoriesForSource,
   allRegisteredSources,
   automaticSourceIds,
   categorySourceIds,
@@ -46,6 +48,8 @@ export {
   isCategoryVisible,
   isCustomCategory,
   moveCategory,
+  moveSourceBetweenCategories,
+  moveSourcesToCategory,
   orderedCategories,
   removeCategorySource,
   renameCategory,

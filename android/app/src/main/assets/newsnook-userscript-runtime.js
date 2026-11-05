@@ -5,6 +5,8 @@ function __NN_BOOT(userScript) {
   const port = window.__NewsNookUserScriptPort;
   if (!port) return;
   const grants = new Set(cfg.grants || []);
+  const isMainFrame = window === window.top;
+  const hasNativeGrants = Array.from(grants).some(grant => grant !== 'none' && grant !== 'unsafeWindow');
   const pendingHttp = new Map();
   const pendingDownloads = new Map();
   const menuCallbacks = new Map();
@@ -45,7 +47,9 @@ function __NN_BOOT(userScript) {
     if ((cfg.excludes || []).some(x => includePattern(x, href))) return false;
     return true;
   }
-  if (!matches() || window !== window.top) return;
+  // Page-world scripts without native GM capabilities may run in matching frames.
+  // Native bridge operations remain main-frame-only; privileged scripts are not injected into frames.
+  if (!matches() || (!isMainFrame && (cfg.noFrames || hasNativeGrants))) return;
 
   function GM_addStyle(css) {
     const style = document.createElement('style');

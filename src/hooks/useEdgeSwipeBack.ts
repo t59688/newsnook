@@ -255,6 +255,7 @@ export function useEdgeSwipeBack({
 
       cancelCompletion()
       element.style.transition = 'none'
+      element.style.animation = 'none'
       // 零位时不要建立临时 transform；若手势随后判定为纵滑，Android
       // WebView 可能把文章滚动层留在失效的合成状态。
       if (visualX > 0) render(visualX)

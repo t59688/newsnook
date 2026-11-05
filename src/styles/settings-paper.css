@@ -260,11 +260,15 @@ html[data-theme='dark'][data-scheme='ink'] .paper-settings-shell {
   border-radius: 17px;
   box-shadow: 0 4px 18px -15px rgb(0 0 0 / .16);
 }
+.paper-settings-section--plain .paper-settings-section-heading {
+  padding-left: 0;
+  padding-right: 0;
+}
 .paper-settings-section--plain .paper-settings-section-content {
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  box-shadow: none;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
 }
 .paper-settings-section-content > .page-x {
   padding-left: 14px;
@@ -319,7 +323,15 @@ html[data-theme='dark'][data-scheme='ink'] .paper-settings-shell {
   padding-bottom: 13px;
   border: 0;
 }
-.paper-settings-section-content > div.page-x.flex.items-center .font-mono {
+.paper-settings-section-content .custom-sources-filter-toolbar {
+  min-height: 57px;
+  padding-top: 13px;
+  padding-bottom: 13px;
+  border: 0;
+  align-items: center;
+}
+.paper-settings-section-content > div.page-x.flex.items-center .font-mono,
+.paper-settings-section-content .custom-sources-filter-toolbar .font-mono {
   font-family: var(--font-body);
   font-size: 12px;
   letter-spacing: 0;
@@ -341,7 +353,9 @@ html[data-theme='dark'][data-scheme='ink'] .paper-settings-shell {
 .paper-settings-shell-scroll :is(input:not([type="checkbox"]), textarea, select) {
   font-size: max(13px, 1em);
 }
-.paper-settings-shell-scroll :is(input:not([type="checkbox"]), textarea, select):focus-visible {
+/* Composite fields use their surrounding focus-within border; standalone fields
+   may use focus:border-* instead. Respect these explicit outline opt-outs. */
+.paper-settings-shell-scroll :is(input:not([type="checkbox"]), textarea, select):focus-visible:not([class*="outline-none"]) {
   outline: 2px solid var(--tone-cinnabar);
   outline-offset: 2px;
 }

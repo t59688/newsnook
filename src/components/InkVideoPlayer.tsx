@@ -2063,7 +2063,7 @@ function InkVideoPlayerReady({
 
   const progress = duration > 0 ? current / duration : 0
   const bufferRatio = duration > 0 ? Math.min(1, buffered / duration) : 0
-  const showChrome = (controlsVisible || !playing || scrubbing || rateMenuOpen || rotationMenuOpen || (immersive && resourceMenuOpen)) && !boosting && !gestureHud
+  const showChrome = (controlsVisible || scrubbing || rateMenuOpen || rotationMenuOpen || (immersive && resourceMenuOpen)) && !boosting && !gestureHud
   const condensed = compact || viewport.width < 470
   const statusMessage = getVideoStatusMessage({
     ready,
@@ -2243,6 +2243,7 @@ function InkVideoPlayerReady({
         {gestureHud && <GestureHudOverlay hud={gestureHud} duration={duration} />}
         {integratedSourcePicker && resourceMenuOpen && onSelectResource && <PlayerSourceSheet
           resources={resourceOptions}
+          fallbackTitle={title}
           activeUrl={src}
           activeFormat={playableFormatForUrl(src, format)}
           onClose={() => setResourceMenuOpen(false)}
@@ -2499,6 +2500,7 @@ function InkVideoPlayerReady({
     {typeof document !== 'undefined' && createPortal(
       <MediaResourceOverlay
         resources={resourceOptions}
+        fallbackTitle={title}
         open={resourceMenuOpen}
         immersive={immersive}
         suppressFab={hideResourceFab}

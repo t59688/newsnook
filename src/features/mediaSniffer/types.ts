@@ -18,8 +18,23 @@ export type MediaObservationSource =
   | 'performance'
   | 'mse'
   | 'static'
+  | 'player-config'
 
-export interface MediaObservation {
+export type MediaTitleSource = 'player' | 'structured' | 'page' | 'filename' | 'generated'
+
+/** Display-only metadata. Playback URLs and request context remain untouched. */
+export interface MediaMetadata {
+  title?: string
+  titleSource?: MediaTitleSource
+  pageTitle?: string
+  fileName?: string
+  playerSource?: string
+  fromIframe?: boolean
+  contentId?: string
+  isAd?: boolean
+}
+
+export interface MediaObservation extends MediaMetadata {
   url?: string
   pageUrl: string
   source: MediaObservationSource
@@ -37,10 +52,14 @@ export interface MediaObservation {
   height?: number
   bitrate?: number
   quality?: string
+  /** Source/line label declared by a CMS player, not a verified resolution. */
+  sourceLabel?: string
   bodyText?: string
   codecs?: string
   fromIframe?: boolean
   fromServiceWorker?: boolean
+  /** Set only after native nonce + loaded-frame/network provenance verification. */
+  provenanceVerified?: boolean
   sessionNonce?: string
   assetGroup?: string
   /** Runtime MSE/player correlation identifier. Native/JS may provide it. */
@@ -71,7 +90,7 @@ export interface MediaAssetTrack {
   requestContext: RequestContext
 }
 
-export interface MediaAsset {
+export interface MediaAsset extends MediaMetadata {
   id: string
   pageUrl: string
   score: number
@@ -94,7 +113,11 @@ export interface MediaTrack {
   height?: number
   codecs?: string
   language?: string
+  quality?: string
   groupId?: string
+  subtitleGroupId?: string
+  id?: string
+  label?: string
 }
 
 export interface MediaCandidate {
@@ -114,7 +137,7 @@ export interface MediaCandidate {
   requestHeaders?: Record<string, string>
 }
 
-export interface MediaResourceDescriptor {
+export interface MediaResourceDescriptor extends MediaMetadata {
   type: PlayableMediaFormat
   url: string
   pageUrl: string
@@ -133,6 +156,8 @@ export interface MediaResourceDescriptor {
   origins?: string[]
   /** Stable graph id used by the resource picker. */
   id?: string
+  /** Quality/line label declared by the source player, distinct from verified resolution. */
+  sourceLabel?: string
   /** True when the URL has strong advertising/preroll markers. */
   isAd?: boolean
 }

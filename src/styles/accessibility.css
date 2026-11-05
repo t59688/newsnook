@@ -43,4 +43,19 @@ html[data-eink='1'] .lead-cover-veil {
   );
 }
 
+/*
+ * The paged reader clips to one viewport at a time. Keep replaced media inside
+ * that viewport without cropping its contents; this also prevents a single
+ * portrait image from becoming an unpageable, multi-screen block.
+ */
+html[data-eink='1'] [data-eink-reader-viewport] .reader-prose img,
+html[data-eink='1'] [data-eink-reader-viewport] .reader-prose video,
+html[data-eink='1'] [data-eink-reader-viewport] .reader-prose iframe,
+html[data-eink='1'] [data-eink-reader-viewport] .reader-prose canvas,
+html[data-eink='1'] [data-eink-reader-viewport] .reader-prose svg:not(.lucide) {
+  max-width: 100%;
+  max-height: calc(var(--reader-page-height, 100vh) - 48px);
+  object-fit: contain;
+}
+
 

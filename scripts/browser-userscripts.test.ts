@@ -7,6 +7,7 @@ function script(metadata: string) {
 
 const linuxdo = script(`// @match https://linux.do/*\n// @run-at document-idle\n// @grant GM_getValue\n// @grant unsafeWindow`)
 assert.equal(linuxdo.name, 'Integration specimen')
+assert.equal(linuxdo.noFrames, false)
 assert.equal(linuxdo.runAt, 'document-idle')
 assert.deepEqual(linuxdo.grants, ['GM_getValue', 'unsafeWindow'])
 assert.equal(matchesUserScript(linuxdo, 'https://linux.do/t/hello/2'), true)
@@ -19,6 +20,9 @@ assert.equal(chat.connects[0], '*')
 assert.equal(matchesUserScript(chat, 'https://chatgpt.com/c/abc'), true)
 assert.equal(matchesUserScript(chat, 'https://chat.openai.com/c/abc'), true)
 assert.equal(matchesUserScript(chat, 'https://example.com/'), false)
+
+const frameOptOut = script(`// @match https://example.com/*\n// @noframes`)
+assert.equal(frameOptOut.noFrames, true, '@noframes is parsed as a presence-only directive')
 
 const mixed = script(`// @match *://*.example.com/*\n// @exclude-match https://secret.example.com/*\n// @exclude *://*.example.com/private/*`)
 assert.equal(matchesUserScript(mixed, 'https://example.com/post/5'), true)
@@ -104,8 +108,8 @@ function bootRuntime(options: { runAt?: string; url?: string; grants?: string[];
   page.top = options.frame ? {} : page
   const cfg = { id: 'us-runtime', secret: 'verified-script-token', name: 'Runtime specimen', version: '1',
     matches: ['https://example.com/*'], includes: [], excludes: [], excludeMatches: [],
-    runAt: options.runAt ?? 'document-end', executionWorld: 'isolated', grants: options.grants ?? [],
-    values: { ordinary: 'retained' }, storageEpoch: 0 }
+    runAt: options.runAt ?? 'document-end', executionWorld: 'page', grants: options.grants ?? ['none'],
+    noFrames: options.noFrames ?? false, values: { ordinary: 'retained' }, storageEpoch: 0 }
   runInNewContext(runtimeSource + '\n__NN_BOOT(__testBody);', {
     __NN_CONFIG: cfg, __testBody: (...args: unknown[]) => { executions++; options.body?.(...args) },
     window: page, document: { readyState: 'loading',
@@ -141,11 +145,16 @@ pendingIdle.windowEvent('load')
 pendingIdle.flushTimers()
 assert.equal(pendingIdle.executions(), 1)
 assert.equal(pendingIdle.messages.filter(message => message.op === 'started').length, 1, 'load and idle fallback share one execution')
-for (const options of [{ url: 'https://other.example/article' }, { frame: true }]) {
-  const skipped = bootRuntime({ ...options, runAt: 'document-start' })
-  assert.equal(skipped.executions(), 0)
-  assert.equal(skipped.messages.length, 0, 'unmatched pages and subframes never report a started script')
-}
+const unmatched = bootRuntime({ url: 'https://other.example/article', runAt: 'document-start' })
+assert.equal(unmatched.executions(), 0)
+assert.equal(unmatched.messages.length, 0, 'unmatched pages never execute')
+const frame = bootRuntime({ frame: true, runAt: 'document-start' })
+assert.equal(frame.executions(), 1, 'a matching grant-none script executes in a child frame')
+assert.equal(frame.messages.filter(message => message.op === 'started').length, 1, 'a frame may report its execution boundary')
+const optedOutFrame = bootRuntime({ frame: true, noFrames: true, runAt: 'document-start' })
+assert.equal(optedOutFrame.executions(), 0, '@noframes prevents child-frame execution')
+const privilegedFrame = bootRuntime({ frame: true, grants: ['GM_getValue'], runAt: 'document-start' })
+assert.equal(privilegedFrame.executions(), 0, 'scripts requiring native GM capabilities are not injected into child frames')
 const failedBody = bootRuntime({ runAt: 'document-start', body: () => { throw new Error('script body failed') } })
 assert.equal(failedBody.executions(), 1)
 assert.equal(failedBody.messages.filter(message => message.op === 'started').length, 1, 'started means entered the user script, including a body that later throws')

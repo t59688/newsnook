@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { parseHTML } from 'linkedom'
 import React, { act } from 'react'
 import { DEFAULT_PREFERENCES } from '../src/sources/preferences'
+import { DEFAULT_RSSHUB_INSTANCES } from '../src/features/rsshub/instances'
 import type { NewsSource } from '../src/sources/registry'
 
 const { window } = parseHTML('<html><body><div id="root"></div></body></html>')
@@ -74,7 +75,7 @@ try {
   await act(async () => { root.render(<FeedStoreScreen {...props} />) })
   assert.equal(radarCalls, 0, 'opening store must not eagerly download Radar catalog')
   assert.equal([...document.querySelectorAll('button[aria-pressed]')].find((item) => item.textContent?.includes('通过网站订阅'))?.getAttribute('aria-pressed'), 'true')
-  assert.ok(document.body.textContent?.includes('RSSHub · 9 个已启用实例'))
+  assert.ok(document.body.textContent?.includes('RSSHub · ' + DEFAULT_RSSHUB_INSTANCES.filter((item) => item.enabled).length + ' 个已启用实例'))
   assert.ok((document.querySelector('#feed-store-search') as HTMLInputElement).placeholder.includes('rsshub://'), 'URL mode accepts RSSHub logical routes')
   await click(findButton('查找订阅'))
   assert.equal(radarCalls, 1)
@@ -149,6 +150,36 @@ try {
   await click(findButton('仍添加，稍后重试'))
   assert.equal((draft!.discovery as { verification: { status: string } }).verification.status, 'unverified')
   assert.equal((draft!.discovery as { routeKey: string }).routeKey, '/twitter/user/Swang1')
+
+  // A shared Weibo post must reveal its actual author, not treat the post id
+  // as a user id; the same preview/subscribe flow must remain in use.
+  const weiboPost = 'https://weibo.com/7270676547/RoTHkdXwd'
+  let weiboRequests = 0
+  globalThis.fetch = async (input) => {
+    const requested = String(input)
+    const wrapped = new URL(requested, 'https://news.example.net')
+    const target = wrapped.searchParams.get('url') ?? requested
+    if (target.includes('/weibo/user/7270676547')) {
+      weiboRequests++
+      return new Response('<rss version="2.0"><channel><title>微博博主动态</title><item><title>新微博</title><link>https://weibo.com/7270676547/RoTHkdXwd</link></item></channel></rss>')
+    }
+    throw new Error('Unexpected Weibo test request: ' + requested)
+  }
+  draft = undefined
+  await act(async () => { root.render(<FeedStoreScreen key="weibo-post-discovery" {...props} initialQuery={weiboPost} />) })
+  await click(findButton('查找订阅'))
+  assert.ok(document.body.textContent?.includes('从分享链接识别到的发布者 / 频道'))
+  assert.ok(document.body.textContent?.includes('微博博主 · 7270676547'))
+  const weiboResult = [...document.querySelectorAll('button')].find((item) => item.textContent?.includes('微博博主 · 7270676547'))
+  assert.ok(weiboResult, 'post URL exposes a creator-subscription action')
+  await click(weiboResult as HTMLButtonElement)
+  assert.ok(document.body.textContent?.includes('https://reader.aptzone.cc/weibo/user/7270676547'), 'catalog-verified provider is selected for Weibo')
+  await click(findButton('检测与预览'))
+  assert.ok(weiboRequests > 0)
+  assert.ok(document.body.textContent?.includes('本次检测成功'))
+  await click(findButton('订阅'))
+  assert.equal((draft!.discovery as { routeKey: string }).routeKey, '/weibo/user/7270676547')
+  assert.equal(draft!.siteUrl, 'https://weibo.com/u/7270676547')
 } finally {
   globalThis.fetch = originalFetch
   await act(async () => { root.unmount() })

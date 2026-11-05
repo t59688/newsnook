@@ -37,6 +37,7 @@ import { dismissTopHardwareBackLayer } from './lib/hardwareBackStack'
 import { useLaterArticles } from './hooks/useLaterArticles'
 import { log } from './lib/logger'
 import { scheduleIdleWork } from './lib/idleWork'
+import { startCatalogMaintenance } from './features/rssCatalog/maintenance'
 import {
   buildReadingProfile,
   collectReadArticles,
@@ -102,10 +103,12 @@ import { FAVORITES_CATEGORY_ID, RECOMMEND_CATEGORY_ID, type CategoryId } from '.
 import { applySnapshotToPrefs, removeSourcesFromPresets } from './sources/presets'
 import {
   FOLLOWS_ENABLED_SOURCES,
+  isAggregateCategoryId,
   FONT_FAMILY_OPTIONS,
   FONT_SCALE_OPTIONS,
   addCustomCategory,
   addCustomSource,
+  addSourcesToCategory,
   allRegisteredSources,
   automaticSourceIds,
   batchImportSourcesAndCategories,
@@ -122,6 +125,8 @@ import {
   setAutoRefreshOnCategorySwitch,
   setCategoryOrder,
   moveCategory,
+  moveSourceBetweenCategories,
+  moveSourcesToCategory,
   moveCmsSource,
   setEinkMode,
   setHomeFeedLayout,
@@ -146,41 +151,42 @@ import {
   type TypographyPrefs,
 } from './sources/preferences'
 import { SITES, SOURCES, findSite, findSource, makeCustomSourceId } from './sources/registry'
-import { findSubscriptionDuplicate, replaceCustomSourceInstance, setCustomSourcePaused } from './features/feedDiscovery/subscriptionActions'
-import { SettingsShell } from './components/SettingsShell'
+import { findSubscriptionDuplicate, replaceCustomSourceInstance, setCustomSourcePaused, setCustomSourcesPaused } from './features/feedDiscovery/subscriptionActions'
+import { lazyScreen } from './lib/lazyScreen'
+import { settingsBackRoute, type SettingsRoute } from './lib/settingsNavigation'
 
 // The home feed is the only tab required for a normal cold start.
 // The wiki pane is inactive until a user selects text or opens wiki settings.
 const WikiSelectionLayer = lazy(() => import('./features/wiki/WikiSelectionLayer').then(module => ({ default: module.WikiSelectionLayer })))
-const MeScreen = lazy(() => import('./screens/MeScreen').then(module => ({ default: module.MeScreen })))
-const SiteScreen = lazy(() => import('./screens/SiteScreen').then(module => ({ default: module.SiteScreen })))
+const MeScreen = lazyScreen(() => import('./screens/MeScreen').then(module => ({ default: module.MeScreen })))
+const SiteScreen = lazyScreen(() => import('./screens/SiteScreen').then(module => ({ default: module.SiteScreen })))
 // Update release notes use Markdown parsing, which is not needed until a dialog opens.
 const UpdateDialog = lazy(() => import('./features/appUpdate/UpdateDialog').then(module => ({ default: module.UpdateDialog })))
 
-const AboutScreen = lazy(() => import('./screens/settings/AboutScreen').then(module => ({ default: module.AboutScreen })))
-const AccountSyncScreen = lazy(() => import('./screens/settings/AccountSyncScreen').then(module => ({ default: module.AccountSyncScreen })))
-const ChangelogScreen = lazy(() => import('./screens/settings/ChangelogScreen').then(module => ({ default: module.ChangelogScreen })))
-const OpenSourceScreen = lazy(() => import('./screens/settings/OpenSourceScreen').then(module => ({ default: module.OpenSourceScreen })))
-const AppearanceScreen = lazy(() => import('./screens/settings/AppearanceScreen').then(module => ({ default: module.AppearanceScreen })))
-const CustomSchemeScreen = lazy(() => import('./screens/settings/CustomSchemeScreen').then(module => ({ default: module.CustomSchemeScreen })))
-const CategorySettingsScreen = lazy(() => import('./screens/settings/CategorySettingsScreen').then(module => ({ default: module.CategorySettingsScreen })))
-const CategorySourcesScreen = lazy(() => import('./screens/settings/CategorySourcesScreen').then(module => ({ default: module.CategorySourcesScreen })))
-const CategoryEditScreen = lazy(() => import('./screens/settings/CategoryEditScreen').then(module => ({ default: module.CategoryEditScreen })))
-const CustomSourcesScreen = lazy(() => import('./screens/settings/CustomSourcesScreen').then(module => ({ default: module.CustomSourcesScreen })))
-const HistoryScreen = lazy(() => Promise.all([
+const AboutScreen = lazyScreen(() => import('./screens/settings/AboutScreen').then(module => ({ default: module.AboutScreen })))
+const AccountSyncScreen = lazyScreen(() => import('./screens/settings/AccountSyncScreen').then(module => ({ default: module.AccountSyncScreen })))
+const ChangelogScreen = lazyScreen(() => import('./screens/settings/ChangelogScreen').then(module => ({ default: module.ChangelogScreen })))
+const OpenSourceScreen = lazyScreen(() => import('./screens/settings/OpenSourceScreen').then(module => ({ default: module.OpenSourceScreen })))
+const AppearanceScreen = lazyScreen(() => import('./screens/settings/AppearanceScreen').then(module => ({ default: module.AppearanceScreen })))
+const CustomSchemeScreen = lazyScreen(() => import('./screens/settings/CustomSchemeScreen').then(module => ({ default: module.CustomSchemeScreen })))
+const CategorySettingsScreen = lazyScreen(() => import('./screens/settings/CategorySettingsScreen').then(module => ({ default: module.CategorySettingsScreen })))
+const CategorySourcesScreen = lazyScreen(() => import('./screens/settings/CategorySourcesScreen').then(module => ({ default: module.CategorySourcesScreen })))
+const CategoryEditScreen = lazyScreen(() => import('./screens/settings/CategoryEditScreen').then(module => ({ default: module.CategoryEditScreen })))
+const CustomSourcesScreen = lazyScreen(() => import('./screens/settings/CustomSourcesScreen').then(module => ({ default: module.CustomSourcesScreen })))
+const HistoryScreen = lazyScreen(() => Promise.all([
   import('./screens/settings/HistoryScreen'),
   import('./styles/history-editorial.css'),
 ]).then(([module]) => ({ default: module.HistoryScreen })))
-const LaterScreen = lazy(() => import('./screens/settings/LaterScreen').then(module => ({ default: module.LaterScreen })))
-const LocalSearchScreen = lazy(() => import('./screens/settings/LocalSearchScreen').then(module => ({ default: module.LocalSearchScreen })))
-const PresetListScreen = lazy(() => import('./screens/settings/PresetListScreen').then(module => ({ default: module.PresetListScreen })))
-const StorageScreen = lazy(() => import('./screens/settings/StorageScreen').then(module => ({ default: module.StorageScreen })))
-const TypographyScreen = lazy(() => import('./screens/settings/TypographyScreen').then(module => ({ default: module.TypographyScreen })))
-const TranslationScreen = lazy(() => import('./screens/settings/TranslationScreen').then(module => ({ default: module.TranslationScreen })))
-const ReadAloudScreen = lazy(() => import('./screens/settings/ReadAloudScreen').then(module => ({ default: module.ReadAloudScreen })))
-const AiSettingsScreen = lazy(() => import('./screens/settings/AiSettingsScreen').then(module => ({ default: module.AiSettingsScreen })))
-const ProxyScreen = lazy(() => import('./screens/settings/ProxyScreen').then(module => ({ default: module.ProxyScreen })))
-const ChannelsScreen = lazy(() => import('./screens/ChannelsScreen').then(module => ({ default: module.ChannelsScreen })))
+const LaterScreen = lazyScreen(() => import('./screens/settings/LaterScreen').then(module => ({ default: module.LaterScreen })))
+const LocalSearchScreen = lazyScreen(() => import('./screens/settings/LocalSearchScreen').then(module => ({ default: module.LocalSearchScreen })))
+const PresetListScreen = lazyScreen(() => import('./screens/settings/PresetListScreen').then(module => ({ default: module.PresetListScreen })))
+const StorageScreen = lazyScreen(() => import('./screens/settings/StorageScreen').then(module => ({ default: module.StorageScreen })))
+const TypographyScreen = lazyScreen(() => import('./screens/settings/TypographyScreen').then(module => ({ default: module.TypographyScreen })))
+const TranslationScreen = lazyScreen(() => import('./screens/settings/TranslationScreen').then(module => ({ default: module.TranslationScreen })))
+const ReadAloudScreen = lazyScreen(() => import('./screens/settings/ReadAloudScreen').then(module => ({ default: module.ReadAloudScreen })))
+const AiSettingsScreen = lazyScreen(() => import('./screens/settings/AiSettingsScreen').then(module => ({ default: module.AiSettingsScreen })))
+const ProxyScreen = lazyScreen(() => import('./screens/settings/ProxyScreen').then(module => ({ default: module.ProxyScreen })))
+const ChannelsScreen = lazyScreen(() => import('./screens/ChannelsScreen').then(module => ({ default: module.ChannelsScreen })))
 
 // The global read-aloud controller is not needed until a reader or voice
 // settings screen has been visited. Keep its media/translation dependencies
@@ -191,9 +197,9 @@ const GlobalReadAloudBar = lazy(() =>
   })),
 )
 
-const FeedStoreScreen = lazy(() => import('./screens/settings/FeedStoreScreen').then((module) => ({ default: module.FeedStoreScreen })))
+const FeedStoreScreen = lazyScreen(() => import('./screens/settings/FeedStoreScreen').then((module) => ({ default: module.FeedStoreScreen })))
 
-const ReaderScreen = lazy(() =>
+const ReaderScreen = lazyScreen(() =>
   import('./screens/ReaderScreen').then((module) => ({
     default: module.ReaderScreen,
   })),
@@ -210,6 +216,17 @@ const LinuxDoWorkspace = lazy(() =>
     default: module.LinuxDoWorkspace,
   })),
 )
+
+// Warm local page code after the first usable frame, one idle turn at a time.
+// Importing a screen does not mount it or start its data requests.
+const navigationScreens = [
+  FeedStoreScreen, MeScreen, AppearanceScreen, TypographyScreen,
+  CategorySettingsScreen, CustomSourcesScreen, LaterScreen, HistoryScreen,
+  LocalSearchScreen, PresetListScreen, CategorySourcesScreen, CategoryEditScreen,
+  CustomSchemeScreen, StorageScreen, TranslationScreen, ReadAloudScreen,
+  AiSettingsScreen, ProxyScreen, AccountSyncScreen, AboutScreen,
+  ChangelogScreen, OpenSourceScreen, ChannelsScreen, SiteScreen, ReaderScreen,
+]
 
 const DEFAULT_ENABLED = SOURCES.filter((source) => source.enabled).map((source) => source.id)
 
@@ -228,30 +245,6 @@ function readCacheSnapshot() {
     history: listCachedArticles(30),
   }
 }
-
-type SettingsRoute =
-  | { name: 'presets' }
-  | { name: 'categories'; returnTo?: 'presets' | 'me' }
-  | { name: 'category-sources'; categoryId: CategoryId }
-  | { name: 'category-edit'; categoryId?: CategoryId }
-  | { name: 'custom-sources' }
-  | { name: 'feed-store'; returnTo?: 'custom-sources' }
-  | { name: 'channels' }
-  | { name: 'typography' }
-  | { name: 'appearance' }
-  | { name: 'custom-scheme' }
-  | { name: 'storage' }
-  | { name: 'translation' }
-  | { name: 'read-aloud' }
-  | { name: 'ai'; returnTo?: 'translation' | 'read-aloud' }
-  | { name: 'proxy' }
-  | { name: 'later' }
-  | { name: 'history' }
-  | { name: 'local-search' }
-  | { name: 'account-sync' }
-  | { name: 'about' }
-  | { name: 'changelog' }
-  | { name: 'licenses' }
 
 interface BodyPrefetchTask {
   article: Article
@@ -325,6 +318,27 @@ export default function App() {
   const [browserOpen, setBrowserOpen] = useState(false)
   useStartupBlocker(!launchUrlReady)
   const startupReady = useStartupReady()
+  useEffect(() => {
+    if (!startupReady) return
+    return startCatalogMaintenance()
+  }, [startupReady])
+  useEffect(() => {
+    if (!startupReady) return
+    let active = true
+    let index = 0
+    let cancelIdle = () => {}
+    const next = () => {
+      if (!active || index >= navigationScreens.length) return
+      const screen = navigationScreens[index++]
+      cancelIdle = scheduleIdleWork(() => {
+        void screen.preload()
+          .catch(error => log.app.debug('Screen preload deferred', error))
+          .finally(next)
+      })
+    }
+    next()
+    return () => { active = false; cancelIdle() }
+  }, [startupReady])
   const speedReadConfig = useMemo(
     () => resolveAiFeatureConfig({ ai: prefs.translation.ai }, 'speedRead'),
     [prefs.translation.ai],
@@ -369,7 +383,11 @@ export default function App() {
   const [categoryId, setCategoryId] = useState<CategoryId>(
     () => defaultFeedCategoryId(visibleCategories(prefs)),
   )
-  const [settingsRoute, setSettingsRoute] = useState<SettingsRoute | null>(null)
+  const [settingsRoute, commitSettingsRoute] = useState<SettingsRoute | null>(null)
+  // Keep the current page (and its back controls) until a cold destination is ready.
+  const setSettingsRoute = useCallback((route: SettingsRoute | null) => {
+    startTransition(() => commitSettingsRoute(route))
+  }, [])
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
   const [focusReturnRoute, setFocusReturnRoute] = useState<SettingsRoute | null>(null)
   const [enabledIds, setEnabledIds] = useState<string[]>(() => loadEnabledSources() ?? DEFAULT_ENABLED)
@@ -424,7 +442,7 @@ export default function App() {
   const openAccountSync = useCallback(() => {
     setTab('me')
     setSettingsRoute({ name: 'account-sync' })
-  }, [])
+  }, [setSettingsRoute])
   /**
    * 冷启动深链 `/a/<token>`：本地解码后直接进阅读器（正文仍走 resolveBody 站内抽取）。
    * 显式写成 lazy initializer，token 也留一份给「在 App 中打开」引导条拼深链。
@@ -490,7 +508,7 @@ export default function App() {
     setFocusSourceId(null)
     setTab('today')
     startProductTourNow()
-  }, [startProductTourNow])
+  }, [setSettingsRoute, startProductTourNow])
   const [readIds, setReadIds] = useState<Set<string>>(() => loadIdSet('read'))
   /** 推荐排序经 ref 读取已读集合：打开文章返回时不重排，避免列表跳动 */
   const readIdsRef = useRef(readIds)
@@ -637,7 +655,7 @@ export default function App() {
       setSettingsRoute(null)
       setFocusSourceId(sourceId)
     },
-    [],
+    [setSettingsRoute],
   )
 
   const closeSourceFeed = useCallback(() => {
@@ -646,7 +664,7 @@ export default function App() {
       setSettingsRoute(focusReturnRoute)
       setFocusReturnRoute(null)
     }
-  }, [focusReturnRoute])
+  }, [focusReturnRoute, setSettingsRoute])
 
   const closeReader = useCallback(() => {
     setReading(null)
@@ -671,7 +689,7 @@ export default function App() {
     setReading(readerReturnArticle)
     setReaderReturnArticle(null)
     setReaderReturnSiteId(null)
-  }, [readerReturnArticle, readerReturnSiteId])
+  }, [readerReturnArticle, readerReturnSiteId, setSettingsRoute])
 
   useEffect(() => {
     if (!Capacitor.isNativePlatform()) return
@@ -705,36 +723,12 @@ export default function App() {
         leaveActiveSite()
         return
       }
-      if (settingsRoute?.name === 'category-sources' || settingsRoute?.name === 'category-edit') {
-        setSettingsRoute({ name: 'categories' })
-        return
-      }
-      if (settingsRoute?.name === 'channels') {
-        setSettingsRoute({ name: 'categories' })
-        return
-      }
-      if (settingsRoute?.name === 'categories') {
-        setSettingsRoute({ name: 'presets' })
-        return
-      }
-      if (settingsRoute?.name === 'changelog' || settingsRoute?.name === 'licenses') {
-        setSettingsRoute({ name: 'about' })
-        return
-      }
-      if (settingsRoute?.name === 'custom-scheme') {
-        setSettingsRoute({ name: 'appearance' })
-        return
-      }
-      if (settingsRoute?.name === 'feed-store' && settingsRoute.returnTo) {
-        setSettingsRoute({ name: settingsRoute.returnTo })
-        return
-      }
       if (settingsRoute) {
         if (readerReturnArticle && settingsRoute.name === 'translation') {
           restoreReaderFromSettings()
           return
         }
-        setSettingsRoute(null)
+        setSettingsRoute(settingsBackRoute(settingsRoute))
         return
       }
       if (readerReturnArticle) {
@@ -764,7 +758,7 @@ export default function App() {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [activeSiteId, closeReader, closeSourceFeed, eggOpen, focusSourceId, leaveActiveSite, readerReturnArticle, reading, restoreReaderFromSettings, settingsRoute, stopProductTourIfActive, tab])
+  }, [activeSiteId, closeReader, closeSourceFeed, eggOpen, focusSourceId, leaveActiveSite, readerReturnArticle, reading, restoreReaderFromSettings, setSettingsRoute, settingsRoute, stopProductTourIfActive, tab])
 
   const {
     articles: fetchedArticles,
@@ -922,6 +916,22 @@ export default function App() {
         setEnabledIds((prev) => prev.filter((id) => id !== sourceId))
       } else {
         update((prev) => removeCategorySource(prev, categoryId, sourceId))
+      }
+      setCategoryFilterSourceId((prev) => (prev === sourceId ? null : prev))
+    },
+    [categoryId, update],
+  )
+
+  const handleMoveSourceToCategory = useCallback(
+    (sourceId: string, targetCategoryId: CategoryId) => {
+      if (categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID) return
+      if (categoryId === FOLLOWS_ENABLED_SOURCES) {
+        // Moving out of 综合 means removing the source from the enabled-channel
+        // aggregate and assigning it to the chosen ordinary category.
+        update((prev) => addSourcesToCategory(prev, [sourceId], targetCategoryId))
+        setEnabledIds((prev) => prev.filter((id) => id !== sourceId))
+      } else {
+        update((prev) => moveSourceBetweenCategories(prev, sourceId, categoryId, targetCategoryId))
       }
       setCategoryFilterSourceId((prev) => (prev === sourceId ? null : prev))
     },
@@ -1257,7 +1267,7 @@ export default function App() {
       setTab('me')
       setSettingsRoute({ name: 'custom-sources' })
     },
-  }), [activeSiteId, cmsSources, frameworkSiteCount, handleRenameSource, leaveActiveSite, presetSwitcherItems, presets, selectedCmsId, siteSwitcherItems, tab, update])
+  }), [activeSiteId, cmsSources, frameworkSiteCount, handleRenameSource, leaveActiveSite, presetSwitcherItems, presets, selectedCmsId, setSettingsRoute, siteSwitcherItems, tab, update])
 
   const cachedHistory = useMemo(
     () => readingHistory.filter((entry): entry is Extract<ReadingHistoryEntry, { kind: 'article' }> => entry.kind === 'article').map((entry) => entry.article),
@@ -1283,7 +1293,7 @@ export default function App() {
       saveActiveSiteId('zhihu')
       setActiveSiteId('zhihu')
     }
-  }, [openArticle])
+  }, [openArticle, setSettingsRoute])
 
   const customSourcesSummary = useMemo(() => {
     const count = prefs.customSources?.length ?? 0
@@ -1459,15 +1469,7 @@ export default function App() {
         <AiSettingsScreen
           prefs={prefs.translation}
           onChange={(translation) => update((prev) => ({ ...prev, translation }))}
-          onBack={() =>
-            setSettingsRoute(
-              settingsRoute.returnTo === 'translation'
-                ? { name: 'translation' }
-                : settingsRoute.returnTo === 'read-aloud'
-                  ? { name: 'read-aloud' }
-                  : null,
-            )
-          }
+          onBack={() => setSettingsRoute(settingsBackRoute(settingsRoute))}
         />
       )
     }
@@ -1515,7 +1517,6 @@ export default function App() {
 
     if (settingsRoute.name === 'feed-store') {
       return (
-        <Suspense fallback={<StartupPending pending={mainSurfaceVisible}><SettingsShell title="RSS 订阅商店" caption="正在打开订阅发现…" onBack={() => setSettingsRoute(settingsRoute.returnTo ? { name: settingsRoute.returnTo } : null)}><p className="page-x text-paper-muted">正在加载…</p></SettingsShell></StartupPending>}>
         <FeedStoreScreen
           prefs={prefs}
           currentCategoryId={categoryId}
@@ -1528,7 +1529,6 @@ export default function App() {
             }
             let nextPrefs = addCustomSource(prefs, source, targetCatId).nextPrefs
             if (targetCatId && nextPrefs.hiddenCategoryIds.includes(targetCatId)) nextPrefs = toggleCategoryVisible(nextPrefs, targetCatId)
-            if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             const sourceId = makeCustomSourceId(source.url)
             const nextEnabled = addToMix && !enabledIds.includes(sourceId) ? [...enabledIds, sourceId] : enabledIds
             try {
@@ -1558,7 +1558,6 @@ export default function App() {
             }
             if (!added) return { ok: false, message: '所选频道已经订阅，无需重复添加。' }
             if (targetCatId && nextPrefs.hiddenCategoryIds.includes(targetCatId)) nextPrefs = toggleCategoryVisible(nextPrefs, targetCatId)
-            if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             try {
               saveSubscriptionState(sanitizeForPersistence(nextPrefs), nextEnabled)
             } catch {
@@ -1575,7 +1574,6 @@ export default function App() {
             const ids = sourceIdsForCategoryWithPrefs(targetCatId, prefs, enabledIds)
             let nextPrefs = targetCatId === FOLLOWS_ENABLED_SOURCES || ids.includes(sourceId) ? prefs : toggleCategorySource(prefs, targetCatId, sourceId)
             if (nextPrefs.hiddenCategoryIds.includes(targetCatId)) nextPrefs = toggleCategoryVisible(nextPrefs, targetCatId)
-            if (addToMix && nextPrefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)) nextPrefs = toggleCategoryVisible(nextPrefs, FOLLOWS_ENABLED_SOURCES)
             const nextEnabled = (targetCatId === FOLLOWS_ENABLED_SOURCES || addToMix) && !enabledIds.includes(sourceId) ? [...enabledIds, sourceId] : enabledIds
             try { saveSubscriptionState(sanitizeForPersistence(nextPrefs), nextEnabled) } catch { return { ok: false, message: '订阅保存失败，请检查本机存储空间后重试。' } }
             replacePreferences(nextPrefs)
@@ -1609,7 +1607,6 @@ export default function App() {
           onOpenSource={(sourceId) => openSourceFeed(sourceId, settingsRoute)}
           onBack={() => setSettingsRoute(settingsRoute.returnTo ? { name: settingsRoute.returnTo } : null)}
         />
-        </Suspense>
       )
     }
 
@@ -1634,6 +1631,15 @@ export default function App() {
             setEnabledIds((prev) => prev.filter((id) => !deleted.has(id)))
             presets.removeSourceReferences(sourceIds)
           }}
+          onMoveCustomSourcesToCategory={(sourceIds, categoryId) =>
+            update((prev) => moveSourcesToCategory(prev, sourceIds, categoryId))
+          }
+          onAddCustomSourcesToCategory={(sourceIds, categoryId) =>
+            update((prev) => addSourcesToCategory(prev, sourceIds, categoryId))
+          }
+          onSetCustomSourcesPaused={(sourceIds, paused) =>
+            update((prev) => setCustomSourcesPaused(prev, sourceIds, paused))
+          }
           onBatchImport={(sources, categories) =>
             update((prev) => batchImportSourcesAndCategories(prev, sources, categories))
           }
@@ -1650,8 +1656,8 @@ export default function App() {
           enabledIds={enabledIds}
           statuses={statuses}
           onToggle={toggleSource}
-          onInspect={(id) => openSourceFeed(id, { name: 'channels' })}
-          onBack={() => setSettingsRoute({ name: 'categories' })}
+          onInspect={(id) => openSourceFeed(id, settingsRoute)}
+          onBack={() => setSettingsRoute(settingsBackRoute(settingsRoute))}
         />
       )
     }
@@ -1665,7 +1671,7 @@ export default function App() {
             update((prev) => toggleCategorySource(prev, id, sourceId))
           }
           onReset={(id) => update((prev) => resetCategorySources(prev, id))}
-          onBack={() => setSettingsRoute({ name: 'categories' })}
+          onBack={() => setSettingsRoute(settingsBackRoute(settingsRoute))}
         />
       )
     }
@@ -1683,13 +1689,13 @@ export default function App() {
             } else {
               update((prev) => addCustomCategory(prev, draft).nextPrefs)
             }
-            setSettingsRoute({ name: 'categories' })
+            setSettingsRoute(settingsBackRoute(settingsRoute))
           }}
           onDelete={(id) => {
             update((prev) => deleteCustomCategory(prev, id))
-            setSettingsRoute({ name: 'categories' })
+            setSettingsRoute(settingsBackRoute(settingsRoute))
           }}
-          onBack={() => setSettingsRoute({ name: 'categories' })}
+          onBack={() => setSettingsRoute(settingsBackRoute(settingsRoute))}
         />
       )
     }
@@ -1796,10 +1802,10 @@ export default function App() {
         onToggleAutoRefresh={(enabled) =>
           update((prev) => setAutoRefreshOnCategorySwitch(prev, enabled))
         }
-        onEditSources={(id) => setSettingsRoute({ name: 'category-sources', categoryId: id })}
-        onEditCategory={(id) => setSettingsRoute({ name: 'category-edit', categoryId: id })}
-        onNewCategory={() => setSettingsRoute({ name: 'category-edit' })}
-        onOpenChannels={() => setSettingsRoute({ name: 'channels' })}
+        onEditSources={(id) => setSettingsRoute({ name: 'category-sources', categoryId: id, returnTo: settingsRoute.returnTo })}
+        onEditCategory={(id) => setSettingsRoute({ name: 'category-edit', categoryId: id, returnTo: settingsRoute.returnTo })}
+        onNewCategory={() => setSettingsRoute({ name: 'category-edit', returnTo: settingsRoute.returnTo })}
+        onOpenChannels={() => setSettingsRoute({ name: 'channels', returnTo: settingsRoute.returnTo })}
         onResetLayout={(opts) => {
           if (presets.activePreset?.builtin) {
             presets.restoreFactory()
@@ -1807,13 +1813,7 @@ export default function App() {
           }
           update((prev) => resetCategoryLayout(prev, opts))
         }}
-        onBack={() =>
-          setSettingsRoute(
-            settingsRoute.name === 'categories' && settingsRoute.returnTo === 'presets'
-              ? { name: 'presets' }
-              : null,
-          )
-        }
+        onBack={() => setSettingsRoute(settingsBackRoute(settingsRoute))}
       />
     )
   }
@@ -1963,6 +1963,18 @@ export default function App() {
           categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID
             ? undefined
             : handleRemoveCategorySource
+        }
+        moveTargetCategories={
+          categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID
+            ? []
+            : regularCategories.filter(
+                (category) => category.id !== categoryId && !isAggregateCategoryId(category.id),
+              )
+        }
+        onMoveSourceToCategory={
+          categoryId === FAVORITES_CATEGORY_ID || categoryId === RECOMMEND_CATEGORY_ID
+            ? undefined
+            : handleMoveSourceToCategory
         }
         onRemoveCategory={handleRemoveCategory}
         onRenameCategory={handleRenameCategory}

@@ -1,14 +1,14 @@
-import { useState, type ReactNode } from 'react'
+import { useState, type ReactNode, type Ref } from 'react'
 import { AlertCircle, ArrowLeft, Globe2, ShieldCheck, X, type LucideIcon } from 'lucide-react'
 import { shortcutFaviconUrl } from './browserHistory'
 import { useBrowserDialogFocus } from './useBrowserDialogFocus'
 import { getBrowserBrandIcon } from './browserBrandIcons'
 
-export function BrowserIconButton({label, children, onClick, disabled = false, pressed, className = ''}: {
+export function BrowserIconButton({label, children, onClick, disabled = false, pressed, className = '', buttonRef}: {
   label: string; children: ReactNode; onClick: () => void; disabled?: boolean
-  pressed?: boolean; className?: string
+  pressed?: boolean; className?: string; buttonRef?: Ref<HTMLButtonElement | null>
 }) {
-  return <button type="button" aria-label={label} title={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}
+  return <button ref={buttonRef} type="button" aria-label={label} title={label} aria-pressed={pressed} disabled={disabled} onClick={onClick}
     className={'browser-icon-button ' + className}>
     {children}
   </button>
@@ -89,4 +89,53 @@ export function BrowserPrivateNotice({compact = false}: {compact?: boolean}) {
       {!compact && <span>不保存搜索和浏览记录。</span>}
     </div>
   </div>
+}
+
+/** 网页刷新/加载时的终止图标：外围沿边框循环流动加载光标，中心保留终止方块 */
+export function BrowserLoadingStopIcon({size = 22, className = ''}: {size?: number; className?: string}) {
+  return (
+    <span
+      className={'browser-loading-stop-icon ' + className}
+      style={{ width: size, height: size }}
+      aria-hidden="true"
+    >
+      <svg
+        viewBox="0 0 24 24"
+        width={size}
+        height={size}
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        className="size-full overflow-visible"
+      >
+        <rect
+          x="1.5"
+          y="1.5"
+          width="21"
+          height="21"
+          rx="5.5"
+          strokeWidth="1.5"
+          className="browser-loading-stop-track"
+        />
+        <rect
+          x="1.5"
+          y="1.5"
+          width="21"
+          height="21"
+          rx="5.5"
+          strokeWidth="2.5"
+          strokeDasharray="28 46.5"
+          className="browser-loading-stop-border"
+        />
+        <rect
+          x="7.75"
+          y="7.75"
+          width="8.5"
+          height="8.5"
+          rx="1.5"
+          fill="currentColor"
+          className="browser-loading-stop-square"
+        />
+      </svg>
+    </span>
+  )
 }

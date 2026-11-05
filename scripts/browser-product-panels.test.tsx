@@ -434,7 +434,13 @@ try {
   await click(button('隐私浏览'))
   assert.equal(loadBrowserPreferences().privateMode, true)
   assert.equal(button('隐私浏览').getAttribute('aria-checked'), 'true')
-  assert.ok(window.document.body.textContent?.includes('开启后不保存搜索和浏览记录'))
+  assert.ok(window.document.body.textContent?.includes('独立临时会话，不保存浏览记录；停用网页资源缓存'))
+  await click(button('无痕模式'))
+  assert.equal(loadBrowserPreferences().incognitoMode, true)
+  assert.equal(loadBrowserPreferences().privateMode, false)
+  await click(button('隐私浏览'))
+  assert.equal(loadBrowserPreferences().incognitoMode, false)
+  assert.equal(loadBrowserPreferences().privateMode, true)
   await click(button('隐私浏览'))
   assert.equal(loadBrowserPreferences().privateMode, false)
   preferenceWriteFailure = true
@@ -480,8 +486,35 @@ try {
   assert.ok(!window.document.body.textContent?.includes('最近访问'))
   assert.ok(!window.document.body.textContent?.includes(entries[0].title))
   assert.ok(window.document.querySelector('[aria-label="添加快捷方式"]'))
-  for (const label of ['历史', '书签', '用户脚本']) assert.ok(button(label), 'privacy keeps explicit browser tools available')
+  for (const label of ['书签', '用户脚本']) assert.ok(button(label), 'privacy retains explicit tools other than history')
+  assert.ok(!Array.from(window.document.querySelectorAll('button')).some(item => item.textContent?.trim() === '历史'), 'privacy hides the old history entry')
   assert.equal(window.document.querySelectorAll('img[src^="https:"]').length, 0, 'private start does not fetch favicons')
+
+  // Normal start page recent-visit eye visibility toggle & persistence
+  let normalHideRecent = false
+  const renderNormalStart = async () => {
+    await act(async () => root.render(<BrowserStartPage
+      shortcuts={[{name:'GitHub', url:'https://github.com/'}]}
+      recent={entries}
+      hideRecent={normalHideRecent}
+      onToggleHideRecent={() => { normalHideRecent = !normalHideRecent }}
+      onSearch={() => {}} onOpen={() => {}} onAddShortcut={() => {}} onShortcutOptions={() => {}}
+      onHistoryOptions={() => {}} onPanel={() => {}}/>))
+  }
+  await renderNormalStart()
+  assert.ok(window.document.body.textContent?.includes('最近访问'))
+  assert.ok(window.document.body.textContent?.includes(entries[0].title), 'recent visits are visible by default')
+  const eyeBtn = window.document.querySelector('button[aria-label="隐藏最近访问"]') as HTMLButtonElement
+  assert.ok(eyeBtn, 'eye toggle button is rendered beside recent visits title')
+  await click(eyeBtn)
+  await renderNormalStart()
+  assert.ok(!window.document.body.textContent?.includes(entries[0].title), 'recent visits are hidden after eye click')
+  assert.ok(window.document.querySelector('button[aria-label="显示最近访问"]'), 'eye button toggles label to show recent visits')
+  const collapsedCard = window.document.querySelector('button.browser-recent-collapsed') as HTMLButtonElement
+  assert.ok(collapsedCard, 'collapsed placeholder card is rendered when recent visits are hidden')
+  await click(collapsedCard)
+  await renderNormalStart()
+  assert.ok(window.document.body.textContent?.includes(entries[0].title), 'recent visits are restored when clicking collapsed card')
 
   let searchClosed = 0
   await act(async () => root.render(<BrowserSearchPanel current="" initialValue="" engine="bing" history={entries}
@@ -512,6 +545,13 @@ try {
   assert.equal((window.document.querySelector('input[aria-label="搜索或输入网址"]') as HTMLInputElement).value, 'new search query')
   await click(button('编辑当前网址'))
   assert.equal((window.document.querySelector('input[aria-label="搜索或输入网址"]') as HTMLInputElement).value, 'https://www.google.com/search?q=423423', 'edit button re-fills current url into input')
+
+  await act(async () => root.render(<BrowserSettingsPanel {...settingsProps} isolatedProfiles={false}
+    preferences={{...loadBrowserPreferences(), privateMode:false, incognitoMode:false}}
+    onPreferencesChange={async () => true}/>))
+  assert.ok(button('隐私浏览').hasAttribute('disabled'), 'an unsupported WebView cannot enable privacy with shared cookies')
+  assert.ok(button('无痕模式').hasAttribute('disabled'), 'an unsupported WebView cannot enable incognito with shared cookies')
+  assert.ok(window.document.body.textContent?.includes('不支持独立浏览会话'), 'unsupported profile isolation has a visible explanation')
 
   console.log('browser product panels: selection-only search, preserved query, provider defaults, saved UA/desktop/privacy, failure recovery, pending races and explicit history access OK')
 } finally {

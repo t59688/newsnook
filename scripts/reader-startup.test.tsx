@@ -44,6 +44,7 @@ mock.module('../src/features/prestore/store.ts', { namedExports: {
 } })
 mock.module('../src/lib/resolveBody.ts', { namedExports: {
   resolveArticleBody: () => { networkReads++; return new Promise(() => {}) },
+  pageUserAgentForArticle: () => undefined,
 } })
 // Keep ReaderScreen and its body rendering real. Isolate optional audio/AI and
 // device gesture services, which are unrelated to the local-first body restore.

@@ -1,3 +1,4 @@
+import { primaryContentHtml } from './extractors/collectionStructure'
 import { extractHeuristicCardCatalog } from './extractors/heuristicCards'
 import { extractJsonLdCatalog } from './extractors/jsonLd'
 import { catalogBaseUrl, catalogDocument, extractDomCards } from './extractors/domCards'
@@ -12,7 +13,7 @@ export function extractCatalog(html: string, pageUrl: string, options: CatalogEx
   const json = extractJsonLdCatalog(html, baseUrl)
   const listed = extractJsonLdCatalog(html, baseUrl, true)
   const dom = extractDomCards(html, pageUrl, document)
-  const heuristic = extractHeuristicCardCatalog(html, baseUrl)
+  const heuristic = extractHeuristicCardCatalog(primaryContentHtml(document), baseUrl)
   let items: CatalogItem[]
   let extractor: CatalogExtractionResult['extractor']
   if (listed.length) { items = listed; extractor = 'json-ld' }
@@ -22,7 +23,10 @@ export function extractCatalog(html: string, pageUrl: string, options: CatalogEx
   else { items = json; extractor = json.length ? 'json-ld' : null }
   const metadata = new Map<string, Partial<CatalogItem>>()
   for (const item of [...heuristic, ...dom, ...json]) {
-    const defined = Object.fromEntries(Object.entries(item).filter(([, value]) => value != null))
+    const defined: Partial<CatalogItem> = {}
+    for (const [key, value] of Object.entries(item)) {
+      if (value != null) (defined as Record<string, unknown>)[key] = value
+    }
     metadata.set(item.originUrl, { ...metadata.get(item.originUrl), ...defined })
   }
   items = items.map((item) => ({ ...item, ...metadata.get(item.originUrl) }))

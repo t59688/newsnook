@@ -85,7 +85,10 @@
     <script>
       console.info('__NNSTART html-head web=' + performance.now().toFixed(1) + 'ms')
       try {
-        window.NewsNookNative?.reportStartupStage?.('html-head', performance.now())
+        var startupBridge = window.NewsNookNative
+        if (startupBridge && typeof startupBridge.reportStartupStage === 'function') {
+          startupBridge.reportStartupStage('html-head', performance.now())
+        }
       } catch (_) { /* diagnostic only */ }
       // WebView 版本检测：低于 Chrome 69 直接提示，不进入应用
       ;(function () {
@@ -120,6 +123,31 @@
         if (typeof Object.hasOwn !== 'function') {
           Object.hasOwn = function (obj, prop) {
             return Object.prototype.hasOwnProperty.call(obj, prop)
+          }
+        }
+        // Object.fromEntries（Chrome 73+）。应用入口模块在初始化阶段就会构建
+        // 分类和浏览器配置映射；缺少此 API 会在 React 首屏挂载前抛错并留下白屏。
+        if (typeof Object.fromEntries !== 'function') {
+          Object.fromEntries = function (iterable) {
+            if (iterable == null || typeof iterable[Symbol.iterator] !== 'function') {
+              throw new TypeError('Object.fromEntries requires an iterable')
+            }
+            var iterator = iterable[Symbol.iterator]()
+            var result = {}
+            var step
+            while (!(step = iterator.next()).done) {
+              var entry = step.value
+              if (entry === null || (typeof entry !== 'object' && typeof entry !== 'function')) {
+                throw new TypeError('Iterator value is not an entry object')
+              }
+              Object.defineProperty(result, entry[0], {
+                value: entry[1],
+                writable: true,
+                enumerable: true,
+                configurable: true,
+              })
+            }
+            return result
           }
         }
         if (!Array.prototype.at) {

@@ -17,11 +17,24 @@ export async function getBrowserContext(): Promise<BrowserContext> {
   return nativeBrowser.getBrowserContext()
 }
 
+function normalizePaletteColor(val: string): string {
+  const trimmed = val.trim()
+  if (/^#[0-9a-f]{3}$/i.test(trimmed)) {
+    return `#${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
+  }
+  if (/^#[0-9a-f]{4}$/i.test(trimmed)) {
+    return `#${trimmed[4]}${trimmed[4]}${trimmed[1]}${trimmed[1]}${trimmed[2]}${trimmed[2]}${trimmed[3]}${trimmed[3]}`
+  }
+  return trimmed
+}
+
 export function browserThemePalette(): Record<string, string> {
   const css = getComputedStyle(document.documentElement)
   const tones: Record<string, string> = {ink: 'ink', surface: 'ink-raised', paper: 'paper', muted: 'paper-muted', accent: 'cinnabar', outline: 'paper-faint'}
   const palette: Record<string, string> = {}
-  for (const [key, tone] of Object.entries(tones)) palette[key] = css.getPropertyValue('--tone-' + tone).trim()
+  for (const [key, tone] of Object.entries(tones)) {
+    palette[key] = normalizePaletteColor(css.getPropertyValue('--tone-' + tone))
+  }
   return palette
 }
 
@@ -32,10 +45,10 @@ export function useBrowserSession(
   onVisit: (url: string, title: string) => void,
   bottomAddress: boolean,
   recoverySession?: BrowserRecoverySession,
-  options: {settings?: BrowserPreferences; initialUrl?: string; agentSheetRef?: RefObject<HTMLElement | null>; agentSheetVisible?: boolean; agentOperating?: boolean} = {},
+  options: {settings?: BrowserPreferences; initialUrl?: string; transientSearch?: boolean; agentSheetRef?: RefObject<HTMLElement | null>; agentSheetVisible?: boolean; agentOperating?: boolean} = {},
 ) {
   const initialEntry: InitialBrowserEntry = options.initialUrl && /^https?:\/\//i.test(options.initialUrl) ? options.initialUrl
-    : recoverySession && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).privateMode ? recoverySession : null
+    : recoverySession && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).privateMode && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).incognitoMode ? recoverySession : null
   const [state, setState] = useState<BrowserState>(EMPTY)
   const [tabs, setTabs] = useState<BrowserTab[]>([])
   const [mediaTabs, setMediaTabs] = useState<ReadonlyMap<number, BrowserMediaTab>>(() => new Map())
@@ -174,7 +187,7 @@ export function useBrowserSession(
           stateRef.current = next
           return next
         })
-        if (!settingsRef.current.privateMode && !event.privateMode && event.recordHistory !== false && event.url && /^https?:\/\//i.test(event.url) && event.phase === 'end' && !event.error) {
+        if (!options.transientSearch && !settingsRef.current.privateMode && !settingsRef.current.incognitoMode && !event.privateMode && event.recordHistory !== false && event.url && /^https?:\/\//i.test(event.url) && event.phase === 'end' && !event.error) {
           visit.current(event.url, event.title || event.url)
         }
         if (opened.current) void refresh().catch(() => undefined)
@@ -215,7 +228,7 @@ export function useBrowserSession(
       handles.forEach(handle => { void handle.remove().catch(() => undefined) })
       if (!closing.current) void nativeBrowser.close().catch(() => undefined)
     }
-  }, [refresh, invalidateImages, settleInitialSession])
+  }, [refresh, invalidateImages, settleInitialSession, options.transientSearch])
 
   const visible = ready && /^https?:\/\//i.test(state.url || '') && !state.error && !covered
   useLayoutEffect(() => {
@@ -324,25 +337,25 @@ export function useBrowserSession(
     const generation = epoch.current
     if (Capacitor.getPlatform() !== 'android') throw new Error('请在 Android 应用中打开网页')
     if (opened.current && !snapshot) {
-      await nativeBrowser.updateScripts({scripts: loadUserScripts().filter(script => script.enabled)})
+      await nativeBrowser.updateScripts({scripts: options.transientSearch ? [] : loadUserScripts().filter(script => script.enabled)})
       await nativeBrowser.navigate({action: 'url', url})
     } else {
       initialSession.current.visible = null
       await nativeBrowser.open({
-        url, scripts: loadUserScripts().filter(script => script.enabled),
-        settings: settingsRef.current,
+        url, scripts: options.transientSearch ? [] : loadUserScripts().filter(script => script.enabled),
+        settings: settingsRef.current, transientSearch: options.transientSearch === true,
         embedded: true, visible: false, ...getBounds(), palette: browserThemePalette(),
-        ...(!settingsRef.current.privateMode && snapshot ? {recoverySession: snapshot} : {}),
+        ...(!settingsRef.current.privateMode && !settingsRef.current.incognitoMode && snapshot ? {recoverySession: snapshot} : {}),
       })
       if (live.current && !closing.current && generation === epoch.current) opened.current = true
     }
     if (live.current && !closing.current && generation === epoch.current && initialSession.current.entry === (snapshot ?? url)) {
       initialSession.current.commandAcknowledged = true
     }
-  }, [getBounds])
+  }, [getBounds, options.transientSearch])
 
   useEffect(() => {
-    if (!recoverySession || settingsRef.current.privateMode || recoveryStarted.current) return
+    if (!recoverySession || settingsRef.current.privateMode || settingsRef.current.incognitoMode || recoveryStarted.current) return
     void enqueue(async () => {
       if (recoveryStarted.current) return
       recoveryStarted.current = true
@@ -350,6 +363,22 @@ export function useBrowserSession(
       await ensureOpen(url, recoverySession)
     }, false, recoverySession)
   }, [enqueue, ensureOpen, recoverySession])
+
+  useEffect(() => {
+    if (typeof MutationObserver === 'undefined') return
+    const observer = new MutationObserver(mutations => {
+      for (const m of mutations) {
+        if (m.type === 'attributes' && (m.attributeName === 'data-theme' || m.attributeName === 'data-scheme')) {
+          if (opened.current && !closing.current) {
+            void nativeBrowser.updatePalette({palette: browserThemePalette()}).catch(() => undefined)
+          }
+          break
+        }
+      }
+    })
+    observer.observe(document.documentElement, {attributes: true, attributeFilter: ['data-theme', 'data-scheme']})
+    return () => observer.disconnect()
+  }, [])
 
   const open = useCallback((url: string, throwOnError = false) => enqueue(() => ensureOpen(url), throwOnError, url), [enqueue, ensureOpen])
   const command = useCallback((action: BrowserCommand): Promise<boolean> => {
@@ -379,6 +408,9 @@ export function useBrowserSession(
   }), [enqueue])
   const updateSettings = useCallback((settings: BrowserPreferences) => enqueue(async () => {
     await nativeBrowser.updateSettings({settings})
+  }), [enqueue])
+  const updatePalette = useCallback(() => enqueue(async () => {
+    if (opened.current) await nativeBrowser.updatePalette({palette: browserThemePalette()})
   }), [enqueue])
   const clearSiteData = useCallback((url: string) => enqueue(async () => {
     if (!url) throw new Error('请先打开需要清理的网站')
@@ -434,6 +466,7 @@ export function useBrowserSession(
     await nativeBrowser.close().catch(() => undefined)
   }, [])
 
-  return {state, tabs, mediaTabs, ready, initialSessionSettled, pending, error, setError, open, command, activate, remove, updateScripts, updateSettings, clearSiteData,
-    images, scanningImages, imageError, scanImages, loadImage, cancelImageRequests, invalidateImages, findResult, findInPage, findNext, clearFind, close}
+  return {state, tabs, mediaTabs, ready, initialSessionSettled, pending, error, setError, open, command, activate, remove, updateScripts, updateSettings, updatePalette, clearSiteData,
+    images, scanningImages, imageError, scanImages, loadImage, cancelImageRequests, invalidateImages, findResult, findInPage, findNext, clearFind, close,
+    refreshTabs: refresh}
 }

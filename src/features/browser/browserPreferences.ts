@@ -7,6 +7,7 @@ export type BrowserMobileUserAgentMode = Exclude<BrowserUserAgentMode, 'desktop'
 /** Web-page options are separate from the existing search and layout keys. */
 export interface BrowserPreferences {
   privateMode: boolean
+  incognitoMode: boolean
   userAgentMode: BrowserUserAgentMode
   lastNonDesktopUserAgentMode: BrowserMobileUserAgentMode
   customUserAgent: string
@@ -28,10 +29,12 @@ export const BROWSER_KEYS = {
   hiddenHosts: 'newsnook:browser:hidden-hosts:v1',
   shortcuts: 'newsnook:browser:shortcuts:v1',
   preferences: 'newsnook:browser:preferences:v1',
+  hideRecent: 'newsnook:browser:hide-recent:v1',
 } as const
 
 export const DEFAULT_BROWSER_PREFERENCES: Readonly<BrowserPreferences> = Object.freeze({
   privateMode: false,
+  incognitoMode: false,
   userAgentMode: 'system',
   lastNonDesktopUserAgentMode: 'system',
   customUserAgent: '',
@@ -42,6 +45,9 @@ export const DEFAULT_BROWSER_PREFERENCES: Readonly<BrowserPreferences> = Object.
   mediaPlaybackRequiresUserGesture: true,
   confirmExternalApps: true,
 })
+
+export const DEFAULT_BROWSER_SEARCH_ENGINE: BrowserSearchChoice = 'google'
+const BROWSER_SEARCH_GOOGLE_DEFAULT_MIGRATION = 'newsnook:browser:search-google-default:v1'
 
 export const BROWSER_ENGINES = Object.fromEntries(BROWSER_SEARCH_PROVIDERS.map(provider =>
   [provider.id, {name: provider.name, url: provider.queryPrefix}],
@@ -71,6 +77,7 @@ export function normalizeBrowserPreferences(value: unknown): BrowserPreferences 
     typeof source[key] === 'boolean' ? source[key] as boolean : defaults[key] as boolean
   return {
     privateMode: boolean('privateMode'),
+    incognitoMode: !boolean('privateMode') && boolean('incognitoMode'),
     userAgentMode,
     lastNonDesktopUserAgentMode,
     customUserAgent,
@@ -110,6 +117,21 @@ export function readBrowserPreference(key: string): string | null {
   try { return localStorage.getItem(key) } catch { return null }
 }
 
+/** Upgrade the former persisted Bing default once, then preserve later user choices. */
+export function loadBrowserSearchEngine(): BrowserSearchChoice {
+  const saved = readBrowserPreference(BROWSER_KEYS.search)
+  const valid = saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved)
+    ? saved as BrowserSearchChoice : DEFAULT_BROWSER_SEARCH_ENGINE
+  if (readBrowserPreference(BROWSER_SEARCH_GOOGLE_DEFAULT_MIGRATION) === '1') return valid
+  try {
+    if (saved === 'bing') writeBrowserPreference(BROWSER_KEYS.search, DEFAULT_BROWSER_SEARCH_ENGINE, true)
+    writeBrowserPreference(BROWSER_SEARCH_GOOGLE_DEFAULT_MIGRATION, '1', true)
+  } catch {
+    // A read-only WebView still receives the new in-memory default.
+  }
+  return saved === 'bing' ? DEFAULT_BROWSER_SEARCH_ENGINE : valid
+}
+
 export function readBrowserList(key: string): unknown {
   try { return JSON.parse(readBrowserPreference(key) || 'null') } catch { return null }
 }
@@ -142,4 +164,8 @@ export function resolveBrowserAddress(text: string, engine: BrowserSearchChoice)
   const searchOperator = /^(?:site|intitle|allintitle|inurl|allinurl|intext|allintext|filetype|ext|related|cache|define|before|after):/i.test(input)
   if (!searchOperator && /^[a-z][a-z\d+.-]*:/i.test(input)) return null
   return BROWSER_ENGINES[engine].url + encodeURIComponent(input)
+}
+
+export function readHideRecentPreference(): boolean {
+  return readBrowserPreference(BROWSER_KEYS.hideRecent) === 'true'
 }

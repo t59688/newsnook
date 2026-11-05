@@ -25,17 +25,21 @@ const hotOnly = normalizePreferences({
   ...DEFAULT_PREFERENCES,
   categorySources: { ...DEFAULT_PREFERENCES.categorySources, hot: ['netease'] },
 })
-const removed = removeCategorySource(hotOnly, 'hot', 'netease')
-assert.deepEqual(removed.categorySources.hot, [])
-assert.deepEqual(categorySourceIds('hot', removed), [])
-assert.deepEqual(sourceIdsForCategoryWithPrefs('hot', removed, ['ithome']), [])
+// Legacy taxonomy ids are materialized as custom categories before preferences
+// reach the runtime. Removing the last member keeps that migrated category valid.
+const migratedHotId = 'legacy-v1-hot'
+assert.deepEqual(categorySourceIds(migratedHotId, hotOnly), ['netease'])
+const removed = removeCategorySource(hotOnly, migratedHotId, 'netease')
+assert.deepEqual(categorySourceIds(migratedHotId, removed), [])
+assert.ok(removed.customCategories?.some((category) => category.id === migratedHotId && category.sourceIds?.length === 0))
+assert.deepEqual(sourceIdsForCategoryWithPrefs(migratedHotId, removed, ['ithome']), [])
 
 const normalized = normalizePreferences({
   ...DEFAULT_PREFERENCES,
   categorySources: { hot: [] },
   favoriteSourceIds: ['netease', 'missing-source'],
 })
-assert.deepEqual(normalized.categorySources.hot, [])
+assert.equal(Object.prototype.hasOwnProperty.call(normalized.categorySources, 'hot'), false)
 assert.deepEqual(normalized.favoriteSourceIds, ['netease'])
 
 const presetA = snapshotFromRuntime(toggleFavoriteSource(base, 'netease'), [])
@@ -51,6 +55,6 @@ const legacy = normalizeSnapshot({
   enabledSourceIds: [],
 })
 assert.deepEqual(legacy.favoriteSourceIds, [])
-assert.deepEqual(legacy.categorySources.hot, [])
+assert.equal(Object.prototype.hasOwnProperty.call(legacy.categorySources, 'hot'), false)
 
 console.log('source favorites: ok')

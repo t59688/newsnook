@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import {
   AlertCircle,
+  BookOpen,
   CheckCircle2,
   ChevronRight,
   ArrowRight,
@@ -16,6 +17,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { SegmentedControl } from '../../components/SegmentedControl'
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { FeedStorePicker } from '../../features/feedDiscovery/FeedStorePicker'
+import { RssCatalogBrowser } from '../../features/rssCatalog/RssCatalogBrowser'
 import { searchOnlineFeeds, websiteSearchUrl } from '../../features/feedDiscovery/onlineSearch'
 import { RssHubInstancesScreen } from '../../features/rsshub/RssHubInstancesScreen'
 import { RssHubSubscriptionRebindScreen } from '../../features/rsshub/RssHubSubscriptionRebindScreen'
@@ -59,7 +61,7 @@ interface Props {
   initialQuery?: string
 }
 
-type DiscoveryMode = 'keyword' | 'website'
+type DiscoveryMode = 'catalog' | 'keyword' | 'website'
 
 const WEBSITE_EXAMPLES = [
   { label: 'B 站 UP 主', value: 'https://space.bilibili.com/1161918898' },
@@ -86,7 +88,7 @@ function isWebsiteUrl(value: string): boolean {
 export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onSubscribeMany, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
   const [tab, setTab] = useState<'discover' | 'subscribed'>('discover')
   const [query, setQuery] = useState(initialQuery)
-  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>(() => isWebsiteUrl(initialQuery) ? 'website' : 'keyword')
+  const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>(() => !initialQuery.trim() ? 'catalog' : isWebsiteUrl(initialQuery) ? 'website' : 'keyword')
   const [results, setResults] = useState<FeedDiscoveryEntry[]>([])
   const [searchedQuery, setSearchedQuery] = useState('')
   const [probes, setProbes] = useState<Record<string, RssHubProbeResult>>({})
@@ -110,9 +112,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
   const [routeInputs, setRouteInputs] = useState<Record<string, string>>({})
   const [selectedInstanceId, setSelectedInstanceId] = useState('')
   const instances = normalizeRssHubInstances(prefs.rsshubInstances)
-  const selectedInstance = selectedInstanceId
-    ? instances.find((item) => item.id === selectedInstanceId && item.enabled)
-    : instances.find((item) => item.enabled)
+  const selectedInstance = instances.find((item) => item.id === selectedInstanceId && item.enabled)
+    ?? instances.find((item) => item.enabled)
   const routeResolution = entry?.type === 'rsshub' && entry.routeTemplate
     ? resolveRssHubRadarTarget(entry.routeTemplate, { ...entry.parameters, ...routeInputs })
     : null
@@ -168,9 +169,10 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     const alreadyChecked = next.routePath ? probes[next.routePath] : undefined
     if (alreadyChecked?.feed) setPreview(alreadyChecked.feed)
     setPresetId(currentPresetId)
+    const isMixVisible = !prefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)
     const visible = visibleCategories(prefs).filter((item) => !isAggregateCategoryId(item.id))
-    setTarget(visible.find((item) => item.id === currentCategoryId)?.id ?? visible[0]?.id ?? '__mix_only__')
-    setAddToMix(true)
+    setTarget(visible.find((item) => item.id === currentCategoryId)?.id ?? visible[0]?.id ?? (isMixVisible ? '__mix_only__' : '__save_only__'))
+    setAddToMix(isMixVisible)
   }
   const search = async () => {
     if (!query.trim()) return
@@ -282,7 +284,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
         verification: { status: 'verified', checkedAt: result.feed!.checkedAt } },
     }))
     if (!drafts.length) return
-    const outcome = onSubscribeMany(drafts, undefined, true, currentPresetId)
+    const isMixVisible = !prefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)
+    const outcome = onSubscribeMany(drafts, undefined, isMixVisible, currentPresetId)
     if (!outcome.ok) { setError(outcome.message ?? '批量订阅保存失败'); return }
     setSavedId(makeCustomSourceId(drafts[0].url))
     setSelectedRoutes([])
@@ -302,14 +305,15 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     const duplicate = findSubscriptionDuplicate(prefs, { url: effectiveFeedUrl, discovery })
     if (duplicate?.kind === 'custom' || duplicate?.kind === 'generator-route') { onOpenSource(duplicate.source.id); return }
     if (duplicate && target === '__save_only__') { setError('该来源已内置，可直接查看，无需重复保存。'); return }
+    const isMixVisible = !prefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES)
     const destination = target === '__save_only__' || target === '__mix_only__' ? undefined : target
     const outcome = duplicate
-      ? onAddBuiltinToCategory(duplicate.source.id, destination ?? FOLLOWS_ENABLED_SOURCES, presetId, addToMix)
+      ? onAddBuiltinToCategory(duplicate.source.id, destination ?? (isMixVisible ? FOLLOWS_ENABLED_SOURCES : categories[0]?.id ?? 'cn-headlines'), presetId, isMixVisible && addToMix)
       : onSubscribe({
           name: preview?.ok ? preview.title || entry.title : entry.title,
           label: (preview?.ok ? preview.title || entry.title : entry.title).slice(0, 12), kind: 'feed',
           url: effectiveFeedUrl, siteUrl: entry.siteUrl, discovery,
-        }, destination, target === '__save_only__' ? false : target === '__mix_only__' || addToMix, presetId)
+        }, destination, target === '__save_only__' ? false : target === '__mix_only__' ? true : (isMixVisible && addToMix), presetId)
     if (!outcome.ok) { setError(outcome.message ?? '订阅保存失败'); return }
     setSavedId(duplicate?.source.id ?? makeCustomSourceId(effectiveFeedUrl))
     closeEntry()
@@ -323,8 +327,15 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     return duplicate ? duplicate.kind === 'builtin' ? '已内置' : duplicate.source.paused ? '已暂停' : '已订阅' : null
   }
   const orderedResults = discoveryMode === 'website'
-    ? [...results.filter((item) => item.type === 'direct'), ...results.filter((item) => item.type === 'rsshub')]
+    ? [
+        ...results.filter((item) => item.discoveryContext === 'author-from-content'),
+        ...results.filter((item) => item.type === 'direct'),
+        ...results.filter((item) => item.type === 'rsshub' && item.discoveryContext !== 'author-from-content'),
+      ]
     : results
+  const resultGroup = (item: FeedDiscoveryEntry) => item.discoveryContext === 'author-from-content'
+    ? '从分享链接识别到的发布者 / 频道'
+    : item.type === 'rsshub' ? 'RSSHub 转换' : '原站订阅与网址检测'
   const websiteInputInvalid = discoveryMode === 'website' && query.trim().length > 4 && !isWebsiteUrl(query)
   const canSubscribe = Boolean(preview?.ok) && !previewing
   const canForceAdd = Boolean(preview && !preview.ok && preview.retryable && !previewing)
@@ -333,7 +344,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
     results.some((item) => item.providerId === 'feedsearch') ? { href: 'https://feedsearch.dev/', label: '网站发现由 Feedsearch 提供' } : null,
   ].filter(Boolean) as Array<{ href: string; label: string }>
 
-  return <SettingsShell title="RSS 订阅商店" caption="在线查找订阅地址 · 订阅后由本机直连来源" onBack={onBack}>
+  return <SettingsShell title="RSS 订阅商店" caption="发现自己的阅读地图 · 订阅后由本机直连来源" onBack={onBack}>
     <div className="page-x space-y-5 pt-4">
       <SegmentedControl
         label="订阅商店分页"
@@ -346,112 +357,172 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
       />
 
       {tab === 'discover' ? (
-        <div role="group" aria-label="选择发现方式" className="space-y-2.5">
-          <p className="px-0.5 text-[12.5px] font-medium text-paper">你想如何添加内容？</p>
-          <div className="grid grid-cols-2 gap-2.5">
-            <button type="button" aria-pressed={discoveryMode === 'keyword'}
-              onClick={() => switchDiscoveryMode('keyword')}
-              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'keyword' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
-              <span className={`flex items-center gap-2 text-[13px] font-medium ${discoveryMode === 'keyword' ? 'text-cinnabar-soft' : 'text-paper'}`}>
-                <Search size={16} strokeWidth={1.8} className="shrink-0" />
-                按名称搜索
-              </span>
-              <span className="mt-1.5 block text-[10.5px] leading-snug text-paper-faint">查找现成 RSS 订阅源</span>
+        <div role="group" aria-label="选择发现方式" className="space-y-2">
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              aria-pressed={discoveryMode === 'catalog'}
+              onClick={() => switchDiscoveryMode('catalog')}
+              className={`group relative flex flex-col items-center justify-between rounded-2xl border px-2 py-3 text-center transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar active:scale-[0.98] ${
+                discoveryMode === 'catalog'
+                  ? 'border-cinnabar/50 bg-cinnabar/10 text-paper shadow-sm ring-1 ring-cinnabar/20'
+                  : 'border-haze/80 bg-ink-raised/50 text-paper-muted hover:border-cinnabar/30 hover:bg-ink-raised'
+              }`}
+            >
+              <div className={`mb-1.5 grid size-8 place-items-center rounded-xl transition-colors ${
+                discoveryMode === 'catalog' ? 'bg-cinnabar/20 text-cinnabar-soft' : 'bg-ink/40 text-paper-faint group-hover:text-paper'
+              }`}>
+                <BookOpen size={16} strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0">
+                <span className={`block text-[13px] font-medium leading-snug ${discoveryMode === 'catalog' ? 'text-cinnabar-soft' : 'text-paper'}`}>
+                  RSS 目录
+                </span>
+                <span className="mt-0.5 block truncate text-[10px] text-paper-faint">
+                  本地精选 · 离线
+                </span>
+              </div>
             </button>
-            <button type="button" aria-pressed={discoveryMode === 'website'}
+
+            <button
+              type="button"
+              aria-pressed={discoveryMode === 'keyword'}
+              onClick={() => switchDiscoveryMode('keyword')}
+              className={`group relative flex flex-col items-center justify-between rounded-2xl border px-2 py-3 text-center transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar active:scale-[0.98] ${
+                discoveryMode === 'keyword'
+                  ? 'border-cinnabar/50 bg-cinnabar/10 text-paper shadow-sm ring-1 ring-cinnabar/20'
+                  : 'border-haze/80 bg-ink-raised/50 text-paper-muted hover:border-cinnabar/30 hover:bg-ink-raised'
+              }`}
+            >
+              <div className={`mb-1.5 grid size-8 place-items-center rounded-xl transition-colors ${
+                discoveryMode === 'keyword' ? 'bg-cinnabar/20 text-cinnabar-soft' : 'bg-ink/40 text-paper-faint group-hover:text-paper'
+              }`}>
+                <Search size={16} strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0">
+                <span className={`block text-[13px] font-medium leading-snug ${discoveryMode === 'keyword' ? 'text-cinnabar-soft' : 'text-paper'}`}>
+                  按名称搜索
+                </span>
+                <span className="mt-0.5 block truncate text-[10px] text-paper-faint">
+                  全网源 · 关键词
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              aria-pressed={discoveryMode === 'website'}
               onClick={() => switchDiscoveryMode('website')}
-              className={`min-h-[76px] rounded-2xl border px-3.5 py-3 text-left transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar ${discoveryMode === 'website' ? 'border-cinnabar/45 bg-cinnabar/8' : 'border-haze bg-ink-raised/45 hover:border-cinnabar/35'}`}>
-              <span className={`flex items-center gap-2 text-[13px] font-medium ${discoveryMode === 'website' ? 'text-cinnabar-soft' : 'text-paper'}`}>
-                <Link2 size={16} strokeWidth={1.8} className="shrink-0" />
-                通过网站订阅
-              </span>
-              <span className="mt-1.5 block text-[10.5px] leading-snug text-paper-faint">发现 RSS / RSSHub</span>
+              className={`group relative flex flex-col items-center justify-between rounded-2xl border px-2 py-3 text-center transition-all focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cinnabar active:scale-[0.98] ${
+                discoveryMode === 'website'
+                  ? 'border-cinnabar/50 bg-cinnabar/10 text-paper shadow-sm ring-1 ring-cinnabar/20'
+                  : 'border-haze/80 bg-ink-raised/50 text-paper-muted hover:border-cinnabar/30 hover:bg-ink-raised'
+              }`}
+            >
+              <div className={`mb-1.5 grid size-8 place-items-center rounded-xl transition-colors ${
+                discoveryMode === 'website' ? 'bg-cinnabar/20 text-cinnabar-soft' : 'bg-ink/40 text-paper-faint group-hover:text-paper'
+              }`}>
+                <Link2 size={16} strokeWidth={1.8} />
+              </div>
+              <div className="min-w-0">
+                <span className={`block text-[13px] font-medium leading-snug ${discoveryMode === 'website' ? 'text-cinnabar-soft' : 'text-paper'}`}>
+                  通过网站订阅
+                </span>
+                <span className="mt-0.5 block truncate text-[10px] text-paper-faint">
+                  网页 · RSSHub
+                </span>
+              </div>
             </button>
           </div>
         </div>
       ) : null}
 
-      <form
-        className="space-y-2.5"
-        onSubmit={(event) => { event.preventDefault(); if (tab === 'discover') void search() }}
-      >
-        <label htmlFor="feed-store-search" className="block font-mono text-[10px] tracking-[0.12em] text-paper-faint">
-          {tab === 'subscribed' ? '搜索已订阅' : discoveryMode === 'website' ? '粘贴网站或作者主页链接' : '输入名称或关键词'}
-        </label>
-        <div className="flex min-h-12 items-center gap-1 rounded-2xl border border-haze bg-ink-raised/80 px-2.5 shadow-[var(--shadow-lift)] focus-within:border-cinnabar/45">
-          {tab === 'discover' && discoveryMode === 'website'
-            ? <Link2 size={15} strokeWidth={1.7} className="ml-1.5 shrink-0 text-paper-faint" />
-            : <Search size={15} strokeWidth={1.7} className="ml-1.5 shrink-0 text-paper-faint" />}
-          <input
-            id="feed-store-search"
-            value={query}
-            onChange={(event) => changeQuery(event.target.value)}
-            placeholder={tab === 'subscribed' ? '搜索已保存的订阅' : discoveryMode === 'website' ? '网站主页或 rsshub://bilibili/…' : '例如 Bilibili、人工智能、汽车'}
-            autoComplete="off"
-            spellCheck={false}
-            inputMode={tab === 'discover' && discoveryMode === 'website' ? 'url' : 'search'}
-            className="min-w-0 flex-1 bg-transparent px-2 py-3 text-[13.5px] text-paper outline-none placeholder:text-paper-faint/65"
-          />
-          {query ? (
-            <button type="button" aria-label="清除搜索" onClick={() => changeQuery('')} className="grid h-9 w-9 place-items-center rounded-full text-paper-faint transition-colors hover:bg-paper/6 hover:text-paper">
-              <X size={14} strokeWidth={1.8} />
-            </button>
-          ) : null}
+      {tab === 'discover' && discoveryMode === 'catalog' ? (
+        <RssCatalogBrowser onSelect={openEntry} duplicateLabel={duplicateLabel} />
+      ) : (
+        <form
+          className="space-y-3"
+          onSubmit={(event) => { event.preventDefault(); if (tab === 'discover') void search() }}
+        >
+          <label htmlFor="feed-store-search" className="block font-mono text-[10px] tracking-[0.12em] text-paper-faint">
+            {tab === 'subscribed' ? '搜索已订阅' : discoveryMode === 'website' ? '粘贴网站、内容或作者主页链接' : '输入名称或关键词'}
+          </label>
+          <div className="flex min-h-12 items-center gap-1 rounded-2xl border border-haze bg-ink-raised/80 px-2.5 shadow-sm transition-colors focus-within:border-cinnabar/45 focus-within:ring-1 focus-within:ring-cinnabar/20">
+            {tab === 'discover' && discoveryMode === 'website'
+              ? <Link2 size={16} strokeWidth={1.7} className="ml-1.5 shrink-0 text-paper-faint" />
+              : <Search size={16} strokeWidth={1.7} className="ml-1.5 shrink-0 text-paper-faint" />}
+            <input
+              id="feed-store-search"
+              value={query}
+              onChange={(event) => changeQuery(event.target.value)}
+              placeholder={tab === 'subscribed' ? '搜索已保存的订阅' : discoveryMode === 'website' ? '分享链接、网站或 rsshub://bilibili/…' : '例如 Bilibili、人工智能、汽车'}
+              autoComplete="off"
+              spellCheck={false}
+              inputMode={tab === 'discover' && discoveryMode === 'website' ? 'url' : 'search'}
+              className="min-w-0 flex-1 bg-transparent px-2 py-3 text-[13.5px] text-paper outline-none placeholder:text-paper-faint/65"
+            />
+            {query ? (
+              <button type="button" aria-label="清除搜索" onClick={() => changeQuery('')} className="grid h-9 w-9 place-items-center rounded-full text-paper-faint transition-colors hover:bg-paper/6 hover:text-paper">
+                <X size={15} strokeWidth={1.8} />
+              </button>
+            ) : null}
+            {tab === 'discover' ? (
+              <button
+                type="button"
+                onClick={() => void search()}
+                disabled={searching || !query.trim() || (discoveryMode === 'website' && !isWebsiteUrl(query))}
+                className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-cinnabar px-4 text-[12px] font-medium text-white shadow-xs transition-all active:scale-95 disabled:opacity-35 disabled:active:scale-100"
+              >
+                {searching ? <Loader2 size={13} className="animate-spin" /> : null}
+                {searching ? '查找中…' : discoveryMode === 'website' ? '查找订阅' : '搜索 RSS'}
+              </button>
+            ) : null}
+          </div>
+
           {tab === 'discover' ? (
-            <button
-              type="button"
-              onClick={() => void search()}
-              disabled={searching || !query.trim() || (discoveryMode === 'website' && !isWebsiteUrl(query))}
-              className="inline-flex min-h-9 shrink-0 items-center gap-1.5 rounded-full bg-cinnabar px-3.5 text-[12px] font-medium text-white transition-opacity disabled:opacity-35"
-            >
-              {searching ? <Loader2 size={13} className="animate-spin" /> : null}
-              {searching ? '查找中…' : discoveryMode === 'website' ? '查找订阅' : '搜索 RSS'}
-            </button>
-          ) : null}
-        </div>
-        {tab === 'discover' ? (
-          <>
-            <p className="px-0.5 text-[11px] leading-relaxed text-paper-faint">
-              {discoveryMode === 'website'
-                ? '粘贴网站、栏目或 UP 主的主页网址，自动查找原站 RSS 和 RSSHub 转换方式。'
-                : '通过 Feedly 搜索已有 RSS 源；订阅具体网站或 UP 主，请选择「通过网站订阅」。'}
-            </p>
-            {websiteInputInvalid ? (
-              <p role="status" className="px-0.5 text-[11px] leading-relaxed text-cinnabar-soft">
-                这里需要完整的网址，不是网站名称。
-                <button type="button" onClick={() => switchDiscoveryMode('keyword')} className="ml-1 min-h-8 underline underline-offset-2">
-                  改为按名称搜索
-                </button>
+            <div className="space-y-3">
+              <p className="px-0.5 text-[11px] leading-relaxed text-paper-faint">
+                {discoveryMode === 'website'
+                  ? '粘贴微博、文章、视频分享链接或作者主页，自动寻找可订阅的发布者、频道和原站 RSS。'
+                  : '通过 Feedly 搜索已有 RSS 源；订阅具体网站或 UP 主，请选择「通过网站订阅」。'}
               </p>
-            ) : null}
-            {!query.trim() ? (
-              <div className="flex flex-wrap items-center gap-2 px-0.5">
-                <span className="text-[10.5px] text-paper-faint">试一试</span>
-                {discoveryMode === 'website' ? WEBSITE_EXAMPLES.map((example) => (
-                  <button key={example.value} type="button" onClick={() => changeQuery(example.value)}
-                    className="min-h-9 rounded-full border border-haze bg-ink-raised/40 px-3 text-[11px] text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft">
-                    {example.label}
+              {websiteInputInvalid ? (
+                <p role="status" className="px-0.5 text-[11px] leading-relaxed text-cinnabar-soft">
+                  这里需要完整的网址，不是网站名称。
+                  <button type="button" onClick={() => switchDiscoveryMode('keyword')} className="ml-1 min-h-8 underline underline-offset-2">
+                    改为按名称搜索
                   </button>
-                )) : KEYWORD_EXAMPLES.map((example) => (
-                  <button key={example} type="button" onClick={() => changeQuery(example)}
-                    className="min-h-9 rounded-full border border-haze bg-ink-raised/40 px-3 text-[11px] text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft">
-                    {example}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-          </>
-        ) : null}
-      </form>
+                </p>
+              ) : null}
+              {!query.trim() ? (
+                <div className="flex flex-wrap items-center gap-2 px-0.5">
+                  <span className="text-[10.5px] text-paper-faint">试一试</span>
+                  {discoveryMode === 'website' ? WEBSITE_EXAMPLES.map((example) => (
+                    <button key={example.value} type="button" onClick={() => changeQuery(example.value)}
+                      className="min-h-8 rounded-full border border-haze/80 bg-ink-raised/50 px-3 text-[11.5px] text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft">
+                      {example.label}
+                    </button>
+                  )) : KEYWORD_EXAMPLES.map((example) => (
+                    <button key={example} type="button" onClick={() => changeQuery(example)}
+                      className="min-h-8 rounded-full border border-haze/80 bg-ink-raised/50 px-3 text-[11.5px] text-paper-muted transition-colors hover:border-cinnabar/35 hover:text-cinnabar-soft">
+                      {example}
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </form>
+      )}
 
       {tab === 'discover' && discoveryMode === 'website' && onUpdateRssHubInstances ? (
-        <div className="flex items-center gap-2.5 rounded-xl border border-haze/70 bg-ink-raised/35 px-3.5 py-2.5">
+        <div className="flex items-center gap-2.5 rounded-2xl border border-haze/75 bg-ink-raised/40 px-3.5 py-2.5 shadow-xs">
           <RadioTower size={15} strokeWidth={1.7} className="shrink-0 text-cinnabar-soft" />
           <p className="min-w-0 flex-1 text-[11px] text-paper-muted">
             RSSHub · {instances.filter((item) => item.enabled).length} 个已启用实例
           </p>
           <button type="button" onClick={() => setShowInstances(true)}
-            className="inline-flex min-h-9 shrink-0 items-center gap-1 rounded-full px-2 text-[11px] text-cinnabar-soft transition-colors hover:bg-cinnabar/8">
+            className="inline-flex min-h-8 shrink-0 items-center gap-0.5 rounded-full px-2 text-[11px] font-medium text-cinnabar-soft transition-colors hover:bg-cinnabar/8">
             管理服务 <ChevronRight size={12} />
           </button>
         </div>
@@ -492,7 +563,8 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
               <div className="overflow-hidden rounded-2xl border border-haze bg-ink-raised/70 shadow-[var(--shadow-lift)]">
                 {orderedResults.map((item, index) => {
                   const badge = duplicateLabel(item)
-                  const firstOfGroup = discoveryMode === 'website' && (index === 0 || orderedResults[index - 1]?.type !== item.type)
+                  const group = resultGroup(item)
+                  const firstOfGroup = discoveryMode === 'website' && (index === 0 || resultGroup(orderedResults[index - 1]) !== group)
                   const hostname = candidateHost(item)
                   const check = item.routePath ? probes[item.routePath] : undefined
                   return (
@@ -500,10 +572,10 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                       {firstOfGroup ? (
                         <div className="flex items-center justify-between gap-3 border-b border-haze/70 bg-ink/20 px-4 py-2.5">
                           <span className="text-[11.5px] font-medium text-paper-muted">
-                            {item.type === 'rsshub' ? 'RSSHub 转换' : '原站订阅与网址检测'}
+                            {group}
                           </span>
                           <span className="font-mono text-[10.5px] text-paper-faint">
-                            {results.filter((entry) => entry.type === item.type).length} 项
+                            {orderedResults.filter((entry) => resultGroup(entry) === group).length} 项
                           </span>
                         </div>
                       ) : null}
@@ -527,7 +599,9 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                             ) : null}
                             {badge ? <span className="mt-0.5 shrink-0 rounded-full bg-cinnabar/10 px-2 py-0.5 text-[10px] text-cinnabar-soft">{badge}</span> : null}
                           </span>
-                          {item.description && item.type !== 'rsshub' ? (
+                          {item.discoveryContext === 'author-from-content' ? (
+                            <span className="mt-1 block text-[11px] leading-relaxed text-paper-muted">根据分享内容中的作者信息识别；订阅后持续获取该发布者的更新。</span>
+                          ) : item.description && item.type !== 'rsshub' ? (
                             <span className="mt-1 line-clamp-1 block text-[11.5px] leading-relaxed text-paper-muted">{item.description}</span>
                           ) : null}
                           <span className="mt-1.5 flex min-w-0 items-center gap-1.5 text-[10.5px] text-paper-faint">
@@ -748,12 +822,12 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
                   onChange={setTarget}
                   options={[
                     ...categories.map((category) => ({ id: category.id, label: category.label })),
-                    { id: '__mix_only__', label: '加入综合' },
+                    ...(!prefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES) ? [{ id: '__mix_only__', label: '加入综合' }] : []),
                     { id: '__save_only__', label: '仅保存，暂不加入信息流' },
                   ]}
                 />
               </div>
-              {target !== '__mix_only__' && target !== '__save_only__' ? (
+              {!prefs.hiddenCategoryIds.includes(FOLLOWS_ENABLED_SOURCES) && target !== '__mix_only__' && target !== '__save_only__' ? (
                 <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-haze/75 bg-ink/30 px-3.5 text-[12.5px] text-paper-muted transition-colors hover:border-haze">
                   <input
                     type="checkbox"

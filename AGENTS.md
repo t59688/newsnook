@@ -72,7 +72,7 @@ newsnook/
 | 导航 / 返回键 / 设置栈 | `src/App.tsx` |
 | CMS / 网页目录 | `features/siteCatalog/`（service · capabilities · session · profile）→ `catalogEngine/`；身份证据在 `frameworkDetect/`，规则与预算见 `docs/cms-catalog.md`；测试 `test:site-catalog` |
 | 新增或修复内置源 | `src/sources/registry.ts` → `lib/parseFeed.ts` / `lib/resolveBody.ts`；探测笔记 `docs/news-sources.md` |
-| RSS 订阅商店 / 在线发现 | `features/feedDiscovery/onlineSearch.ts` · `siteDiscovery.ts` · `preview.ts` · `screens/settings/FeedStoreScreen.tsx`；只在线检索少量命中地址，不打包或缓存全量 RSS 目录。订阅与缓存阅读继续本地优先；说明见 `docs/rss-subscription-store.md` |
+| RSS 订阅商店 / 本地目录 / 在线发现 | `features/rssCatalog/`（契约 · 本地检索 · IndexedDB · R2 更新）· `features/feedDiscovery/onlineSearch.ts` · `siteDiscovery.ts` · `preview.ts` · `screens/settings/FeedStoreScreen.tsx`；目录静态分发与本地搜索，Feedly/网址发现独立保留。发布：`scripts/rss-catalog-release.ts` · `rss-catalog-publish.yml`；说明见 `docs/rss-subscription-store.md` |
 | 分类 / 场景预设 | `sources/categories.ts` · `presets.ts` · `hooks/usePresets.ts` |
 | 列表拉取与缓存 | `hooks/useFeeds.ts` · `lib/http.ts` · `lib/storage.ts` |
 | 配置备份与恢复 | `lib/backup.ts` · `components/BackupPanel.tsx`（入口在 `screens/settings/StorageScreen.tsx`）；与云同步并存，本地文件备份不依赖账号 |
@@ -145,6 +145,7 @@ newsnook/
 | 新翻译引擎 | 实现 `TranslationProvider`，在工厂注册；Reader 侧尽量零改动 |
 | 新跟贴源 | 实现 `CommentProvider`，在 `comments/service` 注册 |
 | UI 文案 | 与现有「我的 / 设置」语气一致；避免营销腔与平台化话术 |
+| 应用内选择与提示 | 复用 `OptionPickerDialog` / `ConfirmDialog` 等主题组件；不新增原生 `select`、`alert`、`confirm`、`prompt` 默认对话框 |
 | 墨水屏 | 行为叠加在 `einkMode` 上，不是第三套主题色；关闭后须零残留 |
 | 分享链接 | 主链接必须是站内 `/a/<token>` 深链（`lib/shareLink.ts`），原站地址只用于「打开原文」；token 自解释，不得为此新增服务端存储或短链服务。v2 载荷只放原文地址 + 信源 id，别再往里塞中文（标题打开后由 `resolveBody` 补） |
 | 账户 / 云同步 | 改动落在 `features/account`、`features/sync`、`cloud/`、`packages/contracts/`；业务写本地再进 Outbox；UI 不直接调云 API；协议变更走共享 contracts |

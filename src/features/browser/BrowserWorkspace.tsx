@@ -2,9 +2,11 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, BookmarkCheck, ChevronRight, Clock3, Copy,
   Download, Film, Globe2, Home, Images, Laptop, LogOut, ScanText, Share2, Shield,
-  MoreHorizontal, Pencil, Play, Plus, RefreshCw, Settings2, ShieldCheck, Square, Trash2, X, BotMessageSquare,
+  MoreHorizontal, Pencil, Play, Plus, RefreshCw, Settings2, ShieldCheck, Trash2, X, BotMessageSquare,
 } from 'lucide-react'
 import { Share } from '@capacitor/share'
+import { Capacitor } from '@capacitor/core'
+import { nativeBrowser } from './nativeBrowser'
 import {createBrowserConfigController} from './agent/browserConfig'
 import {downloadUserScriptSource} from './userScriptImport'
 import {loadUserScripts,saveUserScripts} from './scripts'
@@ -19,10 +21,10 @@ import {
   normalizeBrowserShortcuts, normalizeBrowserVisits, normalizeHiddenBrowserHosts,
   removeSiteHistory, saveBrowserVisit, type BrowserShortcut, type BrowserVisit,
 } from './browserHistory'
-import { browserMediaResources, browserResourceTitle } from './browserMedia'
+import { browserMediaResources, browserResourceTitle, browserResourceDetails, browserResourceTracks } from './browserMedia'
 import { loadBrowserBookmarks, saveBrowserBookmarks, toggleBrowserBookmark, type BookmarkScope } from './browserBookmarks'
 import {
-  BROWSER_ENGINES, BROWSER_KEYS, browserHostLabel, readBrowserList, readBrowserPreference,
+  BROWSER_ENGINES, BROWSER_KEYS, browserHostLabel, loadBrowserSearchEngine, readBrowserList, readBrowserPreference,
   resolveBrowserAddress, writeBrowserPreference, loadBrowserPreferences, saveBrowserPreferences, toggleBrowserDesktopMode, type BrowserPreferences, type BrowserSearchChoice,
 } from './browserPreferences'
 import { useBrowserSession, getBrowserContext, type BrowserCommand, type BrowserRecoverySession } from './useBrowserSession'
@@ -30,7 +32,7 @@ import type { BrowserPrivacyCapabilities } from './browserPrivacy'
 import { BrowserFindBar } from './BrowserFindBar'
 import { BrowserImagesPanel } from './BrowserImagesPanel'
 import { useBrowserDialogFocus } from './useBrowserDialogFocus'
-import { BrowserIconButton, BrowserSheet } from './BrowserPrimitives'
+import { BrowserIconButton, BrowserLoadingStopIcon, BrowserSheet } from './BrowserPrimitives'
 import { BrowserAddressBar, BrowserMediaStrip, browserMediaMatchesPage } from './BrowserAddressBar'
 import { BrowserAgentPanel } from './agent/BrowserAgentPanel'
 import { BrowserStartPage } from './BrowserStartPage'
@@ -47,6 +49,22 @@ type ShortcutDraft = BrowserShortcut & {index?: number}
 type Notice = {message: string; error?: boolean}
 type Confirmation = {title: string; message: string; confirm: () => boolean | Promise<boolean>; actionLabel?: string; successMessage?: string}
 type BrowserPlayback = {resource: MediaResourceDescriptor; resources: MediaResourceDescriptor[]; title: string; selection: number; tabId?: number}
+
+function BrowserTabBadge({ count, motion }: { count: number; motion: { kind: 'increase' | 'decrease'; revision: number } | null }) {
+  return (
+    <span
+      key={`tab-badge-${motion?.revision ?? 0}`}
+      data-tab-count-motion={motion?.kind}
+      className={`browser-tab-count flex size-[18px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[10.5px] font-bold leading-none tabular-nums select-none ${
+        motion ? `browser-tab-count-${motion.kind}` : ''
+      }`}
+    >
+      <span className="browser-tab-count-number">
+        {count}
+      </span>
+    </span>
+  )
+}
 
 export function BrowserWorkspace({
   onExit,
@@ -79,6 +97,10 @@ export function BrowserWorkspace({
   const preferencesRef = useRef(preferences)
   preferencesRef.current = preferences
   const privateMode = preferences.privateMode
+  const privateBookmarks = privateMode || preferences.incognitoMode
+  const historyHidden = privateBookmarks
+  const recordingDisabledRef = useRef(privateMode || preferences.incognitoMode)
+  recordingDisabledRef.current = privateMode || preferences.incognitoMode
   const privateModeRef = useRef(privateMode)
   const privacyLogRelease = useRef<(() => void) | null>(null)
   const workspaceLive = useRef(true)
@@ -93,14 +115,18 @@ export function BrowserWorkspace({
   }, [])
   useLayoutEffect(() => {
     workspaceLive.current = true
-    applyPrivacyGuard(privateMode)
+    applyPrivacyGuard(historyHidden)
     return () => {
       workspaceLive.current = false
       privacyLogRelease.current?.()
       privacyLogRelease.current = null
     }
-  }, [privateMode, applyPrivacyGuard])
+  }, [historyHidden, applyPrivacyGuard])
   const [capabilities, setCapabilities] = useState<BrowserPrivacyCapabilities>({privateMode: true, clearSiteData: false, sharedSiteData: true})
+  const prevTabsCount = useRef(0)
+  const tabMotionRevision = useRef(0)
+  const [tabCountMotion, setTabCountMotion] = useState<{kind: 'increase' | 'decrease'; revision: number} | null>(null)
+  const tabBadgeButtonRef = useRef<HTMLButtonElement | null>(null)
   useEffect(() => {
     let live = true
     void getBrowserContext().then(context => {if (live && context.privacyCapabilities) setCapabilities(context.privacyCapabilities)}).catch(() => undefined)
@@ -115,11 +141,9 @@ export function BrowserWorkspace({
   const [privateMarks, setPrivateMarks] = useState(() => loadBrowserBookmarks('private'))
   const [hiddenHosts, setHiddenHosts] = useState(() => normalizeHiddenBrowserHosts(readBrowserList(BROWSER_KEYS.hiddenHosts)))
   const [shortcuts, setShortcuts] = useState(() => normalizeBrowserShortcuts(readBrowserList(BROWSER_KEYS.shortcuts)))
+  const [hideRecent, setHideRecent] = useState(() => readBrowserPreference(BROWSER_KEYS.hideRecent) === 'true')
   const [bottomAddress, setBottomAddress] = useState(() => readBrowserPreference(BROWSER_KEYS.addressPosition) !== 'top')
-  const [search, setSearch] = useState<BrowserSearchChoice>(() => {
-    const saved = readBrowserPreference(BROWSER_KEYS.search)
-    return saved && Object.prototype.hasOwnProperty.call(BROWSER_ENGINES, saved) ? saved as BrowserSearchChoice : 'bing'
-  })
+  const [search, setSearch] = useState<BrowserSearchChoice>(loadBrowserSearchEngine)
   // Share the resolver's result between startup identity and the native command.
   const initialAddress = useMemo(
     () => initialUrl && /^https?:\/\//i.test(initialUrl) ? resolveBrowserAddress(initialUrl, search) : null,
@@ -129,6 +153,30 @@ export function BrowserWorkspace({
   searchRef.current = search
   const bottomAddressRef = useRef(bottomAddress)
   bottomAddressRef.current = bottomAddress
+
+  useEffect(() => {
+    if (Capacitor.getPlatform() !== 'android') return
+    let frameId: number | null = null
+    const reportBadgeBounds = () => {
+      const el = tabBadgeButtonRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      if (rect.width > 0 && rect.height > 0) {
+        void nativeBrowser.updateTabBadgeBounds({
+          x: rect.left + rect.width / 2,
+          y: rect.top + rect.height / 2,
+        }).catch(() => undefined)
+      }
+    }
+    frameId = requestAnimationFrame(reportBadgeBounds)
+    window.addEventListener('resize', reportBadgeBounds)
+    window.visualViewport?.addEventListener('resize', reportBadgeBounds)
+    return () => {
+      if (frameId !== null) cancelAnimationFrame(frameId)
+      window.removeEventListener('resize', reportBadgeBounds)
+      window.visualViewport?.removeEventListener('resize', reportBadgeBounds)
+    }
+  }, [bottomAddress])
   const historyRef = useRef(history)
   const exiting = useRef(false)
   const uiRevision = useRef(0)
@@ -145,7 +193,7 @@ export function BrowserWorkspace({
     }
   }, [])
   const recordVisit = useCallback((url: string, title: string) => {
-    if (privateModeRef.current) return
+    if (privateModeRef.current || recordingDisabledRef.current) return
     const next = saveBrowserVisit(historyRef.current, url, title)
     persist(BROWSER_KEYS.history, next, () => {historyRef.current = next; setHistory(next)})
   }, [persist])
@@ -158,16 +206,21 @@ export function BrowserWorkspace({
   const current = session.state.url || ''
   const currentUrlRef = useRef(current)
   currentUrlRef.current = current
-  const capabilitiesRef = useRef(capabilities)
-  capabilitiesRef.current = capabilities
+  const effectiveCapabilities = {...capabilities, clearSiteData: capabilities.clearSiteData && !historyHidden,
+    sharedSiteData: !historyHidden && capabilities.sharedSiteData}
+  const capabilitiesRef = useRef(effectiveCapabilities)
+  capabilitiesRef.current = effectiveCapabilities
   const clearPageFind = session.clearFind
   useEffect(() => {setFindOpen(false); clearPageFind()}, [current, session.state.tabId, clearPageFind])
   const active = /^https?:\/\//i.test(current)
   const title = session.state.title && session.state.title !== '网页' ? session.state.title : browserHostLabel(current)
   // Scope follows the current recording mode. A private save never changes a public star.
-  const marked = (privateMode ? privateMarks : marks).some(item => item.url === current)
+  const marked = (privateBookmarks ? privateMarks : marks).some(item => item.url === current)
   const currentMedia = session.mediaTabs.get(session.state.tabId ?? -1)
-  const resources = useMemo(() => browserMediaResources(currentMedia?.observations ?? []), [currentMedia])
+  const mediaEntries = useMemo(() => browserMediaResources(currentMedia?.observations ?? [], { includeBlocked: true }), [currentMedia])
+  const resources = useMemo(() => mediaEntries.filter(item => !item.isAd && !item.drm), [mediaEntries])
+  const blockedResources = active && browserMediaMatchesPage(current, currentMedia?.pageUrl)
+    ? mediaEntries.filter(item => item.isAd || item.drm) : []
   const currentResources = active && browserMediaMatchesPage(current, currentMedia?.pageUrl) ? resources : []
   const discoveryCount = playing ? 0 : currentResources.length
   const recent = useMemo(() => compactRecentSites(history, hiddenHosts, 4), [history, hiddenHosts])
@@ -177,6 +230,20 @@ export function BrowserWorkspace({
     const timer = window.setTimeout(() => setNotice(null), 2800)
     return () => window.clearTimeout(timer)
   }, [notice])
+
+  useEffect(() => {
+    const previousCount = prevTabsCount.current
+    const nextCount = session.tabs.length
+    prevTabsCount.current = nextCount
+    if (previousCount <= 0 || previousCount === nextCount) return
+    const kind = nextCount > previousCount ? 'increase' : 'decrease'
+    const revision = ++tabMotionRevision.current
+    setTabCountMotion({kind, revision})
+    const motionTimer = window.setTimeout(() => setTabCountMotion(current => current?.revision === revision ? null : current), 520)
+    return () => {
+      window.clearTimeout(motionTimer)
+    }
+  }, [session.tabs.length])
   const closeSession = session.close
   const close = useCallback(() => {
     if (exiting.current) return
@@ -266,7 +333,12 @@ export function BrowserWorkspace({
     return () => window.removeEventListener(BROWSER_OPEN_EVENT, handleOpen)
   }, [session])
   const showSearch = () => {if (findOpen) closeFind(); setAgentMinimized(true); setPanel(null); session.setError(''); setSearchOpen(true)}
-  const openPanel = (next: Panel) => {if(next)setAgentMinimized(true);setSearchOpen(false);setPanel(next)}
+  const openPanel = (next: Panel) => {
+    if (next) setAgentMinimized(true)
+    setSearchOpen(false)
+    setPanel(next)
+    if (next === 'tabs') void session.refreshTabs?.()
+  }
   const runCommand = (command: BrowserCommand) => {
     setPanel(null)
     void session.command(command).then(ok => {
@@ -301,8 +373,8 @@ export function BrowserWorkspace({
   const saveShortcuts = (next: BrowserShortcut[]) => persist(BROWSER_KEYS.shortcuts, next, () => setShortcuts(next))
   const toggleBookmark = () => {
     if (!active) return
-    const scope: BookmarkScope = privateMode ? 'private' : 'normal'
-    const currentMarks = privateMode ? privateMarks : marks
+    const scope: BookmarkScope = privateBookmarks ? 'private' : 'normal'
+    const currentMarks = privateBookmarks ? privateMarks : marks
     const change = toggleBrowserBookmark(currentMarks, current, title)
     if (change.entries === currentMarks) return
     if (saveMarks(scope, change.entries)) {
@@ -350,21 +422,25 @@ export function BrowserWorkspace({
 
   const updatePreferences = async (next: BrowserPreferences): Promise<boolean> => {
     const previous = preferencesRef.current
+    recordingDisabledRef.current = previous.privateMode || previous.incognitoMode || next.privateMode || next.incognitoMode
     // Stop recording before the asynchronous native acknowledgement; resume only after persistence.
-    applyPrivacyGuard(previous.privateMode || next.privateMode)
+    applyPrivacyGuard(previous.privateMode || previous.incognitoMode || next.privateMode || next.incognitoMode)
     if (!(await session.updateSettings(next))) {
-      applyPrivacyGuard(previous.privateMode)
+      recordingDisabledRef.current = previous.privateMode || previous.incognitoMode
+      applyPrivacyGuard(previous.privateMode || previous.incognitoMode)
       return false
     }
     try {
       const confirmed = saveBrowserPreferences(next)
       preferencesRef.current = confirmed
+      recordingDisabledRef.current = confirmed.privateMode || confirmed.incognitoMode
       setPreferences(confirmed)
-      applyPrivacyGuard(confirmed.privateMode)
+      applyPrivacyGuard(confirmed.privateMode || confirmed.incognitoMode)
       return true
     } catch (error) {
       await session.updateSettings(previous)
-      applyPrivacyGuard(previous.privateMode)
+      recordingDisabledRef.current = previous.privateMode || previous.incognitoMode
+      applyPrivacyGuard(previous.privateMode || previous.incognitoMode)
       setNotice({message: error instanceof Error ? error.message : '保存失败，请重试', error: true})
       return false
     }
@@ -375,11 +451,13 @@ export function BrowserWorkspace({
     void updatePreferences(toggleBrowserDesktopMode(preferences))
   }
   const changePrivateMode = (enabled: boolean): Promise<boolean> | boolean =>
-    session.pending ? false : updatePreferences({...preferences, privateMode: enabled})
+    session.pending ? false : updatePreferences({...preferences, privateMode: enabled, incognitoMode: enabled ? false : preferences.incognitoMode})
   const saveSearchEngine = (value: BrowserSearchChoice): boolean =>
     persist(BROWSER_KEYS.search, value, () => {searchRef.current=value;setSearch(value)}, true)
   const saveAddressPosition = (value: 'top'|'bottom'): boolean =>
     persist(BROWSER_KEYS.addressPosition,value,()=>{bottomAddressRef.current=value==='bottom';setBottomAddress(value==='bottom')},true)
+  const toggleHideRecent = (): boolean =>
+    persist(BROWSER_KEYS.hideRecent, !hideRecent ? 'true' : 'false', () => setHideRecent(!hideRecent), true)
   if (!agentConfigRef.current) agentConfigRef.current = createBrowserConfigController({
     getPreferences:()=>preferencesRef.current,
     setPreferences:next=>updatePreferences(next),
@@ -424,7 +502,7 @@ export function BrowserWorkspace({
   const menuItems: {label: string; icon: typeof Bookmark; action: () => void; disabled?: boolean; selected?: boolean; badge?: string}[] = [
     {label: marked ? '已加书签' : '添加书签', icon: marked ? BookmarkCheck : Bookmark, action: toggleBookmark, disabled: !active, selected: marked},
     {label:'书签', icon:Bookmark, action:() => openPanel('bookmarks')},
-    {label:'浏览历史', icon:Clock3, action:() => openPanel('history')},
+    {label:'浏览历史', icon:Clock3, action:() => openPanel('history'), disabled:historyHidden},
     {label:'下载管理', icon:Download, action:() => runCommand('downloads')},
     {label:'主页', icon:Home, action:goHome, disabled:session.pending},
     {label:'媒体资源', icon:Film, action:openMediaPanel, disabled:!active, badge:currentResources.length ? String(currentResources.length) : undefined},
@@ -437,7 +515,8 @@ export function BrowserWorkspace({
     {label:'看图模式', icon:Images, action:showImages, disabled:!active},
     {label:'页内查找', icon:ScanText, action:openFind, disabled:!active},
     {label:'分享网页', icon:Share2, action:() => {void sharePage()}, disabled:!active},
-    {label:'隐私模式', icon:Shield, action:() => {void changePrivateMode(!privateMode)}, disabled:session.pending, selected:privateMode},
+    {label:'隐私模式', icon:Shield, action:() => {void changePrivateMode(!privateMode)}, disabled:session.pending || (capabilities.isolatedProfiles === false && !privateMode), selected:privateMode},
+    {label:'无痕模式', icon:ShieldCheck, action:() => {void updatePreferences({...preferences, incognitoMode: !preferences.incognitoMode, privateMode: false})}, disabled:session.pending || (capabilities.isolatedProfiles === false && !preferences.incognitoMode), selected:preferences.incognitoMode},
     {label:'浏览设置', icon:Settings2, action:() => openPanel('settings')},
     {label:'返回有所闻', icon:LogOut, action:close},
   ]
@@ -452,10 +531,10 @@ export function BrowserWorkspace({
         mediaPanelOpen={panel === 'media'} onOpenSite={() => openPanel('site')}
         onSearch={showSearch} onOpenMedia={openMediaPanel}/>
       <BrowserIconButton label={session.state.loading ? '停止加载' : '刷新'} disabled={!active || (!session.state.loading && session.pending)} onClick={() => runCommand(session.state.loading ? 'stop' : 'reload')}>
-        {session.state.loading ? <Square size={17} strokeWidth={1.9}/> : <RefreshCw size={19} strokeWidth={1.8}/>}
+        {session.state.loading ? <BrowserLoadingStopIcon size={20}/> : <RefreshCw size={19} strokeWidth={1.8}/>}
       </BrowserIconButton>
-      <BrowserIconButton label="标签页" disabled={session.pending} onClick={() => openPanel('tabs')}>
-        <span className="flex size-[18px] items-center justify-center rounded-[4px] border-[1.5px] border-current text-[10.5px] font-bold leading-none tabular-nums select-none">{session.tabs.length || 1}</span>
+      <BrowserIconButton buttonRef={tabBadgeButtonRef} label="标签页" disabled={session.pending} onClick={() => openPanel('tabs')}>
+        <BrowserTabBadge count={session.tabs.length || 1} motion={tabCountMotion} />
       </BrowserIconButton>
       <BrowserIconButton label={agentBusy?'AI 浏览助手（任务未结束）':'AI 浏览助手'} className="browser-toolbar-compact-optional" onClick={() => {
         setPanel(null)
@@ -479,7 +558,8 @@ export function BrowserWorkspace({
     style={{paddingTop:'var(--sat)', paddingBottom:'var(--sab)'}}>
     {!bottomAddress && toolbar}
     <div ref={viewport} data-browser-viewport className="relative min-h-0 flex-1 overflow-hidden bg-ink">
-      {!active && !playing && <BrowserStartPage privateMode={privateMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
+      {!active && !playing && <BrowserStartPage privateMode={privateMode} incognitoMode={preferences.incognitoMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
+        hideRecent={hideRecent} onToggleHideRecent={toggleHideRecent}
         onOpen={url => {void openAddress(url)}} onAddShortcut={() => editShortcut({name:'',url:''})}
         onShortcutOptions={index => setPlaceAction({kind:'shortcut', index})}
         onHistoryOptions={entry => setPlaceAction({kind:'history', entry})} onPanel={openPanel}/>}
@@ -522,7 +602,7 @@ export function BrowserWorkspace({
       onClose={()=>{setAgentOpen(false);setAgentMinimized(false);setAgentBusy(false)}}/>}
     {bottomAddress && toolbar}
 
-    {searchOpen && <BrowserSearchPanel privateMode={privateMode} current={active ? current : ''} initialValue={active ? current : ''} engine={search} history={history}
+    {searchOpen && <BrowserSearchPanel privateMode={historyHidden} current={active ? current : ''} initialValue={active ? current : ''} engine={search} history={history}
       pending={session.pending} error={session.error} onClose={() => {setSearchOpen(false); session.setError('')}}
       onOpen={openAddress} onEngineChange={saveSearchEngine} onCopy={value => {void copy(value)}}/>}
 
@@ -532,7 +612,7 @@ export function BrowserWorkspace({
         {([
           {label:'后退', icon:ArrowLeft, command:'back', disabled:!session.state.back},
           {label:'前进', icon:ArrowRight, command:'forward', disabled:!session.state.forward},
-          {label:session.state.loading ? '停止' : '刷新', icon:session.state.loading ? Square : RefreshCw, command:session.state.loading ? 'stop' : 'reload', disabled:!active},
+          {label:session.state.loading ? '停止' : '刷新', icon:session.state.loading ? BrowserLoadingStopIcon : RefreshCw, command:session.state.loading ? 'stop' : 'reload', disabled:!active},
         ] as const).map(item => <button type="button" key={item.label} disabled={item.disabled || (session.pending && item.command !== 'stop')} onClick={() => runCommand(item.command)}
           className="flex min-h-14 flex-col items-center justify-center gap-1.5 rounded-xl text-[13px] text-paper-muted disabled:opacity-30 active:bg-haze"><item.icon size={20}/>{item.label}</button>)}
         <button type="button" disabled={!active} onClick={() => {void copy(current)}} className="flex min-h-14 flex-col items-center justify-center gap-1.5 rounded-xl text-[13px] text-paper-muted disabled:opacity-30 active:bg-haze"><Copy size={19}/>复制网址</button>
@@ -548,11 +628,12 @@ export function BrowserWorkspace({
     </BrowserSheet>}
 
     {panel === 'tabs' && <BrowserFullPage title="标签页"><BrowserTabsPanel privateMode={privateMode} tabs={session.tabs} pending={session.pending} onBack={() => setPanel(null)}
+      onRefresh={session.refreshTabs}
       onSelect={tab => finishTabChange(session.activate(tab))}
       onRemove={tab => {void session.remove(tab).then(ok => {if (ok && playing?.tabId === tab.id) setPlaying(null)})}}
       onNew={() => finishTabChange(session.command('new'))}/></BrowserFullPage>}
-    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateMode} key={panel} kind={panel} entries={panel === 'history' ? history : marks}
-      privateEntries={privateMode && panel === 'bookmarks' ? privateMarks : []}
+    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateBookmarks} key={panel + ':' + privateMode + ':' + preferences.incognitoMode} kind={panel} entries={panel === 'history' ? (historyHidden ? [] : history) : marks}
+      privateEntries={privateBookmarks && panel === 'bookmarks' ? privateMarks : []}
       hiddenHostCount={hiddenHosts.length} onBack={() => setPanel(null)} onOpen={url => {void openAddress(url)}}
       onRemove={url => {if (panel === 'history') saveHistory(history.filter(item => item.url !== url)); else saveMarks('normal', marks.filter(item => item.url !== url))}}
       onClear={() => confirmClear(panel)}
@@ -561,13 +642,13 @@ export function BrowserWorkspace({
       onRestoreHidden={() => {if (persist(BROWSER_KEYS.hiddenHosts, [], () => setHiddenHosts([]))) setNotice({message:'首页网站已恢复'})}}
       onHistoryOptions={entry => setPlaceAction({kind:'history', entry})}/></BrowserFullPage>}
     {panel === 'settings' && <BrowserFullPage title="浏览器设置"><BrowserSettingsPanel search={search} bottomAddress={bottomAddress} desktop={session.state.desktop}
-      hasPage={active} pending={session.pending} historyCount={history.length} onBack={() => setPanel(null)}
+      hasPage={active} pending={session.pending} historyCount={historyHidden ? 0 : history.length} onBack={() => setPanel(null)}
       onSearchChange={saveSearchEngine}
       onAddressPositionChange={value => {saveAddressPosition(value?'bottom':'top')}}
       onDesktopChange={toggleDesktop} onClearHistory={() => confirmClear('history')}
       preferences={preferences} onPreferencesChange={updatePreferences} privateMode={privateMode}
-      onPrivateModeChange={changePrivateMode}
-      currentSite={active ? browserHostLabel(current) : undefined} onClearSiteData={active && capabilities.clearSiteData ? clearSite : undefined}/></BrowserFullPage>}
+      isolatedProfiles={capabilities.isolatedProfiles} error={session.error} onPrivateModeChange={changePrivateMode}
+      currentSite={active ? browserHostLabel(current) : undefined} onClearSiteData={active && effectiveCapabilities.clearSiteData ? clearSite : undefined}/></BrowserFullPage>}
     {panel === 'scripts' && <ScriptManager onClose={() => setPanel(null)}
       pageStatus={active ? {url:current, active:session.state.activeScriptCount ?? 0, matched:session.state.matchedScriptCount ?? 0, loading:session.state.loading ?? false} : undefined}
       onReload={active ? async () => {const ok = await session.command('reload'); if (ok) setPanel(null); return ok} : undefined}
@@ -589,7 +670,7 @@ export function BrowserWorkspace({
       <div className="divide-y divide-haze">
         <ActionRow icon={Copy} label="复制网址" onClick={() => {void copy(current)}}/>
         <ActionRow icon={Share2} label="分享网页" onClick={() => {void sharePage()}}/>
-        {capabilities.clearSiteData && <ActionRow icon={Trash2} label="清除此网站数据" onClick={clearSite}/>}
+        {effectiveCapabilities.clearSiteData && <ActionRow icon={Trash2} label="清除此网站数据" onClick={clearSite}/>}
       </div>
     </BrowserSheet>}
 
@@ -600,10 +681,15 @@ export function BrowserWorkspace({
       </div>
       {currentResources.length ? <ul className="divide-y divide-haze">{currentResources.map(resource => <li key={resource.id || resource.url} className="flex items-center gap-3 py-4">
         <Film size={21} className="shrink-0 text-paper-muted"/>
-        <div className="min-w-0 flex-1"><p className="text-[14px] font-medium">{browserResourceTitle(resource)}</p><p className="mt-1 truncate text-[12px] text-paper-muted">{browserHostLabel(resource.url) || browserHostLabel(resource.pageUrl || '')}</p></div>
+        <MediaResourceSummary resource={resource}/>
         <button type="button" aria-label={'播放 ' + browserResourceTitle(resource)} onClick={() => {setPlayError(''); setPlaying({resource, resources:currentResources, title, selection:++playbackSelection.current, tabId:session.state.tabId}); setPanel(null)}}
           className="browser-media-play" title="播放"><Play size={20} strokeWidth={1.9} aria-hidden="true"/></button>
       </li>)}</ul> : <div className="flex min-h-40 flex-col items-center justify-center text-paper-muted"><Film size={30} strokeWidth={1.4}/><p className="mt-4 text-[14px]">暂未发现可播放资源</p></div>}
+      {!!blockedResources.length && <details className="mt-3 border-t border-haze pt-3 text-[13px] text-paper-muted">
+        <summary className="min-h-11 cursor-pointer py-3">已排除 {blockedResources.length} 个疑似广告或受保护资源</summary>
+        <p className="mb-2 text-[12px] leading-relaxed">广告标记仅供参考，无法识别所有广告。</p>
+        <ul className="divide-y divide-haze">{blockedResources.map(resource => <li key={resource.id || resource.url} className="flex gap-3 py-4"><Film size={21} className="shrink-0"/><MediaResourceSummary resource={resource}/></li>)}</ul>
+      </details>}
     </BrowserSheet>}
 
     {placeAction && <BrowserSheet title={placeAction.kind === 'history' ? browserHostLabel(placeAction.entry.url) : shortcuts[placeAction.index]?.name || '快捷方式'} onClose={() => setPlaceAction(null)}>
@@ -676,4 +762,13 @@ function ActionRow({icon: Icon, label, onClick, disabled = false}: {icon: typeof
   return <button type="button" disabled={disabled} onClick={onClick} className="flex min-h-14 w-full items-center gap-3 rounded-lg px-1 py-3 text-left text-[14px] text-paper disabled:opacity-30 active:bg-haze">
     <Icon size={19} strokeWidth={1.7} className="text-paper-muted"/><span className="min-w-0 flex-1">{label}</span><ChevronRight size={17} className="text-paper-faint"/>
   </button>
+}
+
+function MediaResourceSummary({resource}: {resource: MediaResourceDescriptor}) {
+  const tracks = browserResourceTracks(resource)
+  return <div className="min-w-0 flex-1">
+    <p className="line-clamp-2 break-words text-[14px] font-medium leading-relaxed text-paper">{browserResourceTitle(resource)}</p>
+    <p className="mt-1 break-words text-[12px] leading-relaxed text-paper-muted">{browserResourceDetails(resource).join(' · ')}</p>
+    {!!tracks.length && <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[12px] leading-relaxed text-paper-muted" aria-label={resource.videoTracks.length > 1 ? '同一视频的清晰度选项' : '媒体轨道'}>{tracks.map((detail, index) => <span key={index}>{detail}</span>)}</div>}
+  </div>
 }

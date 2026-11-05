@@ -28,6 +28,7 @@ export interface BrowserTab {
   active: boolean
   loading: boolean
   error?: string
+  preview?: string
 }
 export interface BrowserRecoverySession {
   tabs: {url: string; title: string; desktop: boolean}[]
@@ -36,7 +37,7 @@ export interface BrowserRecoverySession {
 export interface BrowserFindResult {tabId: number; activeMatch: number; count: number; done: boolean}
 export type BrowserCommand = 'back' | 'forward' | 'reload' | 'stop' | 'desktop' | 'new' | 'home' | 'scanMedia' | 'downloads' | 'scriptMenu'
 interface NativeBrowser {
-  open(args: {url: string; scripts: ReturnType<typeof loadUserScripts>; embedded: true; visible: boolean; top: number; bottom: number; occludedBottom: number; palette: Record<string, string>; settings: BrowserPreferences; recoverySession?: BrowserRecoverySession}): Promise<void>
+  open(args: {url: string; scripts: ReturnType<typeof loadUserScripts>; embedded: true; visible: boolean; top: number; bottom: number; occludedBottom: number; palette: Record<string, string>; settings: BrowserPreferences; recoverySession?: BrowserRecoverySession; transientSearch?: boolean}): Promise<void>
   takeRecoverySession(): Promise<{session: BrowserRecoverySession | null}>
   navigate(args: {action: BrowserCommand | 'url'; url?: string}): Promise<void>
   state(): Promise<BrowserState>
@@ -46,6 +47,8 @@ interface NativeBrowser {
   setBounds(args: {top: number; bottom: number; occludedBottom: number; visible: boolean; agentOperating: boolean}): Promise<void>
   updateScripts(args: {scripts: ReturnType<typeof loadUserScripts>}): Promise<void>
   updateSettings(args: {settings: BrowserPreferences}): Promise<void>
+  updatePalette(args: {palette: Record<string, string>}): Promise<void>
+  updateTabBadgeBounds(args: {x: number; y: number}): Promise<void>
   getBrowserContext(): Promise<BrowserContext>
   findInPage(args: {query: string; tabId?: number}): Promise<void>
   findNext(args: {forward: boolean; tabId?: number}): Promise<void>

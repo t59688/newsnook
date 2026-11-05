@@ -174,13 +174,14 @@ async function paint(count = 2) {
     })
   }
 }
-async function mount(options: { initialUrl?: string; recovery?: BrowserRecoverySession; strict?: boolean; privateMode?: boolean; pendingLaunch?: boolean } = {}) {
+async function mount(options: { initialUrl?: string; recovery?: BrowserRecoverySession; strict?: boolean; privateMode?: boolean; incognitoMode?: boolean; pendingLaunch?: boolean } = {}) {
   await act(async () => { root.render(null) })
   await act(async () => { gates.forEach(gate => gate.resolve()) })
   gates.clear()
   frames.clear()
   storage.clear()
   if (options.privateMode) storage.set('newsnook:browser:preferences:v1', JSON.stringify({ privateMode: true }))
+  if (options.incognitoMode) storage.set('newsnook:browser:preferences:v1', JSON.stringify({ incognitoMode: true }))
   current = blank()
   tabList = []
   stateReads = tabsReads = readyCalls = 0
@@ -369,12 +370,21 @@ try {
   })
 
   await test('plain start page and ignored private recovery do not wait for a native session', async () => {
-    for (const options of [{}, { recovery: recoverySession, privateMode: true }]) {
+    for (const options of [{}, { recovery: recoverySession, privateMode: true }, { recovery: recoverySession, incognitoMode: true }]) {
       await mount(options)
       await paint()
       assert.equal(opens.length, 0)
       assert.equal(readyCalls, 1, 'there is no selected native initialization to await')
     }
+  })
+
+  await test('incognito page completions never persist browsing or search history', async () => {
+    await mount({initialUrl: URL, incognitoMode: true})
+    await finishLocalInitialization()
+    await act(async () => {
+      listeners.get('navigation')?.({...current, phase: 'end', loading: false, recordHistory: true})
+    })
+    assert.equal(storage.has('newsnook:browser:history:v1'), false)
   })
 } finally {
   await act(async () => { root.unmount() })

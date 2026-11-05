@@ -117,6 +117,7 @@ export function getSiteFrameworkInfo(framework?: FrameworkId | string): SiteFram
  */
 export function isLikelyVideoArticle(article: Article, isVideoSite?: boolean): boolean {
   if (article.contentType === 'video') return true
+  if (article.contentType === 'article') return false
   if (isVideoSite) return true
   const title = article.title || ''
   // 匹配诸如 (1994)、[2023]、第12集、HD、4K、中字、电影、动漫等特征

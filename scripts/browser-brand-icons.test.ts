@@ -23,16 +23,11 @@ for (const url of engines) {
   assert.ok(icon, `Expected brand icon for engine URL: ${url}`)
 }
 
-const shortcuts = [
-  { name: 'Linux.do', url: 'https://linux.do/' },
-  { name: '知乎', url: 'https://www.zhihu.com/' },
-  { name: 'ChatGPT', url: 'https://chatgpt.com/' },
-  { name: 'Bing', url: 'https://www.bing.com/' },
-]
+import { DEFAULT_BROWSER_SHORTCUTS } from '../src/features/browser/browserHistory'
 
-for (const item of shortcuts) {
+for (const item of DEFAULT_BROWSER_SHORTCUTS) {
   const icon = getBrowserBrandIcon(item.url, item.name)
-  assert.ok(icon, `Expected brand icon for shortcut: ${item.name} (${item.url})`)
+  assert.ok(icon, `Expected brand icon for default shortcut: ${item.name} (${item.url})`)
 }
 
 // Fallback for custom / unknown URL

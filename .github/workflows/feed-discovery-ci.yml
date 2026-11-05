@@ -16,6 +16,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run test:feed-discovery
+      - run: npm run test:rss-catalog
       - run: npm run test:prestore
       - run: npm run test:config-backup
       - run: npm run test:sync-projection

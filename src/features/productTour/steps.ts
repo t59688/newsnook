@@ -40,14 +40,14 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     id: 'preset-switcher',
     tab: 'today',
     selector: tourSelector('preset-switcher'),
-    title: '切换布局',
+    title: '切换场景',
     description:
-      '点底栏中间的「布局」切换场景预设，也可进入已添加的 CMS 站点。面板中若有「社区入口」，可进入知乎等独立工作区，不会改变新闻订阅布局。',
+      '点底栏中间的「场景」切换场景预设，也可进入已添加的 CMS 站点。面板中若有「社区入口」，可进入知乎等独立工作区，不会改变新闻订阅布局。',
     side: 'top',
     desktop: {
       selector: tourSelector('desktop-preset-switcher'),
       description:
-        '点左侧「布局」切换场景预设，也可进入已添加的 CMS 站点。面板中若有「社区入口」，可进入独立工作区，不会改变新闻订阅布局。',
+        '点左侧「场景」切换场景预设，也可进入已添加的 CMS 站点。面板中若有「社区入口」，可进入独立工作区，不会改变新闻订阅布局。',
       side: 'right',
     },
   },
@@ -66,7 +66,7 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     selector: tourSelector('tab-bar'),
     title: '底栏导航',
     description:
-      '「速闻」看更新，中间「布局」切换阅读场景，「我的」管收藏与设置；在速闻页双击「速闻」可快速刷新。稍后读有内容时，「我的」会带角标。',
+      '「速闻」看更新，中间「场景」切换阅读场景，「我的」管收藏与设置；在速闻页双击「速闻」可快速刷新。稍后读有内容时，「我的」会带角标。',
     side: 'top',
     desktop: {
       selector: tourSelector('desktop-navigation'),
@@ -109,7 +109,7 @@ export const PRODUCT_TOUR_STEPS: ProductTourStepDefinition[] = [
     selector: tourSelector('me-presets'),
     title: '管理场景预设',
     description:
-      '「布局」中的场景预设在这里维护：可以调整内置场景，也能把常用的分类与信源组合保存成自己的预设。CMS 站点与社区工作区有各自的入口。',
+      '「场景」中的场景预设在这里维护：可以调整内置场景，也能把常用的分类与信源组合保存成自己的预设。CMS 站点与社区工作区有各自的入口。',
     side: 'bottom',
   },
   {

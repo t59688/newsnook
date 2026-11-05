@@ -1,5 +1,7 @@
 import { buildMediaGraph, descriptorFromAsset, selectPlayableAsset } from '../mediaSniffer/graph'
+import { mergeMediaMetadata } from '../mediaSniffer/metadata'
 import { isLikelyAdMediaUrl } from '../mediaSniffer/classifier'
+import { mediaResourceDetails, mediaResourceTitle, mediaResourceTracks, mediaTrackDetail } from '../mediaSniffer/presentation'
 import type { MediaObservation, MediaResourceDescriptor } from '../mediaSniffer/types'
 
 export type BrowserMediaEvent =
@@ -50,7 +52,7 @@ export function reduceBrowserMedia(
     for (const [field, value] of Object.entries(observation)) {
       if (field !== 'timestamp' && value !== undefined) updates[field] = value
     }
-    const merged = { ...old, ...updates }
+    const merged = { ...old, ...updates, ...mergeMediaMetadata(old, observation) }
     if (JSON.stringify(merged) === JSON.stringify(old)) return result
     const observations = current.observations.slice()
     observations[index] = merged
@@ -63,11 +65,11 @@ export function reduceBrowserMedia(
   return result
 }
 
-export function browserMediaResources(observations: MediaObservation[]): MediaResourceDescriptor[] {
+export function browserMediaResources(observations: MediaObservation[], options: { includeBlocked?: boolean } = {}): MediaResourceDescriptor[] {
   if (!observations.length) return []
   const assets = buildMediaGraph(observations)
   const primary = selectPlayableAsset(assets)
-  if (!primary) return []
+  if (!primary && !options.includeBlocked) return []
   const generatedManifests = new Set<string>()
   const resources = assets.map(asset => descriptorFromAsset(asset, xml => {
     // This list is rebuilt during discovery and has no object-URL lifetime owner.
@@ -76,13 +78,13 @@ export function browserMediaResources(observations: MediaObservation[]): MediaRe
     generatedManifests.add(url)
     return url
   })).filter((item): item is MediaResourceDescriptor => item !== null).sort((left, right) => {
-    if (left.id === primary.id) return -1
-    if (right.id === primary.id) return 1
+    if (left.id === primary?.id) return -1
+    if (right.id === primary?.id) return 1
     return Number(Boolean(left.isAd)) - Number(Boolean(right.isAd)) || right.score - left.score
   })
   const seen = new Set<string>()
   return resources.filter(item => {
-    if (item.drm || item.isAd || isLikelyAdMediaUrl(item.url)) return false
+    if (!options.includeBlocked && (item.drm || item.isAd || isLikelyAdMediaUrl(item.url))) return false
     const localDash = item.type === 'dash' && generatedManifests.has(item.url)
       && !!item.relatedUrls?.length && item.relatedUrls.every(url => /^https?:\/\//i.test(url))
     if (!/^https?:\/\//i.test(item.url) && !localDash) return false
@@ -94,7 +96,19 @@ export function browserMediaResources(observations: MediaObservation[]): MediaRe
 }
 
 export function browserResourceTitle(item: MediaResourceDescriptor): string {
-  const type = item.type === 'hls' ? 'HLS · 自适应' : item.type === 'dash' ? 'DASH · 自适应' : '视频文件'
-  const track = item.videoTracks.find(t => t.height)
-  return track?.height ? `${type} · ${track.height}p` : type
+  return mediaResourceTitle(item)
+}
+
+export function browserResourceDetails(item: MediaResourceDescriptor): string[] {
+  const details = mediaResourceDetails(item)
+  if (isLikelyAdMediaUrl(item.url) && !details.includes('疑似广告')) details.push('疑似广告')
+  return details
+}
+
+export function browserTrackDetails(track: MediaResourceDescriptor['videoTracks'][number]): string {
+  return mediaTrackDetail(track)
+}
+
+export function browserResourceTracks(item: MediaResourceDescriptor): string[] {
+  return mediaResourceTracks(item)
 }

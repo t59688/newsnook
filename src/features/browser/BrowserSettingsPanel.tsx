@@ -23,6 +23,7 @@ interface BrowserSettingsPanelProps {
   preferences?: BrowserPreferences
   onPreferencesChange?: (next: BrowserPreferences) => boolean | Promise<boolean>
   privateMode?: boolean
+  isolatedProfiles?: boolean
   onPrivateModeChange?: (enabled: boolean) => void | boolean | Promise<boolean>
   currentSite?: string
   onClearSiteData?: () => void
@@ -106,7 +107,7 @@ function SettingsToggle({label, description, checked, disabled, onChange}: {
 export function BrowserSettingsPanel({
   search, bottomAddress, desktop, hasPage, pending = false, historyCount,
   onBack, onSearchChange, onAddressPositionChange, onDesktopChange, onClearHistory,
-  preferences, onPreferencesChange, privateMode = false, onPrivateModeChange,
+  preferences, onPreferencesChange, privateMode = false, isolatedProfiles, onPrivateModeChange,
   currentSite, onClearSiteData, error = '',
 }: BrowserSettingsPanelProps) {
   const [saving, setSaving] = useState(false)
@@ -184,7 +185,9 @@ export function BrowserSettingsPanel({
     <div className="browser-panel-scroll">
       <div className="browser-settings-content">
         {(error || saveError) && <BrowserStatusBanner error>{error || saveError}</BrowserStatusBanner>}
+        {isolatedProfiles === false && <BrowserStatusBanner error>当前系统 WebView 不支持独立浏览会话。请更新 Android System WebView 后开启无痕或隐私模式。</BrowserStatusBanner>}
         {effectivePrivateMode && <BrowserPrivateNotice/>}
+        {preferences?.incognitoMode && <BrowserStatusBanner>无痕模式：使用独立临时会话，不保存浏览历史，退出后清除网站数据和登录状态。</BrowserStatusBanner>}
         {saving && <p className="browser-save-status" role="status">正在保存设置…</p>}
 
         <SettingsSection id="browser-settings-search" title="搜索与布局">
@@ -271,12 +274,16 @@ export function BrowserSettingsPanel({
         {(hasPreferences || onPrivateModeChange) && <SettingsSection id="browser-settings-privacy" title="隐私与权限">
           <div className="browser-setting-group">
             {(hasPreferences || onPrivateModeChange) && <SettingsToggle label="隐私浏览"
-              description="开启后不保存搜索和浏览记录"
-              checked={effectivePrivateMode} disabled={busy} onChange={() => {
+              description="独立临时会话，不保存浏览记录；停用网页资源缓存"
+              checked={effectivePrivateMode} disabled={busy || (isolatedProfiles === false && !effectivePrivateMode)} onChange={() => {
                 if (onPrivateModeChange) void saveAction(() => onPrivateModeChange(!effectivePrivateMode))
-                else void savePatch({privateMode: !effectivePrivateMode})
+                else void savePatch({privateMode: !effectivePrivateMode, incognitoMode: false})
               }}/>}
             {hasPreferences && preferences && <>
+              <SettingsToggle label="无痕模式" description="不保存浏览记录；本次会话结束即清除 Cookie 和登录状态"
+                checked={preferences.incognitoMode} disabled={busy || (isolatedProfiles === false && !preferences.incognitoMode)}
+                onChange={() => {void savePatch({incognitoMode: !preferences.incognitoMode, privateMode: false})}}/>
+              <p className="browser-setting-help">切换正常、无痕或隐私模式时，将关闭当前所有网页标签并打开空白页；普通历史和登录数据不会被删除。</p>
               <SettingsToggle label="第三方 Cookie" description="部分跨站登录可能需要开启"
                 checked={preferences.thirdPartyCookiesEnabled} disabled={busy}
                 onChange={() => {void savePatch({thirdPartyCookiesEnabled: !preferences.thirdPartyCookiesEnabled})}}/>

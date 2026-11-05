@@ -1,5 +1,6 @@
-import { admitObservation, isHttpUrl, mediaFormatFor, normalizedMime } from './classifier'
-import type { MediaObservation } from './types'
+import { admitObservation, DIRECT_MEDIA_EXT, isHttpUrl, mediaFormatFor, normalizedMime } from './classifier'
+import { mediaDisplayText } from './metadata'
+import type { MediaMetadata, MediaObservation } from './types'
 
 const URL_FIELDS = [
   'url',
@@ -25,6 +26,13 @@ const URL_FIELDS = [
 
 const MAX_DEPTH = 12
 const MAX_OBSERVATIONS = 512
+const MAX_NODES = 4096
+const MAX_BODY_LENGTH = 262144
+const SKIPPED_PAYLOAD_KEYS = /^(?:url_next|next|nextUrl|next_url|playlist|related|recommendations?|ads?|advertising|poster|thumbnail|image|logo)$/i
+const AUDIO_CODEC = /(?:^|[\s,"'])(?:mp4a|aac|opus|vorbis|ac-3|ec-3)(?:[.\s,"']|$)/i
+const VIDEO_CODEC = /(?:^|[\s,"'])(?:avc1|av01|hvc1|hev1|vp0?9|vp8)(?:[.\s,"']|$)/i
+const AUDIO_URL = /\.(?:m4a|aac|mp3|ogg|opus)(?:$|[?#])/i
+const VIDEO_URL = /\.(?:m3u8|mpd)(?:$|[?#])/i
 
 function resolvedUrl(value: string, pageUrl: string): string | undefined {
   const trimmed = value
@@ -91,7 +99,7 @@ function urlFieldValues(value: Record<string, unknown>): string[] {
     const raw = value[field]
     if (typeof raw === 'string') values.push(raw)
     else if (Array.isArray(raw)) {
-      for (const item of raw) {
+      for (const item of raw.slice(0, MAX_OBSERVATIONS)) {
         if (typeof item === 'string') values.push(item)
       }
     }
@@ -114,14 +122,23 @@ function trackHints(value: Record<string, unknown>, mediaKind?: MediaObservation
   const declaredKind = /^(?:video|audio)$/i.test(declaredFormat || '')
     ? declaredFormat?.toLowerCase() as MediaObservation['mediaKind']
     : undefined
+  const mediaUrl = urlFieldValues(value).find(item => typeof item === 'string') || ''
+  const hasVideoUrl = VIDEO_URL.test(mediaUrl) || DIRECT_MEDIA_EXT.test(mediaUrl)
+  const hasAudioUrl = AUDIO_URL.test(mediaUrl)
+  const hasVideoMetadata = Boolean(value.qualityLabel)
+  const hasAudioMetadata = Boolean(value.audioQuality || value.audioSampleRate || value.audioChannels)
   const kind = mediaKind
     || declaredKind
     || (value.isVideo === true || value.video === true ? 'video' : undefined)
     || (value.isAudio === true || value.audio === true ? 'audio' : undefined)
     || (mime.startsWith('audio/') ? 'audio' : mime.startsWith('video/') ? 'video' : undefined)
+    || (hasAudioUrl ? 'audio' : hasVideoUrl || hasVideoMetadata ? 'video' : hasAudioMetadata ? 'audio' : undefined)
   const width = positiveNumber(value.width)
   const height = positiveNumber(value.height)
   const bitrate = positiveNumber(value.bitrate) ?? positiveNumber(value.bandwidth)
+  const codecs = stringField(value, 'codecs') || mimeType?.match(/codecs\s*=\s*"?([^";]+)"?/i)?.[1]
+  const hasAudioCodec = AUDIO_CODEC.test(codecs || '')
+  const hasVideoCodec = VIDEO_CODEC.test(codecs || '')
   const segmentBase = value.segment_base && typeof value.segment_base === 'object'
     ? value.segment_base as Record<string, unknown>
     : value.segmentBase && typeof value.segmentBase === 'object'
@@ -137,10 +154,10 @@ function trackHints(value: Record<string, unknown>, mediaKind?: MediaObservation
     width,
     height,
     bitrate,
-    codecs: stringField(value, 'codecs'),
+    codecs,
     quality: stringField(value, 'qualityLabel', 'quality', 'quality_label'),
-    hasAudio: kind === 'audio' ? true : undefined,
-    hasVideo: kind === 'video' ? true : undefined,
+    hasAudio: kind === 'audio' || hasAudioCodec || hasAudioMetadata ? true : kind === 'video' && hasVideoMetadata ? false : undefined,
+    hasVideo: kind === 'video' || hasVideoCodec || hasVideoMetadata ? true : undefined,
     initializationRange,
     indexRange,
   }
@@ -171,8 +188,9 @@ function emitUrlFields(
   pageUrl: string,
   source: MediaObservation['source'],
   observations: MediaObservation[],
+  metadata: MediaMetadata,
 ): void {
-  const hints = trackHints(value)
+  const hints = { ...trackHints(value), ...metadata }
   for (const rawUrl of urlFieldValues(value)) {
     pushObservation(observations, pageUrl, source, rawUrl, hints)
   }
@@ -185,15 +203,16 @@ function emitDashTracks(
   pageUrl: string,
   source: MediaObservation['source'],
   observations: MediaObservation[],
+  metadata: MediaMetadata,
 ): void {
-  for (const item of items) {
+  for (const item of items.slice(0, MAX_OBSERVATIONS)) {
     const record = typeof item === 'string'
       ? { url: item }
       : item && typeof item === 'object'
         ? item as Record<string, unknown>
         : null
     if (!record) continue
-    const hints = { ...trackHints(record, mediaKind), assetGroup }
+    const hints = { ...trackHints(record, mediaKind), ...metadata, assetGroup }
     for (const rawUrl of urlFieldValues(record)) {
       pushObservation(observations, pageUrl, source, rawUrl, hints)
     }
@@ -216,6 +235,17 @@ function firstDashVideoUrl(value: Record<string, unknown>, pageUrl: string): str
   return 'unknown'
 }
 
+function childMetadata(record: Record<string, unknown>, key: string, metadata: MediaMetadata): MediaMetadata {
+  // YouTube explicitly binds videoDetails to streamingData in the same response.
+  if (key === 'streamingData' && record.videoDetails && typeof record.videoDetails === 'object') {
+    const details = record.videoDetails as Record<string, unknown>
+    const title = mediaDisplayText(details.title)
+    if (title) return { title, titleSource: 'player', contentId: mediaDisplayText(details.videoId) }
+  }
+  return /^(?:sources?|streams?|video|audio|dash|data|result|response|payload|vod|movie|episode|item|mainEntity|itemListElement|@graph|videoInfo|video_info|mediaInfo|media_info|playinfo|play_info|playback|playData|play_data|playFrom|play_from|sourceList|source_list|streamingData|formats|adaptiveFormats|qualities|representations|media)$/i.test(key)
+    ? metadata : metadata.isAd ? { isAd: true } : {}
+}
+
 function walk(
   value: unknown,
   pageUrl: string,
@@ -223,32 +253,60 @@ function walk(
   observations: MediaObservation[],
   seen: WeakSet<object>,
   depth: number,
+  budget: { nodes: number },
+  inherited: MediaMetadata = {},
 ): void {
-  if (depth > MAX_DEPTH || observations.length >= MAX_OBSERVATIONS) return
+  if (++budget.nodes > MAX_NODES || depth > MAX_DEPTH || observations.length >= MAX_OBSERVATIONS) return
   if (!value || typeof value !== 'object') return
   if (seen.has(value)) return
   seen.add(value)
 
   if (Array.isArray(value)) {
-    for (const item of value) walk(item, pageUrl, source, observations, seen, depth + 1)
+    for (const item of value.slice(0, MAX_OBSERVATIONS)) walk(item, pageUrl, source, observations, seen, depth + 1, budget, inherited)
     return
   }
 
   const record = value as Record<string, unknown>
+  const rawType = record['@type']
+  const structured = rawType === 'VideoObject' || (Array.isArray(rawType) && rawType.includes('VideoObject'))
+  const ownTitle = mediaDisplayText(stringField(record, ...(structured ? ['name', 'headline'] : ['title', 'video_title', 'vod_name', 'videoName', 'fileName'])))
+  // A new named object starts a new content scope. Never copy a sibling's title.
+  const metadata: MediaMetadata = { ...inherited }
+  const contentId = mediaDisplayText(stringField(record, 'contentId', 'videoId', 'vod_id'))
+  if (contentId) metadata.contentId = contentId
+  if (ownTitle) {
+    metadata.title = ownTitle
+    metadata.titleSource = structured ? 'structured' : 'player'
+  }
+  if (inherited.isAd || record.isAd === true || record.is_ad === true || record.advertisement === true) metadata.isAd = true
   if (isDashContainer(record)) {
     const assetGroup = `dash-${firstDashVideoUrl(record, pageUrl)}`
-    emitDashTracks(record.video as unknown[], 'video', assetGroup, pageUrl, source, observations)
-    emitDashTracks(record.audio as unknown[], 'audio', assetGroup, pageUrl, source, observations)
-    for (const [key, child] of Object.entries(record)) {
-      if (key === 'video' || key === 'audio') continue
-      walk(child, pageUrl, source, observations, seen, depth + 1)
+    emitDashTracks(record.video as unknown[], 'video', assetGroup, pageUrl, source, observations, metadata)
+    emitDashTracks(record.audio as unknown[], 'audio', assetGroup, pageUrl, source, observations, metadata)
+    for (const [key, child] of Object.entries(record).slice(0, 512)) {
+      if (key === 'video' || key === 'audio' || (source === 'static' && SKIPPED_PAYLOAD_KEYS.test(key))) continue
+      walk(child, pageUrl, source, observations, seen, depth + 1, budget, childMetadata(record, key, metadata))
     }
     return
   }
 
-  emitUrlFields(record, pageUrl, source, observations)
-  for (const child of Object.values(record)) {
-    walk(child, pageUrl, source, observations, seen, depth + 1)
+  emitUrlFields(record, pageUrl, source, observations, metadata)
+  for (const [key, child] of Object.entries(record).slice(0, 512)) {
+    if (source === 'static' && SKIPPED_PAYLOAD_KEYS.test(key)) continue
+    walk(child, pageUrl, source, observations, seen, depth + 1, budget, childMetadata(record, key, metadata))
+  }
+}
+
+export type ParsedMediaApiBody =
+  | { parsed: true; value: unknown }
+  | { parsed: false }
+
+export function parseMediaApiBodyValue(bodyText: string): ParsedMediaApiBody {
+  if (bodyText.length > MAX_BODY_LENGTH) return { parsed: false }
+  try {
+    return { parsed: true, value: JSON.parse(bodyText) as unknown }
+  } catch {
+    return { parsed: false }
   }
 }
 
@@ -257,12 +315,12 @@ export function parseMediaApiBody(
   pageUrl: string,
   source: 'fetch' | 'xhr' | 'static',
 ): MediaObservation[] {
-  try {
-    const parsed: unknown = JSON.parse(bodyText)
-    const observations: MediaObservation[] = []
-    walk(parsed, pageUrl, source, observations, new WeakSet(), 0)
-    return observations
-  } catch {
-    return []
-  }
+  const result = parseMediaApiBodyValue(bodyText)
+  return result.parsed ? observeMediaApiPayload(result.value, pageUrl, source) : []
+}
+
+export function observeMediaApiPayload(payload: unknown, pageUrl: string, source: 'fetch' | 'xhr' | 'static'): MediaObservation[] {
+  const observations: MediaObservation[] = []
+  walk(payload, pageUrl, source, observations, new WeakSet(), 0, { nodes: 0 })
+  return observations
 }

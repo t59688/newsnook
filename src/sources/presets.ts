@@ -95,8 +95,10 @@ function normalizeCustomCategories(raw: unknown): NewsCategory[] {
     const rawLabel = typeof record.label === 'string' ? record.label.trim() : ''
     const rawShort = typeof record.short === 'string' ? record.short.trim() : ''
     if (!rawId || !rawLabel) continue
+    // Empty custom categories are valid after moving their last source away.
+    // Preserve them in snapshots so switching presets does not silently discard
+    // a user's category container.
     const sourceIds = uniqueValidSourceIds(record.sourceIds)
-    if (!sourceIds.length) continue
     result.push({
       id: rawId,
       label: rawLabel,
@@ -215,7 +217,7 @@ function builtinPreset(
  * 内置场景包原则：
  * - 可见栏顺序即阅读优先级；中文栏整组在前，外刊栏整组在后
  * - **同一预设内，任意分类的 sourceId 互斥**
- * - 内置预设全部隐藏综合，enabledSourceIds 为空；空白自定义预设仍从综合起
+ * - 内置预设与空白预设全部隐藏综合，enabledSourceIds 为空；自建分类或主题分类独立选源
  * - 足球/手机/数码/汽车等 solo 轨默认隐藏，由预设 categorySources 并入主题栏
  */
 
@@ -418,13 +420,22 @@ export function snapshotsEqual(a: LayoutSnapshot, b: LayoutSnapshot): boolean {
   )
 }
 
-export function emptyLayoutSnapshot(): LayoutSnapshot {
+export const BLANK_PRESET_DEFAULT_CATEGORY_ID: CategoryId = 'custom_inbox'
+
+export function emptyLayoutSnapshot(starterLabel = '我的关注'): LayoutSnapshot {
+  const initialCategory: NewsCategory = {
+    id: BLANK_PRESET_DEFAULT_CATEGORY_ID,
+    label: starterLabel,
+    short: starterLabel.slice(0, 4),
+    caption: '自定义关注来源',
+  }
   return normalizeSnapshot({
     categoryTaxonomyVersion: CATEGORY_TAXONOMY_VERSION,
-    categoryOrder: ['mix'],
-    hiddenCategoryIds: hiddenExcept(['mix']),
-    categorySources: {},
-    customCategories: [],
+    categoryOrder: [initialCategory.id],
+    hiddenCategoryIds: hiddenExcept([]),
+    categorySources: { [initialCategory.id]: [] },
+    categoryNames: {},
+    customCategories: [initialCategory],
     enabledSourceIds: [],
     favoriteSourceIds: [],
   })

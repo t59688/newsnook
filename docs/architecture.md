@@ -171,11 +171,13 @@ PresetSwitcher / 切换布局
 
 ### 7.4 RSS 订阅商店
 
+`features/rssCatalog/` 提供与 Feedly/网址发现独立的本地 RSS 目录：按需加载内置种子，优先使用 `newsnook:rss-catalog` IndexedDB 中已验证的快照；关键词、专题和语言筛选全部在本机完成。首屏可用后的空闲维护与目录打开时检查 R2 固定 manifest，1 小时节流、失败一小时退避；只在哈希变化时下载完整快照。结构、字节大小、SHA-256、数量与日期全部验证且 IndexedDB 事务提交成功才切换。远端目录不是已订阅状态，不进入 Preferences、配置备份、Cloud Sync、正文或列表缓存。读取失败使用内置种子，更新失败保留旧版本。详细发布与部署约定见订阅商店文档。
+
 `features/feedDiscovery/onlineSearch.ts` 使用 Feedly 按关键词检索少量 Feed 地址；输入网址时，经 `siteDiscovery.ts` 直连目标网站发现，必要时调用 Feedsearch，同时按需读取 RSSHub Radar 官方规则进行网址→路由模板匹配。沿已有原生 HTTP / Web 代理路径联网，搜索不依赖登录或 NewsNook Cloud；订阅前用 `preview.ts` 实际验证。远端 Radar 规则仅在需要时下载、放入有界进程内缓存，不恢复先前离线 RSSHub/RSS-Bridge 全量目录快照。未订阅候选仅留页面/导航内存。订阅仍使用 `kind: 'feed'`，同时在 `discovery.generator = 'rsshub'` 保存逻辑路由与实例 ID；实例设置作为 Preferences 普通同步设置随可选云同步及本地备份保存。
 
 `features/rsshub/` 独立处理公开/自定义实例配置、静态 Radar 匹配、手动更换绑定和同信任组内的限次故障回退；不执行远端 JS 路由逻辑、不接受任意私网实例地址。`fetchSourceText` 复用现有 RSS 网络与缓存入口，URL 更换不更换 sourceId（保持阅读状态与预设引用），普通 RSS 刷新不触发 RSSHub 目录请求。
 
-旧 IndexedDB `newsnook:feed-discovery` 与目录小配置在商店启动时清理；目录缓存统计、目录备份和快照生成脚本已移除，已有订阅与正文缓存不受迁移影响。
+旧 IndexedDB `newsnook:feed-discovery` 与旧目录小配置继续在商店启动时清理，不影响新 `newsnook:rss-catalog` 数据库。已有订阅与正文缓存不受迁移影响。
 
 自建源可选 `paused`（缺省 false）与 `discovery` 元数据经过偏好归一化、备份、同步 projection/merge 和共享 contracts。暂停独立于综合 `enabledIds` 与分类成员关系：缓存仍展示，自动列表抓取、滚动加载、推荐候选、稍后读正文补齐和预存请求跳过暂停源。预存网络计划与保留窗口分离，暂停不会回收其已有正文。手动预览与主动阅读仍可联网。旧版本接受旧订阅数据，但不具备暂停语义，旧客户端重新写回订阅可能丢掉新字段。
 
@@ -239,6 +241,12 @@ HTML / JSON / iframe 嵌入页 / Android 短生命周期 WebView
 关键约束：
 
 - **Classifier Gate**（`classifier.admitObservation`）：任意 observation 入库前统一 URL-first 门控；图片/CSS/JS/字体扩展名、无 MIME/codec/清单扩展名的 `static` 弱信号、非媒体形态的 `performance` 条目会被丢弃；`selectPlayableAsset` 进一步排除仅含 `static` 源的弱候选。
+- **资源名称与元数据**：`MediaMetadata` 的可选字段沿 observation → graph asset → descriptor 传递，兼容旧观察/描述符。`titleSource` 优先级为 `player`（同一播放配置或 API 内容对象）→ `structured`（JSON-LD VideoObject 的 URL 关联名称）→ `filename`（pathname 的可读名称）→ `page`（og:title / twitter:title / document.title，仅作明确标注的弱回退）→ `generated`（按稳定 asset identity 排序生成“视频资源 01/02…”）；页面标题不会覆盖媒体标题，也不能用于归组。页面上下文取 og:title → twitter:title → document.title。较低可信标题不能覆盖播放器名称。
+- **单一结构化解析入口**：播放器 API / JSON / JSON-LD 对象只由 `apiParser.ts` 解析（`observeMediaApiPayload` / `parseMediaApiBody`），统一负责 URL 字段、标题可信级别、contentId、质量、音视频轨道、DASH 关联和广告标记继承。`core.ts` 只编排 HTML/Manifest/播放器声明入口；`walkUnstructuredUrlStrings` 仅从解析器未识别的字符串叶节点提取裸 URL，不再对对象重复生成低信息量 observation。解析成功的 JSON 会以对象形态进入 fallback，以继续尊重推荐/广告/海报等排除分支；超过结构化响应体预算的 JSON 仅在 1 MiB 上限内解析供 URL 兜底使用，不执行无界遍历。结构化 observation 优先，fallback 对已出现的 URL 去重。
+- **关联边界**：标题只向 sources/streams/video/audio/dash/data 等当前媒体子树传递，其他推荐、广告、兄弟内容对象独立取名；YouTube 只在同一播放响应中将 videoDetails 关联至 streamingData。Android DOM 标题来自对应 video/player 元素，iframe 继续经过 nonce 和已加载文档/网络来源校验，原生验证后才标记 `provenanceVerified`；晚到名称、画质和清单响应可更新已有观察。
+- **安全展示与预算**：文件名仅从 URL pathname 安全解码，清除 UUID、长随机串与纯数字名称；签名 query、完整 URL、请求头与 Cookie 不进入名称/辅助信息或新日志，原始播放 URL 与鉴权上下文保持原样。显示文本最长 160 字；JSON 文本最多 256 KiB、深度 12、节点 4096、候选 512；静态 HTML 扫描最多 1 MiB，清单最多 512 KiB/512 轨。浏览器只消费站点已经请求的 fetch/XHR 响应，不为名称/封面新增 HEAD/GET；正文发现服务保留原有最多两个清单增强请求，已有清单响应直接复用。
+- **可靠归组与降级**：同一 manifest 内的 variants 显示为同一视频的清晰度选项，子清单仅在父清单明确引用时收拢。其他资源只按显式 API 音视频容器、mediaSession 或可信内容 ID 关联；页面/host/目录/时间邻近和相同标题本身均不能归组，广告标记参与分组隔离。无依据则保持独立候选，不拼接未知音视频；签名刷新及评分重排不改变已发现候选的 fallback 序号。
+- **资源面板**：浏览器媒体面板、文章内嵌播放器嗅探抽屉、独立媒体页和全屏来源选择器共用 `mediaSniffer/presentation.ts`。主行显示媒体名/文件名/稳定序号，单一未命名资源允许用明确标注的文章标题兜底；副行显示页面/iframe host、媒体 CDN host、格式和标题来源，不显示完整 URL 或签名 query；清晰度、码率、编码、音轨语言及字幕可换行展示。广告启发式及显式广告标记默认从浏览器普通播放列表剔除，与 DRM 资源一起保留在折叠诊断列表，不提供普通播放入口。未知来源候选保留，广告标记不保证识别所有广告，DRM 仍要求原站授权。
 - **Target Planner**（`targetPlanner.planSniffTargets`）：静态扫描未发现 direct media 时，按 JSON-LD embedUrl/WatchAction → 同站通用播放路径链接 → iframe 嵌入页的优先级规划 secondary 播放页；首个目标使用完整预算，编排层以全局 deadline 截断后续目标，避免均分后每个播放器只剩短窗口。
 - 静态 HTML / payload 已发现可播放资源时，不再启动 Android 运行时探测；否则由 `MediaSnifferPlugin` 在隔离 WebView（360×640，屏外）中观察网络、DOM、MSE 与 EME 信号；probe 队列跳过常见 tracker 域并提高无扩展名 URL 探针配额（24/会话）。
 - 正文 iframe 不直接绕过发现层：最多取 3 个嵌入页作为独立探测目标。已加载 iframe 文档中的 inline 强媒体配置可作为静态观察进入 Graph，但普通跨文档消息仍需对应媒体 URL 的网络观察。YouTube 组件先探测公开、非 DRM 且可完整播放的资源，成功后交给 `InkVideoPlayer`；只有未得到完整资源、只得到分片/无声自适应轨、检测到 DRM 或加载失败时，才回退原站 iframe。
@@ -247,6 +255,10 @@ HTML / JSON / iframe 嵌入页 / Android 短生命周期 WebView
 - `MediaDescriptor` 只向播放器交付 `progressive`、`hls`、`dash`；`blob:`/MSE 是发现信号而非可移交 URL；DRM 进入原站授权边界，不尝试绕过。
 - Android 播放会话短时登记来源页、Cookie、必要请求头与用户代理路由。公开 progressive 优先使用 WebView 原生 Range 请求；显式请求头、隧道、DASH 或 progressive 直连失败时才启用 `MediaPlaybackWebViewClient` 流式桥接。
 - 播放失败后的“重新探测”通过 `ReaderScreen.retryToken` 重新执行正文解析与原页发现，不生成或逆向签名。
+- 内置浏览器媒体资源面板复用实际标签页 WebView 的 `BrowserMediaCapture` 被动探测，不创建第二个页面、不自动播放；观察到的播放器 JSON / DOM / HLS / DASH 信息沿带 nonce 的 observation 通道进入 `MediaObservation`。页面标题只作为弱上下文，`titleSource` 的可信级别依次区分 `player`、`structured`、`filename`、`page`、`generated`；播放器标题只随其所在配置对象及相关 URL 传播，JSON 遍历有深度、节点、数组和响应体大小上限。
+- `MediaMetadata` 在 observation、GraphAsset 与 descriptor 之间保持一致。展示名称优先使用播放器标题、结构化 VideoObject 标题、URL pathname 文件名、页面标题，最后使用按稳定 asset identity 排序生成的“视频资源 NN”；文件名只解码 pathname，剔除 UUID、长随机串和数字占位名，任何 query、签名、token、Cookie、Authorization 均不参与 UI 名称。
+- HLS 轨道提取 `NAME`、分辨率、带宽、编码及音频/字幕组；DASH 提取 Representation id/label、分辨率、带宽、编码、语言与字幕。只有同一 manifest 的明确 variant URL、显式 assetGroup / mediaSessionId 或可信 contentId 才用于关联，不以相同 host、目录或时间接近推断同一视频。原始播放 URL、headers、Referer 和授权上下文不因展示元数据而改变。
+- 浏览器资源列表默认排除明确标记的广告候选和 DRM 项，诊断区保留已排除项；广告识别仍是 URL / 播放器信号启发式，未识别的候选会保留并以来源信息辅助判断。名称、来源和轨道元数据不触发额外封面下载或对媒体 URL 的 HEAD/GET 请求。
 
 `InkVideoPlayer` 统一处理 HLS/dash.js/HTMLMediaElement、播放控制、双击播放/暂停、长按临时倍速、进度/亮度/音量手势、捏合缩放、平移和还原。Android 横向视频进入全屏时优先锁定 Activity 横屏，系统导航栏和四向安全区随屏幕一起旋转；退出全屏或卸载播放器时恢复原方向。方向锁定不可用时才旋转播放器交互平面，确保视频与控件仍处于同一坐标系。
 
@@ -557,6 +569,14 @@ Provider 可用性由可选的 `isAvailable()` 声明，来源选择器只显示
 百度百科的初次查询会等待 HTML 文档解析完成，再同时抽取摘要与章节全文；无需等待图片等附属资源全部加载。全文快照以查询结果对象为生命周期保留在 Provider 内，展开全文复用同一份快照，避免重新创建浏览器请求。该快照不进入历史、收藏或持久化存储。
 
 百科设置保留原有 `newsnook.wiki.settings.v1` 键与 JSON 格式，作为历史前缀例外接入原生 Preferences 镜像和启动水合；查询面板切源也会保存默认提供商。此处不改变云同步范围。
+
+### 8.10 用户脚本与 iframe 执行边界
+
+Android 内置浏览器通过 AndroidX WebKit 文档开始注入机制运行本地用户脚本。脚本的 `@match` / `@include` 规则分别在每个文档 URL 上求值；默认允许匹配的子 frame 执行，`@noframes` 可显式禁止子 frame。这样播放器页面可以在自身 document-start 阶段运行脚本，而不依赖跨源父页面访问 iframe DOM。
+
+权限边界：子 frame 仅允许 `@grant none` / `unsafeWindow` 这类 page-world、无原生 GM 能力的脚本。子 frame 的启动消息只用于执行状态统计；原生存储、网络请求、下载、菜单等 GM 操作仍仅接受主框架消息。带原生 GM grant 的脚本继续只在主框架执行。`@noframes` 从脚本源码元数据解析并随原生快照传递，旧安装项由源码重新解析得到默认值。
+
+关键实现：`src/features/browser/scripts.ts`、`android/app/src/main/assets/newsnook-userscript-runtime.js`、`android/app/src/main/java/com/aizeek/newsnook/UserscriptRuntime.java`。回归覆盖位于 `scripts/browser-userscripts.test.ts` 与 `UserscriptRuntimeLifecycleTest`。
 
 ### 8.11 内置浏览器 Agent
 

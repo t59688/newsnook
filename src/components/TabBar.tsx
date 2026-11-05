@@ -19,7 +19,7 @@ interface Props {
   hasUpdate?: boolean
   onChange: (key: TabKey) => void
   onTodayDoubleTap?: () => void
-  /** 中央“布局”是动作入口，不参与 TabKey / active 状态。 */
+  /** 中央“场景”是动作入口，不参与 TabKey / active 状态。 */
   presetSwitcher?: Omit<PresetSwitcherProps, 'variant'>
 }
 

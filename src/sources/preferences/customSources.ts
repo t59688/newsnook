@@ -197,7 +197,13 @@ export function deleteCustomSources(
 
   const nextCustomSources = customSources.filter((source) => !deletedIds.has(source.id))
 
-  // 自定义分类直接持有 sourceIds；删除后同步更新摘要，并移除已无信源的分类。
+  // 自定义分类直接持有 sourceIds；删除后同步更新摘要，并移除因删除而变空的分类。
+  // 原本就为空的分类是用户保留的整理容器，不应被删除其他订阅时顺带清理。
+  const originallyEmptyCategoryIds = new Set(
+    (prefs.customCategories ?? [])
+      .filter((category) => !(category.sourceIds ?? []).length)
+      .map((category) => category.id),
+  )
   const nextCustomCategories = (prefs.customCategories ?? [])
     .map((category) => {
       const nextSourceIds = (category.sourceIds ?? []).filter((id) => !deletedIds.has(id))
@@ -207,7 +213,7 @@ export function deleteCustomSources(
         caption: describeSources(nextSourceIds, nextCustomSources),
       }
     })
-    .filter((category) => (category.sourceIds ?? []).length > 0)
+    .filter((category) => (category.sourceIds ?? []).length > 0 || originallyEmptyCategoryIds.has(category.id))
 
   const validCategoryIds = new Set([
     ...CATEGORIES.map((category) => category.id),

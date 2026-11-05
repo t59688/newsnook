@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 
 import {
   TW_VAR_FALLBACK_CSS,
@@ -6,6 +7,11 @@ import {
   legacyMotionFallbackCss,
   unwrapWhereSelectors,
 } from './webview-css-compat.ts'
+
+// Settings toolbar is nested inside the section content wrapper. Keep its
+// vertical spacing rule as a descendant selector, not a direct-child selector.
+const settingsPaperCss = readFileSync(new URL('../src/styles/settings-paper.css', import.meta.url), 'utf8')
+assert.match(settingsPaperCss, /\.paper-settings-section-content\s+\.custom-sources-filter-toolbar\s*\{[^}]*min-height:\s*57px;[^}]*align-items:\s*center;/s)
 
 // Nested :not() must stay intact
 const nested = ':where(.divide-y > :not(:last-child)){border-bottom-width:1px}'

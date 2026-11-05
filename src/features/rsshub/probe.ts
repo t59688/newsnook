@@ -22,6 +22,12 @@ const INSTANCE_LIMIT = 8
 const PARALLEL_ROUTES = 3
 const TOTAL_BUDGET_MS = 16_000
 const SINGLE_ATTEMPT_MS = 6_000
+// Keep creator routes on providers that have returned real article feeds in
+// catalog validation. This only affects order; it never bypasses live preview.
+const ROUTE_PRIORITIES: readonly { prefix: string; ids: readonly string[] }[] = [
+  { prefix: '/bilibili/user/video/', ids: ['liumingye', 'wudifeixue', 'virworks', 'materium'] },
+  { prefix: '/weibo/user/', ids: ['aptzone', 'qqpkviet', 'mrbiosci', 'beardgz', 'yfi', 'materium'] },
+]
 
 export function selectRssHubProbeInstances(
   routePath: string,
@@ -39,10 +45,18 @@ export function selectRssHubProbeInstances(
   if (sensitive) return preferred ? [preferred] : []
   const family = routePath.split('?')[0].split('/').slice(0, 4).join('/')
   const known = group.find((item) => item.id === lastGood.get(family))
+  const priority = preferred && !preferred.builtin ? []
+    : ROUTE_PRIORITIES.find((item) => routePath.startsWith(item.prefix))?.ids ?? []
+  const rank = (item: RssHubInstance) => {
+    if (item.id === known?.id) return -2
+    if (item.id === preferred?.id) return -1
+    const order = priority.indexOf(item.id)
+    return order === -1 ? priority.length : order
+  }
   return [known, preferred, ...group]
     .filter((item): item is RssHubInstance => Boolean(item))
     .filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index)
-    .sort((a, b) => Number(getRssHubCooldown(a.id, routePath) > 0) - Number(getRssHubCooldown(b.id, routePath) > 0))
+    .sort((a, b) => Number(getRssHubCooldown(a.id, routePath) > 0) - Number(getRssHubCooldown(b.id, routePath) > 0) || rank(a) - rank(b))
     .slice(0, INSTANCE_LIMIT)
 }
 
@@ -93,10 +107,10 @@ export async function probeRssHubRoute(
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
     if (success) return success
     const detail = ctl.signal.aborted ? '检测超时，请重试或选择服务实例' : lastFailure.detail
-    const isTwitter = /^\/twitter\//.test(routePath)
+    const restrictedPlatform = /^\/twitter\//.test(routePath) ? 'X' : /^\/weibo\//.test(routePath) ? '微博' : null
     return { ...lastFailure, attempts,
-      detail: isTwitter && attempts > 1
-        ? `已尝试 ${attempts} 个实例，仍无法获取 X 内容（${detail}）。该路由可能需要 RSSHub 运营方配置 X 登录凭据`
+      detail: restrictedPlatform && attempts > 1
+        ? `已尝试 ${attempts} 个实例，仍无法获取${restrictedPlatform}内容（${detail}）。可能需要 RSSHub 实例配置平台登录凭据或 Cookie`
         : detail,
       ...(ctl.signal.aborted ? { failureKind: 'timeout' as const } : {}),
     }

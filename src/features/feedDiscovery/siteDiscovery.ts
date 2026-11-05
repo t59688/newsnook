@@ -3,6 +3,7 @@ import { fetchAbsoluteText } from '../../lib/http'
 import { discoverFeedsFromHtml } from '../../lib/opml'
 
 import { validateFeedUrl } from './routeBuilder'
+import { extractPageAuthorUrls } from './contentLink'
 import type { FeedDiscoveryEntry } from './types'
 
 interface FeedsearchResult {
@@ -35,10 +36,20 @@ function directEntry(
   }
 }
 
-export async function discoverSiteFeeds(
+export interface SiteFeedDiscovery {
+  feeds: FeedDiscoveryEntry[]
+  authorUrls: string[]
+}
+
+export async function discoverSiteFeeds(rawUrl: string, signal?: AbortSignal): Promise<FeedDiscoveryEntry[]> {
+  return (await discoverSiteFeedsWithAuthors(rawUrl, signal)).feeds
+}
+
+/** Reuse the page HTML already fetched for native feeds to collect trusted author links. */
+export async function discoverSiteFeedsWithAuthors(
   rawUrl: string,
   signal?: AbortSignal,
-): Promise<FeedDiscoveryEntry[]> {
+): Promise<SiteFeedDiscovery> {
   const controller = new AbortController()
   const forwardAbort = () => controller.abort()
   signal?.addEventListener('abort', forwardAbort, { once: true })
@@ -52,34 +63,38 @@ export async function discoverSiteFeeds(
   }
 }
 
-async function discoverSiteFeedsWithSignal(rawUrl: string, signal: AbortSignal): Promise<FeedDiscoveryEntry[]> {
+async function discoverSiteFeedsWithSignal(rawUrl: string, signal: AbortSignal): Promise<SiteFeedDiscovery> {
   if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
   const siteUrl = validateFeedUrl(rawUrl)
   let html = ''
   try { html = await fetchAbsoluteText(siteUrl, { signal }) } catch (error) {
     if (signal.aborted) throw error
   }
+  const authorUrls = extractPageAuthorUrls(html, siteUrl)
   const local = discoverFeedsFromHtml(html, siteUrl)
   if (local.length) {
     const entries: FeedDiscoveryEntry[] = []
     for (const feed of local) {
       try { entries.push(directEntry(validateFeedUrl(feed.url), feed.title || siteUrl, siteUrl)) } catch { /* skip invalid links */ }
     }
-    if (entries.length) return entries
+    if (entries.length) return { feeds: entries, authorUrls }
   }
 
   const endpoint =
     'https://origin.feedsearch.dev/api/v1/search?url=' + encodeURIComponent(siteUrl)
-  const payload = await fetchAbsoluteText(endpoint, {
-    signal,
-    accept: 'application/json',
-    headers: { Accept: 'application/json' },
-  })
   let parsed: unknown
   try {
+    const payload = await fetchAbsoluteText(endpoint, {
+      signal,
+      accept: 'application/json',
+      headers: { Accept: 'application/json' },
+    })
     parsed = JSON.parse(payload)
-  } catch {
-    throw new Error('Feedsearch 返回了无法识别的数据')
+  } catch (error) {
+    if (signal.aborted) throw error
+    // An unavailable Feedsearch must not discard independently extracted authors.
+    if (authorUrls.length) return { feeds: [], authorUrls }
+    throw new Error('Feedsearch 暂时不可用或返回了无法识别的数据')
   }
   const rows = Array.isArray(parsed)
     ? parsed
@@ -111,7 +126,7 @@ async function discoverSiteFeedsWithSignal(rawUrl: string, signal: AbortSignal):
       ),
     )
   }
-  return entries
+  return { feeds: entries, authorUrls }
 }
 
 export async function probeDirectFeed(

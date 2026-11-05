@@ -4,6 +4,7 @@ import type { Article } from '../../lib/types'
 import type { NewsSource } from '../../sources/registry'
 import { extractCatalog } from './engine'
 import type { CatalogItem } from './types'
+import { isCatalogContentUrl, isPlaybackControlTitle } from './linkRoles'
 
 function hashId(input: string): string {
   return md5Hex(input).slice(0, 12)
@@ -49,7 +50,7 @@ export function catalogItemsToArticles(source: NewsSource, items: CatalogItem[],
 
   for (const item of items) {
     const title = item.title.trim()
-    if (!title) continue
+    if (!title || !isCatalogContentUrl(item.originUrl) || isPlaybackControlTitle(title)) continue
 
     const summary =
       cleanSummaryText(item.summary ?? title, title).slice(0, 220) || title.slice(0, 220)
@@ -67,7 +68,9 @@ export function catalogItemsToArticles(source: NewsSource, items: CatalogItem[],
       sourceLabel: source.label,
       sourceGroup: source.group,
       originUrl: item.originUrl,
-      contentType: item.contentType ?? (/^(maccms|seacms|fyfcms|zanpian|nnyy)$/.test(source.catalogProfile?.engine ?? source.frameworkHint?.framework ?? '') ? 'video' : 'article'),
+      // The CMS identity cannot turn a person, an article or an unknown document
+      // into a playable video. Detail extraction can promote actual player evidence.
+      contentType: item.contentType ?? 'article',
     })
   }
 

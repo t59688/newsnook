@@ -34,11 +34,14 @@ async function manifestBodies(
   observations: MediaObservation[],
   signal?: AbortSignal,
 ): Promise<Map<string, string>> {
-  const manifests = collectMediaCandidates(observations)
-    .filter((candidate) => candidate.format === 'hls' || candidate.format === 'dash')
-    .slice(0, 2)
   const result = new Map<string, string>()
-
+  for (const observation of observations) {
+    if (observation.url && observation.bodyText && observation.bodyText.length <= MAX_MANIFEST_BYTES
+      && /^(?:#EXTM3U|<MPD|<\?xml)/.test(observation.bodyText.trim())) result.set(observation.url, observation.bodyText)
+  }
+  const manifests = collectMediaCandidates(observations)
+    .filter((candidate) => !result.has(candidate.originalUrl) && (candidate.format === 'hls' || candidate.format === 'dash'))
+    .slice(0, 2)
   await Promise.all(
     manifests.map(async (candidate) => {
       try {
@@ -64,6 +67,8 @@ export async function discoverMediaDescriptor(options: {
   runtime?: boolean
   timeoutMs?: number
   referrer?: string
+  /** Pages already owned by an active live session must not be opened a second time. */
+  excludeRuntimeUrls?: string[]
   signal?: AbortSignal
   onDescriptor?: (descriptor: MediaDescriptor) => void
   observeNative?: (
@@ -71,8 +76,10 @@ export async function discoverMediaDescriptor(options: {
     timeoutMs: number,
     referrer?: string,
     onObservation?: (observation: MediaObservation) => void,
+    signal?: AbortSignal,
   ) => Promise<MediaObservation[]>
 }): Promise<MediaDescriptor | null> {
+  if (options.signal?.aborted) return null
   const staticObservations = options.html
     ? observeMediaInHtml(options.html, options.pageUrl)
     : options.payload === undefined
@@ -93,14 +100,14 @@ export async function discoverMediaDescriptor(options: {
   const runtimeObservations: MediaObservation[] = []
   let lastEmittedSignature = ''
   const emitAvailableDescriptor = (allowProgressive: boolean) => {
-    if (!options.onDescriptor) return
+    if (!options.onDescriptor || options.signal?.aborted) return
     const descriptor = buildMediaDescriptor(
       mergeObservationSources(staticObservations, runtimeObservations),
     )
     if (!descriptor || descriptor.resources?.[0]?.isAd) return
     // Preroll progressive often arrives first; publishing it mid-sniff replaces
     // the player with a short ad and aborts waiting for the real manifest.
-    if (!allowProgressive && descriptor.type === 'progressive') return
+    if (!allowProgressive && descriptor.type === 'progressive' && ![...staticObservations, ...runtimeObservations].some(item => item.source === 'player-config' && item.url === descriptor.url)) return
     const signature = descriptorSignature(descriptor)
     if (signature === lastEmittedSignature) return
     lastEmittedSignature = signature
@@ -121,33 +128,44 @@ export async function discoverMediaDescriptor(options: {
     })
     const totalTimeoutMs = options.timeoutMs ?? 6000
     const deadline = Date.now() + totalTimeoutMs
-    for (const target of sniffTargets) {
+    const excludedTargets = new Set(options.excludeRuntimeUrls || [])
+    const pendingTargets = sniffTargets.filter(target => !excludedTargets.has(target.url))
+    for (const [index, target] of pendingTargets.entries()) {
+      if (options.signal?.aborted) return null
       const remainingMs = deadline - Date.now()
-      if (remainingMs <= 0) break
-      const targetTimeoutMs = Math.min(target.budgetMs, remainingMs)
+      if (remainingMs < 1500) break
+      // Reserve time for fallback players; fast failures release their unused share.
+      const share = Math.max(1500, Math.floor(remainingMs / (pendingTargets.length - index)))
+      const targetTimeoutMs = Math.min(target.budgetMs, share, remainingMs)
       const probeTarget = runtimeProbePageUrl(target.url)
       const observations = await observe(
         probeTarget,
         targetTimeoutMs,
         target.referrer ?? options.referrer,
         (observation) => {
-          const admitted = admitObservation(observation)
+          if (options.signal?.aborted) return
+          const labeled = target.label ? { ...observation, sourceLabel: observation.sourceLabel || target.label } : observation
+          const admitted = admitObservation(labeled)
           if (!admitted) return
           runtimeObservations.push(admitted)
           emitAvailableDescriptor(false)
         },
+        options.signal,
       ).catch(() => [])
       for (const observation of observations) {
-        const admitted = admitObservation(observation)
+        const labeled = target.label ? { ...observation, sourceLabel: observation.sourceLabel || target.label } : observation
+        const admitted = admitObservation(labeled)
         if (admitted) runtimeObservations.push(admitted)
       }
       emitAvailableDescriptor(false)
     }
   }
 
+  if (options.signal?.aborted) return null
   const observations = mergeObservationSources(staticObservations, runtimeObservations)
   if (!observations.length) return null
   const manifests = await manifestBodies(observations, options.signal)
+  if (options.signal?.aborted) return null
   const descriptor = buildMediaDescriptor(observations, manifests)
   if (descriptor && options.onDescriptor) {
     const signature = descriptorSignature(descriptor)
@@ -163,20 +181,36 @@ export async function discoverMediaDescriptor(options: {
   return descriptor
 }
 
+/** Enrich an already observed live session with bounded HLS/DASH manifest metadata. */
+export async function enrichMediaDescriptorFromObservations(
+  observations: MediaObservation[],
+  signal?: AbortSignal,
+): Promise<MediaDescriptor | null> {
+  if (!observations.length) return null
+  if (signal?.aborted) return null
+  const manifests = await manifestBodies(observations, signal)
+  if (signal?.aborted) return null
+  return buildMediaDescriptor(observations, manifests)
+}
+
 function descriptorSignature(descriptor: MediaDescriptor): string {
   const headerSignature = (headers?: Record<string, string>) =>
     Object.entries(headers ?? {})
       .sort(([left], [right]) => left.localeCompare(right))
       .map(([key, value]) => [key, value])
   return JSON.stringify([
+    descriptor.title, descriptor.titleSource, descriptor.pageTitle, descriptor.fileName,
+    descriptor.playerSource, descriptor.contentId, descriptor.fromIframe, descriptor.isAd,
     descriptor.type,
     descriptor.url,
     descriptor.drm,
     headerSignature(descriptor.requestHeaders),
-    descriptor.videoTracks.map((track) => track.url || ''),
-    descriptor.audioTracks.map((track) => track.url || ''),
-    descriptor.subtitles.map((track) => track.url || ''),
+    descriptor.videoTracks,
+    descriptor.audioTracks,
+    descriptor.subtitles,
     descriptor.resources?.map((resource) => [
+      resource.title, resource.titleSource, resource.pageTitle, resource.fileName, resource.playerSource,
+      resource.contentId, resource.videoTracks, resource.audioTracks, resource.subtitles, resource.fromIframe, resource.isAd,
       resource.type,
       resource.url,
       resource.drm,

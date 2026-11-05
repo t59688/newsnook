@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import * as browserPreferences from '../src/features/browser/browserPreferences'
 import {
   BROWSER_ENGINES, BROWSER_KEYS, DEFAULT_BROWSER_PREFERENCES, browserHostLabel, readBrowserList,
-  loadBrowserPreferences, normalizeBrowserPreferences, readBrowserPreference, resolveBrowserAddress,
+  loadBrowserPreferences, normalizeBrowserPreferences, readBrowserPreference, readHideRecentPreference, resolveBrowserAddress,
   saveBrowserPreferences, toggleBrowserDesktopMode, validateBrowserUserAgent, writeBrowserPreference,
 } from '../src/features/browser/browserPreferences'
 
@@ -57,6 +58,24 @@ test('browser preferences round-trip raw options and complete local payloads', (
   assert.equal(readBrowserList('missing'), null)
   stored.set(BROWSER_KEYS.bookmarks, '{broken JSON')
   assert.equal(readBrowserList(BROWSER_KEYS.bookmarks), null, 'malformed local payloads use the caller fallback')
+  assert.equal(readHideRecentPreference(), false, 'default hide recent preference is false (visible)')
+  writeBrowserPreference(BROWSER_KEYS.hideRecent, 'true', true)
+  assert.equal(readHideRecentPreference(), true, 'hide recent preference toggles to true')
+  writeBrowserPreference(BROWSER_KEYS.hideRecent, 'false', true)
+  assert.equal(readHideRecentPreference(), false, 'hide recent preference toggles to false')
+})
+
+test('legacy Bing default migrates once to Google without blocking a later explicit Bing choice', () => {
+  stored.clear()
+  stored.set(BROWSER_KEYS.search, 'bing')
+  const loadBrowserSearchEngine = (browserPreferences as unknown as {
+    loadBrowserSearchEngine?: () => string
+  }).loadBrowserSearchEngine
+  assert.equal(typeof loadBrowserSearchEngine, 'function', 'browser search defaults need one shared migration boundary')
+  assert.equal(loadBrowserSearchEngine!(), 'google')
+  assert.equal(stored.get(BROWSER_KEYS.search), 'google')
+  writeBrowserPreference(BROWSER_KEYS.search, 'bing', true)
+  assert.equal(loadBrowserSearchEngine!(), 'bing', 'a choice made after migration remains user-controlled')
 })
 
 test('storage read failures fall back and write failures preserve the previous payload', () => {
@@ -108,6 +127,15 @@ test('privacy is an opt-in saved recording preference and never erases existing 
     assert.throws(() => saveBrowserPreferences({...saved, privateMode: false}), /保存失败/)
     assert.equal(stored.get(BROWSER_KEYS.preferences), before, 'a failed write keeps the previous privacy choice')
   } finally { unwritable = false }
+})
+
+test('incognito persists independently of strict privacy and defaults off for old preferences', () => {
+  assert.equal(normalizeBrowserPreferences({}).incognitoMode, false)
+  assert.equal(normalizeBrowserPreferences({incognitoMode: 'true'}).incognitoMode, false)
+  const saved = saveBrowserPreferences({...DEFAULT_BROWSER_PREFERENCES, incognitoMode: true})
+  assert.equal(saved.privateMode, false)
+  assert.equal(loadBrowserPreferences().incognitoMode, true)
+  assert.equal(normalizeBrowserPreferences({...saved, privateMode: true}).incognitoMode, false)
 })
 
 test('Android and iOS identities survive normalization and retain the last non-desktop choice', () => {

@@ -1,3 +1,5 @@
+import { isVideoDocumentUrl } from './videoDocumentUrl'
+import { isPrimaryVideoPage } from '../features/mediaSniffer/pageEvidence'
 /**
  * 站内正文解析入口。实现按边界拆在 resolveBody/ 子模块：
  * - guards：反爬/付费墙识别、摘要 Feed 判定、软降级正文
@@ -194,6 +196,9 @@ export async function resolveArticleBody(
   // The list cache keeps a lightweight completeness signal, not full HTML.
   // Rehydrate only complete/legacy generic feeds when their body is absent.
   const source = findSource(article.sourceId, extraSources)
+  if (source?.kind === 'web-catalog' && article.contentType !== 'video' && isVideoDocumentUrl(article.originUrl)) {
+    article = { ...article, contentType: 'video' }
+  }
   let feedArticle = article
   if (source?.kind === 'feed' && article.contentType !== 'video' && !article.contentHtml) {
     try {
@@ -492,6 +497,16 @@ export async function resolveArticleBody(
     }
     if (hasBrokenTextEncoding(pageHtml)) {
       throw new Error('原文字符集解析失败')
+    }
+    if (source?.kind === 'web-catalog' && isPrimaryVideoPage(pageHtml, pageUrl)) {
+      const videoArticle = { ...article, contentType: 'video' as const }
+      const ownedSurface = shouldUseOriginPlayerSurface({ sourceId: article.sourceId, contentType: 'video' })
+      const base: ResolvedBody = ownedSurface
+        ? { contentHtml: `<p>${escapeHtml(article.summary || article.title)}</p>`, bodySource: 'video', resolvedOriginUrl: pageUrl }
+        : { ...buildVideoBody(videoArticle), resolvedOriginUrl: pageUrl }
+      const result = await withRelatedFromPage(base, pageHtml, pageUrl, videoArticle, extraSources, signal)
+      if (!ownedSurface) scheduleMediaDiscovery({ pageUrl, html: pageHtml, runtime: true, signal }, result, article.title, article.image, onMediaResolved)
+      return result
     }
     let extracted = await extractWithReadability(pageHtml, pageUrl)
     let mediaBase: ResolvedBody | undefined

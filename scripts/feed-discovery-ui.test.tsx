@@ -64,6 +64,7 @@ try {
   await act(async () => { assert.equal(dismissTopHardwareBackLayer(), true) })
   await click([...document.querySelectorAll('button')].find((item) => item.textContent?.includes('Test direct')) as HTMLButtonElement)
   assert.ok(document.body.textContent?.includes('测试预设'))
+  assert.equal(document.body.textContent?.includes('同时加入综合'), false, 'when mix is hidden in active preset, addToMix checkbox must not be shown')
   await click(document.querySelector('button[aria-label="加入分类"]') as HTMLButtonElement)
   await click(button('仅保存，暂不加入信息流'))
   globalThis.fetch = async () => new Response('{"version":"https://jsonfeed.org/version/1.1","title":"Empty","items":[]}')

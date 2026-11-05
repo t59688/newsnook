@@ -13,6 +13,7 @@ export interface UserScript {
   connects: string[]
   requires: string[]
   runAt: 'document-start' | 'document-end' | 'document-idle'
+  noFrames: boolean
   createdAt: number
 }
 
@@ -55,7 +56,7 @@ function parseUserScript(source: string, old?: Pick<UserScript, 'id' | 'enabled'
     name, version: single(meta, 'version', '1.0'), source, enabled: old?.enabled ?? true,
     matches, includes, excludes: meta.get('exclude') ?? [], excludeMatches: meta.get('exclude-match') ?? [],
     grants: meta.get('grant') ?? [], connects: meta.get('connect') ?? [], requires: meta.get('require') ?? [],
-    runAt: runAtSafe, createdAt: old?.createdAt ?? Date.now(),
+    runAt: runAtSafe, noFrames: meta.has('noframes'), createdAt: old?.createdAt ?? Date.now(),
   }
 }
 /** Re-imports use the userscript name/namespace identity; explicit edits keep their existing identity. */

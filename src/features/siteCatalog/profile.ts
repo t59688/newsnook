@@ -1,3 +1,4 @@
+import { isPaginationControlLabel } from './navigationRoles'
 import type { FrameworkHint } from '../frameworkDetect/types'
 import type { CatalogLink, CatalogProfile, CatalogRequest } from './types'
 import { siteUrl, searchCapabilityUrl, isSensitiveCatalogField } from './context'
@@ -19,7 +20,7 @@ export function normalizeCatalogProfile(value: unknown, sourceUrl: string): Cata
       if (!item || typeof item.title !== 'string' || typeof item.url !== 'string') continue
       const url = siteUrl(item.url, sourceUrl)
       const title = item.title.trim().slice(0, 100)
-      if (url && title) result.set(url, { title, url })
+      if (url && title && !(isPaginationControlLabel(title) && !/^\d+$/.test(title))) result.set(url, { title, url })
     }
     return [...result.values()]
   }
@@ -51,7 +52,7 @@ export function catalogProfileFor(source: NewsSource): CatalogProfile {
   return normalizeCatalogProfile(source.catalogProfile, source.url) ?? {
     version: 1, rulesRevision: 1, siteRoot,
     engine: source.frameworkHint?.framework ?? 'generic',
-    categories: source.frameworkHint?.categories?.filter((item) => siteUrl(item.url, source.url)) ?? [],
+    categories: source.frameworkHint?.categories?.filter((item) => siteUrl(item.url, source.url) && !(isPaginationControlLabel(item.title) && !/^\d+$/.test(item.title))) ?? [],
   }
 }
 
