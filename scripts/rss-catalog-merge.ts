@@ -25,7 +25,8 @@ function identity(feed: Record<string, unknown>): string {
   const creator = feed.creator_id ?? converted?.creatorId ?? channelId
   if (platform && creator) {
     const content = platform === 'youtube' ? 'videos' : converted?.routePath.replace(/\/[^/]+$/, '') ?? 'native'
-    return `${platform}:${creator}:${content}`
+    const creatorKey = platform === 'telegram' || platform === 'twitter' ? String(creator).toLowerCase() : creator
+    return `${platform}:${creatorKey}:${content}`
   }
   return url.href
 }

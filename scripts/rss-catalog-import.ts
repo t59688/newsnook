@@ -105,6 +105,9 @@ const PLATFORM_TAGS: Record<string, string[]> = {
   jike: ['即刻', '圈子'],
   weibo: ['微博'],
   zhihu: ['知乎'],
+  xiaohongshu: ['小红书', 'REDnote', '笔记'],
+  douyin: ['抖音', '短视频'],
+  twitter: ['X', 'Twitter', '推特'],
   reddit: ['Reddit', '社区'],
   webcomic: ['漫画', '插画'],
 }

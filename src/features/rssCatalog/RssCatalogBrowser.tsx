@@ -12,6 +12,8 @@ const platformNames: Record<string, string> = {
   bilibili: 'B站', wechat: '微信公众号', youtube: 'YouTube',
   telegram: 'Telegram', douban: '豆瓣', jike: '即刻',
   weibo: '微博', zhihu: '知乎', reddit: 'Reddit', webcomic: '漫画',
+  xiaohongshu: '小红书', douyin: '抖音',
+  twitter: 'X / Twitter',
 }
 
 const languageName = (code: string) => {

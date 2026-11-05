@@ -45,6 +45,18 @@ class CatalogTests(unittest.TestCase):
             self.assertIsNone(catalog.feed_metadata(body))
         self.assertIsNone(catalog.feed_metadata(b'<?xml version="1.0" encoding="unknown-encoding"?><rss><channel/></rss>'))
 
+    def test_markdown_avatar_is_not_a_creator_name(self):
+        markdown = '''[<img src="https://image.test/avatar.jpg" alt="Avatar"/>](https://space.bilibili.com/12345)
+[**真实作者**](https://space.bilibili.com/12345)
+[![Avatar](https://image.test/avatar.jpg)](https://space.bilibili.com/67890)
+[__Another Creator__](https://space.bilibili.com/67890)
+[<img src="https://image.test/unknown.jpg"/>](https://space.bilibili.com/11111)'''
+        rows = catalog.discover(markdown, 'markdown')
+        self.assertEqual([(row['title'], row['site_url']) for row in rows], [
+            ('真实作者', 'https://space.bilibili.com/12345'),
+            ('Another Creator', 'https://space.bilibili.com/67890'),
+        ])
+
     def test_permanent_failure_needs_consecutive_independent_runs_and_seven_days(self):
         history = [{'run_id': str(n), 'checked_at': date, 'status': status} for n, date, status in [
             (1, '2026-10-01T00:00:00Z', 404), (2, '2026-10-04T00:00:00Z', 410), (3, '2026-10-08T00:00:00Z', 404)]]

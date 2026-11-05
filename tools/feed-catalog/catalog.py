@@ -122,7 +122,11 @@ def discover(text, kind):
     elif kind == 'markdown':
         for title, url in re.findall(r'\[([^\]\n]+)\]\((https?://[^\s)]+)\)', text):
             if re.fullmatch(r'https://space\.bilibili\.com/\d+/?', url):
-                rows.append({'title': title, 'site_url': url, 'url': ''})
+                # Avatar links precede the named link in creator directories.
+                # Never let image markup win identity deduplication.
+                title = re.sub(r'<[^>]*>', '', title).strip().strip('*_').strip()
+                if title:
+                    rows.append({'title': title, 'site_url': url, 'url': ''})
     elif kind == 'json':
         raw = json.loads(text)
         rows = raw if isinstance(raw, list) else raw['feeds']

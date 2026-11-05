@@ -34,6 +34,16 @@ const creatorRecord = { ...record, feed: { ...record.feed, url: 'https://rsshub.
 const existingCreator = { ...upstream, feeds: [youtube] }
 assert.equal(mergeCatalogReport(existingCreator, { ...report, records: [creatorRecord] }, '2026-11-04').added, 0, 'native and converted YouTube channel are the same content identity')
 const differentCreator = { ...creatorRecord, feed: { ...creatorRecord.feed, platform: 'bilibili', creator_id: '123', url: 'https://rsshub.app/bilibili/user/video/123', rsshub_route: '/bilibili/user/video/123' }, observation: { ...record.observation, attempts: [{ url: 'https://rsshub.app/bilibili/user/video/123', status: 200 }] } }
+assert.throws(() => mergeCatalogReport(upstream, { ...report, records: [{ ...differentCreator, decision: 'index' }], counts: { accept: 0, index: 1, defer: 0, permanent: 0 } }, '2026-11-04'), /决策/, 'identity-only candidates cannot bypass Feed verification')
+for (const platform of ['telegram', 'twitter']) {
+  const account = (name: string) => {
+    const route = `/${platform}/${platform === 'telegram' ? 'channel' : 'user'}/${name}`
+    const url = 'https://rsshub.app' + route
+    return { ...differentCreator, feed: { ...differentCreator.feed, platform, creator_id: name, rsshub_route: route, url }, observation: { ...record.observation, attempts: [{ url, status: 200 }] } }
+  }
+  const first = mergeCatalogReport(upstream, { ...report, records: [account('Example_User')] }, '2026-11-04')
+  assert.equal(mergeCatalogReport(first.source, { ...report, records: [account('example_user')] }, '2026-11-04').added, 0, `${platform} account names are case-insensitive`)
+}
 assert.equal(mergeCatalogReport(existingCreator, { ...report, records: [differentCreator] }, '2026-11-04').added, 1, 'same name on another platform is not proof of shared identity')
 assert.throws(() => mergeCatalogReport(upstream, { ...report, records: [{ ...differentCreator, feed: { ...differentCreator.feed, creator_id: '456' } }] }, '2026-11-04'), /身份/, 'route UID and claimed creator UID must agree')
 assert.throws(() => mergeCatalogReport(upstream, { ...report, records: [{ ...differentCreator, feed: { ...differentCreator.feed, url: 'https://rsshub.app/bilibili/user/video/456' } }] }, '2026-11-04'), /地址/, 'feed URL and route must describe the same content')
