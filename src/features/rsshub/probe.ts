@@ -22,6 +22,12 @@ const INSTANCE_LIMIT = 8
 const PARALLEL_ROUTES = 3
 const TOTAL_BUDGET_MS = 16_000
 const SINGLE_ATTEMPT_MS = 6_000
+// Keep creator routes on providers that have returned real article feeds in
+// catalog validation. This only affects order; it never bypasses live preview.
+const ROUTE_PRIORITIES: readonly { prefix: string; ids: readonly string[] }[] = [
+  { prefix: '/bilibili/user/video/', ids: ['liumingye', 'wudifeixue', 'virworks', 'materium'] },
+  { prefix: '/weibo/user/', ids: ['aptzone', 'qqpkviet', 'mrbiosci', 'beardgz', 'yfi', 'materium'] },
+]
 
 export function selectRssHubProbeInstances(
   routePath: string,
@@ -39,10 +45,18 @@ export function selectRssHubProbeInstances(
   if (sensitive) return preferred ? [preferred] : []
   const family = routePath.split('?')[0].split('/').slice(0, 4).join('/')
   const known = group.find((item) => item.id === lastGood.get(family))
+  const priority = preferred && !preferred.builtin ? []
+    : ROUTE_PRIORITIES.find((item) => routePath.startsWith(item.prefix))?.ids ?? []
+  const rank = (item: RssHubInstance) => {
+    if (item.id === known?.id) return -2
+    if (item.id === preferred?.id) return -1
+    const order = priority.indexOf(item.id)
+    return order === -1 ? priority.length : order
+  }
   return [known, preferred, ...group]
     .filter((item): item is RssHubInstance => Boolean(item))
     .filter((item, index, all) => all.findIndex((other) => other.id === item.id) === index)
-    .sort((a, b) => Number(getRssHubCooldown(a.id, routePath) > 0) - Number(getRssHubCooldown(b.id, routePath) > 0))
+    .sort((a, b) => Number(getRssHubCooldown(a.id, routePath) > 0) - Number(getRssHubCooldown(b.id, routePath) > 0) || rank(a) - rank(b))
     .slice(0, INSTANCE_LIMIT)
 }
 

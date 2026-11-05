@@ -22,8 +22,25 @@ android/.gradle/
 android/app/build/
 android/capacitor-cordova-android-plugins/
 
-# Signed build outputs from npm run android:apk / android:aab
+# Signed builds, RSS verification evidence and local generated audit reports
 artifacts/
+
+# Local test coverage, temporary runs and language-tool caches
+/coverage/
+/test-results/
+/playwright-report/
+/screenshots/
+/tmp/
+/temp/
+.cache/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
 
 # Editor directories and files
 .vscode/*
@@ -37,6 +54,9 @@ artifacts/
 *.sw?
 
 .superpowers/
+
+# Local assistant permissions, sessions and machine-specific settings
+/.claude/
 
 # Git worktrees (local isolation)
 .worktrees/

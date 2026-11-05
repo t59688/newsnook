@@ -17,6 +17,14 @@ export const DEFAULT_RSSHUB_INSTANCES: readonly RssHubInstance[] = [
   { id: 'rssforever', name: 'RSSForever', url: 'https://rsshub.rssforever.com', enabled: true, builtin: true },
   { id: 'virworks', name: 'Virworks', url: 'https://rsshub-balancer.virworks.moe', enabled: true, builtin: true },
   { id: 'materium', name: 'Materium', url: 'https://rss.materium.io', enabled: true, builtin: true },
+  // Verified for creator RSS feeds in the 2026-11-05 catalog audit. Public
+  // instances remain replaceable and are checked per route before subscribing.
+  { id: 'liumingye', name: 'Liumingye RSSHub', url: 'https://rsshub.liumingye.cn', enabled: true, builtin: true },
+  { id: 'aptzone', name: 'Aptzone RSSHub', url: 'https://reader.aptzone.cc', enabled: true, builtin: true },
+  { id: 'qqpkviet', name: 'QQPK RSSHub', url: 'https://qqpkviet.com', enabled: true, builtin: true },
+  { id: 'beardgz', name: 'Beardgz RSSHub', url: 'https://beardgz.com', enabled: true, builtin: true },
+  { id: 'yfi', name: 'YFI RSSHub', url: 'https://rsshub.yfi.moe', enabled: true, builtin: true },
+  { id: 'mrbiosci', name: 'MRBioSci RSSHub', url: 'https://rss.mrbiosci.com', enabled: true, builtin: true },
   { id: 'owonz', name: 'owo.nz', url: 'https://rss.owo.nz', enabled: true, builtin: true },
   { id: 'wudifeixue', name: '无敌飞雪', url: 'https://rss.wudifeixue.com', enabled: true, builtin: true },
   { id: 'official-demo', name: 'RSSHub 官方演示', url: 'https://rsshub.app', enabled: false, builtin: true },

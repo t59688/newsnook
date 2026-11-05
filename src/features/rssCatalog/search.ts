@@ -60,6 +60,12 @@ export function searchCatalog(index: ReturnType<typeof createCatalogIndex>, { qu
   return eligible.filter(({ names }) => names.some((name) =>
     (name.startsWith(text.slice(0, 2)) || name.endsWith(text.slice(-2))) &&
     oneEditApart(text, name.slice(0, text.length)) && name.length >= text.length,
-  )).sort((a, b) => a.feed.title.localeCompare(b.feed.title, 'zh-CN') || a.feed.id.localeCompare(b.feed.id))
-    .slice(0, 30).map(({ feed }) => feed)
+  )).sort((a, b) => {
+    const inTitle = (row: (typeof eligible)[number]) =>
+      row.title.startsWith(text.slice(0, 2)) && oneEditApart(text, row.title.slice(0, text.length))
+    // A misspelled primary publisher name should outrank a coincidental alias
+    // match from an unrelated creator as the directory grows.
+    return Number(inTitle(b)) - Number(inTitle(a)) ||
+      a.feed.title.localeCompare(b.feed.title, 'zh-CN') || a.feed.id.localeCompare(b.feed.id)
+  }).slice(0, 30).map(({ feed }) => feed)
 }

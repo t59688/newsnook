@@ -25,6 +25,22 @@ assert.equal(creator.rsshubRoute, '/bilibili/user/video/946974')
 for (const query of ['影视剧风', '946974', 'MediaStorm', 'yingshijufeng', 'ying shi ju feng']) {
   assert.equal(searchCatalog(offlineIndex, { query })[0]?.id, creator.id, query)
 }
+const newlyVerified = [
+  { id: 'discovered-90eee9d39fd4c7567e0601eb', platform: 'bilibili', keyword: 'B站', route: '/bilibili/user/video/31700507' },
+  { id: 'discovered-2e6649a019799dc1af4d207e', platform: 'wechat', keyword: '微信公众号', route: undefined },
+  { id: 'discovered-e60b60a6fac1b3a353e4ad70', platform: 'weibo', keyword: '微博', route: '/weibo/user/1140250875' },
+] as const
+for (const sample of newlyVerified) {
+  const feed = catalog.feeds.find((entry) => entry.id === sample.id)
+  assert.ok(feed, `missing revalidated creator: ${sample.id}`)
+  assert.equal(feed.platform, sample.platform)
+  assert.ok(feed.tags.includes(sample.keyword), `missing platform tag: ${sample.id}`)
+  assert.ok(feed.tags.length >= 2, `verified creator must have searchable tags: ${sample.id}`)
+  assert.equal(feed.rsshubRoute, sample.route)
+  assert.equal(feed.nsfw, false)
+  assert.ok(feed.url.startsWith('https://'))
+  assert.ok(searchCatalog(offlineIndex, { query: sample.keyword }).some((entry) => entry.id === sample.id), `tag search misses ${sample.id}`)
+}
 assert.ok(searchCatalog(offlineIndex, { query: '微信公众号' }).length >= 100)
 assert.ok(searchCatalog(offlineIndex, { query: 'B站' }).length >= 18)
 assert.ok(searchCatalog(offlineIndex, { query: '88461692' }).some((feed) => feed.title.includes('3Blue1Brown')))
