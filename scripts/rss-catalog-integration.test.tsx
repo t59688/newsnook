@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { parseHTML } from 'linkedom'
 import React, { act } from 'react'
 import { DEFAULT_PREFERENCES } from '../src/sources/preferences'
+import { CatalogService } from '../src/features/rssCatalog/service'
 const { window } = parseHTML('<html><body><div id="root"></div></body></html>')
 window.matchMedia = (() => ({ matches: true, addEventListener() {}, removeEventListener() {} })) as typeof window.matchMedia
 Object.assign(globalThis, { window, document: window.document, Node: window.Node, Element: window.Element, HTMLElement: window.HTMLElement, MutationObserver: window.MutationObserver, DOMParser: window.DOMParser, React, IS_REACT_ACT_ENVIRONMENT: true })
@@ -11,6 +12,13 @@ const root = createRoot(document.getElementById('root')!)
 const originalFetch = globalThis.fetch
 const calls: string[] = []
 const ok = () => ({ ok: true })
+// Browser-only Worker is unavailable in this DOM harness. Inject the same
+// real bundled catalog explicitly, without putting its 12MB JS into the UI build.
+const catalogService = new CatalogService({
+  seed: async () => (await import('../src/features/rssCatalog/seed.json')).default,
+  storage: { read: async () => null, write: async () => {} },
+  fetch: async () => { throw new Error('offline') },
+})
 let added = 0
 let created = 0
 try {
@@ -19,7 +27,7 @@ try {
     if (String(url).includes('news-update.aizeek.com')) throw new Error('offline')
     return new Response('<rss version="2.0"><channel><title>预览来源</title><item><title>最新文章</title></item></channel></rss>')
   }
-  await act(async () => root.render(<FeedStoreScreen prefs={DEFAULT_PREFERENCES} currentCategoryId="cn-headlines" currentPresetId="test" currentPresetName="日常" enabledIds={[]} onSubscribe={() => { created++; return ok() }} onAddBuiltinToCategory={() => { added++; return ok() }} onPause={ok} onUpdateSubscription={ok} onDelete={ok} onOpenSource={() => {}} onBack={() => {}} />))
+  await act(async () => root.render(<FeedStoreScreen prefs={DEFAULT_PREFERENCES} currentCategoryId="cn-headlines" currentPresetId="test" currentPresetName="日常" enabledIds={[]} catalogService={catalogService} onSubscribe={() => { created++; return ok() }} onAddBuiltinToCategory={() => { added++; return ok() }} onPause={ok} onUpdateSubscription={ok} onDelete={ok} onOpenSource={() => {}} onBack={() => {}} />))
   assert.ok(document.querySelector('section[aria-label="RSS 目录"]'), 'the normal store entry opens the offline catalog')
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 25)) })
   const first = document.querySelector('[data-catalog-feed]') as HTMLButtonElement

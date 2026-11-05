@@ -18,6 +18,7 @@ import { SegmentedControl } from '../../components/SegmentedControl'
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { FeedStorePicker } from '../../features/feedDiscovery/FeedStorePicker'
 import { RssCatalogBrowser } from '../../features/rssCatalog/RssCatalogBrowser'
+import type { CatalogService } from '../../features/rssCatalog/service'
 import { searchOnlineFeeds, websiteSearchUrl } from '../../features/feedDiscovery/onlineSearch'
 import { RssHubInstancesScreen } from '../../features/rsshub/RssHubInstancesScreen'
 import { RssHubSubscriptionRebindScreen } from '../../features/rsshub/RssHubSubscriptionRebindScreen'
@@ -59,6 +60,8 @@ interface Props {
   onBack: () => void
   /** 仅测试用：进入时预填搜索词。正式入口不传，始终空白。 */
   initialQuery?: string
+  /** Injected test service. Real devices use the isolated catalog Worker. */
+  catalogService?: CatalogService
 }
 
 type DiscoveryMode = 'catalog' | 'keyword' | 'website'
@@ -85,7 +88,7 @@ function isWebsiteUrl(value: string): boolean {
   try { return Boolean(websiteSearchUrl(value) || parseRssHubLogicalInput(value)) } catch { return false }
 }
 
-export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onSubscribeMany, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '' }: Props) {
+export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, currentPresetName, enabledIds, onSubscribe, onSubscribeMany, onAddBuiltinToCategory, onPause, onUpdateRssHubInstances, onUpdateSubscription, onDelete, onOpenSource, onBack, initialQuery = '', catalogService }: Props) {
   const [tab, setTab] = useState<'discover' | 'subscribed'>('discover')
   const [query, setQuery] = useState(initialQuery)
   const [discoveryMode, setDiscoveryMode] = useState<DiscoveryMode>(() => !initialQuery.trim() ? 'catalog' : isWebsiteUrl(initialQuery) ? 'website' : 'keyword')
@@ -438,7 +441,7 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
       ) : null}
 
       {tab === 'discover' && discoveryMode === 'catalog' ? (
-        <RssCatalogBrowser onSelect={openEntry} duplicateLabel={duplicateLabel} />
+        <RssCatalogBrowser onSelect={openEntry} duplicateLabel={duplicateLabel} service={catalogService} />
       ) : (
         <form
           className="space-y-3"

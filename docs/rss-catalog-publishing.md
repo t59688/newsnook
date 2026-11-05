@@ -6,6 +6,13 @@
 
 `data/rss-catalog/upstream.json` 是唯一维护源。2026-11-05 合入三平台复测合格源后，当前包含 **38,957 条**来源（相对 2026-11-04 精选的 37,101 条新增 1,856 条），revision 为 `20261105001`。此前精选源中的 `nsfw` 标记保持不变；新增来源未见既有 `nsfw: true` 标记，导入后归一化为 `false`。从原始 85,398 条筛查所得的待复核来源仍完整保留在 `artifacts/feed-quality/quality-screen-20261104/curation/quarantine-upstream.json`，不进入 APK 或公开目录；该文件只是审核归档，不构成第二份可发布目录。导入器从唯一维护源确定性生成内置种子，R2 发布使用同一完整精选目录。
 
+### 2026-11-05：手机 RSS 商店首次打开性能
+
+- 浏览器的生产入口使用**单例经典 Web Worker**（支持 Android WebView 69），由 `catalog.worker.ts` 读取完整目录、验证 SHA-256、解析与构建搜索索引。`startCatalogMaintenance()` 的闲时更新也走同一个 Worker，避免在 App 主线程启动大目录维护。
+- 构建时将内置目录 `seed.json` 输出为可离线访问的 JSON 资源，而不是超过 12 MB 的 JavaScript 模块；主应用不再打包或解析一份相同种子。Worker 仅向界面传送目录计数、62 个分类的统计和当前查询最多 `limit` 条记录，初始窗口为 30 条。搜索、模糊匹配、筛选、排序、加载更多仍在后台执行，保持原有查询语义与订阅流程。
+- `scripts/rss-catalog-offthread.test.ts` 用完整 38,957 条目录校验原有搜索排序、筛选和分页一致；Worker 通信及浏览器 UI 有专门回归测试；`npm run build` 后自动执行 `test:rss-catalog-worker-build`，防止重复打包、模块 Worker 或旧 WebView 语法回归。
+- 本地 Chromium 4 倍 CPU 降速验证：Worker 返回前 30 条、总数 38,957；单独 Worker 初始化测试没有 UI 主线程上的全量索引/排序。该结果为桌面模拟环境，**不代替 Android 真机帧耗时验收**；Android ADB 不可用时不声称真机已测。
+
 ### 2026-11-05：Bilibili / 微信公众号 / 微博实测源合并
 
 - 本地复核范围：Bilibili 1,223 条、微信公众号 440 条、微博 7,679 条；其中原目录已录用 105 / 150 / 8 条，本次**新增验证合格 979 / 203 / 674 条**。最终这三平台已有实测证据的来源共 **2,119 条**。源 ID、平台、UID、RSSHub 逻辑路由、Feed URL 的一致性通过复核；微博还检查了文章链接的发布者 UID。
