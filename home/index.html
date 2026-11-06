@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark" data-scheme="ink">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0e0f12" />
+    <meta
+      name="description"
+      content="有所闻 NewsNook —— 本地优先的新闻阅读客户端。不登录即可完整使用，直连原发媒体，站内全文，可选云同步。"
+    />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="有所闻" />
+    <meta property="og:title" content="有所闻 · NewsNook" />
+    <meta
+      property="og:description"
+      content="本地优先的新闻阅读客户端：直连原发媒体，站内全文，可选云同步。"
+    />
+    <title>有所闻 · NewsNook</title>
+    <link rel="preconnect" href="https://fonts.googleapis.cn" crossorigin />
+    <link rel="preconnect" href="https://fonts.gstatic.cn" crossorigin />
+    <link
+      href="https://fonts.googleapis.cn/css2?family=Noto+Serif+SC:wght@400;500;600;700;900&family=Noto+Sans+SC:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Instrument+Serif:ital@0;1&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
+    />
+    <script>
+      // 首帧前定调：跟随系统明暗与风格方案，避免闪白；与 App 的 index.html 同一手法
+      ;(function () {
+        try {
+          var urlMode = new URLSearchParams(location.search).get('theme')
+          var saved = localStorage.getItem('newsnook-home:theme')
+          var mode =
+            urlMode === 'light' || urlMode === 'dark'
+              ? urlMode
+              : saved === 'light' || saved === 'dark'
+                ? saved
+                : window.matchMedia('(prefers-color-scheme: light)').matches
+                  ? 'light'
+                  : 'dark'
+          document.documentElement.dataset.theme = mode
+
+          var urlScheme = new URLSearchParams(location.search).get('scheme')
+          var savedScheme = localStorage.getItem('newsnook-home:scheme')
+          var scheme = urlScheme || savedScheme || 'ink'
+          if (scheme === 'ink' || scheme === 'pearl' || scheme === 'buer' || scheme === 'celadon' || scheme === 'amber' || scheme === 'dusk') {
+            document.documentElement.dataset.scheme = scheme
+          }
+        } catch (_) {
+          document.documentElement.dataset.theme = 'dark'
+          document.documentElement.dataset.scheme = 'ink'
+        }
+      })()
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

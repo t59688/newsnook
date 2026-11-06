@@ -1,0 +1,956 @@
+@import 'tailwindcss';
+
+@source '../index.html';
+@source '.';
+
+/* ============================================================================
+ * 以下令牌与工具类提取自 NewsNook 应用源码，保持原样语义：
+ *   src/styles/theme.css      —— @theme 桥接 + 六套配色方案（本文件 §theme）
+ *   src/styles/fonts.css      —— Instrument Serif 中西混排 size-adjust
+ *   src/styles/base.css       —— 阅读排版变量、全局 base
+ *   src/styles/utilities.css  —— page-x / pressable / lead-hero / ink-grain 等
+ *   src/styles/motion.css     —— 主题切换过渡
+ *   src/styles/reader/*       —— 正文排版子集
+ *   src/styles/accessibility.css —— 墨水屏压制（作用域改到容器级）
+ * 门户站自身与所有 App 示意组件共用这一套语言。
+ * ========================================================================== */
+
+/* §theme —— 原 theme.css */
+/*
+ * 语义色只在这里声明一层间接引用：ink 系是承托面，paper 系是落在其上的字。
+ * 真正的色值放在下方 --tone-* 里按主题切换，因此 bg-ink / text-paper 等类
+ * 无需区分明暗，任何子树也能通过 data-theme 局部改写。
+ *
+ * 注意：@theme 里的 --color-* 会在 :root 上被算成具体色并向下继承。
+ * 子树若只改 --tone-*，text-paper 等仍会拿到祖先已解析的旧色。
+ * 因此每个 [data-theme] 必须同步重绑 --color-* → 当前 --tone-*。
+ */
+@theme {
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+
+  --font-display: 'Instrument Serif', 'Noto Serif SC', 'Songti SC', serif;
+  --font-body: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', ui-monospace, monospace;
+
+  --ease-ink: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* 夜读（默认）：冷墨底 + 暖纸字 */
+:root,
+[data-theme='dark'] {
+  color-scheme: dark;
+
+  --tone-paper-rgb: 234 228 216;
+  --tone-ink-rgb: 14 15 18;
+  --tone-ink-raised-rgb: 22 24 29;
+  --tone-ink-deep-rgb: 8 9 11;
+  --tone-paper-muted-rgb: 168 161 148;
+  --tone-paper-faint-rgb: 120 114 104;
+  --tone-cinnabar-rgb: 196 92 74;
+  --tone-cinnabar-soft-rgb: 217 132 116;
+
+  --tone-ink: #0e0f12;
+  --tone-ink-raised: #16181d;
+  --tone-ink-deep: #08090b;
+  --tone-paper: #eae4d8;
+  --tone-paper-muted: #a8a194;
+  --tone-paper-faint: #787268;
+  --tone-cinnabar: #c45c4a;
+  --tone-cinnabar-soft: #d98474;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 12px 40px -16px rgb(0 0 0 / 0.85);
+  --dim-hidden: brightness(0.72);
+  --grain-opacity: 0.035;
+  --grain-blend: normal;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 昼读：宣纸而非白纸 */
+[data-theme='light'] {
+  color-scheme: light;
+
+  --tone-paper-rgb: 26 24 21;
+  --tone-ink-rgb: 246 242 233;
+  --tone-ink-raised-rgb: 255 252 245;
+  --tone-ink-deep-rgb: 235 228 214;
+  --tone-paper-muted-rgb: 82 76 64;
+  --tone-paper-faint-rgb: 115 107 92;
+  --tone-cinnabar-rgb: 180 61 38;
+  --tone-cinnabar-soft-rgb: 190 74 51;
+
+  --tone-ink: #f6f2e9;
+  --tone-ink-raised: #fffcf5;
+  --tone-ink-deep: #ebe4d6;
+  --tone-paper: #1a1815;
+  --tone-paper-muted: #524c40;
+  --tone-paper-faint: #736b5c;
+  --tone-cinnabar: #b43d26;
+  --tone-cinnabar-soft: #be4a33;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.11);
+
+  --tone-body-text: #201e1a;
+  --tone-quote-text: #5c5547;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 14px 34px -18px rgb(72 58 38 / 0.38);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --grain-opacity: 0.04;
+  --grain-blend: multiply;
+
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 竹青 · 夜 */
+[data-scheme='celadon'][data-theme='dark'],
+[data-scheme='celadon'] [data-theme='dark'] {
+  color-scheme: dark;
+  --tone-paper-rgb: 215 232 222;
+  --tone-ink-rgb: 13 22 18;
+  --tone-ink-raised-rgb: 21 34 28;
+  --tone-ink-deep-rgb: 7 12 10;
+  --tone-paper-muted-rgb: 129 166 144;
+  --tone-paper-faint-rgb: 80 114 94;
+  --tone-cinnabar-rgb: 59 181 126;
+  --tone-cinnabar-soft-rgb: 87 204 151;
+  --tone-ink: #0d1612;
+  --tone-ink-raised: #15221c;
+  --tone-ink-deep: #070c0a;
+  --tone-paper: #d7e8de;
+  --tone-paper-muted: #81a690;
+  --tone-paper-faint: #50725e;
+  --tone-cinnabar: #3bb57e;
+  --tone-cinnabar-soft: #57cc97;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 12px 36px -12px rgb(0 0 0 / 0.7);
+  --dim-hidden: brightness(0.72);
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 竹青 · 昼 */
+[data-scheme='celadon'][data-theme='light'],
+[data-scheme='celadon'] [data-theme='light'] {
+  color-scheme: light;
+  --tone-paper-rgb: 18 32 25;
+  --tone-ink-rgb: 232 240 234;
+  --tone-ink-raised-rgb: 243 248 244;
+  --tone-ink-deep-rgb: 217 229 220;
+  --tone-paper-muted-rgb: 76 105 90;
+  --tone-paper-faint-rgb: 118 150 133;
+  --tone-cinnabar-rgb: 27 115 78;
+  --tone-cinnabar-soft-rgb: 40 150 104;
+  --tone-ink: #e8f0ea;
+  --tone-ink-raised: #f3f8f4;
+  --tone-ink-deep: #d9e5dc;
+  --tone-paper: #122019;
+  --tone-paper-muted: #4c695a;
+  --tone-paper-faint: #769685;
+  --tone-cinnabar: #1b734e;
+  --tone-cinnabar-soft: #289668;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: #122019;
+  --tone-quote-text: #4c695a;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 10px 28px -10px rgb(27 115 78 / 0.12);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 群青 · 夜 */
+[data-scheme='pearl'][data-theme='dark'],
+[data-scheme='pearl'] [data-theme='dark'] {
+  color-scheme: dark;
+  --tone-paper-rgb: 230 236 245;
+  --tone-ink-rgb: 11 14 20;
+  --tone-ink-raised-rgb: 20 24 34;
+  --tone-ink-deep-rgb: 6 8 12;
+  --tone-paper-muted-rgb: 136 148 168;
+  --tone-paper-faint-rgb: 86 98 117;
+  --tone-cinnabar-rgb: 56 123 255;
+  --tone-cinnabar-soft-rgb: 96 151 255;
+  --tone-ink: #0b0e14;
+  --tone-ink-raised: #141822;
+  --tone-ink-deep: #06080c;
+  --tone-paper: #e6ecf5;
+  --tone-paper-muted: #8894a8;
+  --tone-paper-faint: #566275;
+  --tone-cinnabar: #387bff;
+  --tone-cinnabar-soft: #6097ff;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 10px 30px -12px rgb(0 0 0 / 0.6);
+  --dim-hidden: brightness(0.72);
+  --grain-opacity: 0;
+  --font-display: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 群青 · 昼 */
+[data-scheme='pearl'][data-theme='light'],
+[data-scheme='pearl'] [data-theme='light'] {
+  color-scheme: light;
+  --tone-paper-rgb: 16 19 24;
+  --tone-ink-rgb: 244 246 249;
+  --tone-ink-raised-rgb: 255 255 255;
+  --tone-ink-deep-rgb: 232 237 244;
+  --tone-paper-muted-rgb: 95 104 119;
+  --tone-paper-faint-rgb: 139 149 165;
+  --tone-cinnabar-rgb: 24 86 243;
+  --tone-cinnabar-soft-rgb: 16 67 201;
+  --tone-ink: #f4f6f9;
+  --tone-ink-raised: #ffffff;
+  --tone-ink-deep: #e8edf4;
+  --tone-paper: #101318;
+  --tone-paper-muted: #5f6877;
+  --tone-paper-faint: #8b95a5;
+  --tone-cinnabar: #1856f3;
+  --tone-cinnabar-soft: #1043c9;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.07);
+  --tone-body-text: #101318;
+  --tone-quote-text: #5f6877;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 8px 24px -10px rgb(24 86 243 / 0.12);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --grain-opacity: 0;
+  --font-display: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 赤霞 · 夜 */
+[data-scheme='amber'][data-theme='dark'],
+[data-scheme='amber'] [data-theme='dark'] {
+  color-scheme: dark;
+  --tone-paper-rgb: 236 225 216;
+  --tone-ink-rgb: 20 16 14;
+  --tone-ink-raised-rgb: 30 24 21;
+  --tone-ink-deep-rgb: 11 9 7;
+  --tone-paper-muted-rgb: 160 141 130;
+  --tone-paper-faint-rgb: 109 92 82;
+  --tone-cinnabar-rgb: 224 101 62;
+  --tone-cinnabar-soft-rgb: 237 130 96;
+  --tone-ink: #14100e;
+  --tone-ink-raised: #1e1815;
+  --tone-ink-deep: #0b0907;
+  --tone-paper: #ece1d8;
+  --tone-paper-muted: #a08d82;
+  --tone-paper-faint: #6d5c52;
+  --tone-cinnabar: #e0653e;
+  --tone-cinnabar-soft: #ed8260;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 12px 36px -12px rgb(0 0 0 / 0.7);
+  --dim-hidden: brightness(0.72);
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 赤霞 · 昼 */
+[data-scheme='amber'][data-theme='light'],
+[data-scheme='amber'] [data-theme='light'] {
+  color-scheme: light;
+  --tone-paper-rgb: 36 24 20;
+  --tone-ink-rgb: 246 239 234;
+  --tone-ink-raised-rgb: 252 248 245;
+  --tone-ink-deep-rgb: 235 224 216;
+  --tone-paper-muted-rgb: 120 93 82;
+  --tone-paper-faint-rgb: 160 131 118;
+  --tone-cinnabar-rgb: 196 72 32;
+  --tone-cinnabar-soft-rgb: 220 97 57;
+  --tone-ink: #f6efea;
+  --tone-ink-raised: #fcf8f5;
+  --tone-ink-deep: #ebe0d8;
+  --tone-paper: #241814;
+  --tone-paper-muted: #785d52;
+  --tone-paper-faint: #a08376;
+  --tone-cinnabar: #c44820;
+  --tone-cinnabar-soft: #dc6139;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: #241814;
+  --tone-quote-text: #785d52;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 10px 28px -10px rgb(196 72 32 / 0.14);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 紫宸 · 夜 */
+[data-scheme='dusk'][data-theme='dark'],
+[data-scheme='dusk'] [data-theme='dark'] {
+  color-scheme: dark;
+  --tone-paper-rgb: 231 222 238;
+  --tone-ink-rgb: 18 14 24;
+  --tone-ink-raised-rgb: 28 22 37;
+  --tone-ink-deep-rgb: 10 7 14;
+  --tone-paper-muted-rgb: 158 140 168;
+  --tone-paper-faint-rgb: 108 89 117;
+  --tone-cinnabar-rgb: 183 110 232;
+  --tone-cinnabar-soft-rgb: 205 139 247;
+  --tone-ink: #120e18;
+  --tone-ink-raised: #1c1625;
+  --tone-ink-deep: #0a070e;
+  --tone-paper: #e7deee;
+  --tone-paper-muted: #9e8ca8;
+  --tone-paper-faint: #6c5975;
+  --tone-cinnabar: #b76ee8;
+  --tone-cinnabar-soft: #cd8bf7;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
+  --tone-quote-text: rgb(var(--tone-paper-rgb) / 0.72);
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 12px 36px -12px rgb(0 0 0 / 0.7);
+  --dim-hidden: brightness(0.72);
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 紫宸 · 昼 */
+[data-scheme='dusk'][data-theme='light'],
+[data-scheme='dusk'] [data-theme='light'] {
+  color-scheme: light;
+  --tone-paper-rgb: 34 22 40;
+  --tone-ink-rgb: 243 239 247;
+  --tone-ink-raised-rgb: 250 246 254;
+  --tone-ink-deep-rgb: 230 222 236;
+  --tone-paper-muted-rgb: 110 85 122;
+  --tone-paper-faint-rgb: 150 124 159;
+  --tone-cinnabar-rgb: 126 59 168;
+  --tone-cinnabar-soft-rgb: 155 84 201;
+  --tone-ink: #f3eff7;
+  --tone-ink-raised: #faf6fe;
+  --tone-ink-deep: #e6deec;
+  --tone-paper: #221628;
+  --tone-paper-muted: #6e557a;
+  --tone-paper-faint: #967c9f;
+  --tone-cinnabar: #7e3ba8;
+  --tone-cinnabar-soft: #9b54c9;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: #221628;
+  --tone-quote-text: #6e557a;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 10px 28px -10px rgb(126 59 168 / 0.14);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 不二 · 夜 */
+[data-scheme='buer'][data-theme='dark'],
+[data-scheme='buer'] [data-theme='dark'] {
+  color-scheme: dark;
+  --tone-paper-rgb: 244 245 247;
+  --tone-ink-rgb: 9 10 12;
+  --tone-ink-raised-rgb: 19 21 24;
+  --tone-ink-deep-rgb: 4 4 5;
+  --tone-paper-muted-rgb: 142 146 157;
+  --tone-paper-faint-rgb: 88 92 102;
+  --tone-cinnabar-rgb: 200 240 8;
+  --tone-cinnabar-soft-rgb: 216 245 56;
+  --tone-ink: #090a0c;
+  --tone-ink-raised: #131518;
+  --tone-ink-deep: #040405;
+  --tone-paper: #f4f5f7;
+  --tone-paper-muted: #8e929d;
+  --tone-paper-faint: #585c66;
+  --tone-cinnabar: #c8f008;
+  --tone-cinnabar-soft: #d8f538;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
+  --tone-body-text: #ededf0;
+  --tone-quote-text: #d0d3dc;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.55);
+  --shadow-lift: 0 14px 36px -12px rgb(0 0 0 / 0.7);
+  --dim-hidden: brightness(0.72);
+  --grain-opacity: 0;
+  --font-display: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* 不二 · 昼 */
+[data-scheme='buer'][data-theme='light'],
+[data-scheme='buer'] [data-theme='light'] {
+  color-scheme: light;
+  --tone-paper-rgb: 17 18 21;
+  --tone-ink-rgb: 250 250 252;
+  --tone-ink-raised-rgb: 255 255 255;
+  --tone-ink-deep-rgb: 240 241 244;
+  --tone-paper-muted-rgb: 98 102 112;
+  --tone-paper-faint-rgb: 145 150 161;
+  --tone-cinnabar-rgb: 22 101 52;
+  --tone-cinnabar-soft-rgb: 20 83 45;
+  --tone-ink: #fafafc;
+  --tone-ink-raised: #ffffff;
+  --tone-ink-deep: #f0f1f4;
+  --tone-paper: #111215;
+  --tone-paper-muted: #626670;
+  --tone-paper-faint: #9196a1;
+  --tone-cinnabar: #166534;
+  --tone-cinnabar-soft: #14532d;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.06);
+  --tone-body-text: #18191d;
+  --tone-quote-text: #3e4149;
+  --lead-veil: rgb(var(--tone-ink-rgb) / 0.86);
+  --shadow-lift: 0 12px 32px -12px rgb(0 0 0 / 0.08);
+  --dim-hidden: contrast(0.78) saturate(0.5);
+  --grain-opacity: 0;
+  --font-display: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans CJK SC', 'Microsoft YaHei', 'Helvetica Neue', Arial, sans-serif;
+  --color-ink: var(--tone-ink);
+  --color-ink-raised: var(--tone-ink-raised);
+  --color-ink-deep: var(--tone-ink-deep);
+  --color-paper: var(--tone-paper);
+  --color-paper-muted: var(--tone-paper-muted);
+  --color-paper-faint: var(--tone-paper-faint);
+  --color-cinnabar: var(--tone-cinnabar);
+  --color-cinnabar-soft: var(--tone-cinnabar-soft);
+  --color-haze: var(--tone-haze);
+}
+
+/* §fonts —— 原 fonts.css：Instrument Serif 中西混排光学对齐 */
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  size-adjust: 116%;
+  src: url(https://fonts.gstatic.com/s/instrumentserif/v5/jizBRFtNs2ka5fXjeivQ4LroWlx-6zUTjg.woff2)
+    format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: 'Instrument Serif';
+  font-style: italic;
+  font-weight: 400;
+  font-display: swap;
+  size-adjust: 116%;
+  src: url(https://fonts.gstatic.com/s/instrumentserif/v5/jizHRFtNs2ka5fXjeivQ4LroWlx-6zAjjH7M.woff2)
+    format('woff2');
+  unicode-range:
+    U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215,
+    U+FEFF, U+FFFD;
+}
+
+/* §base —— 原 base.css（去掉 App 壳专属部分） */
+:root {
+  --font-reader-sans: 'Noto Sans SC', 'PingFang SC', system-ui, sans-serif;
+  --font-reader-serif: 'Noto Serif SC', 'Songti SC', 'SimSun', serif;
+  --font-reader-system: system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+
+  --reader-font-size: 15.5px;
+  --reader-line-height: 1.9;
+  --reader-paragraph-gap: 1.1em;
+  --reader-font-family: var(--font-reader-sans);
+  --reader-text-indent: 2em;
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    margin: 0;
+    background: var(--color-ink-deep);
+    color: var(--color-paper);
+    font-family: var(--font-body);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .font-display {
+    font-synthesis: none;
+  }
+
+  button {
+    font-family: inherit;
+    color: inherit;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-cinnabar);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: color-mix(in oklab, var(--color-cinnabar) 26%, transparent);
+    color: var(--color-paper);
+  }
+}
+
+/* §motion —— 原 motion.css：主题切换瞬间的全站短过渡 */
+.theme-switching *,
+.theme-switching *::before,
+.theme-switching *::after {
+  transition:
+    background-color 240ms var(--ease-ink),
+    border-color 240ms var(--ease-ink),
+    color 240ms var(--ease-ink),
+    fill 240ms var(--ease-ink);
+}
+
+/* §utilities —— 原 utilities.css（提取门户与示意用到的子集） */
+@layer utilities {
+  .pressable {
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 120ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms ease;
+  }
+  .pressable:active {
+    transform: scale(0.972);
+  }
+
+  .pressable-card {
+    -webkit-tap-highlight-color: transparent;
+    transition: transform 140ms cubic-bezier(0.2, 0, 0, 1), filter 140ms ease;
+  }
+  .pressable-card:active {
+    transform: scale(0.985);
+    filter: brightness(0.96);
+  }
+
+  .chamfer-surface {
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.06);
+  }
+  [data-theme='light'] .chamfer-surface {
+    box-shadow: inset 0 1px 0 0 rgb(255 255 255 / 0.85);
+  }
+
+  .scroll-hidden {
+    scrollbar-width: none;
+  }
+  .scroll-hidden::-webkit-scrollbar {
+    display: none;
+  }
+
+  .horizontal-scroll-rail {
+    touch-action: pan-x pinch-zoom;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .page-x {
+    padding-inline: 1rem;
+  }
+  @media (min-width: 640px) {
+    .page-x {
+      padding-inline: 1.5rem;
+    }
+  }
+  @media (min-width: 768px) {
+    .page-x {
+      padding-inline: 1.75rem;
+    }
+  }
+  @media (min-width: 1024px) {
+    .page-x {
+      padding-inline: 2.25rem;
+    }
+  }
+  @media (min-width: 1280px) {
+    .page-x {
+      padding-inline: 2.75rem;
+    }
+  }
+
+  .article-row-item {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 110px;
+    contain: layout style;
+  }
+
+  .ink-shimmer {
+    position: relative;
+    overflow: hidden;
+    background-color: rgb(var(--tone-paper-rgb) / 0.045);
+    transform: translateZ(0);
+  }
+  .ink-shimmer::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translate3d(-100%, 0, 0);
+    background-image: linear-gradient(
+      90deg,
+      transparent 0%,
+      rgb(var(--tone-paper-rgb) / 0.075) 45%,
+      rgb(var(--tone-paper-rgb) / 0.075) 55%,
+      transparent 100%
+    );
+    animation: ink-shimmer-slide 1.7s var(--ease-ink) infinite;
+    will-change: transform;
+    pointer-events: none;
+  }
+  @keyframes ink-shimmer-slide {
+    to {
+      transform: translate3d(100%, 0, 0);
+    }
+  }
+
+  .ink-progress {
+    background-image: linear-gradient(90deg, transparent, var(--color-cinnabar), transparent);
+    animation: ink-progress-slide 1.25s var(--ease-ink) infinite;
+  }
+  @keyframes ink-progress-slide {
+    from {
+      transform: translateX(-100%);
+    }
+    to {
+      transform: translateX(300%);
+    }
+  }
+
+  .mask-fade-b {
+    -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+    mask-image: linear-gradient(to bottom, #000 62%, transparent 100%);
+  }
+
+  .mask-fade-x {
+    -webkit-mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 1.25rem,
+      #000 calc(100% - 1.25rem),
+      transparent 100%
+    );
+    mask-image: linear-gradient(
+      to right,
+      transparent 0,
+      #000 1.25rem,
+      #000 calc(100% - 1.25rem),
+      transparent 100%
+    );
+  }
+
+  .lead-hero {
+    position: relative;
+    display: block;
+    width: 100%;
+    overflow: hidden;
+    background-color: #0e0f12;
+  }
+  .lead-hero.is-framed {
+    width: calc(100% - 1.75rem);
+    margin: 0.625rem 0.875rem 0.25rem;
+    border: none;
+    border-radius: 1.1rem;
+    background-color: var(--color-ink-raised);
+    box-shadow: 0 10px 24px -14px rgb(0 0 0 / 0.22);
+  }
+  .lead-cover-veil {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    pointer-events: none;
+    background-image: linear-gradient(
+      to bottom,
+      rgb(0 0 0 / 0) 0%,
+      rgb(0 0 0 / 0.04) 28%,
+      rgb(0 0 0 / 0.28) 58%,
+      rgb(10 11 14 / 0.78) 84%,
+      rgb(8 9 11 / 0.94) 100%
+    );
+  }
+  .lead-hero-copy {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: 2;
+    color: #eae4d8;
+  }
+  .lead-hero-copy .lead-title {
+    color: #f4efe6;
+  }
+  .lead-hero-copy .lead-hero-kicker {
+    color: #e08a78;
+  }
+  .lead-hero-copy .lead-hero-summary {
+    color: rgb(234 228 216 / 0.72);
+  }
+  .lead-hero-copy .lead-hero-meta {
+    color: rgb(234 228 216 / 0.48);
+  }
+  .lead-hero-copy.is-read .lead-title {
+    color: rgb(234 228 216 / 0.7);
+  }
+
+  .rule-soft {
+    background-image: linear-gradient(
+      to right,
+      var(--color-haze),
+      var(--color-haze) 65%,
+      transparent
+    );
+  }
+
+  .lead-title {
+    font-family: var(--reader-font-family);
+    font-synthesis: none;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+    font-feature-settings: 'palt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .row-title {
+    font-family: var(--reader-font-family);
+    font-synthesis: none;
+    text-wrap: pretty;
+    letter-spacing: -0.012em;
+    font-feature-settings: 'palt' 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  .ink-grain {
+    position: relative;
+  }
+  .ink-grain::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    opacity: var(--grain-opacity);
+    mix-blend-mode: var(--grain-blend);
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+}
+
+/* §reader —— 原 reader/typography.css + content-elements.css 子集 */
+.reader-prose {
+  font-family: var(--reader-font-family);
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  contain: style;
+}
+
+.reader-prose p {
+  margin: 0 0 var(--reader-paragraph-gap);
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line-height);
+  color: var(--tone-body-text);
+  text-indent: 0;
+}
+
+.reader-prose:not([data-article-lang='en']) p:not([data-cjk='false']):not(.is-non-cjk),
+.reader-prose p[data-cjk='true'],
+.reader-prose p.is-cjk {
+  text-indent: var(--reader-text-indent);
+}
+
+.reader-prose blockquote p,
+.reader-prose li p,
+.reader-prose figcaption {
+  text-indent: 0 !important;
+}
+
+.reader-prose h2,
+.reader-prose h3 {
+  font-family: var(--reader-font-family);
+  font-weight: 400;
+  font-size: calc(var(--reader-font-size) * 1.3);
+  line-height: 1.4;
+  margin: 1.6em 0 0.6em;
+  color: var(--color-paper);
+}
+
+.reader-prose blockquote {
+  margin: 1.2em 0;
+  padding-left: 14px;
+  border-left: 2px solid color-mix(in oklab, var(--color-cinnabar) 50%, transparent);
+  color: var(--tone-quote-text);
+  font-style: italic;
+}
+
+.reader-prose blockquote p {
+  margin: 0 0 0.5em;
+  font-size: calc(var(--reader-font-size) * 0.96);
+}
+
+.reader-prose a {
+  color: var(--color-cinnabar-soft);
+  text-decoration: none;
+  border-bottom: 1px solid color-mix(in oklab, var(--color-cinnabar-soft) 35%, transparent);
+}
+
+.reader-prose figure {
+  margin: 0.6em 0 1.2em;
+}
+
+.reader-prose figcaption {
+  margin-top: 0.5em;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-paper-faint);
+}
+
+.reader-prose ul {
+  margin: 0 0 var(--reader-paragraph-gap);
+  padding-left: 1.4em;
+  font-size: var(--reader-font-size);
+  line-height: var(--reader-line-height);
+  color: var(--tone-body-text);
+}
+
+.reader-title {
+  font-family: var(--reader-font-family);
+  font-size: calc(var(--reader-font-size) * 1.74);
+  line-height: 1.28;
+  /* 门户里的手机 mock 比真机窄，不加 balance 末行会掉孤字（真机列宽下无此问题） */
+  text-wrap: balance;
+}
+
+/* 译文块（原 reader/translation.css 子集） */
+.reader-prose .translation-block {
+  margin: -0.4em 0 var(--reader-paragraph-gap);
+  padding-top: 0.55em;
+  border-top: 1px solid color-mix(in oklab, var(--color-cinnabar) 16%, transparent);
+  font-size: calc(var(--reader-font-size) * 0.94);
+  color: var(--tone-quote-text);
+}
+
+/* 减少动态效果：CSS 动画直接到位，位移交给 JS（useReducedMotion） */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  .ink-shimmer::after,
+  .ink-progress {
+    animation: none;
+  }
+  .theme-switching *,
+  .theme-switching *::before,
+  .theme-switching *::after {
+    transition-duration: 0.01ms;
+  }
+}
+
+/* §eink —— 原 accessibility.css 的 [data-eink] 压制，作用域改到示意容器 */
+[data-eink='1'] {
+  --shadow-lift: none;
+  --grain-opacity: 0;
+}
+[data-eink='1'] *,
+[data-eink='1'] *::before,
+[data-eink='1'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+}
+[data-eink='1'] [data-surface='tabbar'],
+[data-eink='1'] [data-surface='reader-chrome'] {
+  background-color: var(--color-ink) !important;
+}
