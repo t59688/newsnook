@@ -639,3 +639,57 @@ html .editorial-zhihu-workspace > nav button {
   }
 }
 
+/* CMS index: remove the old solid-accent tab; all six editions use a
+   readable 48px text rail with a small semantic active marker. */
+html .editorial-site-screen .editorial-cms-main-nav {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  min-height: 48px;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-bottom: 1px solid var(--ui-rule);
+}
+html .editorial-site-screen .editorial-cms-main-nav > .editorial-cms-nav-tab {
+  position: relative;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 48px;
+  padding: 0 8px;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--tone-paper-muted);
+  font-size: 13.5px;
+  font-weight: 480;
+  letter-spacing: -0.005em;
+  line-height: 1.4;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+html .editorial-site-screen .editorial-cms-main-nav > .editorial-cms-nav-tab[aria-current='page'] {
+  color: var(--tone-paper) !important;
+  font-weight: 650;
+}
+html .editorial-site-screen .editorial-cms-main-nav > .editorial-cms-nav-tab[aria-current='page']::after {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 0;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--tone-cinnabar);
+  content: '';
+}
+html .editorial-site-screen .editorial-cms-main-nav > .editorial-cms-nav-tab:hover {
+  color: var(--tone-paper);
+}
+@media (prefers-reduced-motion: reduce) {
+  html .editorial-site-screen .editorial-cms-main-nav > .editorial-cms-nav-tab {
+    transition: none !important;
+  }
+}

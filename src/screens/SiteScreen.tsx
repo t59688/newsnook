@@ -370,18 +370,14 @@ export const SiteScreen = memo(function SiteScreen({
           </div>
         )}
 
-        {/* 第二行：分类胶囊栏（优雅 NewsNook 朱砂强调色，告别死黑白方块） */}
+        {/* 主分类：统一选中指示线，消除荧光实心块与换行。 */}
         {!!profile?.categories.length && (
-          <nav aria-label="全站导航" className="page-x flex gap-1.5 overflow-x-auto scroll-hidden pb-2 pt-0.5">
+          <nav aria-label="全站导航" className="editorial-cms-main-nav page-x flex gap-3 overflow-x-auto scroll-hidden">
             <button
               type="button"
               onClick={() => openUrl(source.url)}
               aria-current={loadedUrl === source.url && !searchActive ? 'page' : undefined}
-              className={`shrink-0 rounded-full px-3.5 py-1 text-[12px] font-medium transition-all active:scale-95 ${
-                loadedUrl === source.url && !searchActive
-                  ? 'bg-cinnabar text-white shadow-xs shadow-cinnabar/20'
-                  : 'text-paper-muted hover:text-paper hover:bg-paper/6'
-              }`}
+              className="editorial-cms-nav-tab shrink-0"
             >
               {rootNavigation?.title || '全部'}
             </button>
@@ -393,11 +389,7 @@ export const SiteScreen = memo(function SiteScreen({
                   type="button"
                   onClick={() => openUrl(link.url)}
                   aria-current={active ? 'page' : undefined}
-                  className={`shrink-0 rounded-full px-3.5 py-1 text-[12px] font-medium transition-all active:scale-95 ${
-                    active
-                      ? 'bg-cinnabar text-white shadow-xs shadow-cinnabar/20'
-                      : 'text-paper-muted hover:text-paper hover:bg-paper/6'
-                  }`}
+                  className="editorial-cms-nav-tab shrink-0"
                 >
                   {link.title}
                 </button>

@@ -36,8 +36,8 @@
   --tone-ink-deep-rgb: 8 9 11;
   --tone-paper-muted-rgb: 168 161 148;
   --tone-paper-faint-rgb: 134 128 117;
-  --tone-cinnabar-rgb: 196 92 74;
-  --tone-cinnabar-soft-rgb: 217 132 116;
+  --tone-cinnabar-rgb: 207 133 151;
+  --tone-cinnabar-soft-rgb: 224 165 179;
 
   --tone-ink: #0e0f12;
   --tone-ink-raised: #16181d;
@@ -45,8 +45,8 @@
   --tone-paper: #eae4d8;
   --tone-paper-muted: #a8a194;
   --tone-paper-faint: #868075;
-  --tone-cinnabar: #c45c4a;
-  --tone-cinnabar-soft: #d98474;
+  --tone-cinnabar: #cf8597;
+  --tone-cinnabar-soft: #e0a5b3;
   --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
 
   --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
@@ -83,8 +83,8 @@
   --tone-ink-deep-rgb: 235 228 214;
   --tone-paper-muted-rgb: 82 76 64;
   --tone-paper-faint-rgb: 115 107 92;
-  --tone-cinnabar-rgb: 180 61 38;
-  --tone-cinnabar-soft-rgb: 190 74 51;
+  --tone-cinnabar-rgb: 141 49 77;
+  --tone-cinnabar-soft-rgb: 135 48 71;
 
   --tone-ink: #f6f2e9;
   --tone-ink-raised: #fffcf5;
@@ -92,8 +92,8 @@
   --tone-paper: #1a1815;
   --tone-paper-muted: #524c40;
   --tone-paper-faint: #736b5c;
-  --tone-cinnabar: #b43d26;
-  --tone-cinnabar-soft: #be4a33;
+  --tone-cinnabar: #8d314d;
+  --tone-cinnabar-soft: #873047;
   --tone-haze: rgb(var(--tone-paper-rgb) / 0.11);
 
   --tone-body-text: #201e1a;
@@ -308,8 +308,8 @@
   --tone-ink-deep-rgb: 11 9 7;
   --tone-paper-muted-rgb: 160 141 130;
   --tone-paper-faint-rgb: 144 126 115;
-  --tone-cinnabar-rgb: 224 101 62;
-  --tone-cinnabar-soft-rgb: 237 130 96;
+  --tone-cinnabar-rgb: 231 166 110;
+  --tone-cinnabar-soft-rgb: 239 185 137;
 
   --tone-ink: #14100e;
   --tone-ink-raised: #1e1815;
@@ -317,8 +317,8 @@
   --tone-paper: #ece1d8;
   --tone-paper-muted: #a08d82;
   --tone-paper-faint: #907e73;
-  --tone-cinnabar: #e0653e;
-  --tone-cinnabar-soft: #ed8260;
+  --tone-cinnabar: #e7a66e;
+  --tone-cinnabar-soft: #efb989;
   --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
 
   --tone-body-text: rgb(var(--tone-paper-rgb) / 0.86);
@@ -349,8 +349,8 @@
   --tone-ink-deep-rgb: 235 224 216;
   --tone-paper-muted-rgb: 120 93 82;
   --tone-paper-faint-rgb: 131 103 92;
-  --tone-cinnabar-rgb: 196 72 32;
-  --tone-cinnabar-soft-rgb: 220 97 57;
+  --tone-cinnabar-rgb: 157 88 21;
+  --tone-cinnabar-soft-rgb: 150 80 20;
 
   --tone-ink: #f6efea;
   --tone-ink-raised: #fcf8f5;
@@ -358,8 +358,8 @@
   --tone-paper: #241814;
   --tone-paper-muted: #785d52;
   --tone-paper-faint: #83675c;
-  --tone-cinnabar: #c44820;
-  --tone-cinnabar-soft: #dc6139;
+  --tone-cinnabar: #9d5815;
+  --tone-cinnabar-soft: #965014;
   --tone-haze: rgb(var(--tone-paper-rgb) / 0.08);
 
   --tone-body-text: #241814;

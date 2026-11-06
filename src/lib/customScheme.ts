@@ -19,8 +19,8 @@ export type CustomSchemePrefs = Record<ResolvedTheme, CustomSchemeColors>
 
 /** 首次进入自定义时的起点：与墨问一致，用户在此基础上微调 */
 export const DEFAULT_CUSTOM_SCHEME: CustomSchemePrefs = {
-  light: { ink: '#f6f2e9', accent: '#b43d26' },
-  dark: { ink: '#0e0f12', accent: '#c45c4a' },
+  light: { ink: '#f6f2e9', accent: '#8d314d' },
+  dark: { ink: '#0e0f12', accent: '#cf8597' },
 }
 
 // —— 颜色基础工具（RGB 空间混合 + WCAG 相对亮度，足够配色推导使用） ——
