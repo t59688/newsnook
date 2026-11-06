@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Check, ChevronDown, Moon, Sun } from 'lucide-react'
+import { SCHEMES, type SchemeKey } from '../lib/demo'
 
-export type SchemeId = 'ink' | 'pearl' | 'buer'
+type SchemeId = SchemeKey
 
-export interface FeaturedScheme {
+interface FeaturedScheme {
   id: SchemeId
   name: string
   caption: string
@@ -11,54 +12,36 @@ export interface FeaturedScheme {
   previewBg: string
 }
 
-export const FEATURED_SCHEMES: FeaturedScheme[] = [
-  {
-    id: 'ink',
-    name: '莫问',
-    caption: '宣纸 · 朱砂',
-    accentColor: '#c45c4a',
-    previewBg: '#16181d',
-  },
-  {
-    id: 'pearl',
-    name: '群青',
-    caption: '工业冷白 · 门户默认',
-    accentColor: '#387bff',
-    previewBg: '#141822',
-  },
-  {
-    id: 'buer',
-    name: '不二',
-    caption: '先锋社论 · 极简墨翠',
-    accentColor: '#166534',
-    previewBg: '#131518',
-  },
-]
+const FEATURED_SCHEMES: FeaturedScheme[] = SCHEMES.map((scheme) => ({
+  id: scheme.key,
+  name: scheme.name,
+  caption: scheme.caption,
+  accentColor: scheme.dark.accent,
+  previewBg: scheme.dark.ink,
+}))
 
-export function getSchemeAccent(id: SchemeId, isLight: boolean): string {
-  if (id === 'buer') return isLight ? '#166534' : '#c8f008'
-  if (id === 'pearl') return isLight ? '#1856f3' : '#387bff'
-  return isLight ? '#b43d26' : '#c45c4a'
+function getSchemeAccent(id: SchemeId, isLight: boolean): string {
+  const scheme = SCHEMES.find((item) => item.key === id) ?? SCHEMES[0]
+  return isLight ? scheme.light.accent : scheme.dark.accent
 }
 
-export function usePortalTheme() {
+function usePortalTheme() {
   const [isLight, setIsLight] = useState(() => {
     if (typeof document === 'undefined') return false
     return document.documentElement.dataset.theme === 'light'
   })
 
   const [activeScheme, setActiveScheme] = useState<SchemeId>(() => {
-    if (typeof document === 'undefined') return 'pearl'
+    if (typeof document === 'undefined') return 'ink'
     const s = document.documentElement.dataset.scheme
-    return s === 'ink' || s === 'buer' ? s : 'pearl'
+    return SCHEMES.find((item) => item.key === s)?.key ?? 'ink'
   })
 
   useEffect(() => {
     const handleStorage = () => {
       const s = document.documentElement.dataset.scheme
-      if (s === 'pearl' || s === 'buer' || s === 'ink') {
-        setActiveScheme(s)
-      }
+      const found = SCHEMES.find((item) => item.key === s)
+      if (found) setActiveScheme(found.key)
       setIsLight(document.documentElement.dataset.theme === 'light')
     }
     window.addEventListener('storage', handleStorage)
@@ -104,13 +87,13 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
 
   return (
     <div className="relative flex items-center gap-1.5">
-      {/* 3 款核心主题切换选择器（莫问 · 群青 · 不二） */}
+      {/* 六款内置阅读主题，颜色取自产品演示的同一份源数据。 */}
       <div className="relative">
         <button
           type="button"
           onClick={() => setMenuOpen(!menuOpen)}
           aria-expanded={menuOpen}
-          aria-label="选择主题方案：莫问、群青、不二"
+          aria-label="选择六套阅读主题"
           className="pressable flex h-8 items-center gap-1.5 rounded-full border border-haze bg-ink-raised/60 px-2.5 text-[11px] font-mono text-paper-muted transition-colors hover:border-paper-faint/40 hover:text-paper shadow-2xs"
         >
           <span
@@ -132,7 +115,7 @@ export function ThemeToggle({ compact = false }: { compact?: boolean }) {
             />
             <div className="absolute right-0 top-full z-50 mt-1.5 w-52 overflow-hidden rounded-2xl border border-haze/80 bg-ink-raised p-1.5 shadow-2xl backdrop-blur-xl">
               <div className="px-2.5 py-1.5 font-mono text-[9.5px] tracking-wider text-paper-faint">
-                切换核心主题方案
+                选择阅读主题
               </div>
               <div className="space-y-1">
                 {FEATURED_SCHEMES.map((item) => {

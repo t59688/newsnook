@@ -170,13 +170,13 @@ export const PRESETS = [
   { id: 'builtin-v2-life', name: '文体生活', desc: '体育、娱乐、游戏、轻松内容与旅行出行', count: 22 },
 ]
 
-/** 官方主题配色方案（完全对齐 src/lib/theme.ts），首推三款核心定制方案：莫问、群青、不二 */
+/** 官方主题配色方案（完全对齐 src/lib/theme.ts），首推三款核心定制方案：墨问、群青、不二 */
 export const SCHEMES = [
-  { key: 'ink', name: '莫问', caption: '宣纸 · 朱砂 · 默认', light: { ink: '#f6f2e9', paper: '#1a1815', accent: '#b43d26' }, dark: { ink: '#0e0f12', paper: '#eae4d8', accent: '#c45c4a' } },
+  { key: 'ink', name: '墨问', caption: '宣纸 · 朱砂 · 默认', light: { ink: '#f6f2e9', paper: '#1a1815', accent: '#8d314d' }, dark: { ink: '#0e0f12', paper: '#eae4d8', accent: '#cf8597' } },
   { key: 'pearl', name: '群青', caption: '工业冷白 · 瑞士大报', light: { ink: '#f4f6f9', paper: '#101318', accent: '#1856f3' }, dark: { ink: '#0b0e14', paper: '#e6ecf5', accent: '#387bff' } },
   { key: 'buer', name: '不二', caption: '先锋社论 · 极简墨翠', light: { ink: '#fafafc', paper: '#111215', accent: '#166534' }, dark: { ink: '#090a0c', paper: '#f4f5f7', accent: '#c8f008' } },
   { key: 'celadon', name: '竹青', caption: '晨露竹林 · 碧玉冷翠', light: { ink: '#e8f0ea', paper: '#122019', accent: '#1b734e' }, dark: { ink: '#0d1612', paper: '#d7e8de', accent: '#3bb57e' } },
-  { key: 'amber', name: '赤霞', caption: '暖砂陶土 · 落日晚霞', light: { ink: '#f6efea', paper: '#241814', accent: '#c44820' }, dark: { ink: '#14100e', paper: '#ece1d8', accent: '#e0653e' } },
+  { key: 'amber', name: '赤霞', caption: '暖砂陶土 · 落日晚霞', light: { ink: '#f6efea', paper: '#241814', accent: '#9d5815' }, dark: { ink: '#14100e', paper: '#ece1d8', accent: '#e7a66e' } },
   { key: 'dusk', name: '紫宸', caption: '暮山薄雾 · 丝绒星穹', light: { ink: '#f3eff7', paper: '#221628', accent: '#7e3ba8' }, dark: { ink: '#120e18', paper: '#e7deee', accent: '#b76ee8' } },
 ] as const
 

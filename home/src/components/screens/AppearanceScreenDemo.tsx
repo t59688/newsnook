@@ -56,7 +56,7 @@ export function AppearanceScreenDemo() {
             </span>
           </div>
           <span className="rounded-full bg-cinnabar/15 px-2 py-0.5 font-mono text-[9px] text-cinnabar-soft font-semibold">
-            莫问 · 群青 · 不二
+            墨问 · 群青 · 不二
           </span>
         </div>
       </header>

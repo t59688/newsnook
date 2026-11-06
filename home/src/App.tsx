@@ -4,6 +4,7 @@ import { HeroScroll } from './heroes/HeroScroll'
 import { NarrativeShowcase } from './portal/NarrativeShowcase'
 import { Download } from './portal/Download'
 import { Footer } from './portal/Footer'
+import './portal.css'
 
 export default function App() {
   useEffect(() => {
@@ -18,7 +19,8 @@ export default function App() {
   }, [])
 
   return (
-    <div className="ink-grain min-h-dvh bg-ink-deep text-paper selection:bg-cinnabar/30 selection:text-paper">
+    <div className="portal-site ink-grain min-h-dvh bg-ink text-paper selection:bg-cinnabar/30 selection:text-paper">
+      <a className="portal-skip" href="#feed">跳到产品体验</a>
       <Nav />
       <main>
         {/* 首屏导引与真机交互 */}
