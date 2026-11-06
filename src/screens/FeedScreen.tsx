@@ -160,7 +160,7 @@ function CategoryPeek({
           />
         )}
         {homeFeedLayout === 'cards' ? (
-          <ul className="grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
+          <ul className="editorial-mobile-card-grid grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
             {rest.map((article) => (
               <ArticleRow
                 key={article.id}
@@ -673,8 +673,8 @@ export const FeedScreen = memo(function FeedScreen({
           )}
 
           {useCompactCards ? (
-            /* 手机双列卡片：连续优雅杂志流，卡片自然并排排满，左右严整对齐，杜绝被日期硬切碎导致的空洞与横竖混杂 */
-            <ul className="grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
+            /* 手机双列卡片：保留双列高密度，首条变为跨列编辑特写以建立阅读节奏。 */
+            <ul className="editorial-mobile-card-grid grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
               {rest.map((article) => (
                 <ArticleRow
                   key={article.id}
@@ -746,7 +746,7 @@ export const FeedScreen = memo(function FeedScreen({
             </div>
           ) : (
             /* 桌面端规则多列网格：双栏/多栏卡片杂志流 */
-            <ul className="grid grid-cols-2 gap-4 px-6 py-4 xl:grid-cols-3 2xl:grid-cols-4 min-[2100px]:grid-cols-5 xl:px-8 2xl:px-10 min-[2100px]:gap-5">
+            <ul className="editorial-desktop-card-grid grid grid-cols-2 gap-4 px-6 py-4 xl:grid-cols-3 2xl:grid-cols-4 min-[2100px]:grid-cols-5 xl:px-8 2xl:px-10 min-[2100px]:gap-5">
               {rest.map((article) => (
                 <ArticleRow
                   key={article.id}

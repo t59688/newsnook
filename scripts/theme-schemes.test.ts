@@ -262,7 +262,32 @@ for (const [file, marker] of [
 }
 assert.ok(editorialCss.includes('[data-eink=\'1\']'), '阅读器微调不得影响墨水屏分页')
 
-console.log('buer contrast + global editorial layouts: ok')
+// 杂志排版属于共享布局，不能绑定某个配色，也不能破坏 Android 9 WebView 69。
+const magazineCss = readFileSync(resolve('src/styles/editorial-magazine.css'), 'utf8')
+assert.ok(readFileSync(resolve('src/index.css'), 'utf8').includes("@import './styles/editorial-magazine.css'"), '缺少杂志布局入口')
+for (const selector of [
+  '.editorial-lead-mobile',
+  '.editorial-lead-spread',
+  '.editorial-desktop-card-grid',
+  '.editorial-mobile-card-grid',
+  '.editorial-feed-day',
+  '.editorial-reader-heading',
+]) {
+  assert.ok(magazineCss.includes(selector), `杂志布局缺少 ${selector}`)
+}
+for (const [file, marker] of [
+  ['src/screens/FeedScreen.tsx', 'editorial-mobile-card-grid'],
+  ['src/screens/FeedScreen.tsx', 'editorial-desktop-card-grid'],
+  ['src/components/ArticleItem.tsx', 'editorial-lead-spread'],
+  ['src/components/ArticleItem.tsx', 'editorial-card-title'],
+]) {
+  assert.ok(readFileSync(resolve(file), 'utf8').includes(marker), `${file} 缺少 ${marker}`)
+}
+assert.ok(!magazineCss.includes("[data-scheme='buer']"), '杂志版式不得限定在不二主题')
+assert.ok(!/:has\(|\bclamp\(/.test(magazineCss), '杂志布局不能依赖 WebView 69 不支持的选择器或尺寸函数')
+assert.ok(magazineCss.includes("html:not([data-eink='1']) .editorial-reader-heading"), '杂志阅读页必须隔离墨水屏')
+
+console.log('buer contrast + global editorial and magazine layouts: ok')
 
 // —— 颜色工具与推导：hex 往返、混合、对比度兜底 ——
 

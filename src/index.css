@@ -43,3 +43,6 @@
 
 /* All theme schemes share editorial layout, density, and accessible interaction. */
 @import './styles/editorial-system.css';
+
+/* Magazine-grade story hierarchy; composition is shared, colors stay theme-owned. */
+@import './styles/editorial-magazine.css';

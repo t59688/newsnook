@@ -1,0 +1,514 @@
+/*
+ * NewsNook editorial magazine layer.
+ *
+ * Layout follows a publication rhythm: one cover story, an asymmetric opening
+ * spread, then smaller briefs. Content and existing source images remain real;
+ * this stylesheet does not alter article ordering or reading preferences.
+ *
+ * All colors follow the active theme. Avoid CSS features newer than Android
+ * WebView 69 in layout-critical rules.
+ */
+
+/* Cover story — mobile: photograph and headline are separate surfaces.
+   Unlike an image overlay, every headline stays readable on any photograph. */
+html .editorial-lead-mobile,
+html .editorial-lead-mobile.is-framed {
+  display: flex !important;
+  flex-direction: column;
+  height: auto !important;
+  width: 100% !important;
+  margin: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  background: var(--tone-ink) !important;
+}
+
+html .editorial-lead-mobile-photo {
+  display: block;
+  position: relative;
+  flex: none;
+  height: 218px !important;
+  overflow: hidden;
+  background: var(--tone-ink-deep);
+}
+
+html .editorial-lead-mobile-photo img {
+  display: block;
+  height: 100%;
+  width: 100%;
+  object-fit: cover;
+}
+
+html .editorial-lead-mobile-veil {
+  display: none !important;
+}
+
+html .editorial-lead-mobile-copy {
+  position: relative !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  z-index: 2;
+  display: block;
+  padding: 18px 20px 22px !important;
+  border-bottom: 1px solid var(--ui-rule);
+  background: var(--tone-ink);
+  color: var(--tone-paper) !important;
+}
+
+html .editorial-lead-mobile .editorial-lead-kicker {
+  font-size: 11.5px !important;
+  letter-spacing: 0.055em !important;
+  color: var(--tone-paper-muted) !important;
+}
+
+html .editorial-lead-mobile .editorial-lead-kicker [role='button']:hover {
+  color: var(--tone-paper) !important;
+}
+
+html .editorial-lead-mobile-title {
+  display: -webkit-box;
+  margin-top: 9px !important;
+  font-family: var(--font-display) !important;
+  font-size: 23px !important;
+  font-weight: 540 !important;
+  line-height: 1.31 !important;
+  letter-spacing: -0.026em !important;
+  -webkit-line-clamp: 3 !important;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--tone-paper) !important;
+}
+
+html .editorial-lead-mobile .lead-hero-summary {
+  display: -webkit-box;
+  margin-top: 8px !important;
+  font-family: var(--font-body);
+  font-size: 13px !important;
+  line-height: 1.6 !important;
+  -webkit-line-clamp: 2 !important;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--tone-paper-muted) !important;
+}
+
+html .editorial-lead-mobile .lead-hero-meta {
+  margin-top: 12px !important;
+  font-size: 11.5px !important;
+  letter-spacing: 0.015em !important;
+  color: var(--tone-paper-muted) !important;
+}
+
+html .editorial-lead-mobile .lead-hero-meta > span:last-child {
+  color: var(--tone-paper) !important;
+  font-weight: 550;
+}
+
+html .editorial-lead-mobile .lead-hero-meta > span:nth-child(2) {
+  background: var(--ui-rule);
+}
+
+/* Publication rhythm — weekday markers become actual section dividers. */
+html .editorial-feed-day {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding-top: 22px !important;
+  padding-bottom: 7px !important;
+}
+
+html .editorial-feed-day > span:first-child {
+  flex: none;
+  font-family: var(--font-display);
+  font-size: 18px !important;
+  font-weight: 500;
+  line-height: 1.35;
+  letter-spacing: -0.02em !important;
+  color: var(--tone-paper) !important;
+}
+
+html .editorial-feed-day > .editorial-day-rule {
+  display: block;
+  height: 1px;
+  flex: 1 1 0;
+  width: auto !important;
+  max-width: none;
+  background: var(--ui-rule) !important;
+}
+
+/* Desktop cover spread: unboxed large photograph and strong typographic
+   column. The two surfaces are in the same grid but breathe independently. */
+@media (min-width: 1024px) {
+  html .editorial-lead-desktop {
+    width: 100%;
+    max-width: 1512px;
+    margin: 13px auto 15px !important;
+    padding: 0 27px !important;
+  }
+
+  html .editorial-lead-spread {
+    display: grid !important;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr) !important;
+    column-gap: 0 !important;
+    align-items: stretch !important;
+    padding: 13px 0 24px !important;
+    border: 0 !important;
+    border-top: 2px solid var(--tone-paper) !important;
+    border-bottom: 1px solid var(--ui-rule) !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: transparent !important;
+    opacity: 1 !important;
+    transform: none !important;
+  }
+
+  html .editorial-lead-spread:hover {
+    background: transparent !important;
+    box-shadow: none !important;
+  }
+
+  html .editorial-lead-desktop-photo {
+    order: 2;
+    grid-column: auto !important;
+    align-self: stretch;
+    height: 390px !important;
+    min-width: 0;
+    border: 0 !important;
+    border-radius: 2px !important;
+    background: var(--tone-ink-deep);
+  }
+
+  html .editorial-lead-desktop-photo img {
+    object-fit: cover;
+  }
+
+  html .editorial-lead-spread:hover .editorial-lead-desktop-photo img,
+  html .editorial-lead-spread:focus-visible .editorial-lead-desktop-photo img {
+    transform: scale(1.012) !important;
+  }
+
+  html .editorial-lead-desktop-copy {
+    order: 1;
+    grid-column: auto !important;
+    min-width: 0;
+    min-height: 390px;
+    padding: 20px 36px 7px 1px !important;
+    justify-content: space-between;
+  }
+
+  html .editorial-lead-desktop-copy > div:first-child > div:first-child {
+    font-size: 12px !important;
+    letter-spacing: 0.08em !important;
+    color: var(--tone-paper-muted) !important;
+  }
+
+  html .editorial-lead-desktop-title {
+    margin-top: 20px !important;
+    font-family: var(--font-display) !important;
+    font-size: 37px !important;
+    font-weight: 540 !important;
+    line-height: 1.23 !important;
+    letter-spacing: -0.035em !important;
+    -webkit-line-clamp: 4 !important;
+    color: var(--tone-paper) !important;
+  }
+
+  html .editorial-lead-desktop-title:hover {
+    color: var(--tone-paper) !important;
+  }
+
+  html .editorial-lead-desktop-copy > div:first-child > p {
+    margin-top: 17px !important;
+    font-size: 14.5px !important;
+    line-height: 1.75 !important;
+    -webkit-line-clamp: 3 !important;
+    color: var(--tone-paper-muted) !important;
+  }
+
+  html .editorial-lead-desktop-copy > div:last-child {
+    border-top-color: var(--ui-rule) !important;
+    font-size: 12px !important;
+  }
+
+  /* Cards follow a 7/5 opening pair, then a 3-column contents grid. */
+  html .editorial-desktop-card-grid {
+    display: grid !important;
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+    column-gap: 23px !important;
+    row-gap: 29px !important;
+    padding-top: 10px !important;
+  }
+
+  html .editorial-desktop-card-grid > .editorial-article-item {
+    grid-column: span 4;
+    min-width: 0;
+  }
+
+  html .editorial-desktop-card-grid > .editorial-article-item:first-child {
+    grid-column: span 7;
+  }
+
+  html .editorial-desktop-card-grid > .editorial-article-item:nth-child(2) {
+    grid-column: span 5;
+  }
+
+  html .editorial-desktop-card-grid > .editorial-article-item:only-child {
+    grid-column: span 12;
+  }
+
+  html .editorial-desktop-card-grid > .editorial-article-item[data-variant='card'] > .editorial-story-tile {
+    display: flex !important;
+    padding: 14px 0 17px !important;
+    border: 0 !important;
+    border-top: 1px solid var(--ui-rule) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    transform: none !important;
+    clip-path: none !important;
+  }
+
+  html .editorial-desktop-card-grid > .editorial-article-item[data-variant='card'] > .editorial-story-tile:hover,
+  html .editorial-desktop-card-grid > .editorial-article-item[data-variant='card'] > .editorial-story-tile:focus-visible {
+    box-shadow: none !important;
+    background: transparent !important;
+  }
+
+  html .editorial-desktop-card-grid .editorial-card-media {
+    margin-bottom: 14px !important;
+    border: 0 !important;
+    border-radius: 2px !important;
+    background: var(--tone-ink-deep);
+  }
+
+  html .editorial-desktop-card-grid .editorial-card-media > * {
+    height: 174px !important;
+    width: 100%;
+    object-fit: cover;
+  }
+
+  html .editorial-desktop-card-grid > li:nth-child(-n+2) .editorial-card-media > * {
+    height: 230px !important;
+  }
+
+  html .editorial-desktop-card-grid .editorial-card-title {
+    font-family: var(--font-display) !important;
+    font-size: 21px !important;
+    font-weight: 550 !important;
+    line-height: 1.36 !important;
+    letter-spacing: -0.025em !important;
+    color: var(--tone-paper) !important;
+  }
+
+  html .editorial-desktop-card-grid > li:first-child .editorial-card-title {
+    font-size: 25px !important;
+    line-height: 1.3 !important;
+  }
+
+  html .editorial-desktop-card-grid .editorial-card-summary {
+    margin-top: 9px !important;
+    font-size: 13.5px !important;
+    line-height: 1.67 !important;
+    color: var(--tone-paper-muted) !important;
+  }
+
+  /* The image and headline are the entry; the same call-to-action repeated
+     in every tile makes the grid read like an app catalogue, not a magazine. */
+  html .editorial-desktop-card-grid .editorial-card-footer {
+    display: none !important;
+  }
+}
+
+@media (min-width: 1024px) and (max-width: 1299px) {
+  html .editorial-lead-desktop-photo {
+    height: 340px !important;
+  }
+  html .editorial-lead-desktop-copy {
+    min-height: 340px;
+    padding-right: 20px !important;
+  }
+  html .editorial-lead-desktop-title {
+    font-size: 31px !important;
+    margin-top: 14px !important;
+  }
+  html .editorial-lead-desktop-copy > div:first-child > p {
+    margin-top: 10px !important;
+    font-size: 13.5px !important;
+  }
+  html .editorial-desktop-card-grid > li:nth-child(-n+2) .editorial-card-media > * {
+    height: 194px !important;
+  }
+}
+
+@media (min-width: 1650px) {
+  html .editorial-lead-desktop-photo {
+    height: 440px !important;
+  }
+  html .editorial-lead-desktop-copy {
+    min-height: 440px;
+  }
+  html .editorial-lead-desktop-title {
+    font-size: 44px !important;
+  }
+}
+
+/* Mobile contents: a full-width horizontal story opens the following paired
+   cards. At 320px the ordinary single column is safer and more readable. */
+@media (min-width: 360px) and (max-width: 1023px) {
+  html .editorial-mobile-card-grid {
+    row-gap: 15px !important;
+    column-gap: 13px !important;
+    padding-top: 15px !important;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item:first-child {
+    grid-column: 1 / -1;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item:first-child > button {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) 39%;
+    grid-template-rows: auto;
+    align-items: stretch;
+    min-height: 170px;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item:first-child > button > :first-child {
+    grid-column: 2;
+    grid-row: 1;
+    height: 100%;
+    min-height: 170px;
+    max-height: 220px;
+    border: 0 !important;
+    border-radius: 1px !important;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item:first-child > button > :last-child {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+    padding: 13px 14px 12px 6px !important;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item:first-child .row-title {
+    font-family: var(--font-display);
+    font-size: 19px !important;
+    line-height: 1.36 !important;
+    letter-spacing: -0.028em !important;
+    -webkit-line-clamp: 3 !important;
+  }
+}
+
+@media (max-width: 1023px) {
+  html .editorial-mobile-card-grid > .editorial-article-item > button {
+    border: 0 !important;
+    border-top: 1px solid var(--ui-rule) !important;
+    border-radius: 0 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    clip-path: none !important;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item > button > :first-child {
+    border-radius: 2px !important;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item .row-title {
+    font-weight: 560 !important;
+    color: var(--tone-paper) !important;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item[data-read='true'] .row-title {
+    font-weight: 450 !important;
+    color: var(--tone-paper-muted) !important;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item .font-mono {
+    font-size: 10.5px;
+    letter-spacing: 0.01em;
+  }
+
+  html .editorial-mobile-card-grid > .editorial-article-item .line-clamp-2:not(.row-title) {
+    color: var(--tone-paper-muted) !important;
+    font-size: 12px !important;
+    line-height: 1.55 !important;
+  }
+
+  html .editorial-feed-timeline .editorial-article-row {
+    border-radius: 0 !important;
+  }
+}
+
+@media (max-width: 359px) {
+  html .editorial-lead-mobile-photo { height: 185px !important; }
+  html .editorial-lead-mobile-copy { padding: 15px 16px 17px !important; }
+  html .editorial-lead-mobile-title { font-size: 20px !important; }
+}
+
+/* Article detail uses a typographic title block and a quiet photo,
+   while keeping user-selected font family, scale, indentation and line-height. */
+html:not([data-eink='1']) .editorial-reader-heading {
+  padding-bottom: 23px !important;
+  border-bottom: 1px solid var(--ui-rule);
+}
+
+html:not([data-eink='1']) .editorial-reader-heading > span:first-child {
+  font-size: 11.5px !important;
+  letter-spacing: 0.07em !important;
+}
+
+html:not([data-eink='1']) .editorial-reader-heading .reader-title {
+  margin-top: 15px !important;
+  font-weight: 550 !important;
+  line-height: 1.27 !important;
+  letter-spacing: -0.027em !important;
+}
+
+html:not([data-eink='1']) .editorial-reader-cover > * {
+  border-radius: 3px !important;
+}
+
+html:not([data-eink='1']) .editorial-reader-main {
+  padding-top: 31px !important;
+}
+
+/* Utility screens speak the same typographic language, but stay functional:
+   editorial headings and simple rules, not oversized imagery or flourishes. */
+html .paper-settings-root .paper-settings-header h1,
+html .paper-settings-shell .paper-settings-shell-title {
+  font-family: var(--font-display);
+  font-weight: 570;
+  letter-spacing: -0.03em;
+}
+
+html .paper-settings-root .paper-settings-panel {
+  border-radius: 10px !important;
+  box-shadow: none !important;
+}
+
+html .editorial-rss-catalog > header {
+  border: 0 !important;
+  border-top: 2px solid var(--tone-paper) !important;
+  border-bottom: 1px solid var(--ui-rule) !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+html .editorial-rss-catalog > header h2 {
+  font-family: var(--font-display) !important;
+  font-size: 22px !important;
+  font-weight: 550 !important;
+  line-height: 1.32 !important;
+  letter-spacing: -0.025em !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html .editorial-lead-spread *,
+  html .editorial-desktop-card-grid *,
+  html .editorial-mobile-card-grid * {
+    transition: none !important;
+  }
+}

@@ -302,7 +302,7 @@ export const ArticleRow = memo(function ArticleRow({
         <button
           type="button"
           onClick={() => onOpen(article)}
-          className={`group pressable-card chamfer-surface relative h-full w-full flex-col justify-between rounded-xl border p-5 text-left transition-all duration-300 ${
+          className={`editorial-story-tile group pressable-card chamfer-surface relative h-full w-full flex-col justify-between rounded-xl border p-5 text-left transition-all duration-300 ${
             variant === 'auto' ? 'hidden md:flex' : 'flex'
           } ${
             read
@@ -313,7 +313,7 @@ export const ArticleRow = memo(function ArticleRow({
           <div className="w-full">
             {/* 大图展示 (如果有图)，无图时展示形式化编辑封面以维持网格对齐 */}
             {cover ? (
-              <div className="relative mb-3.5 overflow-hidden rounded-lg bg-ink border border-haze/60">
+              <div className="editorial-card-media relative mb-3.5 overflow-hidden rounded-lg bg-ink border border-haze/60">
                 <InkImage
                   src={cover}
                   onFailed={onFailed}
@@ -331,7 +331,7 @@ export const ArticleRow = memo(function ArticleRow({
                 )}
               </div>
             ) : (
-              <div className="relative mb-3.5 overflow-hidden rounded-lg border border-haze/60">
+              <div className="editorial-card-media relative mb-3.5 overflow-hidden rounded-lg border border-haze/60">
                 <EditorialCoverPlaceholder
                   article={article}
                   read={read}
@@ -385,7 +385,7 @@ export const ArticleRow = memo(function ArticleRow({
 
             {/* 文章标题 */}
             <h2
-              className={`row-title mt-2 line-clamp-3 text-[18px] xl:text-[19px] leading-[1.42] tracking-[0.005em] transition-colors duration-200 ${
+              className={`editorial-card-title row-title mt-2 line-clamp-3 text-[18px] xl:text-[19px] leading-[1.42] tracking-[0.005em] transition-colors duration-200 ${
                 read
                   ? 'font-normal text-paper-muted/80'
                   : 'font-medium text-paper group-hover:text-cinnabar'
@@ -404,7 +404,7 @@ export const ArticleRow = memo(function ArticleRow({
             {/* 摘要导读 */}
             {displaySummary && (
               <p
-                className={`mt-2 line-clamp-3 text-[13.5px] leading-[1.65] ${
+                className={`editorial-card-summary mt-2 line-clamp-3 text-[13.5px] leading-[1.65] ${
                   read ? 'text-paper-faint/80' : 'text-paper-muted'
                 }`}
               >
@@ -414,7 +414,7 @@ export const ArticleRow = memo(function ArticleRow({
           </div>
 
           {/* 卡片底栏提示 */}
-          <div className="mt-4 flex items-center justify-between pt-3 border-t border-haze/50 font-mono text-[10.5px] text-paper-faint">
+          <div className="editorial-card-footer mt-4 flex items-center justify-between pt-3 border-t border-haze/50 font-mono text-[10.5px] text-paper-faint">
             <span>{read ? '已读 · 点击重温' : '点击阅读全文'}</span>
             <span className="text-paper-muted group-hover:text-cinnabar group-hover:translate-x-0.5 transition-all">
               →
@@ -503,10 +503,10 @@ export const LeadStory = memo(function LeadStory({
           data-reveal={revealed ? undefined : true}
           type="button"
           onClick={() => onOpen(article)}
-          className={`lead-hero h-[14.5rem] sm:h-[16rem] group text-left ${framed ? 'is-framed' : ''} ${variant === 'auto' ? 'lg:hidden' : ''}`}
+          className={`editorial-lead-mobile lead-hero h-[14.5rem] sm:h-[16rem] group text-left ${framed ? 'is-framed' : ''} ${variant === 'auto' ? 'lg:hidden' : ''}`}
         >
           {/* 外层固定高度：封面补救失败后 InkImage 可能卸载，头条框仍须占位 */}
-          <span className="block h-[14.5rem] w-full overflow-hidden sm:h-[16rem]" aria-hidden={!cover}>
+          <span className="editorial-lead-mobile-photo block h-[14.5rem] w-full overflow-hidden sm:h-[16rem]" aria-hidden={!cover}>
             {cover ? (
               <InkImage
                 src={cover}
@@ -518,9 +518,9 @@ export const LeadStory = memo(function LeadStory({
               />
             ) : null}
           </span>
-          <span className="lead-cover-veil" aria-hidden />
-          <span className={`lead-hero-copy page-x pb-4 pt-10 sm:pb-4.5 ${read ? 'is-read' : ''}`}>
-            <span className="lead-hero-kicker flex items-center gap-2 font-mono text-[11px] tracking-[0.14em]">
+          <span className="editorial-lead-mobile-veil lead-cover-veil" aria-hidden />
+          <span className={`editorial-lead-mobile-copy lead-hero-copy page-x pb-4 pt-10 sm:pb-4.5 ${read ? 'is-read' : ''}`}>
+            <span className="editorial-lead-kicker lead-hero-kicker flex items-center gap-2 font-mono text-[11px] tracking-[0.14em]">
               <span className="h-[2px] w-3.5 rounded-full bg-cinnabar" aria-hidden />
               <span
                 role={onSourceClick ? 'button' : undefined}
@@ -548,7 +548,7 @@ export const LeadStory = memo(function LeadStory({
               )}
               {renderTranslateBadge()}
             </span>
-            <span className="lead-title mt-2 line-clamp-2 sm:line-clamp-3 text-[19px] font-medium leading-[1.42] tracking-[-0.01em] sm:text-[21px]">
+            <span className="editorial-lead-mobile-title lead-title mt-2 line-clamp-2 sm:line-clamp-3 text-[19px] font-medium leading-[1.42] tracking-[-0.01em] sm:text-[21px]">
               {activeTitle}
             </span>
             {isTranslated && displayMode === 'compare' && (
@@ -574,19 +574,19 @@ export const LeadStory = memo(function LeadStory({
       {showBanner && (
         <div
           data-reveal={revealed ? undefined : true}
-          className={`${variant === 'auto' ? 'hidden lg:block' : ''} my-6 px-6 xl:px-8 2xl:px-10`}
+          className={`editorial-lead-desktop ${variant === 'auto' ? 'hidden lg:block' : ''} my-6 px-6 xl:px-8 2xl:px-10`}
         >
           <button
             type="button"
             onClick={() => onOpen(article)}
-            className={`group relative grid w-full grid-cols-12 gap-8 items-center rounded-2xl border p-6 xl:p-8 2xl:p-10 text-left transition-all duration-300 ${
+            className={`editorial-lead-spread group relative grid w-full grid-cols-12 gap-8 items-center rounded-2xl border p-6 xl:p-8 2xl:p-10 text-left transition-all duration-300 ${
               read
                 ? 'border-haze bg-ink/50 hover:bg-ink-raised/50 opacity-90'
                 : 'border-haze bg-ink-raised/60 hover:border-paper-faint/40 hover:bg-ink-raised hover:shadow-xl'
             }`}
           >
             {/* 左侧大图 (7 栅格) */}
-            <div className="col-span-7 h-[300px] xl:h-[350px] 2xl:h-[400px] w-full overflow-hidden rounded-xl bg-ink border border-haze/70 relative">
+            <div className="editorial-lead-desktop-photo col-span-7 h-[300px] xl:h-[350px] 2xl:h-[400px] w-full overflow-hidden rounded-xl bg-ink border border-haze/70 relative">
               <InkImage
                 src={cover}
                 onFailed={onFailed}
@@ -599,7 +599,7 @@ export const LeadStory = memo(function LeadStory({
             </div>
 
             {/* 右侧深度排版区 (5 栅格) */}
-            <div className="col-span-5 flex flex-col justify-between h-full py-2">
+            <div className="editorial-lead-desktop-copy col-span-5 flex flex-col justify-between h-full py-2">
               <div>
                 <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] text-cinnabar-soft">
                   <span className="h-px w-6 bg-cinnabar" aria-hidden />
@@ -631,7 +631,7 @@ export const LeadStory = memo(function LeadStory({
                 </div>
 
                 <h1
-                  className={`lead-title mt-4 line-clamp-3 text-[26px] xl:text-[30px] leading-[1.32] font-medium transition-colors duration-200 ${
+                  className={`editorial-lead-desktop-title lead-title mt-4 line-clamp-3 text-[26px] xl:text-[30px] leading-[1.32] font-medium transition-colors duration-200 ${
                     read
                       ? 'text-paper-muted/90'
                       : 'text-paper group-hover:text-cinnabar'
