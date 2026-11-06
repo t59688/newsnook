@@ -11,6 +11,12 @@
  *    深邃碳墨 (#111215)，搭配精致电绿底纹、微标或下划线，确保 100% 清晰锐利。
  */
 
+/* 昼读的强调文字使用独立的深绿墨色；电光绿仍专用于背景、边线与信号点。 */
+html[data-scheme='buer'][data-theme='light'] {
+  --buer-accent-text: #405800;
+  --buer-accent-text-soft: #4c6114;
+}
+
 /* ==========================================================================
    01 — 设置与「我的」工作区 (Paper Settings Shell)
    ========================================================================== */
@@ -286,15 +292,29 @@ html[data-scheme='buer'] [class*="bg-cinnabar"]:not([class*="bg-cinnabar/"]) svg
   stroke: #000000 !important;
 }
 
-/* 2. 昼读模式下的 text-cinnabar 与 text-cinnabar-soft：纯白底上绝不能为浅黄绿色，统一映射为深邃墨黑 */
-html[data-scheme='buer'][data-theme='light'] .text-cinnabar {
-  color: #111215 !important;
+/* 2. 昼读的强调文字与品牌信号色分离。
+   Tailwind 的 hover:/group-hover: 是独立生成的类，不能只覆盖 .text-cinnabar；
+   否则首页文章标题在鼠标悬停时会恢复为白底荧光绿。也覆盖透明度变体，
+   让不同信息流、站点卡片和阅读器共用同一套可读前景色。 */
+html[data-scheme='buer'][data-theme='light'] .text-cinnabar,
+html[data-scheme='buer'][data-theme='light'] [class^='text-cinnabar/'],
+html[data-scheme='buer'][data-theme='light'] [class*=' text-cinnabar/'] {
+  color: var(--buer-accent-text) !important;
 }
-html[data-scheme='buer'][data-theme='light'] .text-cinnabar-soft {
-  color: #252830 !important;
+html[data-scheme='buer'][data-theme='light'] .text-cinnabar-soft,
+html[data-scheme='buer'][data-theme='light'] [class^='text-cinnabar-soft/'],
+html[data-scheme='buer'][data-theme='light'] [class*=' text-cinnabar-soft/'] {
+  color: var(--buer-accent-text-soft) !important;
+}
+html[data-scheme='buer'][data-theme='light'] [class*='hover:text-cinnabar']:hover,
+html[data-scheme='buer'][data-theme='light'] .group:hover [class*='group-hover:text-cinnabar'],
+html[data-scheme='buer'][data-theme='light'] .group:focus-within [class*='group-hover:text-cinnabar'],
+html[data-scheme='buer'][data-theme='light'] [class*='focus:text-cinnabar']:focus,
+html[data-scheme='buer'][data-theme='light'] [class*='active:text-cinnabar']:active {
+  color: var(--buer-accent-text) !important;
 }
 html[data-scheme='buer'][data-theme='light'] .fill-cinnabar {
-  fill: #111215 !important;
+  fill: var(--buer-accent-text) !important;
 }
 
 /* 3. 浅色透明度徽章与标签 (如 Discourse, HOT, 通告条)：
