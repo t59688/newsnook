@@ -1,10 +1,11 @@
 <!doctype html>
-<html lang="zh-CN" data-theme="dark" data-scheme="ink">
+<html lang="zh-CN" data-theme="dark" data-scheme="pearl">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0e0f12" />
+    <meta name="theme-color" content="#0b0e14" />
     <meta
       name="description"
       content="有所闻 NewsNook —— 本地优先的新闻阅读客户端。不登录即可完整使用，直连原发媒体，站内全文，可选云同步。"
@@ -43,13 +44,15 @@
 
           var urlScheme = new URLSearchParams(location.search).get('scheme')
           var savedScheme = localStorage.getItem('newsnook-home:scheme')
-          var scheme = urlScheme || savedScheme || 'ink'
+          var scheme = urlScheme || savedScheme || 'pearl'
           if (scheme === 'ink' || scheme === 'pearl' || scheme === 'buer' || scheme === 'celadon' || scheme === 'amber' || scheme === 'dusk') {
             document.documentElement.dataset.scheme = scheme
+          } else {
+            document.documentElement.dataset.scheme = 'pearl'
           }
         } catch (_) {
           document.documentElement.dataset.theme = 'dark'
-          document.documentElement.dataset.scheme = 'ink'
+          document.documentElement.dataset.scheme = 'pearl'
         }
       })()
     </script>

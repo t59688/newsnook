@@ -15,14 +15,14 @@ export const FEATURED_SCHEMES: FeaturedScheme[] = [
   {
     id: 'ink',
     name: '莫问',
-    caption: '宣纸 · 朱砂 · 默认经典',
+    caption: '宣纸 · 朱砂',
     accentColor: '#c45c4a',
     previewBg: '#16181d',
   },
   {
     id: 'pearl',
     name: '群青',
-    caption: '工业冷白 · 科技克莱因蓝',
+    caption: '工业冷白 · 门户默认',
     accentColor: '#387bff',
     previewBg: '#141822',
   },
@@ -48,9 +48,9 @@ export function usePortalTheme() {
   })
 
   const [activeScheme, setActiveScheme] = useState<SchemeId>(() => {
-    if (typeof document === 'undefined') return 'ink'
+    if (typeof document === 'undefined') return 'pearl'
     const s = document.documentElement.dataset.scheme
-    return s === 'pearl' || s === 'buer' ? s : 'ink'
+    return s === 'ink' || s === 'buer' ? s : 'pearl'
   })
 
   useEffect(() => {
