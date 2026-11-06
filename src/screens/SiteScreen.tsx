@@ -217,7 +217,7 @@ export const SiteScreen = memo(function SiteScreen({
   }
 
   return (
-    <div ref={containerRef} className="relative h-full overflow-y-auto overscroll-contain bg-ink text-paper selection:bg-cinnabar/30">
+    <div ref={containerRef} className="editorial-site-screen relative h-full overflow-y-auto overscroll-contain bg-ink text-paper selection:bg-cinnabar/30">
       {/* 沉浸式紧凑顶部 Header（无巨大空白，极简优雅原生质感） */}
       <header className="sticky top-0 z-20 border-b border-haze/40 bg-ink/95 backdrop-blur-xl transition-colors">
         {/* 第一行：紧凑主导航栏 */}

@@ -11,7 +11,7 @@ interface Props {
 export function AppShell({ children }: Props) {
   return (
     <div
-      className="ink-grain relative flex h-full h-dvh w-full flex-col overflow-hidden bg-ink"
+      className="editorial-app-shell ink-grain relative flex h-full h-dvh w-full flex-col overflow-hidden bg-ink"
       // 使用 CSS 变量控制 paddingTop，全屏时设为 0
       style={{ paddingTop: 'var(--app-pt, var(--sat))' }}
     >

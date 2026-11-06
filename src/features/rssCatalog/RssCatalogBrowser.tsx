@@ -106,35 +106,36 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service }: Props) 
   const resultCount = activeService ? results.length : (currentWorkerResult?.total ?? 0)
   const displayLoading = activeService ? loading : !currentWorkerResult && !workerUnsupported
   const displayFailed = activeService ? failed : workerUnsupported
+  const hasSummary = activeService ? feeds !== undefined : Boolean(workerData?.result.summary)
   const displayStatus = activeService ? status : workerUnsupported
     ? 'RSS 目录后台处理不可用，请重试或升级系统 WebView' : !workerData
     ? '正在打开本地目录…'
     : workerUpdateFailed ? '已保留本地目录，稍后自动重试更新' : '本地目录已就绪 · 可离线查找'
   const reset = () => { setQuery(''); setCategory(''); setLanguage(''); setLimit(PAGE_SIZE) }
-  return <section aria-label="RSS 目录" className="space-y-4">
+  return <section aria-label="RSS 目录" className="editorial-rss-catalog space-y-4">
     {/* 紧凑精致的概览卡片 */}
     <header className="relative overflow-hidden rounded-2xl border border-haze/80 bg-ink-raised/60 p-4 shadow-sm">
       <BookOpen aria-hidden="true" size={80} strokeWidth={0.5} className="pointer-events-none absolute -right-3 -top-2 rotate-12 text-cinnabar/10" />
       <div className="relative flex items-center justify-between gap-3">
         <div>
-          <p className="font-mono text-[10px] tracking-[0.16em] text-cinnabar-soft">RSS · 独立阅读与精选</p>
-          <h2 className="mt-0.5 font-display text-[15px] font-medium text-paper">从好奇，找到好内容。</h2>
-          <p className="mt-1 text-[11px] leading-relaxed text-paper-faint">精选各领域优质源 · 本机离线即搜</p>
+          <p className="font-mono text-[11.5px] tracking-[0.09em] text-cinnabar-soft">RSS · 独立阅读与精选</p>
+          <h2 className="mt-1 font-display text-[19px] font-semibold leading-snug text-paper">从好奇，找到好内容。</h2>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-paper-muted">精选各领域优质源 · 本机离线即搜</p>
         </div>
-        <dl className="flex shrink-0 gap-4 border-l border-haze/70 pl-3.5 text-right font-mono text-paper">
+        {hasSummary && <dl className="hidden shrink-0 gap-4 border-l border-haze/70 pl-3.5 text-right font-mono text-paper sm:flex">
           <div><dt className="text-[9.5px] text-paper-faint">订阅源</dt><dd className="mt-0.5 text-sm font-semibold">{activeService ? (feeds?.length.toLocaleString() ?? '—') : (workerData?.result.summary.count.toLocaleString() ?? '—')}</dd></div>
           <div><dt className="text-[9.5px] text-paper-faint">专题</dt><dd className="mt-0.5 text-sm font-semibold">{categories.length || '—'}</dd></div>
           <div><dt className="text-[9.5px] text-paper-faint">语言</dt><dd className="mt-0.5 text-sm font-semibold">{languages.length || '—'}</dd></div>
-        </dl>
+        </dl>}
       </div>
     </header>
 
     {/* 搜索框 */}
     <div className="space-y-1.5">
-      <label htmlFor="rss-catalog-query" className="block font-mono text-[10px] tracking-[0.12em] text-paper-faint">搜索目录</label>
+      <label htmlFor="rss-catalog-query" className="block font-mono text-[11.5px] tracking-[0.05em] text-paper-muted">搜索目录</label>
       <div className="flex min-h-12 items-center gap-2.5 rounded-2xl border border-haze bg-ink-raised/80 px-3.5 shadow-sm transition-colors focus-within:border-cinnabar/45 focus-within:ring-1 focus-within:ring-cinnabar/20">
         <Search aria-hidden="true" size={16} className="shrink-0 text-paper-faint" />
-        <input id="rss-catalog-query" type="text" inputMode="search" role="searchbox" value={query} maxLength={300} onChange={(event) => { setQuery(event.target.value); setLimit(PAGE_SIZE) }} placeholder="名称、领域、关键词或域名" autoComplete="off" className="min-w-0 flex-1 bg-transparent py-3 text-[13.5px] text-paper outline-none placeholder:text-paper-faint/65" />
+        <input id="rss-catalog-query" type="text" inputMode="search" role="searchbox" value={query} maxLength={300} onChange={(event) => { setQuery(event.target.value); setLimit(PAGE_SIZE) }} placeholder="名称、领域、关键词或域名" autoComplete="off" className="min-w-0 flex-1 bg-transparent py-3 text-[14.5px] text-paper outline-none placeholder:text-paper-faint/75" />
         {query ? <button type="button" aria-label="清除目录搜索" onClick={() => { setQuery(''); setLimit(PAGE_SIZE) }} className="grid size-9 place-items-center rounded-full text-paper-faint transition-colors hover:bg-paper/6 hover:text-paper"><X size={15} /></button> : null}
       </div>
     </div>
@@ -155,12 +156,12 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service }: Props) 
 
     {/* 状态与统计 */}
     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-haze/70 pb-2.5">
-      <p role="status" className="text-[11px] text-paper-faint">{displayStatus}</p>
+      <p role="status" className={`text-[12px] leading-relaxed ${displayFailed ? 'text-cinnabar-soft' : 'text-paper-muted'}`}>{displayStatus}</p>
       {displayFailed ? <button type="button" onClick={() => {
         if (activeService) { setFailed(false); setLoading(true) }
         else { resetCatalogWorkerClient(); setWorkerData(null); setWorkerUnsupported(false) }
         setAttempt((value) => value + 1)
-      }} className="min-h-8 text-[11.5px] text-cinnabar-soft hover:underline">重试</button> : <span aria-live="polite" className="font-mono text-[11px] text-paper-muted">{resultCount} 个结果</span>}
+      }} className="min-h-9 rounded-lg px-2 text-[12.5px] font-medium text-cinnabar-soft hover:bg-cinnabar/10">重试</button> : <span aria-live="polite" className="font-mono text-[11px] text-paper-muted">{resultCount} 个结果</span>}
     </div>
 
     {/* 空状态 */}
@@ -181,6 +182,6 @@ export function RssCatalogBrowser({ onSelect, duplicateLabel, service }: Props) 
       })}
     </div>
     {resultCount > limit ? <button type="button" onClick={() => setLimit((value) => value + PAGE_SIZE)} className="min-h-11 w-full rounded-2xl border border-haze/80 bg-ink-raised/50 text-[12px] text-paper-muted transition-colors hover:border-cinnabar/40 hover:text-paper">加载更多</button> : null}
-    <p className="pb-3 text-center text-[10.5px] leading-relaxed text-paper-faint">目录收录不代表当前可用。选择后可检测并预览，确认内容再订阅。</p>
+    <p className="pb-3 text-center text-[12px] leading-relaxed text-paper-faint">目录收录不代表当前可用，选择后可检测并预览。</p>
   </section>
 }

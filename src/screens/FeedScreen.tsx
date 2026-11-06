@@ -491,7 +491,7 @@ export const FeedScreen = memo(function FeedScreen({
   }, [articles])
 
   const listBody = (
-    <div ref={listRef} className="w-full max-w-[2400px] mx-auto pb-12">
+    <div ref={listRef} className="editorial-feed-list w-full max-w-[2400px] mx-auto pb-12">
       {lead && (
         <LeadStory
           key={lead.id}
@@ -693,12 +693,12 @@ export const FeedScreen = memo(function FeedScreen({
           ) : !isDesktop ? (
             /* 移动端经典单列时间线：按今天/昨天/更早分组 */
             grouped.map(([bucket, items]) => (
-              <div key={bucket}>
-                <div className="page-x flex items-center gap-2.5 pt-5 pb-2 lg:px-6 xl:px-8 2xl:px-10">
+              <div key={bucket} className="editorial-feed-day-group">
+                <div className="editorial-feed-day page-x flex items-center gap-2.5 pt-5 pb-2 lg:px-6 xl:px-8 2xl:px-10">
                   <span className="font-mono text-[11px] font-medium tracking-[0.18em] text-paper-muted/90">{bucket}</span>
                   <span className="h-px w-8 bg-gradient-to-r from-haze/80 to-transparent" aria-hidden />
                 </div>
-                <ul className="divide-y divide-haze/35">
+                <ul className="editorial-feed-rows divide-y divide-haze/35">
                   {items.map((article) => (
                     <ArticleRow
                       key={article.id}
@@ -718,14 +718,14 @@ export const FeedScreen = memo(function FeedScreen({
             ))
           ) : homeFeedLayout === 'classic' ? (
             /* 桌面端经典单列时间线：居中舒适宽度，保持与移动端一致的经典阅读节奏 */
-            <div className="mx-auto w-full max-w-4xl px-4 py-2">
+            <div className="editorial-feed-timeline mx-auto w-full max-w-4xl px-4 py-2">
               {grouped.map(([bucket, items]) => (
-                <div key={bucket}>
-                  <div className="flex items-center gap-2.5 pt-5 pb-2">
+                <div key={bucket} className="editorial-feed-day-group">
+                  <div className="editorial-feed-day flex items-center gap-2.5 pt-5 pb-2">
                     <span className="font-mono text-[11px] font-medium tracking-[0.18em] text-paper-muted/90">{bucket}</span>
                     <span className="h-px w-8 bg-gradient-to-r from-haze/80 to-transparent" aria-hidden />
                   </div>
-                  <ul className="divide-y divide-haze/35">
+                  <ul className="editorial-feed-rows divide-y divide-haze/35">
                     {items.map((article) => (
                       <ArticleRow
                         key={article.id}
@@ -841,8 +841,8 @@ export const FeedScreen = memo(function FeedScreen({
   )
 
   return (
-    <section className="relative flex min-h-0 flex-1 flex-col">
-      <header className="relative z-20 shrink-0 bg-ink/90 pt-2 pb-1.5 backdrop-blur-xl border-b border-haze/30">
+    <section className="editorial-feed-shell relative flex min-h-0 flex-1 flex-col">
+      <header className="editorial-feed-header relative z-20 shrink-0 bg-ink/90 pt-2 pb-1.5 backdrop-blur-xl border-b border-haze/30">
         <div className="page-x lg:px-6 xl:px-8 2xl:px-10 max-w-[2400px] mx-auto flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             {onBack && (

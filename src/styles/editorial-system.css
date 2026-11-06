@@ -1,0 +1,641 @@
+/* ==========================================================================
+   06 — NewsNook · 全主题编辑式布局 (desktop / mobile / reader)
+   全局复用同一布局系统，各方案保留自身的色板和组件语法。
+   保留品牌信号绿作为动作/定位色；字体对比与空间节奏服从阅读任务。
+   ========================================================================== */
+
+:root,
+[data-theme] {
+  --ui-rule: var(--tone-haze);
+  --ui-surface: var(--tone-ink-raised);
+  --ui-sidebar-surface: var(--tone-ink);
+  --ui-hover-surface: var(--tone-ink-deep);
+  --ui-quiet: var(--tone-paper-muted);
+  --ui-quote-surface: var(--tone-ink-deep);
+  --ui-quote-edge: var(--tone-cinnabar);
+  --ui-scroll-thumb: var(--tone-paper-faint);
+}
+
+/* 侧栏：缩小噪声、提升低权重信息的可辨认度，仍保留现有分区与交互。 */
+html .editorial-desktop-sidebar {
+  background: var(--ui-sidebar-surface) !important;
+  border-right-color: var(--ui-rule) !important;
+}
+
+html .editorial-desktop-sidebar .text-paper-faint {
+  color: var(--ui-quiet) !important;
+}
+
+html .editorial-desktop-sidebar [data-tour='desktop-navigation'] button,
+html .editorial-desktop-sidebar section > .space-y-0\.5 > button {
+  border-radius: 10px !important;
+  min-height: 38px;
+}
+
+html .editorial-desktop-sidebar section > .px-2.font-mono,
+html .editorial-desktop-sidebar section > div > span.font-mono {
+  font-size: 10.5px !important;
+  letter-spacing: 0.11em !important;
+}
+
+/* 分类与来源筛选：分开两级导航的节奏，不用多个高饱和背景争夺主导。 */
+html .editorial-feed-header {
+  background: var(--ui-surface) !important;
+  border-bottom: 1px solid var(--ui-rule) !important;
+}
+
+html .editorial-category-rail [role='tablist'] {
+  padding-top: 5px;
+}
+
+html .editorial-category-rail [role='tab'] > span:first-child {
+  font-size: 15.5px;
+  line-height: 1.18;
+}
+
+html .editorial-category-rail [role='tab'][aria-selected='true'] > span:first-child {
+  font-weight: 650;
+}
+
+html .editorial-source-filters > .horizontal-scroll-rail {
+  padding-top: 6px;
+  padding-bottom: 7px;
+}
+
+html .editorial-source-filters button {
+  min-height: 28px;
+  font-size: 11.5px !important;
+  letter-spacing: 0.01em;
+}
+
+html .editorial-source-filters button > span.font-mono {
+  font-size: 10px;
+}
+
+/* 桌面经典时间线：让列表合理利用中间内容区，而不是悬在宽屏中央一条窄带。 */
+@media (min-width: 1024px) {
+  html .editorial-feed-timeline {
+    max-width: 1080px !important;
+    padding-right: 28px !important;
+    padding-left: 28px !important;
+  }
+}
+
+html .editorial-feed-day {
+  padding-top: 22px !important;
+  padding-bottom: 8px !important;
+  color: var(--ui-quiet);
+}
+
+html .editorial-feed-day > span:first-child {
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+}
+
+html .editorial-feed-rows > .editorial-article-item + .editorial-article-item {
+  border-top: 1px solid var(--ui-rule);
+}
+
+html .editorial-article-item {
+  background: transparent !important;
+}
+
+html .editorial-article-row {
+  gap: 22px !important;
+  padding: 19px 20px !important;
+  border-radius: 8px;
+  background: transparent !important;
+  transition: background-color 160ms ease !important;
+}
+
+html .editorial-article-row:hover,
+html .editorial-article-row:focus {
+  background: var(--ui-hover-surface) !important;
+}
+
+html .editorial-article-meta {
+  font-size: 11.5px !important;
+  font-weight: 450;
+  letter-spacing: 0.025em !important;
+  color: var(--ui-quiet) !important;
+}
+
+html .editorial-article-title {
+  font-size: 17.5px !important;
+  line-height: 1.43 !important;
+  letter-spacing: -0.014em !important;
+  font-weight: 600 !important;
+}
+
+html .editorial-article-item[data-read='false'] .editorial-article-title {
+  color: var(--tone-paper) !important;
+}
+
+html .editorial-article-item[data-read='true'] .editorial-article-title {
+  color: var(--tone-paper-muted) !important;
+  font-weight: 480 !important;
+}
+
+html .editorial-article-summary {
+  margin-top: 7px !important;
+  font-size: 13.75px !important;
+  line-height: 1.58 !important;
+  color: var(--tone-paper-muted) !important;
+}
+
+html .editorial-article-cover {
+  width: 112px !important;
+  height: 78px !important;
+  border-radius: 10px !important;
+  border-color: var(--ui-rule) !important;
+  box-shadow: none !important;
+}
+
+@media (min-width: 1024px) {
+  html .editorial-article-row {
+    padding: 22px 24px !important;
+    gap: 26px !important;
+  }
+
+  html .editorial-article-title {
+    font-size: 18px !important;
+  }
+
+  html .editorial-article-cover {
+    width: 128px !important;
+    height: 86px !important;
+  }
+}
+
+@media (max-width: 767px) {
+  html .editorial-feed-header {
+    padding-top: 8px;
+    padding-bottom: 5px;
+  }
+
+  html .editorial-feed-day {
+    padding-top: 18px !important;
+    padding-bottom: 5px !important;
+  }
+
+  html .editorial-article-row {
+    padding: 17px 18px !important;
+    gap: 13px !important;
+    border-radius: 0;
+  }
+
+  html .editorial-article-title {
+    font-size: 16.5px !important;
+    line-height: 1.44 !important;
+    font-weight: 580 !important;
+  }
+
+  html .editorial-article-summary {
+    font-size: 13.25px !important;
+    line-height: 1.56 !important;
+  }
+
+  html .editorial-article-cover {
+    width: 88px !important;
+    height: 72px !important;
+  }
+}
+
+/* 阅读器：让控制区更易辨认，保留阅读偏好中的字号、行距、缩进配置。 */
+html:not([data-eink='1']) .editorial-reader-toolbar {
+  padding-top: 7px !important;
+  padding-bottom: 7px !important;
+  background: var(--ui-surface) !important;
+  border-bottom: 1px solid var(--ui-rule) !important;
+}
+
+html:not([data-eink='1']) .editorial-reader-toolbar > div {
+  max-width: 900px !important;
+}
+
+html:not([data-eink='1']) .editorial-reader-toolbar button {
+  min-height: 38px;
+  border-radius: 9px;
+}
+
+html:not([data-eink='1']) .editorial-reader-toolbar button:hover {
+  background-color: var(--ui-hover-surface);
+}
+
+html:not([data-eink='1']) .editorial-reader-toolbar button svg {
+  width: 16px;
+  height: 16px;
+}
+
+html:not([data-eink='1']) .editorial-reader-toolbar button > span {
+  font-size: 11px !important;
+  letter-spacing: 0.025em !important;
+}
+
+html:not([data-eink='1']) .editorial-reader-column {
+  max-width: 836px !important;
+  min-height: 100%;
+  background: var(--ui-surface);
+}
+
+@media (min-width: 768px) {
+  html:not([data-eink='1']) .editorial-reader-column {
+    border-right: 1px solid var(--ui-rule);
+    border-left: 1px solid var(--ui-rule);
+  }
+
+  html:not([data-eink='1']) .editorial-reader-heading {
+    padding-top: 29px !important;
+  }
+}
+
+html:not([data-eink='1']) .editorial-reader-heading .reader-title {
+  line-height: 1.28 !important;
+  letter-spacing: -0.018em !important;
+  font-weight: 650;
+}
+
+html:not([data-eink='1']) .editorial-reader-main {
+  padding-top: 29px !important;
+}
+
+html:not([data-eink='1']) .reader-prose strong,
+html:not([data-eink='1']) .reader-prose b {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+  font-weight: 700;
+}
+
+html:not([data-eink='1']) .reader-prose a {
+  border-bottom: 1px solid var(--tone-cinnabar) !important;
+  text-underline-offset: 3px;
+}
+
+html:not([data-eink='1']) .reader-prose blockquote {
+  background: var(--ui-quote-surface) !important;
+  border-left: 3px solid var(--ui-quote-edge) !important;
+  border-radius: 4px !important;
+}
+
+html:not([data-eink='1']) [data-reader-scroll-indicator] > span:last-child {
+  width: 2px !important;
+  background-color: var(--ui-scroll-thumb) !important;
+}
+
+html:not([data-eink='1']) [data-reader-scroll-indicator]:hover > span:last-child {
+  background-color: var(--tone-cinnabar) !important;
+}
+
+@media (max-width: 430px) {
+  html:not([data-eink='1']) .editorial-reader-toolbar > div {
+    gap: 2px !important;
+    padding-left: 9px !important;
+    padding-right: 9px !important;
+  }
+
+  html:not([data-eink='1']) .editorial-reader-toolbar > div > div {
+    gap: 1px !important;
+  }
+
+  /* 图标按钮保留 aria-label，避免 390px 以下六七个文字标签争夺宽度。 */
+  html:not([data-eink='1']) .editorial-reader-toolbar > div > div > button > span {
+    display: none !important;
+  }
+
+  html:not([data-eink='1']) .editorial-reader-toolbar > div > div > button {
+    min-width: 35px;
+    padding-left: 5px !important;
+    padding-right: 5px !important;
+    justify-content: center;
+  }
+
+  html:not([data-eink='1']) .editorial-reader-toolbar > div > span {
+    font-size: 10.5px !important;
+    letter-spacing: 0.025em !important;
+  }
+
+  html:not([data-eink='1']) .editorial-reader-heading {
+    padding-top: 22px !important;
+  }
+}
+
+/* 过滤控件的默认态退后，只突出当前选中的信源。 */
+html[data-theme='light'] .editorial-source-filters button[aria-pressed='false'] {
+  background: transparent !important;
+  border-color: var(--ui-rule) !important;
+  color: var(--tone-paper-muted) !important;
+}
+
+/* 备用卡片布局：同一主题下保持正文信息的可读层级和纸面边界。 */
+html .editorial-article-item[data-variant='compact-card'] > button,
+html .editorial-article-item[data-variant='card'] > button {
+  background: var(--ui-surface) !important;
+  border-color: var(--ui-rule) !important;
+  box-shadow: none !important;
+  border-radius: 12px !important;
+}
+
+html .editorial-article-item[data-variant='compact-card'] > button:active,
+html .editorial-article-item[data-variant='card'] > button:hover {
+  background: var(--ui-hover-surface) !important;
+}
+
+html .editorial-article-item[data-variant='compact-card'] .row-title,
+html .editorial-article-item[data-variant='card'] .row-title {
+  color: var(--tone-paper) !important;
+  font-weight: 600 !important;
+}
+
+html .editorial-article-item[data-read='true'][data-variant='compact-card'] .row-title,
+html .editorial-article-item[data-read='true'][data-variant='card'] .row-title {
+  color: var(--tone-paper-muted) !important;
+  font-weight: 480 !important;
+}
+
+@media (min-width: 768px) {
+  html:not([data-eink='1']) .editorial-reader-heading,
+  html:not([data-eink='1']) .editorial-reader-cover,
+  html:not([data-eink='1']) .editorial-reader-main {
+    padding-left: 36px !important;
+    padding-right: 36px !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html .editorial-article-row {
+    transition: none !important;
+  }
+}
+
+/* ==========================================================================
+   07 — App-wide hierarchy · settings, discovery, browser and site workspaces
+   All theme colors come from tone tokens; no page-specific accent palette.
+   ========================================================================== */
+
+:root,
+[data-theme] {
+  --ui-action-size: 42px;
+  --ui-list-height: 58px;
+  --ui-content-width: 1120px;
+  --ui-content-reading-width: 836px;
+  --ui-radius-control: 11px;
+}
+
+/* A shared, legible focus pattern for mouse/keyboard without permanent glow. */
+/* Text fields use their own focus-within surfaces; do not double-outline inputs. */
+.editorial-app-shell :is(button, a, [role='tab']):focus-visible {
+  outline: 2px solid var(--tone-paper);
+  outline-offset: 2px;
+}
+
+/* Primary tab bar: consistent 56px touch rhythm and subdued secondary labels. */
+html [data-surface='tabbar'] {
+  border-top-color: var(--ui-rule);
+}
+html [data-surface='tabbar'] button {
+  min-height: 54px;
+}
+html [data-surface='tabbar'] button[aria-current='page'] {
+  font-weight: 600;
+}
+
+/* Main settings and all nested routes use the same type hierarchy and column. */
+html .paper-settings-root,
+html .paper-settings-shell {
+  font-family: var(--font-body);
+}
+html .paper-settings-container {
+  max-width: 960px;
+}
+html .paper-settings-shell-header-inner,
+html .paper-settings-shell-scroll > div {
+  max-width: 800px;
+}
+html .paper-settings-shell-header {
+  border-bottom: 1px solid var(--ui-rule);
+}
+html .paper-settings-shell-header .paper-settings-shell-title {
+  font-size: 21px;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.024em;
+}
+html .paper-settings-shell-header .paper-settings-shell-caption {
+  font-size: 12.5px;
+  line-height: 1.5;
+  letter-spacing: 0.01em;
+}
+html .paper-settings-group-title,
+html .paper-settings-section-title {
+  font-size: 12.5px;
+  letter-spacing: 0.02em;
+  line-height: 1.5;
+}
+html .paper-settings-row {
+  min-height: var(--ui-list-height);
+  gap: 12px;
+}
+html .paper-settings-name {
+  font-size: 14.5px;
+  line-height: 1.45;
+  font-weight: 550;
+}
+html .paper-settings-subtitle {
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+html .paper-settings-hint {
+  font-size: 12.5px;
+  line-height: 1.65;
+}
+html .paper-settings-chevron {
+  opacity: 0.8;
+}
+html .paper-settings-shell-scroll :is(input:not([type='checkbox']), textarea, select) {
+  min-height: 40px;
+  font-size: 14px;
+}
+@media (min-width: 768px) {
+  html .paper-settings-shell-scroll > div {
+    padding-top: 16px;
+  }
+  html .paper-settings-root .paper-settings-grid {
+    gap: 0 24px;
+  }
+}
+
+/* Site CMS: one centered editorial grid, consistent navbar and content edges. */
+html .editorial-site-screen {
+  background: var(--tone-ink);
+}
+html .editorial-site-screen > header {
+  border-bottom-color: var(--ui-rule);
+}
+html .editorial-site-screen > header > .page-x,
+html .editorial-site-screen > main.page-x {
+  width: 100%;
+  max-width: 1320px;
+  margin-right: auto;
+  margin-left: auto;
+}
+html .editorial-site-screen > main.page-x {
+  padding-top: 20px;
+  padding-bottom: 32px;
+}
+html .editorial-site-screen > header button:focus-visible,
+html .editorial-site-screen > main button:focus-visible {
+  outline-offset: 2px;
+}
+html .editorial-site-screen > main .text-paper-faint {
+  color: var(--tone-paper-muted);
+}
+@media (max-width: 767px) {
+  html .editorial-site-screen > main.page-x {
+    padding-top: 14px;
+  }
+}
+
+/* RSS catalogue: search is the first action, results the second; strip
+   meaningless decoration and protect the multi-line source names. */
+html .editorial-rss-catalog {
+  max-width: var(--ui-content-width);
+  margin-right: auto;
+  margin-left: auto;
+}
+html .editorial-rss-catalog > header {
+  padding: 21px 22px;
+  border-color: var(--ui-rule);
+  border-radius: 14px;
+  box-shadow: none;
+}
+html .editorial-rss-catalog > header h2 {
+  font-family: var(--font-body);
+  font-size: 19px;
+  line-height: 1.32;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+html .editorial-rss-catalog > header p {
+  line-height: 1.5;
+}
+html .editorial-rss-catalog > header dl {
+  gap: 18px;
+}
+html .editorial-rss-catalog [data-catalog-feed] {
+  min-height: 86px;
+  padding: 16px 8px;
+  transition: background-color 150ms ease;
+}
+html .editorial-rss-catalog [data-catalog-feed]:hover,
+html .editorial-rss-catalog [data-catalog-feed]:focus-visible {
+  background: var(--ui-hover-surface);
+}
+html .editorial-rss-catalog [data-catalog-feed] > span:nth-child(2) > span:first-child {
+  font-size: 15px;
+  line-height: 1.48;
+  font-weight: 600;
+}
+html .editorial-rss-catalog [data-catalog-feed] > span:nth-child(2) > span:not(:first-child) {
+  font-size: 12px;
+  line-height: 1.5;
+}
+html .editorial-rss-catalog input[role='searchbox'] {
+  font-size: 15px;
+  line-height: 1.5;
+}
+html .editorial-rss-catalog [role='group'] button {
+  min-height: 38px;
+  font-size: 12px;
+}
+@media (max-width: 420px) {
+  html .editorial-rss-catalog > header {
+    padding: 16px;
+  }
+  html .editorial-rss-catalog > header dl {
+    gap: 10px;
+    padding-left: 11px;
+  }
+  html .editorial-rss-catalog [data-catalog-feed] {
+    gap: 10px;
+    padding-right: 2px;
+    padding-left: 2px;
+  }
+}
+
+/* Built-in browser chrome, settings, lists and dialogs share sizing with
+   the native screens; web page content is not restyled. */
+html .browser-workspace {
+  font-family: var(--font-body);
+  color: var(--tone-paper);
+}
+html .browser-workspace .browser-page-header {
+  min-height: 56px;
+  border-bottom-color: var(--ui-rule);
+}
+html .browser-workspace .browser-page-heading h2,
+html .browser-workspace .browser-sheet-header h2 {
+  font-size: 18px;
+  letter-spacing: -0.015em;
+}
+html .browser-workspace .browser-list-title {
+  font-size: 15px;
+  line-height: 1.55;
+  font-weight: 580;
+}
+html .browser-workspace .browser-list-detail,
+html .browser-workspace .browser-page-heading p {
+  font-size: 13px;
+  line-height: 1.6;
+}
+html .browser-workspace .browser-panel-footer {
+  border-top-color: var(--ui-rule);
+}
+html .browser-workspace .browser-settings-content,
+html .browser-workspace .browser-search-content,
+html .browser-workspace .browser-places-content {
+  max-width: 760px;
+}
+html .browser-workspace .browser-input-field {
+  min-height: 48px;
+  border-radius: var(--ui-radius-control);
+}
+html .browser-workspace .browser-action-button {
+  border-radius: var(--ui-radius-control);
+}
+
+/* Community modules retain their native brand accent and interactions.
+   Only spacing, information clarity, and accessible hit targets are shared. */
+html .linuxdo-workspace .linuxdo-brand-header {
+  border-bottom-color: var(--ui-rule);
+}
+html .linuxdo-workspace .linuxdo-toolbar {
+  border-bottom-color: var(--ui-rule);
+}
+html .linuxdo-workspace .linuxdo-control:focus-visible {
+  outline-color: var(--tone-paper);
+}
+html .editorial-zhihu-workspace > header {
+  border-bottom-color: var(--ui-rule);
+}
+html .editorial-zhihu-workspace > header button {
+  min-width: 38px;
+  min-height: 38px;
+}
+html .editorial-zhihu-workspace .zhihu-search-capsule {
+  font-size: 14px;
+}
+html .editorial-zhihu-workspace > nav {
+  border-top-color: var(--ui-rule);
+}
+html .editorial-zhihu-workspace > nav button {
+  min-height: 52px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html .editorial-rss-catalog [data-catalog-feed],
+  html .browser-workspace .browser-icon-button,
+  html .paper-settings-row {
+    transition: none !important;
+  }
+}
+

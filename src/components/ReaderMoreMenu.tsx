@@ -28,12 +28,12 @@ function ActionRow({ icon: Icon, title, caption, disabled, onClick }: ActionRowP
       type="button"
       disabled={disabled}
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-2xl border border-haze bg-ink-raised/50 px-3.5 py-3 text-left transition-colors hover:border-cinnabar/50 hover:bg-cinnabar/5 disabled:opacity-35"
+      className="group flex min-h-[72px] w-full items-center gap-3.5 px-4 py-3 text-left transition-colors hover:bg-paper/5 active:bg-paper/8 disabled:cursor-default disabled:opacity-40"
     >
-      <Icon size={17} strokeWidth={1.6} className="shrink-0 text-paper-muted" />
+      <Icon size={18} strokeWidth={1.65} className="shrink-0 text-paper-muted transition-colors group-hover:text-paper" aria-hidden="true" />
       <span className="min-w-0 flex-1">
-        <span className="block text-[14px] text-paper">{title}</span>
-        <span className="mt-0.5 block font-mono text-[10px] text-paper-faint">{caption}</span>
+        <span className="block text-[14.5px] font-medium leading-[1.4] text-paper">{title}</span>
+        <span className="mt-1 block text-[12px] leading-[1.5] text-paper-muted">{caption}</span>
       </span>
     </button>
   )
@@ -62,29 +62,29 @@ export function ReaderMoreMenu({
       <button
         type="button"
         aria-label="关闭更多菜单"
-        className="min-h-0 flex-1 bg-ink/40"
+        className="absolute inset-0 bg-black/35"
         onClick={onClose}
       />
       <div
         role="dialog"
         aria-label="更多操作"
-        className="max-h-[85vh] shrink-0 overflow-y-auto border-t border-haze bg-ink pt-3"
+        className="relative z-10 mx-auto max-h-[85vh] w-full shrink-0 overflow-y-auto rounded-t-[22px] border-t border-haze bg-ink pt-3 shadow-[0_-12px_36px_rgba(0,0,0,0.12)] sm:mb-5 sm:max-w-[620px] sm:rounded-[22px] sm:border"
         style={{ paddingBottom: 'calc(var(--sab) + 12px)' }}
       >
-        <div className="page-x mx-auto w-full max-w-3xl space-y-3">
+        <div className="page-x mx-auto w-full max-w-[620px] space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="font-mono text-[10px] tracking-[0.16em] text-paper-faint">更多操作</span>
+            <span className="text-[15px] font-semibold tracking-[-0.015em] text-paper">更多操作</span>
             <button
               type="button"
               onClick={onClose}
               aria-label="关闭"
-              className="flex h-8 w-8 items-center justify-center text-paper-muted"
+              className="flex h-9 w-9 items-center justify-center rounded-full text-paper-muted transition-colors hover:bg-paper/5 hover:text-paper"
             >
               <X size={16} strokeWidth={1.7} />
             </button>
           </div>
 
-          <div className="space-y-2">
+          <div className="divide-y divide-haze/75 overflow-hidden rounded-[16px] border border-haze bg-ink-raised/45">
             <ActionRow
               icon={Share2}
               title="分享文章"

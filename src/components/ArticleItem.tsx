@@ -77,7 +77,9 @@ export const ArticleRow = memo(function ArticleRow({
   return (
     <li
       data-reveal={revealed ? undefined : true}
-      className={`article-row-item relative transition-colors duration-300 ${
+      data-read={read ? 'true' : 'false'}
+      data-variant={variant}
+      className={`editorial-article-item article-row-item relative transition-colors duration-300 ${
         variant === 'card'
           ? 'h-full bg-transparent'
           : variant === 'compact-card'
@@ -92,7 +94,7 @@ export const ArticleRow = memo(function ArticleRow({
         <button
           type="button"
           onClick={() => onOpen(article)}
-          className={`group pressable-card relative flex w-full items-center gap-4 px-4 py-3.5 text-left sm:px-5 sm:py-4 ${
+          className={`editorial-article-row group pressable-card relative flex w-full items-center gap-4 px-4 py-3.5 text-left sm:px-5 sm:py-4 ${
             variant === 'auto' ? 'md:hidden' : ''
           } ${
             read
@@ -103,7 +105,7 @@ export const ArticleRow = memo(function ArticleRow({
           <span className="min-w-0 flex-1">
             {/* 顶部信源与时间元数据 */}
             <span
-              className={`flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04em] ${
+              className={`editorial-article-meta flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04em] ${
                 read ? 'text-paper-faint/75' : 'text-paper-faint'
               }`}
             >
@@ -146,7 +148,7 @@ export const ArticleRow = memo(function ArticleRow({
 
             {/* 文章标题：450~500 挺拔字重，典雅深墨色，消除暴力加粗 */}
             <span
-              className={`row-title mt-1.5 line-clamp-2 text-[16.5px] leading-[1.5] tracking-[-0.012em] transition-colors ${
+              className={`editorial-article-title row-title mt-1.5 line-clamp-2 text-[16.5px] leading-[1.5] tracking-[-0.012em] transition-colors ${
                 read
                   ? 'font-normal text-paper-muted/70'
                   : 'font-medium text-paper/93 group-hover:text-cinnabar'
@@ -165,7 +167,7 @@ export const ArticleRow = memo(function ArticleRow({
             {/* 清洗后的正文摘要：灰度回填至 92%，消除黑度断层 */}
             {displaySummary && (
               <span
-                className={`mt-2 line-clamp-2 text-[13px] leading-[1.62] ${
+                className={`editorial-article-summary mt-2 line-clamp-2 text-[13px] leading-[1.62] ${
                   read ? 'text-paper-faint/75' : 'text-paper-muted/92'
                 }`}
               >
@@ -176,7 +178,7 @@ export const ArticleRow = memo(function ArticleRow({
 
           {/* 缩略图容器：升级为 4:3 比例杂志画幅，配合微倒角与轻柔阴影 */}
           {cover && (
-            <span className="relative h-16 w-[5.35rem] shrink-0 overflow-hidden rounded-[10px] border border-haze/60 bg-ink-deep/25 shadow-[0_2px_8px_rgba(0,0,0,0.04)] sm:h-[4.5rem] sm:w-[6rem]">
+            <span className="editorial-article-cover relative h-16 w-[5.35rem] shrink-0 overflow-hidden rounded-[10px] border border-haze/60 bg-ink-deep/25 shadow-[0_2px_8px_rgba(0,0,0,0.04)] sm:h-[4.5rem] sm:w-[6rem]">
               <InkImage
                 src={cover}
                 onFailed={onFailed}

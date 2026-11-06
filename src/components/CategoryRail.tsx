@@ -241,7 +241,7 @@ export function CategoryRail({
   }, [activeId, currentCenter, isDragging, transitionMs])
 
   return (
-    <div className="relative">
+    <div className="editorial-category-rail relative">
       <div
         ref={scrollerRef}
         className="page-x horizontal-scroll-rail scroll-hidden mask-fade-x relative flex gap-0.5 overflow-x-auto"

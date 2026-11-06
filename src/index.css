@@ -40,3 +40,6 @@
 @import './styles/buer.css';
 
 @import './styles/themes-extended.css';
+
+/* All theme schemes share editorial layout, density, and accessible interaction. */
+@import './styles/editorial-system.css';
