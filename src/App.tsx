@@ -1993,8 +1993,17 @@ export default function App() {
     )
   }
 
+  // Feed and article toolbars use the editorial raised surface; settings and other
+  // workspaces keep their existing page surface. The reader owns this while open.
+  const statusBarSurface = reading
+    ? (prefs.einkMode ? 'page' : 'toolbar')
+    : !activeSiteId && !settingsRoute && !showSchemeOnboarding && !eggOpen &&
+      (Boolean(focusSource) || tab === 'today')
+      ? 'toolbar'
+      : 'page'
+
   return (
-    <AppShell>
+    <AppShell statusBarSurface={statusBarSurface}>
       <BrowserLauncher onVisibilityChange={setBrowserOpen} />
       <div className="flex h-full w-full flex-row overflow-hidden">
         {!activeSiteId && <DesktopSidebar

@@ -122,7 +122,7 @@
     "test:eink": "npx tsx scripts/eink-mode.test.ts",
     "test:native-fullscreen": "npx tsx scripts/native-fullscreen.test.ts",
     "test:battery-status": "npx tsx scripts/battery-status.test.ts",
-    "test:theme": "npx tsx scripts/theme-schemes.test.ts",
+    "test:theme": "npx tsx scripts/theme-schemes.test.ts && npx tsx scripts/status-bar-surface.test.tsx",
     "test:settings-paper": "tsx scripts/settings-paper-ui.test.tsx && tsx scripts/settings-paper-toggle.test.ts",
     "test:settings-plain": "npx tsx scripts/settings-section-plain.test.ts",
     "test:logger": "npx tsx scripts/logger.test.ts",
