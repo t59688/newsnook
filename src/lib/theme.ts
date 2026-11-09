@@ -97,7 +97,7 @@ export const THEME_SCHEMES: ThemeSchemeMeta[] = [
     label: '不二',
     caption: '先锋社论 · 极简黑白',
     swatch: {
-      light: { ink: '#FAFAFC', raised: '#FFFFFF', paper: '#111215', accent: '#C8F008' },
+      light: { ink: '#FAFAFC', raised: '#FFFFFF', paper: '#111215', accent: '#405800' },
       dark: { ink: '#090A0C', raised: '#131518', paper: '#F4F5F7', accent: '#C8F008' },
     },
   },

@@ -13,8 +13,14 @@
 
 /* 昼读的强调文字使用独立的深绿墨色；电光绿仍专用于背景、边线与信号点。 */
 html[data-scheme='buer'][data-theme='light'] {
-  --buer-accent-text: #405800;
-  --buer-accent-text-soft: #4c6114;
+  /* Mirror the semantic text tokens. New components using --color-cinnabar must be readable too. */
+  --buer-accent-text: var(--tone-cinnabar);
+  --buer-accent-text-soft: var(--tone-cinnabar-soft);
+}
+
+html[data-scheme='buer'] {
+  --buer-signal-fill: #c8f008;
+  --buer-signal-ink: #111215;
 }
 
 /* ==========================================================================
@@ -274,7 +280,7 @@ html[data-scheme='buer'][data-theme='dark'] .reader-prose blockquote {
    05 — 全局通用与 LinuxDO 工作区高反差色彩系统 (Oil UI Clarity Overrides)
    ========================================================================== */
 
-/* 1. 所有 bg-cinnabar 实体按钮与药丸标签：文字必须为纯黑 #000000，彻底消除白字配黄绿的灾难对比度 */
+/* 1. 所有 bg-cinnabar 实体按钮与药丸标签：文字必须为深墨色；信号绿不作为浅色正文颜色 */
 html[data-scheme='buer'] .bg-cinnabar,
 html[data-scheme='buer'] button.bg-cinnabar,
 html[data-scheme='buer'] .linuxdo-control.bg-cinnabar,
@@ -290,6 +296,23 @@ html[data-scheme='buer'] .linuxdo-control.bg-cinnabar svg,
 html[data-scheme='buer'] [class*="bg-cinnabar"]:not([class*="bg-cinnabar/"]) svg {
   color: #000000 !important;
   stroke: #000000 !important;
+}
+
+/* Paper annotations use a custom primary class instead of Tailwind's bg-cinnabar.
+   Keep the electric-lime fill, with black foreground in both reading modes. */
+html[data-scheme='buer'] .nn-annotation-context .nn-annotation-primary,
+html[data-scheme='buer'] .nn-annotation-editor-actions button:last-child {
+  background: var(--buer-signal-fill) !important;
+  color: var(--buer-signal-ink) !important;
+  font-weight: 700;
+}
+html[data-scheme='buer'] .nn-annotation-context .nn-annotation-primary svg {
+  color: var(--buer-signal-ink) !important;
+  stroke: var(--buer-signal-ink) !important;
+}
+html[data-scheme='buer'] .nn-annotation-context .nn-annotation-primary:active,
+html[data-scheme='buer'] .nn-annotation-editor-actions button:last-child:active {
+  filter: brightness(.94);
 }
 
 /* 2. 昼读的强调文字与品牌信号色分离。

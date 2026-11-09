@@ -215,18 +215,25 @@ assert.ok(html.includes("scheme === 'custom'"), 'index.html 防闪白名单缺�
 
 console.log('theme-scheme css: ok')
 
-// 不二昼读：亮绿仅作信号底色，文章标题悬停/链接等文本始终保持可读对比度。
+// 不二昼读：从语义 token 直接取得可读前景色，不能仅在局部 CSS 中修补亮绿文字。
 const buerCss = readFileSync(resolve('src/styles/buer.css'), 'utf8')
-for (const token of ['--buer-accent-text', '--buer-accent-text-soft']) {
-  const match = buerCss.match(new RegExp(`${token}:\\s*(#[0-9a-fA-F]{6})`))
-  assert.ok(match, `不二缺少 ${token}`)
+const buerLight = blockOf("[data-scheme='buer'][data-theme='light']").toLowerCase()
+for (const [alias, semantic] of [
+  ['--buer-accent-text', '--tone-cinnabar'],
+  ['--buer-accent-text-soft', '--tone-cinnabar-soft'],
+]) {
+  assert.ok(buerCss.includes(`${alias}: var(${semantic});`), `不二 ${alias} 未绑定语义颜色`)
+  const match = buerLight.match(new RegExp(`${semantic}:\\s*(#[0-9a-f]{6})`))
+  assert.ok(match, `不二昼读缺少 ${semantic}`)
   for (const background of ['#FFFFFF', '#FAFAFC', '#EEF6CE']) {
     assert.ok(
       contrastRatio(match[1], background) >= 4.5,
-      `不二 ${token} 与浅色背景 ${background} 的对比度不足`,
+      `不二 ${semantic} 与浅色背景 ${background} 的对比度不足`,
     )
   }
 }
+assert.ok(buerCss.includes('.nn-annotation-context .nn-annotation-primary'), '不二标注按钮未使用信号绿与独立前景色')
+assert.ok(buerCss.includes('color: var(--buer-signal-ink) !important'), '不二标注按钮不能继承浅色背景前景色')
 assert.ok(buerCss.includes(".group:hover [class*='group-hover:text-cinnabar']"), '不二文章标题悬停态未覆盖')
 assert.ok(buerCss.includes("[class*='hover:text-cinnabar']:hover"), '不二普通链接悬停态未覆盖')
 assert.ok(buerCss.includes("[class*=' text-cinnabar/']"), '不二透明度文字未覆盖')

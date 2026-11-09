@@ -516,8 +516,9 @@
   --tone-ink-deep-rgb: 240 241 244;
   --tone-paper-muted-rgb: 98 102 112;
   --tone-paper-faint-rgb: 105 113 125;
-  --tone-cinnabar-rgb: 200 240 8;
-  --tone-cinnabar-soft-rgb: 216 245 56;
+  /* In light mode, accent-as-text is deep olive; fluorescent lime stays a signal/fill color. */
+  --tone-cinnabar-rgb: 64 88 0;
+  --tone-cinnabar-soft-rgb: 76 97 20;
 
   --tone-ink: #fafafc;
   --tone-ink-raised: #ffffff;
@@ -525,9 +526,9 @@
   --tone-paper: #111215;
   --tone-paper-muted: #626670;
   --tone-paper-faint: #69717d;
-  --tone-cinnabar: #c8f008;
-  --tone-cinnabar-soft: #d8f538;
-  --tone-haze: rgb(var(--tone-paper-rgb) / 0.06);
+  --tone-cinnabar: #405800;
+  --tone-cinnabar-soft: #4c6114;
+  --tone-haze: rgb(var(--tone-paper-rgb) / 0.085);
 
   --tone-body-text: #18191d;
   --tone-quote-text: #3e4149;
