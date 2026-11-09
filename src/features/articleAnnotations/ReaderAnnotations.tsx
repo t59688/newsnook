@@ -46,6 +46,9 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
   const [color, setColor] = useState(PALETTE[0]!)
   const [panelTab, setPanelTab] = useState<'notes' | 'tools' | 'selection'>('tools')
   const [penTrayOpen, setPenTrayOpen] = useState(false)
+  // Explicit, per-reader touch-as-pen fallback for tablets without an active stylus.
+  // Never enable implicitly: ordinary touch must continue to scroll and select text.
+  const [fingerInkMode, setFingerInkMode] = useState(false)
   const setPanelOpen = onPanelOpenChange
   const [noteEditor, setNoteEditor] = useState<{ kind: AnnotationKind; anchor: TextAnchor; id?: string; text: string } | null>(null)
   const [message, setMessage] = useState('')
@@ -59,7 +62,7 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
       if (noteEditor) setNoteEditor(null)
       else if (panelOpen) setPanelOpen(false)
       else if (selected) setSelected(null)
-      else { setPenTrayOpen(false); setTool('select') }
+      else { setPenTrayOpen(false); setTool('select'); setFingerInkMode(false) }
       return true
     }
     return () => { overlayCloserRef.current = previous }
@@ -206,8 +209,18 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
   }
   const pointerDown = (event: PointerEvent) => {
     const root = contentRef.current
-    if (!root || event.pointerType !== 'pen' || tool === 'select') return
-    // A real pen owns writing while touch pointers continue to scroll normally.
+    if (!root || tool === 'select') return
+    const isFingerInk = event.pointerType === 'touch' && fingerInkMode && penTrayOpen
+    if (event.pointerType !== 'pen' && !isFingerInk) return
+    // Touch-as-pen is explicit and only accepts the primary finger. Regular touch still scrolls.
+    if (isFingerInk && !event.isPrimary) {
+      if (activePointer.current !== null) {
+        activePointer.current = null
+        draftRef.current = null
+        setDraft(null)
+      }
+      return
+    }
     if (activePointer.current !== null) return
     const start = textPositionAt(root, event.clientX, event.clientY)
     if (start === null) return
@@ -216,7 +229,7 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
     const anchor = createAnchor(text, start, end)
     const originRange = rangeFromOffsets(root, start, end)
     const originRect = originRange?.getBoundingClientRect() || root.getBoundingClientRect()
-    const point: InkPoint = { x: event.clientX - originRect.left, y: event.clientY - originRect.top, pressure: event.pressure || 0.5, tiltX: event.tiltX, tiltY: event.tiltY }
+    const point: InkPoint = { x: event.clientX - originRect.left, y: event.clientY - originRect.top, pressure: isFingerInk ? 0.5 : event.pressure || 0.5, tiltX: isFingerInk ? 0 : event.tiltX, tiltY: isFingerInk ? 0 : event.tiltY }
     activePointer.current = event.pointerId
     setPenTrayOpen(true)
     draftRef.current = { points: [point], anchor, origin: { x: originRect.left, y: originRect.top } }
@@ -234,9 +247,9 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
       points: previous.points.concat(samples.map(sample => ({
         x: sample.clientX - previous.origin.x,
         y: sample.clientY - previous.origin.y,
-        pressure: sample.pressure || 0.5,
-        tiltX: sample.tiltX,
-        tiltY: sample.tiltY,
+        pressure: event.pointerType === 'touch' ? 0.5 : sample.pressure || 0.5,
+        tiltX: event.pointerType === 'touch' ? 0 : sample.tiltX,
+        tiltY: event.pointerType === 'touch' ? 0 : sample.tiltY,
       })).slice(-24)).slice(0, 8000),
     }
     if (frameRef.current === null) frameRef.current = requestAnimationFrame(() => {
@@ -295,6 +308,22 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
   }
   const pointerHandlers = useRef({ pointerDown, pointerMove, pointerFinish })
   pointerHandlers.current = { pointerDown, pointerMove, pointerFinish }
+  // Touch gestures cannot be cancelled reliably after pointerdown; declare the mode
+  // before contact via touch-action, then restore the original reader styles on exit.
+  useEffect(() => {
+    const element = contentRef.current
+    if (!element) return
+    const previousTouchAction = element.style.touchAction
+    const previousUserSelect = element.style.userSelect
+    if (fingerInkMode && penTrayOpen && tool !== 'select') {
+      element.style.touchAction = 'none'
+      element.style.userSelect = 'none'
+    }
+    return () => {
+      element.style.touchAction = previousTouchAction
+      element.style.userSelect = previousUserSelect
+    }
+  }, [contentRef, contentKey, fingerInkMode, penTrayOpen, tool])
   useEffect(() => {
     const element = contentRef.current
     if (!element) return
@@ -302,10 +331,14 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
     const move = (event: PointerEvent) => pointerHandlers.current.pointerMove(event)
     const up = (event: PointerEvent) => pointerHandlers.current.pointerFinish(event)
     const cancel = (event: PointerEvent) => pointerHandlers.current.pointerFinish(event, true)
+    const context = (event: Event) => {
+      if (activePointer.current !== null) event.preventDefault()
+    }
     element.addEventListener('pointerdown', down)
     element.addEventListener('pointermove', move)
     element.addEventListener('pointerup', up)
     element.addEventListener('pointercancel', cancel)
+    element.addEventListener('contextmenu', context)
     return () => {
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current)
       frameRef.current = null
@@ -313,6 +346,7 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
       element.removeEventListener('pointermove', move)
       element.removeEventListener('pointerup', up)
       element.removeEventListener('pointercancel', cancel)
+      element.removeEventListener('contextmenu', context)
     }
   }, [contentRef, contentKey, annotations])
   const root = contentRef.current
@@ -341,6 +375,7 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
   const openPenTool = (next: Tool) => {
     setTool(next)
     setPenTrayOpen(next !== 'select')
+    if (next === 'select') setFingerInkMode(false)
     setSelected(null)
     setPanelOpen(false)
     window.getSelection()?.removeAllRanges()
@@ -350,7 +385,7 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
     <>
       {/* Full-size transparent ink layer: never pushes the article or intercepts touch scrolling. */}
       <div ref={rootRef} className="nn-annotation-layer" data-annotation-ui>
-        {root && shapes.length > 0 && (
+        {root && (shapes.length > 0 || draft) && (
           <svg
             className="nn-annotation-ink"
             style={{ top: overlayTop, left: overlayLeft, height: root.scrollHeight, width: root.offsetWidth }}
@@ -426,7 +461,7 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
           {penTrayOpen && !showContext && !panelOpen && !noteEditor && (
             <div className="nn-annotation-pen-dock" role="toolbar" aria-label="触控笔工具" data-annotation-ui>
               <span className="nn-pen-label"><PenLine size={17} />
-                <span>{({select:'选字',highlight:'荧光笔',underline:'下划线',circle:'圈注',ink:'手写',eraser:'橡皮擦'})[tool]}</span>
+                <span>{fingerInkMode ? '手指试笔 · ' : ''}{({select:'选字',highlight:'荧光笔',underline:'下划线',circle:'圈注',ink:'手写',eraser:'橡皮擦'})[tool]}</span>
               </span>
               <button type="button" onClick={() => { setPanelTab('tools'); setPanelOpen(true) }}>工具</button>
               <button type="button" className="nn-pen-end" onClick={() => openPenTool('select')}>完成</button>
@@ -470,6 +505,28 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
                         </button>
                       )}
                     </div>
+                    <div className="nn-annotation-finger-mode">
+                      <div className="nn-annotation-finger-copy">
+                        <strong>手指试笔</strong>
+                        <span>没有触控笔时，用单指直接画线和写字</span>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-label="手指试笔"
+                        aria-checked={fingerInkMode}
+                        onClick={() => {
+                          setFingerInkMode(previous => {
+                            if (!previous) {
+                              setTool(current => current === 'select' ? 'underline' : current)
+                              setPenTrayOpen(true)
+                            }
+                            return !previous
+                          })
+                        }}
+                        className="nn-annotation-finger-switch"
+                      ><span /></button>
+                    </div>
                     <div className="nn-annotation-color-row">
                       <span>笔迹颜色</span>
                       <div className="nn-annotation-color-options" role="group" aria-label="笔迹颜色">
@@ -481,7 +538,9 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
                         )}
                       </div>
                     </div>
-                    <p className="nn-annotation-hint">主动式触控笔可直接在原文上落笔。手指仍用于滚动和翻页；普通电容笔可长按选字后标注。</p>
+                    <p className="nn-annotation-hint">{fingerInkMode
+                      ? '试笔已开启：关闭面板后，单指在正文上直接画线；点击底部“完成”恢复正常滚动。试笔不会模拟压感或防误触。'
+                      : '主动式触控笔可直接落笔，手指保持正常滚动。没有笔也可以开启“手指试笔”体验划线、圈注、手写与擦除。'}</p>
                   </>
                 )}
 
