@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core'
 import { ArrowLeft, BookmarkCheck, BookmarkPlus, ChevronDown, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, ScrollText, Volume2, X } from 'lucide-react'
 
 import { AiSpeedReadPanel } from '../components/AiSpeedReadPanel'
+import { ReaderAnnotations } from '../features/articleAnnotations/ReaderAnnotations'
 import { ImageLightbox } from '../components/ImageLightbox'
 import { collectImageGallery, type ImageGallery } from '../lib/imageGallery'
 import { EinkReaderMenu } from '../components/EinkReaderMenu'
@@ -1849,6 +1850,8 @@ export function ReaderScreen({
 
               {loadState === 'ready' && (
                 <>
+                  <div className="relative">
+                    <ReaderAnnotations articleId={article.id} contentRef={proseRef} contentKey={proseHtml} overlayCloserRef={overlayCloserRef} />
                   <ArticleProseHtml
                     innerRef={proseRef}
                     html={proseHtml}
@@ -1861,6 +1864,7 @@ export function ReaderScreen({
                           : ''
                     }`}
                   />
+                  </div>
                   <InlineArticleVideos
                     rootRef={proseRef}
                     html={proseHtml}

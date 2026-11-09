@@ -30,9 +30,11 @@ import { normalizeReadingPositions, resetReadingPositionCache } from './readingP
 import { normalizePreferences } from '../sources/preferences'
 import { normalizePresetsState } from '../sources/presets'
 import type { Article } from './types'
+import type { ArticleAnnotation } from '../features/articleAnnotations/model'
+import { isAnnotation, listAllAnnotations, replaceAllAnnotations } from '../features/articleAnnotations/store'
 
 export const BACKUP_FORMAT = 'newsnook-backup'
-export const BACKUP_VERSION = 1
+export const BACKUP_VERSION = 2
 
 /** 备份里可选择性恢复的分区；与 UI 勾选项一一对应 */
 export type BackupSection =
@@ -42,6 +44,7 @@ export type BackupSection =
   | 'laterItems'
   | 'readIds'
   | 'readingPositions'
+  | 'annotations'
 
 export const BACKUP_SECTIONS: BackupSection[] = [
   'preferences',
@@ -50,6 +53,7 @@ export const BACKUP_SECTIONS: BackupSection[] = [
   'laterItems',
   'readIds',
   'readingPositions',
+  'annotations',
 ]
 
 export const BACKUP_SECTION_LABELS: Record<BackupSection, string> = {
@@ -59,6 +63,7 @@ export const BACKUP_SECTION_LABELS: Record<BackupSection, string> = {
   laterItems: '稍后读',
   readIds: '已读标记',
   readingPositions: '阅读位置',
+  annotations: '文章高亮与批注',
 }
 
 export interface BackupData {
@@ -69,6 +74,7 @@ export interface BackupData {
   laterItems?: Article[]
   readIds?: string[]
   readingPositions?: unknown
+  annotations?: ArticleAnnotation[]
 }
 
 export interface BackupPayload {
@@ -93,9 +99,10 @@ export interface BackupSummary {
   laterCount: number
   readCount: number
   readingPositionCount: number
+  annotationCount: number
 }
 
-const STORAGE_KEY_BY_SECTION: Record<BackupSection, string> = {
+const STORAGE_KEY_BY_SECTION: Record<Exclude<BackupSection, 'annotations'>, string> = {
   preferences: 'preferences',
   presets: 'presets',
   enabledSources: 'enabled',
@@ -155,6 +162,14 @@ export function collectBackup(appVersion?: string): BackupPayload {
   }
 }
 
+/** Preserve the synchronous snapshot API for the existing cloud-safety path. */
+export async function collectFullBackup(appVersion?: string): Promise<BackupPayload> {
+  const payload = collectBackup(appVersion)
+  const annotations = await listAllAnnotations()
+  if (annotations.length) payload.data.annotations = annotations
+  return payload
+}
+
 export function serializeBackup(payload: BackupPayload): string {
   return `${JSON.stringify(payload, null, 2)}\n`
 }
@@ -211,6 +226,12 @@ export function parseBackup(text: string): BackupPayload {
 
   const positions = normalizeReadingPositions(source.readingPositions)
   if (Object.keys(positions).length) data.readingPositions = positions
+  if (source.annotations != null) {
+    if (!Array.isArray(source.annotations) || source.annotations.length > 25000 || !source.annotations.every(isAnnotation)) {
+      throw new Error('备份里的文章批注数据有误')
+    }
+    data.annotations = source.annotations
+  }
 
   if (!Object.keys(data).length) {
     throw new Error('备份里没有任何可恢复的配置。')
@@ -243,6 +264,7 @@ export function summarizeBackup(payload: BackupPayload): BackupSummary {
       laterItems: Boolean(data.laterItems?.length),
       readIds: Boolean(data.readIds?.length),
       readingPositions: Object.keys(positions).length > 0,
+      annotations: Boolean(data.annotations?.length),
     },
     customSourceCount: prefs?.customSources?.length ?? 0,
     customCategoryCount: prefs?.customCategories?.length ?? 0,
@@ -251,6 +273,7 @@ export function summarizeBackup(payload: BackupPayload): BackupSummary {
     laterCount: data.laterItems?.length ?? 0,
     readCount: data.readIds?.length ?? 0,
     readingPositionCount: Object.keys(positions).length,
+    annotationCount: data.annotations?.length ?? 0,
   }
 }
 
@@ -280,6 +303,7 @@ export async function restoreBackup(
       skipped.push(section)
       return
     }
+    if (section === 'annotations') return
     entries.push([STORAGE_KEY_BY_SECTION[section], value])
     restored.push(section)
   }
@@ -293,6 +317,10 @@ export async function restoreBackup(
 
   const positions = normalizeReadingPositions(data.readingPositions)
   push('readingPositions', Object.keys(positions).length ? positions : null)
+  if (wanted.has('annotations') && data.annotations?.length) {
+    await replaceAllAnnotations(data.annotations)
+    restored.push('annotations')
+  } else skipped.push('annotations')
 
   if (entries.length) {
     await writeRestoredKeys(entries)

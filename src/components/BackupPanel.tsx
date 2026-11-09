@@ -6,7 +6,7 @@ import {
   BACKUP_SECTIONS,
   BACKUP_SECTION_LABELS,
   backupFileName,
-  collectBackup,
+  collectFullBackup,
   exportBackupFile,
   parseBackup,
   restoreBackup,
@@ -37,6 +37,8 @@ function sectionDetail(section: BackupSection, summary: BackupSummary): string {
       return `${summary.readCount} 条已读标记`
     case 'readingPositions':
       return `${summary.readingPositionCount} 篇文章的阅读位置`
+    case 'annotations':
+      return `${summary.annotationCount} 条高亮、校对及手写笔记`
     default:
       return ''
   }
@@ -56,7 +58,7 @@ export function BackupPanel() {
     setError(null)
     setNotice(null)
     try {
-      const payload = collectBackup(__APP_VERSION__)
+      const payload = await collectFullBackup(__APP_VERSION__)
       const result = await exportBackupFile(backupFileName(), serializeBackup(payload))
       setNotice(result === 'shared' ? '备份已生成，请在分享面板中保存。' : '备份文件已下载。')
     } catch (err) {
@@ -177,7 +179,7 @@ export function BackupPanel() {
       </div>
 
       <SettingsHint>
-        备份包含偏好、场景预设、自建订阅与分类、启用信源、稍后读、已读标记与阅读位置，只落本机文件，不会上传。
+        备份包含偏好、场景预设、自建订阅与分类、启用信源、稍后读、已读标记、阅读位置和文章批注，只落本机文件，不会上传。
         正文与列表缓存可再生，不进备份。只想迁移订阅源时用「自定义订阅」里的 OPML 更通用。
       </SettingsHint>
 

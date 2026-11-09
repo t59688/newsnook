@@ -175,6 +175,22 @@ assert.equal(summary.readingPositionCount, 1)
 assert.equal(summary.present.preferences, true)
 assert.equal(summary.present.presets, false)
 
+const annotationRecord = {
+  schema: 1, id: 'annotation-1', articleId: 'article-1', kind: 'underline',
+  anchor: { exact: '重要的文字', prefix: '这是一段', suffix: '。', start: 4, end: 9 },
+  note: '第二次阅读仍应存在', color: '#ad554b', createdAt: 100, updatedAt: 100,
+}
+const annotationsPayload = parseBackup(JSON.stringify({
+  format: BACKUP_FORMAT, version: BACKUP_VERSION, exportedAt: 100,
+  data: { annotations: [annotationRecord] },
+}))
+assert.equal(annotationsPayload.data.annotations?.length, 1)
+assert.equal(summarizeBackup(annotationsPayload).annotationCount, 1)
+assert.equal(summarizeBackup(annotationsPayload).present.annotations, true)
+assert.throws(() => parseBackup(JSON.stringify({
+  format: BACKUP_FORMAT, version: BACKUP_VERSION,
+  data: { annotations: [{ ...annotationRecord, anchor: { start: -1 } }] },
+})), /批注/)
 console.log('✓ backup collect / serialize / parse roundtrip')
 
 // 10. 拒绝陌生格式与未来版本
