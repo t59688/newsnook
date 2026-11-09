@@ -1,7 +1,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
 import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
-import { ArrowLeft, BookmarkCheck, BookmarkPlus, ChevronDown, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, ScrollText, Volume2, X } from 'lucide-react'
+import { ArrowLeft, BookmarkCheck, BookmarkPlus, ChevronDown, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, PenLine, RefreshCw, ScrollText, Volume2, X } from 'lucide-react'
 
 import { AiSpeedReadPanel } from '../components/AiSpeedReadPanel'
 import { ReaderAnnotations } from '../features/articleAnnotations/ReaderAnnotations'
@@ -185,6 +185,7 @@ export function ReaderScreen({
   const [deferredPhases, setDeferredPhases] = useState<Record<string, DeferredHostPhase>>({})
   const [lightbox, setLightbox] = useState<ImageGallery | null>(null)
   const [commentsOpen, setCommentsOpen] = useState(false)
+  const [annotationSheetOpen, setAnnotationSheetOpen] = useState(false)
   const [commentCount, setCommentCount] = useState<number | undefined>()
   const [translated, setTranslated] = useState<TranslatedArticleContent | null>(null)
   const [showTranslation, setShowTranslation] = useState(false)
@@ -1586,6 +1587,16 @@ export function ReaderScreen({
               )}
               <button
                 type="button"
+                disabled={loadState !== 'ready'}
+                onClick={() => setAnnotationSheetOpen(true)}
+                aria-label="文章标注与笔记"
+                aria-expanded={annotationSheetOpen}
+                className="flex h-9 w-8 shrink-0 items-center justify-center rounded-lg transition-colors hover:bg-paper/5 disabled:opacity-35"
+              >
+                <PenLine size={16} strokeWidth={1.7} className={annotationSheetOpen ? 'text-cinnabar' : 'text-paper-muted'} />
+              </button>
+              <button
+                type="button"
                 onClick={() => setMoreMenuOpen(true)}
                 aria-label="更多操作：分享、复制链接、浏览器核对原文"
                 aria-expanded={moreMenuOpen}
@@ -1851,7 +1862,14 @@ export function ReaderScreen({
               {loadState === 'ready' && (
                 <>
                   <div className="relative">
-                    <ReaderAnnotations articleId={article.id} contentRef={proseRef} contentKey={proseHtml} overlayCloserRef={overlayCloserRef} />
+                    <ReaderAnnotations
+                      articleId={article.id}
+                      contentRef={proseRef}
+                      contentKey={proseHtml}
+                      overlayCloserRef={overlayCloserRef}
+                      panelOpen={annotationSheetOpen}
+                      onPanelOpenChange={setAnnotationSheetOpen}
+                    />
                   <ArticleProseHtml
                     innerRef={proseRef}
                     html={proseHtml}

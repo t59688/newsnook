@@ -1,0 +1,290 @@
+/* Paper annotations: content-first UI. Controls never participate in article line layout. */
+.nn-annotation-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+}
+.nn-annotation-ink {
+  position: absolute;
+  display: block;
+  pointer-events: none;
+  overflow: visible;
+}
+.nn-annotation-inline-note {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: 2px 0 19px;
+  padding: 7px 0 7px 12px;
+  border: 0;
+  border-left: 2px solid var(--color-cinnabar);
+  border-radius: 0;
+  background: transparent;
+  color: var(--color-paper-muted);
+  font-family: var(--reader-font-family);
+  font-size: clamp(12px, 0.76em, 13px);
+  line-height: 1.75;
+  text-align: left;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+.nn-annotation-inline-note:focus-visible {
+  outline: 2px solid var(--color-cinnabar);
+  outline-offset: 2px;
+}
+.nn-annotation-context,
+.nn-annotation-pen-dock {
+  position: fixed;
+  z-index: 155;
+  bottom: calc(var(--sab, 0px) + 18px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: calc(100vw - 24px);
+  padding: 5px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--color-haze);
+  border-radius: 17px;
+  background: var(--color-ink-raised);
+  color: var(--color-paper);
+  box-shadow: 0 7px 30px rgba(0,0,0,.16);
+}
+.nn-annotation-context button,
+.nn-annotation-pen-dock button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  flex: none;
+  min-width: 42px;
+  min-height: 42px;
+  padding: 0 10px;
+  border-radius: 11px;
+  color: var(--color-paper);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+  word-break: keep-all;
+}
+.nn-annotation-context button:active,
+.nn-annotation-pen-dock button:active { background: var(--color-haze); }
+.nn-annotation-context .nn-annotation-primary {
+  background: var(--color-cinnabar);
+  color: var(--color-ink);
+}
+.nn-annotation-context .nn-annotation-icon-only { min-width: 32px; width: 32px; padding: 0; }
+.nn-annotation-context .nn-annotation-separator {
+  width: 1px; height: 23px; background: var(--color-haze); flex: none; margin: 0 2px;
+}
+.nn-annotation-pen-dock {
+  gap: 5px;
+  padding: 5px 7px 5px 12px;
+}
+.nn-annotation-pen-dock .nn-pen-label {
+  display: flex; align-items: center; gap: 7px; padding-right: 5px;
+  font-size: 12px; font-weight: 500; color: var(--color-paper);
+  white-space: nowrap;
+}
+.nn-annotation-pen-dock .nn-pen-label span { color: var(--color-paper-muted); font-weight: 400; }
+.nn-annotation-pen-dock button.nn-pen-end { color: var(--color-cinnabar); }
+.nn-annotation-shade {
+  position: fixed;
+  z-index: 180;
+  inset: 0;
+  background: rgba(0,0,0,.38);
+}
+.nn-annotation-sheet {
+  box-sizing: border-box;
+  position: fixed;
+  z-index: 181;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: min(80vh, 660px);
+  padding: 0 18px calc(16px + var(--sab, 0px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--color-haze);
+  border-bottom: 0;
+  border-radius: 23px 23px 0 0;
+  background: var(--color-ink-raised);
+  color: var(--color-paper);
+  box-shadow: 0 -8px 30px rgba(0,0,0,.12);
+  animation: nn-annotation-sheet-rise .23s cubic-bezier(.2,.7,.25,1) both;
+}
+@keyframes nn-annotation-sheet-rise {
+  from { transform: translateY(18px); opacity: .6; }
+  to { transform: none; opacity: 1; }
+}
+.nn-annotation-handle {
+  width: 36px;
+  height: 4px;
+  margin: 10px auto 14px;
+  border-radius: 4px;
+  background: var(--color-haze);
+}
+.nn-annotation-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.nn-annotation-sheet-head h2 { font-size: 17px; font-weight: 600; letter-spacing: 0; line-height: 1.4; }
+.nn-annotation-sheet-head p { color: var(--color-paper-muted); font-size: 12px; margin-top: 3px; line-height: 1.5; }
+.nn-annotation-close {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 39px;
+  height: 39px;
+  border-radius: 50%;
+  color: var(--color-paper-muted);
+  background: var(--color-ink);
+}
+.nn-annotation-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin: 17px 0 15px;
+  padding: 4px;
+  border-radius: 13px;
+  background: var(--color-ink);
+}
+.nn-annotation-tabs button {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 38px;
+  border-radius: 10px;
+  text-align: center;
+  color: var(--color-paper-muted);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.nn-annotation-tabs button[aria-selected='true'] {
+  background: var(--color-ink-raised);
+  color: var(--color-paper);
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  font-weight: 600;
+}
+.nn-annotation-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+}
+.nn-annotation-tool-grid button {
+  display: flex;
+  min-width: 0;
+  min-height: 72px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 4px;
+  border-radius: 13px;
+  border: 1px solid var(--color-haze);
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.nn-annotation-tool-grid button[aria-pressed='true'] {
+  border-color: var(--color-cinnabar);
+  color: var(--color-cinnabar);
+}
+.nn-annotation-color-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 19px 2px 13px;
+}
+.nn-annotation-color-row > span { color: var(--color-paper-muted); font-size: 13px; }
+.nn-annotation-color-options { display: flex; gap: 12px; }
+.nn-annotation-color-options button {
+  box-sizing: border-box;
+  width: 30px;
+  height: 30px;
+  padding: 3px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+}
+.nn-annotation-color-options button[aria-pressed='true'] { border-color: var(--color-paper); }
+.nn-annotation-color-options button span { display:block; width:100%; height:100%; border-radius:50%; }
+.nn-annotation-hint {
+  padding: 12px 0 2px;
+  border-top: 1px solid var(--color-haze);
+  color: var(--color-paper-muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+.nn-annotation-list { display: grid; gap: 0; padding-bottom: 8px; }
+.nn-annotation-item { padding: 13px 0; border-bottom: 1px solid var(--color-haze); }
+.nn-annotation-item > button {
+  display: block; width: 100%; padding: 0; text-align: left; color: var(--color-paper);
+}
+.nn-annotation-item small { display: block; margin-bottom: 6px; font-size: 11px; color: var(--color-paper-muted); }
+.nn-annotation-item strong { display: block; font-size: 14px; font-weight: 500; line-height: 1.6; overflow-wrap:anywhere; }
+.nn-annotation-item .nn-annotation-item-note { margin-top: 7px; font-size: 12px; color: var(--color-paper-muted); line-height: 1.6; overflow-wrap:anywhere; }
+.nn-annotation-item-actions { display: flex; align-items:center; gap: 18px; margin-top: 10px; }
+.nn-annotation-item-actions button { font-size: 12px; color: var(--color-paper-muted); min-height: 30px; }
+.nn-annotation-item-actions button:last-child { color: var(--color-cinnabar); }
+.nn-annotation-empty { text-align: center; padding: 38px 10px; color: var(--color-paper-muted); line-height: 1.8; font-size: 13px; }
+.nn-annotation-quote {
+  padding: 12px 13px;
+  margin: 15px 0;
+  border-radius: 12px;
+  border-left: 2px solid var(--color-cinnabar);
+  background: var(--color-ink);
+  color: var(--color-paper-muted);
+  font-size: 13px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+}
+.nn-annotation-editor-types { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 13px; }
+.nn-annotation-editor-types button {
+  min-width: 52px; min-height: 36px; padding: 0 10px;
+  border-radius: 9px;
+  background: var(--color-ink);
+  color: var(--color-paper-muted);
+  font-size: 12px; white-space: nowrap;
+}
+.nn-annotation-editor-types button[aria-pressed='true'] { color: var(--color-cinnabar); outline: 1px solid var(--color-cinnabar); }
+.nn-annotation-textarea {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 108px;
+  padding: 13px;
+  border: 1px solid var(--color-haze);
+  border-radius: 12px;
+  outline: none;
+  resize: vertical;
+  background: var(--color-ink);
+  color: var(--color-paper);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.nn-annotation-textarea:focus { border-color: var(--color-cinnabar); }
+.nn-annotation-editor-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.nn-annotation-editor-actions button { min-width: 76px; height: 42px; padding: 0 15px; border-radius: 11px; font-size: 14px; }
+.nn-annotation-editor-actions button:first-child { border: 1px solid var(--color-haze); color: var(--color-paper-muted); }
+.nn-annotation-editor-actions button:last-child { background: var(--color-cinnabar); color: var(--color-ink); font-weight: 600; }
+.nn-annotation-toolbar-error {
+  position: fixed; left: 16px; right: 16px; bottom: calc(80px + var(--sab,0px));
+  z-index: 190; max-width: 420px; margin: 0 auto;
+  padding: 11px 14px; border: 1px solid var(--color-cinnabar);
+  border-radius: 12px; background: var(--color-ink-raised); color: var(--color-paper); font-size: 13px;
+}
+@media (min-width: 700px) {
+  .nn-annotation-sheet { width: min(500px, calc(100vw - 32px)); left: 50%; right: auto; bottom: 20px; transform: translateX(-50%); border-radius: 22px; border-bottom: 1px solid var(--color-haze); padding-bottom: 18px; animation: none; }
+}
+@media (max-width: 350px) {
+  .nn-annotation-context { gap: 0; padding: 4px; }
+  .nn-annotation-context button { padding: 0 8px; font-size: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .nn-annotation-sheet { animation: none; }
+}

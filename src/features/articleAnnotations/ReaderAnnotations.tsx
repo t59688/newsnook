@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type MutableRefObject, type RefObject } from 'react'
-import { Check, Circle, Eraser, Highlighter, List, PenLine, Pencil, Underline, X } from 'lucide-react'
+import { Check, Circle, Eraser, Highlighter, List, MoreHorizontal, PenLine, Pencil, Underline, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
+import '../../styles/reader/annotations.css'
 import {
   createAnchor, documentText, offsetsFromRange, rangeFromOffsets, resolveAnchor, textNodes,
   type AnnotationKind, type ArticleAnnotation, type InkPoint, type TextAnchor,
@@ -31,33 +33,37 @@ function textPositionAt(root: HTMLElement, x: number, y: number): number | null 
   return null
 }
 
-export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCloserRef }: {
+export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCloserRef, panelOpen, onPanelOpenChange }: {
   articleId: string
   contentRef: RefObject<HTMLDivElement | null>
   contentKey: string
   overlayCloserRef?: MutableRefObject<(() => boolean) | null>
+  panelOpen: boolean
+  onPanelOpenChange: (open: boolean) => void
 }) {
   const [annotations, setAnnotations] = useState<ArticleAnnotation[]>([])
   const [tool, setTool] = useState<Tool>('underline')
   const [color, setColor] = useState(PALETTE[0]!)
-  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelTab, setPanelTab] = useState<'notes' | 'tools' | 'selection'>('tools')
+  const [penTrayOpen, setPenTrayOpen] = useState(false)
+  const setPanelOpen = onPanelOpenChange
   const [noteEditor, setNoteEditor] = useState<{ kind: AnnotationKind; anchor: TextAnchor; id?: string; text: string } | null>(null)
   const [message, setMessage] = useState('')
   const [shapes, setShapes] = useState<Shape[]>([])
   const [draft, setDraft] = useState<{ points: InkPoint[]; anchor: TextAnchor; origin: { x: number; y: number } } | null>(null)
   const [selected, setSelected] = useState<TextAnchor | null>(null)
-  const [selectionPosition, setSelectionPosition] = useState<{left:number;top:number}|null>(null)
   useEffect(() => {
-    if (!overlayCloserRef || (!noteEditor && !panelOpen && !selected)) return
+    if (!overlayCloserRef || (!noteEditor && !panelOpen && !selected && !penTrayOpen)) return
     const previous = overlayCloserRef.current
     overlayCloserRef.current = () => {
       if (noteEditor) setNoteEditor(null)
       else if (panelOpen) setPanelOpen(false)
-      else { setSelected(null); setSelectionPosition(null) }
+      else if (selected) setSelected(null)
+      else { setPenTrayOpen(false); setTool('select') }
       return true
     }
     return () => { overlayCloserRef.current = previous }
-  }, [overlayCloserRef, noteEditor, panelOpen, selected])
+  }, [overlayCloserRef, noteEditor, panelOpen, selected, penTrayOpen, setPanelOpen])
   const activePointer = useRef<number | null>(null)
   const draftRef = useRef<typeof draft>(null)
   const frameRef = useRef<number | null>(null)
@@ -125,8 +131,8 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
       const note = document.createElement('button')
       note.type = 'button'
       note.dataset.annotationUi = 'true'
-      note.className = 'reader-annotations-inline-note'
-      note.textContent = (item.kind === 'insert' ? '增补' : item.kind === 'replace' ? '改正' : item.kind === 'transpose' ? '对调' : '批注') + ' · ' + item.note
+      note.className = 'nn-annotation-inline-note'
+      note.textContent = (item.kind === 'insert' ? '增补' : item.kind === 'replace' ? '改正' : item.kind === 'transpose' ? '对调' : '旁批') + '　' + item.note
       note.setAttribute('aria-label', '编辑批注：' + item.note)
       note.addEventListener('click', () => setNoteEditor({kind:item.kind,anchor:item.anchor,id:item.id,text:item.note}))
       block.insertAdjacentElement('afterend', note)
@@ -135,12 +141,14 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
     return () => inserted.forEach(node => node.remove())
   }, [contentRef, contentKey, annotations])
 
-  const save = useCallback(async (item: ArticleAnnotation) => {
+  const save = useCallback(async (item: ArticleAnnotation): Promise<boolean> => {
     try {
       await putArticleAnnotation(item)
       await refresh()
+      return true
     } catch {
-      setMessage('保存失败，原有笔记未被覆盖；请检查可用空间')
+      setMessage('批注保存失败，请检查存储空间后重试')
+      return false
     }
   }, [refresh])
   const remove = useCallback(async (item: ArticleAnnotation) => {
@@ -152,7 +160,6 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
     const now = Date.now()
     void save({ id: id(), articleId, kind, anchor, note, color, strokes, createdAt: now, updatedAt: now, schema: 1 })
     setSelected(null)
-    setSelectionPosition(null)
     window.getSelection()?.removeAllRanges()
   }
   const captureSelection = useCallback(() => {
@@ -163,11 +170,8 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
     const offsets = offsetsFromRange(root, range)
     if (!offsets) return
     setSelected(createAnchor(documentText(root), offsets.start, offsets.end))
-    const rect = range.getClientRects()[0] || range.getBoundingClientRect()
-    setSelectionPosition({
-      left: Math.max(12, Math.min(rect.left, window.innerWidth - 286)),
-      top: rect.bottom + 72 < window.innerHeight ? rect.bottom + 8 : Math.max(8,rect.top - 52),
-    })
+    // Mobile Android already shows its native copy/search menu near the selection.
+    // Our actions live at the bottom of the viewport and never compete for that location.
   }, [contentRef])
   useEffect(() => {
     const updateSelection = () => captureSelection()
@@ -214,6 +218,7 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
     const originRect = originRange?.getBoundingClientRect() || root.getBoundingClientRect()
     const point: InkPoint = { x: event.clientX - originRect.left, y: event.clientY - originRect.top, pressure: event.pressure || 0.5, tiltX: event.tiltX, tiltY: event.tiltY }
     activePointer.current = event.pointerId
+    setPenTrayOpen(true)
     draftRef.current = { points: [point], anchor, origin: { x: originRect.left, y: originRect.top } }
     setDraft(draftRef.current)
     root.setPointerCapture(event.pointerId)
@@ -316,118 +321,245 @@ export function ReaderAnnotations({ articleId, contentRef, contentKey, overlayCl
   const overlayTop = layer && uiRect ? layer.top - uiRect.top : 0
   const overlayLeft = layer && uiRect ? layer.left - uiRect.left : 0
 
+  const showContext = Boolean(selected && !panelOpen && !noteEditor)
+  const openEditor = (kind: AnnotationKind, anchor: TextAnchor, existing?: ArticleAnnotation) => {
+    setPanelOpen(false)
+    setSelected(null)
+    window.getSelection()?.removeAllRanges()
+    setNoteEditor({ kind, anchor, id: existing?.id, text: existing?.note ?? '' })
+  }
+  const saveEditor = async () => {
+    if (!noteEditor) return
+    const old = annotations.find(item => item.id === noteEditor.id)
+    const now = Date.now()
+    const item: ArticleAnnotation = old
+      ? { ...old, kind: noteEditor.kind, note: noteEditor.text, updatedAt: now }
+      : { id: id(), articleId, kind: noteEditor.kind, anchor: noteEditor.anchor, note: noteEditor.text,
+        color, createdAt: now, updatedAt: now, schema: 1 }
+    if (await save(item)) setNoteEditor(null)
+  }
+  const openPenTool = (next: Tool) => {
+    setTool(next)
+    setPenTrayOpen(next !== 'select')
+    setSelected(null)
+    setPanelOpen(false)
+    window.getSelection()?.removeAllRanges()
+  }
+
   return (
-    <div ref={rootRef} className="reader-annotations-ui" data-annotation-ui>
-      <style>{`
-        .reader-annotations-ui{--ann-ink:#a95148;position:relative;z-index:12;font-family:inherit}
-        .reader-annotations-toolbar{display:flex;align-items:center;gap:4px;overflow-x:auto;scrollbar-width:none;padding:7px 4px;background:var(--ink-raised,var(--ink));border:1px solid var(--haze);border-radius:14px}
-        .reader-annotations-toolbar button{flex:none;display:inline-flex;align-items:center;justify-content:center;gap:5px;min-width:34px;height:34px;border-radius:9px;padding:0 8px;color:var(--paper);font-size:12px}
-        .reader-annotations-toolbar button[data-active="true"]{background:rgba(166,71,55,.14);color:var(--cinnabar)}
-        .reader-annotations-sheet{position:fixed;z-index:100;left:0;right:0;bottom:var(--sab,0px);max-height:65vh;overflow:auto;border-radius:20px 20px 0 0;border:1px solid var(--haze);background:var(--ink);color:var(--paper);padding:18px;box-shadow:0 -10px 45px #0003}
-        .reader-annotations-sheet textarea{width:100%;min-height:95px;padding:12px;border-radius:12px;border:1px solid var(--haze);background:var(--ink-raised);color:var(--paper);font-size:15px;resize:vertical}
-        .reader-annotations-action{padding:9px 12px;border-radius:10px;background:var(--ink-raised);color:var(--paper);font-size:13px}
-        .reader-annotations-ink{pointer-events:none;position:absolute;inset:0;overflow:visible}
-        .reader-annotations-inline-note{display:block;width:100%;margin:10px 0 14px;padding:7px 12px;text-align:left;border-left:2px solid var(--cinnabar);background:rgba(166,71,55,.06);border-radius:0 9px 9px 0;font-family:inherit;font-size:12px;line-height:1.65;color:var(--paper-muted);white-space:pre-wrap;overflow-wrap:anywhere;cursor:pointer}
-        .reader-annotations-inline-note::first-letter{color:var(--cinnabar)}
-      `}</style>
-      <div className="reader-annotations-toolbar" role="toolbar" aria-label="文章标注工具">
-        {([
-          ['select', '选字', PenLine], ['highlight', '荧光', Highlighter], ['underline', '划线', Underline],
-          ['circle', '圈注', Circle], ['ink', '手写', Pencil], ['eraser', '擦除', Eraser],
-        ] as const).map(([value, label, Icon]) =>
-          <button key={value} type="button" data-active={tool === value} title={label} onClick={() => setTool(value)}><Icon size={17} />{tool === value ? label : ''}</button>)}
-        <button type="button" title="选择笔迹颜色" onClick={() => setColor(PALETTE[(PALETTE.indexOf(color) + 1) % PALETTE.length]!)}><span style={{ width: 16, height: 16, backgroundColor: color, borderRadius: '50%', border: '1px solid #888' }} /></button>
-        <button type="button" onClick={() => setPanelOpen(true)} title="文章笔记"><List size={17} /><span>{annotations.length}</span></button>
-      </div>
-      <div
-        className="pointer-events-none absolute inset-x-0 top-0"
-        style={{ transform: 'translateY(0)' }}
-      />
-      <div
-        className={selected ? 'flex gap-1 items-center p-1.5 rounded-xl border border-haze bg-ink shadow-xl overflow-x-auto max-w-[calc(100vw-24px)]' : 'flex gap-2 items-center py-2'}
-        style={selected && selectionPosition ? {position:'fixed',left:selectionPosition.left,top:selectionPosition.top,zIndex:120} : undefined}
-        data-annotation-ui
-      >
-        {!selected && <button type="button" className="reader-annotations-action" onClick={captureSelection}>标注选中文字</button>}
-        {selected && (
-          <>
-            <button type="button" className="reader-annotations-action" onClick={() => record('highlight', selected)}>高亮</button>
-            <button type="button" className="reader-annotations-action" onClick={() => record('underline', selected)}>下划线</button>
-            <button type="button" className="reader-annotations-action" onClick={() => record('circle', selected)}>圈注</button>
-            <button type="button" className="reader-annotations-action" onClick={() => record('strike', selected)}>删除线</button>
-            <button type="button" className="reader-annotations-action" onClick={() => {setSelected(null);setSelectionPosition(null);setNoteEditor({ kind: 'note', anchor: selected, text: '' })}}>写批注</button>
-            <button type="button" className="reader-annotations-action" onClick={() => {setSelected(null);setSelectionPosition(null);setNoteEditor({ kind: 'insert', anchor: selected, text: '' })}}>校对</button>
-            <button type="button" className="reader-annotations-action" onClick={() => {setSelected(null);setSelectionPosition(null)}} aria-label="关闭文字标注工具"><X size={15}/></button>
-          </>
+    <>
+      {/* Full-size transparent ink layer: never pushes the article or intercepts touch scrolling. */}
+      <div ref={rootRef} className="nn-annotation-layer" data-annotation-ui>
+        {root && shapes.length > 0 && (
+          <svg
+            className="nn-annotation-ink"
+            style={{ top: overlayTop, left: overlayLeft, height: root.scrollHeight, width: root.offsetWidth }}
+            aria-hidden="true"
+          >
+            {shapes.map(shape => {
+              const item = shape.annotation
+              if (item.kind === 'ink') return item.strokes?.map((stroke, index) =>
+                <g key={item.id + index} fill="none" stroke={stroke.color} strokeLinejoin="round" strokeLinecap="round">
+                  {Array.from({ length: Math.ceil((stroke.points.length - 1) / 12) }, (_, chunkIndex) => {
+                    const chunk = stroke.points.slice(chunkIndex * 12, (chunkIndex + 1) * 12 + 1)
+                    const pressure = chunk.reduce((sum, point) => sum + point.pressure, 0) / chunk.length
+                    return <polyline key={chunkIndex}
+                      points={chunk.map(point => `${shape.origin.x + point.x},${shape.origin.y + point.y}`).join(' ')}
+                      strokeWidth={stroke.width * (0.55 + pressure)} />
+                  })}
+                </g>)
+              return shape.rects.map((rect, index) => {
+                const key = item.id + '-' + index
+                if (item.kind === 'circle') return <rect key={key} x={rect.x - 2} y={rect.y - 1} width={rect.width + 4}
+                  height={rect.height + 2} rx={rect.height / 2} fill="none" stroke={item.color} strokeWidth="1.6" />
+                if (item.kind === 'highlight') return <rect key={key} x={rect.x} y={rect.y + rect.height * .56}
+                  width={rect.width} height={rect.height * .36} fill={item.color} opacity=".3" />
+                if (item.kind === 'insert') {
+                  // The proofreading caret is deliberately tiny: notes stay in the following paragraph.
+                  return index === shape.rects.length - 1 ?
+                    <path key={key} d={`M ${rect.x + rect.width - 4} ${rect.y - 3} l 4 4 l 4 -4`}
+                      stroke={item.color} fill="none" strokeWidth="1.3" /> : null
+                }
+                if (item.kind === 'note' || item.kind === 'replace' || item.kind === 'transpose') {
+                  return index === 0 ? <path key={key}
+                    d={`M ${rect.x} ${rect.y + rect.height - 2} l 15 0`}
+                    stroke={item.color} strokeDasharray="2 2" strokeWidth="1.5" /> : null
+                }
+                const y = item.kind === 'strike' ? rect.y + rect.height * .53 : rect.y + rect.height - 2
+                return <path key={key} d={`M ${rect.x} ${y} L ${rect.x + rect.width} ${y}`}
+                  stroke={item.color} strokeWidth="1.6" fill="none" />
+              })
+            })}
+            {draft && <polyline
+              points={draft.points.map(point =>
+                `${point.x + draft.origin.x - (layer?.left ?? 0)},${point.y + draft.origin.y - (layer?.top ?? 0)}`).join(' ')}
+              stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" fill="none" />}
+          </svg>
         )}
       </div>
-      {message && <div role="alert" className="text-sm text-cinnabar py-2">{message}</div>}
-      {root && shapes.length > 0 && (
-        <svg className="reader-annotations-ink" style={{ top: overlayTop, left: overlayLeft, height: root.scrollHeight, width: root.offsetWidth }} aria-hidden="true">
-          {shapes.map(shape => {
-            const item = shape.annotation
-            if (item.kind === 'ink') return item.strokes?.map((stroke, i) =>
-              <g key={item.id + i} fill="none" stroke={stroke.color} strokeLinejoin="round" strokeLinecap="round">
-                {Array.from({ length: Math.ceil((stroke.points.length - 1) / 12) }, (_, index) => {
-                  const chunk = stroke.points.slice(index * 12, (index + 1) * 12 + 1)
-                  const averagePressure = chunk.reduce((total, point) => total + point.pressure, 0) / chunk.length
-                  return <polyline key={index} points={chunk.map(p => `${shape.origin.x + p.x},${shape.origin.y + p.y}`).join(' ')} strokeWidth={stroke.width * (0.55 + averagePressure)} />
-                })}
-              </g>)
-            return shape.rects.map((rect, i) => item.kind === 'circle'
-              ? <rect key={item.id + i} x={rect.x - 3} y={rect.y - 2} width={rect.width + 6} height={rect.height + 4} rx={rect.height / 2} fill="none" stroke={item.color} strokeWidth="1.7" />
-              : item.kind === 'highlight' ? <rect key={item.id + i} x={rect.x} y={rect.y + rect.height * 0.47} width={rect.width} height={rect.height * 0.48} fill={item.color} opacity=".28" />
-              : item.kind === 'strike' ? <path key={item.id + i} d={`M ${rect.x} ${rect.y + rect.height / 2} L ${rect.x + rect.width} ${rect.y + rect.height / 2}`} stroke={item.color} strokeWidth="1.6" />
-              : item.kind === 'insert' ? <g key={item.id+i} fill={item.color} stroke={item.color}><path d={`M ${rect.x+rect.width-5} ${rect.y-3} l 5 5 l 5 -5`} fill="none" strokeWidth="1.4"/><text x={rect.x+rect.width} y={rect.y-9} fontSize="10" fontWeight="500" textAnchor="middle" stroke="none">{item.note.slice(0,4)}</text></g>
-              : <path key={item.id + i} d={`M ${rect.x} ${rect.y + rect.height - 3} L ${rect.x + rect.width} ${rect.y + rect.height - 3}`} stroke={item.color} strokeWidth="1.8" />)
-          })}
-          {draft && <polyline points={draft.points.map(p => `${p.x + (draft.origin.x - (layer?.left || 0))},${p.y + (draft.origin.y - (layer?.top || 0))}`).join(' ')} stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />}
-        </svg>
+
+      {typeof document !== 'undefined' && createPortal(
+        <>
+          {/* Android's native text context menu remains above the selection; our actions are below. */}
+          {showContext && selected && (
+            <div className="nn-annotation-context" role="toolbar" aria-label="文字标注操作" data-annotation-ui>
+              <button type="button" className="nn-annotation-primary" onClick={() => record('highlight', selected)}>
+                <Highlighter size={16} strokeWidth={1.8} />高亮
+              </button>
+              <button type="button" onClick={() => record('underline', selected)}>
+                <Underline size={16} strokeWidth={1.8} />划线
+              </button>
+              <button type="button" onClick={() => openEditor('note', selected)}>
+                <Pencil size={16} strokeWidth={1.8} />笔记
+              </button>
+              <button type="button" aria-label="更多校对和标注操作" onClick={() => { setPanelTab('selection'); setPanelOpen(true) }}>
+                <MoreHorizontal size={18} strokeWidth={1.8} />
+              </button>
+              <span className="nn-annotation-separator" />
+              <button type="button" className="nn-annotation-icon-only" aria-label="关闭标注工具"
+                onClick={() => { setSelected(null); window.getSelection()?.removeAllRanges() }}>
+                <X size={15} />
+              </button>
+            </div>
+          )}
+
+          {penTrayOpen && !showContext && !panelOpen && !noteEditor && (
+            <div className="nn-annotation-pen-dock" role="toolbar" aria-label="触控笔工具" data-annotation-ui>
+              <span className="nn-pen-label"><PenLine size={17} />
+                <span>{({select:'选字',highlight:'荧光笔',underline:'下划线',circle:'圈注',ink:'手写',eraser:'橡皮擦'})[tool]}</span>
+              </span>
+              <button type="button" onClick={() => { setPanelTab('tools'); setPanelOpen(true) }}>工具</button>
+              <button type="button" className="nn-pen-end" onClick={() => openPenTool('select')}>完成</button>
+            </div>
+          )}
+
+          {panelOpen && (
+            <>
+              <div className="nn-annotation-shade" onClick={() => setPanelOpen(false)} data-annotation-ui />
+              <section className="nn-annotation-sheet" role="dialog" aria-modal="true" aria-label="文章标注与笔记" data-annotation-ui>
+                <div className="nn-annotation-handle" />
+                <div className="nn-annotation-sheet-head">
+                  <div>
+                    <h2>标注与笔记</h2>
+                    <p>写在文章旁，留在下次阅读里</p>
+                  </div>
+                  <button type="button" className="nn-annotation-close" aria-label="关闭批注面板"
+                    onClick={() => setPanelOpen(false)}><X size={18} /></button>
+                </div>
+                <div className="nn-annotation-tabs" role="tablist" aria-label="批注类型">
+                  <button type="button" role="tab" aria-selected={panelTab==='tools'} onClick={() => setPanelTab('tools')}>笔工具</button>
+                  <button type="button" role="tab" aria-selected={panelTab==='notes'} onClick={() => setPanelTab('notes')}>笔记 {annotations.length}</button>
+                  {selected && <button type="button" role="tab" aria-selected={panelTab==='selection'}
+                    onClick={() => setPanelTab('selection')}>选中文字</button>}
+                </div>
+
+                {panelTab === 'tools' && (
+                  <>
+                    <div className="nn-annotation-tool-grid">
+                      {([
+                        ['underline','下划线',Underline],
+                        ['highlight','荧光笔',Highlighter],
+                        ['circle','圈注',Circle],
+                        ['ink','自由手写',Pencil],
+                        ['eraser','橡皮擦',Eraser],
+                        ['select','普通阅读',PenLine],
+                      ] as const).map(([value, label, Icon]) =>
+                        <button key={value} type="button" aria-pressed={tool===value && penTrayOpen}
+                          onClick={() => openPenTool(value)}>
+                          <Icon size={20} strokeWidth={1.6} />{label}
+                        </button>
+                      )}
+                    </div>
+                    <div className="nn-annotation-color-row">
+                      <span>笔迹颜色</span>
+                      <div className="nn-annotation-color-options" role="group" aria-label="笔迹颜色">
+                        {PALETTE.map((value, index) =>
+                          <button key={value} type="button" aria-label={['赭黄','朱红','竹青','灰紫'][index]}
+                            aria-pressed={color===value} onClick={() => setColor(value)}>
+                            <span style={{backgroundColor:value}} />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                    <p className="nn-annotation-hint">主动式触控笔可直接在原文上落笔。手指仍用于滚动和翻页；普通电容笔可长按选字后标注。</p>
+                  </>
+                )}
+
+                {panelTab === 'selection' && selected && (
+                  <div className="nn-annotation-tool-grid">
+                    <button type="button" onClick={() => { record('circle', selected); setPanelOpen(false) }}><Circle size={20}/>圈注</button>
+                    <button type="button" onClick={() => { record('strike', selected); setPanelOpen(false) }}><Underline size={20}/>删除线</button>
+                    <button type="button" onClick={() => openEditor('insert', selected)}><PenLine size={20}/>增补符号</button>
+                    <button type="button" onClick={() => openEditor('replace', selected)}><Pencil size={20}/>改正</button>
+                    <button type="button" onClick={() => openEditor('transpose', selected)}><PenLine size={20}/>对调</button>
+                    <button type="button" onClick={() => openEditor('note', selected)}><List size={20}/>写批注</button>
+                  </div>
+                )}
+
+                {panelTab === 'notes' && (
+                  <>
+                    <div className="nn-annotation-list">
+                      {annotations.length === 0 && (
+                        <div className="nn-annotation-empty">这篇文章还没有标注。<br/>长按一段文字，或拿起笔直接划写。</div>
+                      )}
+                      {annotations.map(item =>
+                        <div className="nn-annotation-item" key={item.id}>
+                          <button type="button" onClick={() => locate(item)}>
+                            <small>{({highlight:'荧光笔',underline:'下划线',circle:'圈注',strike:'删除线',note:'旁批',
+                              insert:'增补',replace:'改正',transpose:'对调',ink:'手写'})[item.kind]} · 点击回到原文</small>
+                            <strong>{item.anchor.exact.slice(0, 100) || '手写批注'}</strong>
+                            {item.note && <span className="nn-annotation-item-note">{item.note}</span>}
+                          </button>
+                          <div className="nn-annotation-item-actions">
+                            <button type="button" onClick={() => openEditor(item.kind, item.anchor, item)}>编辑</button>
+                            <button type="button" onClick={() => void remove(item)}>删除</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    {annotations.length > 0 && <button type="button" className="nn-annotation-export" onClick={exportMarkdown}>
+                      导出这篇文章的笔记（Markdown）
+                    </button>}
+                  </>
+                )}
+              </section>
+            </>
+          )}
+
+          {noteEditor && (
+            <>
+              <div className="nn-annotation-shade" onClick={() => setNoteEditor(null)} data-annotation-ui />
+              <section className="nn-annotation-sheet" role="dialog" aria-modal="true" aria-label="编辑批注" data-annotation-ui>
+                <div className="nn-annotation-handle" />
+                <div className="nn-annotation-sheet-head">
+                  <div><h2>{noteEditor.id ? '修改批注' : '写一条批注'}</h2><p>关联原文，不改变文章内容</p></div>
+                  <button type="button" className="nn-annotation-close" aria-label="关闭编辑器" onClick={() => setNoteEditor(null)}><X size={18}/></button>
+                </div>
+                <blockquote className="nn-annotation-quote">{noteEditor.anchor.exact.slice(0,160)}</blockquote>
+                <div className="nn-annotation-editor-types" role="group" aria-label="批注类型">
+                  {(['note','insert','replace','transpose'] as const).map(kind =>
+                    <button type="button" key={kind} aria-pressed={noteEditor.kind===kind}
+                      onClick={() => setNoteEditor({...noteEditor,kind})}>
+                      {({note:'旁批',insert:'增补 ∨',replace:'改正',transpose:'对调'})[kind]}
+                    </button>
+                  )}
+                </div>
+                <textarea className="nn-annotation-textarea" value={noteEditor.text} maxLength={16000}
+                  onChange={event => setNoteEditor({...noteEditor,text:event.target.value})}
+                  placeholder="写下你的理解、补充或修改建议…" />
+                <div className="nn-annotation-editor-actions">
+                  <button type="button" onClick={() => setNoteEditor(null)}>取消</button>
+                  <button type="button" onClick={() => void saveEditor()}><Check size={15} className="inline mr-1"/>保存批注</button>
+                </div>
+              </section>
+            </>
+          )}
+
+          {message && <div className="nn-annotation-toolbar-error" role="alert" data-annotation-ui>{message}</div>}
+        </>,
+        document.body
       )}
-      {shapes.filter(shape => shape.annotation.kind === 'note' || shape.annotation.kind === 'replace' || shape.annotation.kind === 'transpose').map(shape => (
-        <button
-          type="button"
-          key={shape.annotation.id}
-          data-annotation-ui
-          title={shape.annotation.note || '查看批注'}
-          onClick={() => setNoteEditor({ kind: shape.annotation.kind, anchor: shape.annotation.anchor, id: shape.annotation.id, text: shape.annotation.note })}
-          style={{position:'absolute',left:overlayLeft + Math.min(shape.origin.x + shape.origin.width + 2, Math.max(0, (root?.offsetWidth || 0) - 30)),top:overlayTop + Math.max(0,shape.origin.y-18),zIndex:3,minWidth:24,minHeight:24,borderRadius:8,background:'var(--ink-raised)',color:shape.annotation.color,border:'1px solid var(--haze)',fontSize:11}}
-          aria-label={'查看正文批注：' + (shape.annotation.note || '无文字')}
-        >{shape.annotation.kind==='transpose' ? '⇄' : shape.annotation.kind==='replace' ? '改' : '✎'}</button>
-      ))}
-      {panelOpen && <div className="reader-annotations-sheet" role="dialog" aria-label="文章笔记" data-annotation-ui>
-        <div className="flex justify-between items-center mb-3"><strong>我的标注 · {annotations.length}</strong><div className="flex gap-3 items-center"><button type="button" onClick={exportMarkdown} className="text-xs">导出 MD</button><button type="button" onClick={() => setPanelOpen(false)} aria-label="关闭"><X size={20}/></button></div></div>
-        {annotations.length === 0 && <p className="text-sm text-paper-muted">选中文字，或用触控笔直接在正文上划写。</p>}
-        {annotations.map(item => <div key={item.id} className="py-3 border-b border-haze/40">
-          <button type="button" className="text-left block w-full" onClick={() => locate(item)}>
-            <span className="block text-xs text-paper-muted">{item.kind} · 点击定位原文</span>
-            <span className="block text-sm leading-relaxed mt-1">{item.anchor.exact.slice(0, 90) || '手写批注'}</span>
-            {item.note && <span className="block text-xs mt-2 text-cinnabar">{item.note}</span>}
-          </button>
-          <div className="flex gap-3 mt-2">
-            <button type="button" className="text-xs" onClick={() => { setNoteEditor({kind:item.kind,anchor:item.anchor,id:item.id,text:item.note});setPanelOpen(false) }}>编辑</button>
-            <button type="button" className="text-xs text-cinnabar" onClick={() => void remove(item)}>删除</button>
-          </div>
-        </div>)}
-      </div>}
-      {noteEditor && <div className="reader-annotations-sheet" role="dialog" aria-label="编辑批注" data-annotation-ui>
-        <div className="flex justify-between items-center mb-3"><strong>{noteEditor.kind === 'insert' ? '校对建议' : '文字批注'}</strong><button type="button" onClick={() => setNoteEditor(null)} aria-label="关闭"><X size={20}/></button></div>
-        <p className="text-xs text-paper-muted mb-3">原文：{noteEditor.anchor.exact.slice(0, 100)}</p>
-        <div className="flex gap-2 mb-3 flex-wrap">
-          {(['note', 'insert', 'replace', 'transpose'] as const).map(kind => <button key={kind} type="button" className="reader-annotations-action" style={{outline:noteEditor.kind===kind ? '1px solid var(--cinnabar)' : undefined}} onClick={() => setNoteEditor({...noteEditor,kind})}>{({note:'旁批',insert:'增补 ∨',replace:'改正',transpose:'对调'})[kind]}</button>)}
-        </div>
-        <textarea autoFocus value={noteEditor.text} maxLength={16000} onChange={event => setNoteEditor({ ...noteEditor, text: event.target.value })} placeholder="写下你的想法…" />
-        <div className="flex gap-3 justify-end mt-3">
-          <button type="button" className="reader-annotations-action" onClick={() => setNoteEditor(null)}>取消</button>
-          <button type="button" className="reader-annotations-action" onClick={() => {
-            const old = annotations.find(a => a.id === noteEditor.id)
-            if (old) void save({ ...old, note: noteEditor.text, updatedAt: Date.now() })
-            else record(noteEditor.kind, noteEditor.anchor, noteEditor.text)
-            setNoteEditor(null)
-          }}><Check size={15} className="inline mr-1"/>保存</button>
-        </div>
-      </div>}
-      <div className="sr-only" aria-live="polite">{annotations.length} 条文章标注</div>
-    </div>
+      <span className="sr-only" aria-live="polite">{annotations.length} 条文章标注</span>
+    </>
   )
 }
