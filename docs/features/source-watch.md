@@ -97,3 +97,28 @@ fake update into the news inbox.
 
 A second UI-only "预览应用内横幅" setting displays the actual foreground banner
 without network requests or creating unread events. It also works on web.
+
+## Inbox feed parity
+
+The "新动态" tab renders watched articles through `WatchArticleFeed`, which
+uses the **same** `ArticleRow` / `LeadStory` components and editorial wrappers
+as the main home feed, rather than a separate `.sw-story` card implementation.
+It inherits the user's `homeFeedLayout` preference (`classic` or `cards`),
+article cover/recovery logic, translation settings, read state, saved state,
+and prestored/offline indicators. Results remain sorted by discovery time;
+article metadata shows the publisher's actual timestamp when provided.
+
+The watch-specific inbox controls (all/unread filter, mark-all-read, unread
+count, cross-preset event store) stay outside the shared article renderer.
+Only 40 events are mounted initially; loading more adds batches of 40 without
+fetching any unmonitored source. `SourceWatchScreen` owns read-state updates.
+
+Native background RSS notifications initially contain only a title and URL.
+The next foreground import reuses the existing parser for only the imported
+watched source to hydrate cover, summary and real publication time, preserving
+notification deduplication and existing read/unread state.
+
+UI regression: `scripts/source-watch-feed-ui.test.tsx`, plus the updated
+`settings-paper-ui.test.tsx` test accounting for the Source Watch shortcut.
+Viewport review: 360x780, 390x844 and 768x1024; classic list, mobile/desktop
+cards, light/dark themes, image-led story, unread-only and mark-all-read.

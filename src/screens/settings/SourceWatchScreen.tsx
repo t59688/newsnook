@@ -12,16 +12,26 @@ import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
 import { haptics } from '../../lib/haptics'
 import type { Article } from '../../lib/types'
 import { checkWatchedSources } from '../../features/sourceWatch/runtime'
+import { WatchArticleFeed } from '../../features/sourceWatch/WatchArticleFeed'
 import { supportsNativeSourceWatch } from '../../features/sourceWatch/eligibility'
 import { getWatchNotificationStatus, openWatchNotificationSettings, requestWatchNotificationPermission, sendWatchTestNotification } from '../../features/sourceWatch/native'
-import { loadWatchState, saveWatchState, type WatchEvent, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
+import { loadWatchState, saveWatchState, watchArticleKey, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
 import type { NewsSource, SourceGroup } from '../../sources/registry'
+import type { HomeFeedLayout } from '../../sources/preferences'
+import type { TranslationPrefs } from '../../features/translation/types'
 
 interface Props {
   sources: NewsSource[]
+  homeFeedLayout?: HomeFeedLayout
+  readIds?: ReadonlySet<string>
+  savedIds?: ReadonlySet<string>
+  prestoredIds?: ReadonlySet<string>
+  translationPrefs?: TranslationPrefs
   onBack: () => void
   onOpenArticle: (article: Article) => void
 }
+
+const EMPTY_IDS: ReadonlySet<string> = new Set()
 
 type WatchTab = 'inbox' | 'sources' | 'settings'
 type GroupFilter = 'all' | SourceGroup
@@ -188,7 +198,16 @@ function WatchSourceSheet({
   )
 }
 
-export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
+export function SourceWatchScreen({
+  sources,
+  homeFeedLayout = 'classic',
+  readIds = EMPTY_IDS,
+  savedIds = EMPTY_IDS,
+  prestoredIds = EMPTY_IDS,
+  translationPrefs,
+  onBack,
+  onOpenArticle,
+}: Props) {
   const [state, setState] = useState(loadWatchState)
   const [tab, setTab] = useState<WatchTab>('inbox')
   const [query, setQuery] = useState('')
@@ -197,6 +216,7 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [intervalPicker, setIntervalPicker] = useState(false)
   const [showUnread, setShowUnread] = useState(false)
+  const [inboxLimit, setInboxLimit] = useState(40)
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState<string | null>(null)
   const [notificationHint, setNotificationHint] = useState<string | null>(null)
@@ -329,21 +349,22 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
   const matchedFollowed = useMemo(() => filteredSources.filter(source => ruleMap.has(source.id)), [filteredSources, ruleMap])
   const unmatched = useMemo(() => filteredSources.filter(source => !ruleMap.has(source.id)).sort((a, b) => a.name.localeCompare(b.name)), [filteredSources, ruleMap])
   const shownAvailable = unmatched.slice(0, visibleLimit)
-  const currentEvents = state.events.filter(event => !showUnread || !event.read)
-  const eventGroups = useMemo(() => {
-    const groups: { label: string; events: WatchEvent[] }[] = []
-    for (const event of currentEvents) {
-      const today = new Date()
-      const date = new Date(event.discoveredAt)
-      const key = date.toDateString() === today.toDateString() ? '今天'
-        : date.toDateString() === new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1).toDateString() ? '昨天'
-          : date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
-      const last = groups[groups.length - 1]
-      if (last && last.label === key) last.events.push(event)
-      else groups.push({ label: key, events: [event] })
+  const displayedEvents = useMemo(() =>
+    state.events
+      .filter(event => !showUnread || !event.read)
+      .sort((a, b) => b.discoveredAt - a.discoveredAt),
+  [state.events, showUnread])
+
+  const visibleEvents = useMemo(() => displayedEvents.slice(0, inboxLimit), [displayedEvents, inboxLimit])
+
+  const openWatchedArticle = (article: Article) => {
+    const key = watchArticleKey(article)
+    if (state.events.some(event => event.key === key && !event.read)) {
+      commit({ ...state, events: state.events.map(event =>
+        event.key === key ? { ...event, read: true } : event) })
     }
-    return groups
-  }, [currentEvents])
+    onOpenArticle(article)
+  }
 
   const chooseTab = (next: WatchTab) => {
     if (tab === next) return
@@ -403,32 +424,32 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
                 <>
                   <div className="sw-inbox-tools">
                     <div className="sw-filter-pair" role="group" aria-label="动态筛选">
-                      <button type="button" aria-pressed={!showUnread} className={!showUnread ? 'sw-filter-selected' : ''} onClick={() => setShowUnread(false)}>全部动态</button>
-                      <button type="button" aria-pressed={showUnread} className={showUnread ? 'sw-filter-selected' : ''} onClick={() => setShowUnread(true)}>仅未读</button>
+                      <button type="button" aria-pressed={!showUnread} className={!showUnread ? 'sw-filter-selected' : ''} onClick={() => { setShowUnread(false); setInboxLimit(40) }}>全部动态</button>
+                      <button type="button" aria-pressed={showUnread} className={showUnread ? 'sw-filter-selected' : ''} onClick={() => { setShowUnread(true); setInboxLimit(40) }}>仅未读</button>
                     </div>
                     {unread > 0 && <button type="button" className="sw-mark-all" onClick={() => { commit({ ...state, events: state.events.map(event => ({ ...event, read: true })) }); void haptics.tick() }}><CheckCheck size={16} aria-hidden="true" />全部已读</button>}
                   </div>
-                  {eventGroups.length === 0 ? (
-                    <div className="sw-filter-empty">所有新动态都已读完。<button type="button" onClick={() => setShowUnread(false)}>查看全部</button></div>
-                  ) : eventGroups.map(group => (
-                    <section className="sw-timeline" key={group.label}>
-                      <h3 className="sw-day-label">{group.label}</h3>
-                      {group.events.map(event => (
-                        <button
-                          type="button" key={event.key} className={'sw-story' + (event.read ? ' sw-story--read' : '')}
-                          onClick={() => {
-                            commit({ ...state, events: state.events.map(item => item.key === event.key ? { ...item, read: true } : item) })
-                            onOpenArticle(event.article)
-                          }}
-                        >
-                          <div className="sw-story-meta"><span className="sw-story-source">{sourceMap.get(event.sourceId)?.name || event.article.sourceName}</span><span>{fmtTime(event.discoveredAt)}</span>{!event.read && <span className="sw-unread-dot" aria-label="未读" />}</div>
-                          <h4>{event.article.title}</h4>
-                          {event.article.summary && <p>{event.article.summary}</p>}
-                          <span className="sw-story-end"><span>阅读全文</span><ChevronRight size={14} aria-hidden="true" /></span>
+                  {displayedEvents.length === 0 ? (
+                    <div className="sw-filter-empty">所有新动态都已读完。<button type="button" onClick={() => { setShowUnread(false); setInboxLimit(40) }}>查看全部</button></div>
+                  ) : (
+                    <div className="sw-feed-bleed">
+                      <WatchArticleFeed
+                        events={visibleEvents}
+                        layout={homeFeedLayout}
+                        readIds={readIds}
+                        savedIds={savedIds}
+                        prestoredIds={prestoredIds}
+                        translationPrefs={translationPrefs}
+                        onOpen={openWatchedArticle}
+                      />
+                      {displayedEvents.length > visibleEvents.length && (
+                        <button type="button" className="sw-more sw-inbox-more" onClick={() => setInboxLimit(limit => limit + 40)}>
+                          加载更多动态 · 剩余 {displayedEvents.length - visibleEvents.length} 篇
+                          <ChevronRight size={16} aria-hidden="true" />
                         </button>
-                      ))}
-                    </section>
-                  ))}
+                      )}
+                    </div>
+                  )}
                 </>
               )}
             </section>

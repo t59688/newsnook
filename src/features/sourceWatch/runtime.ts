@@ -6,13 +6,18 @@ import { announceWatchEvents } from './announcements'
 
 let running = false
 const MAX_PARALLEL = 2
-export async function checkWatchedSources(sources: NewsSource[], force = false): Promise<number> {
+export async function checkWatchedSources(
+  sources: NewsSource[],
+  force = false,
+  hydrateSourceIds?: ReadonlySet<string>,
+): Promise<number> {
   if (running) return 0
   const initial = loadWatchState()
   const watched = sources.filter(source => !source.paused && initial.rules.some(rule => rule.sourceId === source.id && rule.enabled))
   if (!watched.length) return 0
   const now = Date.now()
-  const due = watched.filter(source => force || now - (initial.lastChecked[source.id] || 0) >= initial.intervalMinutes * 60000)
+  const due = watched.filter(source =>
+    force || hydrateSourceIds?.has(source.id) || now - (initial.lastChecked[source.id] || 0) >= initial.intervalMinutes * 60000)
   if (!due.length) return 0
   running = true
   let total = 0

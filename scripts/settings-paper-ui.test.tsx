@@ -37,6 +37,7 @@ const html = renderToStaticMarkup(createElement(MeScreen, {
   onOpenFeedStore: noop,
   onOpenCategories: noop,
   onOpenPresets: noop,
+  onOpenSourceWatch: noop,
   onOpenTypographySettings: noop,
   onOpenAppearanceSettings: noop,
   onOpenTranslationSettings: noop,
@@ -52,9 +53,9 @@ const { document } = parseHTML(html)
 const root = document.querySelector('.paper-settings-root')
 assert.ok(root, '实际设置页必须使用隔离样式根')
 assert.equal(document.querySelectorAll('.paper-settings-group').length, 4)
-assert.equal(document.querySelectorAll('button').length, 17, '保留全部十七个真实业务入口')
-assert.equal(document.querySelectorAll('.paper-settings-item').length, 15)
-for (const label of ['稍后读', '最近阅读', '本地搜索', 'RSS 订阅商店', '自定义订阅与 OPML', '分类与自动刷新', '场景预设', '阅读字体', '外观', '翻译', '划词百科', '朗读', 'AI', '网络与代理', '离线存储与备份', '账户与同步', '关于有所闻']) {
+assert.equal(document.querySelectorAll('button').length, 18, '保留全部十八个真实业务入口')
+assert.equal(document.querySelectorAll('.paper-settings-item').length, 16)
+for (const label of ['稍后读', '最近阅读', '本地搜索', 'RSS 订阅商店', '自定义订阅与 OPML', '分类与自动刷新', '场景预设', '关注动态', '阅读字体', '外观', '翻译', '划词百科', '朗读', 'AI', '网络与代理', '离线存储与备份', '账户与同步', '关于有所闻']) {
   assert.ok([...document.querySelectorAll('button')].some((button) => button.textContent?.includes(label)),
     `入口不可丢失：${label}`)
 }
@@ -67,7 +68,7 @@ for (const key of ['me-reading', 'me-feed-store', 'me-custom-sources', 'me-prese
 
 const handlers = [
   'onOpenLater', 'onOpenHistory', 'onOpenLocalSearch', 'onOpenFeedStore',
-  'onOpenCustomSources', 'onOpenCategories', 'onOpenPresets',
+  'onOpenCustomSources', 'onOpenCategories', 'onOpenPresets', 'onOpenSourceWatch',
   'onOpenTypographySettings', 'onOpenAppearanceSettings',
   'onOpenTranslationSettings', 'onOpenWikiSettings', 'onOpenReadAloudSettings', 'onOpenAiSettings',
   'onOpenProxySettings', 'onOpenStorageSettings', 'onOpenAccountSync', 'onOpenAbout',
@@ -83,4 +84,4 @@ assert.doesNotMatch(styles, /\.paper-settings-shell\s+button\s*\{[^}]*min-height
 
 assert.doesNotMatch(styles, /color-mix\(/, '避免旧版 WebView 构建错误转换含变量的 color-mix')
 assert.match(styles, /\.paper-settings-shortcut-icon\s*\{[^}]*background:\s*var\(--paper-accent-soft\)/s)
-console.log('settings paper UI: 17 routes, 4 groups, real counts, theme isolation and switch guards OK')
+console.log('settings paper UI: 18 routes, 4 groups, real counts, theme isolation and switch guards OK')

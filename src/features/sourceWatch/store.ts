@@ -27,7 +27,37 @@ export function reconcileWatchArticles(state: WatchState, sourceId: string, arti
   // First successful scan only establishes a baseline. It must not flood notifications.
   const existing = new Set(state.events.map(item => item.key))
   const added = known ? items.filter(a => !old.has(watchArticleKey(a)) && !existing.has(watchArticleKey(a))).slice(0, 10).map(a => ({ key: watchArticleKey(a), sourceId, article: a, discoveredAt: timestamp, read: false })) : []
-  const next: WatchState = { ...state, events: [...added, ...state.events].slice(0, 300), cursors: { ...state.cursors, [sourceId]: [...new Set([...keys, ...(known || [])])].slice(0, 150) }, lastChecked: { ...state.lastChecked, [sourceId]: timestamp } }
+
+  // Android's background RSS scanner stores only the title and URL. When the
+  // WebView next parses that *watched* source, enrich its pending inbox entries
+  // with the exact same cover/summary/real date used by the home feed. Do not
+  // treat hydration as a new update or change an existing unread flag.
+  const articlesByKey = new Map(items.map(article => [watchArticleKey(article), article]))
+  const events = state.events.map(event => {
+    if (event.sourceId !== sourceId) return event
+    const fresh = articlesByKey.get(event.key)
+    if (!fresh) return event
+    const before = event.article
+    const hydrated: Article = {
+      ...before,
+      id: fresh.id,
+      title: fresh.title || before.title,
+      summary: fresh.summary || before.summary,
+      image: fresh.image || before.image,
+      publishedAt: fresh.hasRealDate ? fresh.publishedAt : before.publishedAt,
+      hasRealDate: fresh.hasRealDate || before.hasRealDate,
+      contentType: fresh.contentType || before.contentType,
+      videoUrl: fresh.videoUrl || before.videoUrl,
+      audioUrl: fresh.audioUrl || before.audioUrl,
+    }
+    return hydrated.id !== before.id || hydrated.title !== before.title || hydrated.summary !== before.summary
+      || hydrated.image !== before.image || hydrated.publishedAt !== before.publishedAt
+      || hydrated.hasRealDate !== before.hasRealDate || hydrated.contentType !== before.contentType
+      || hydrated.videoUrl !== before.videoUrl || hydrated.audioUrl !== before.audioUrl
+      ? { ...event, article: hydrated }
+      : event
+  })
+  const next: WatchState = { ...state, events: [...added, ...events].slice(0, 300), cursors: { ...state.cursors, [sourceId]: [...new Set([...keys, ...(known || [])])].slice(0, 150) }, lastChecked: { ...state.lastChecked, [sourceId]: timestamp } }
   return { next, added }
 }
 

@@ -414,8 +414,18 @@ export default function App() {
       if (disposed || document.visibilityState !== 'visible') return
       // Native events are reconciled first, so a foreground fetch cannot
       // re-discover them before the Android inbox has been imported.
-      void importNativeWatchEvents(sources).catch(() => 0).finally(() => {
-        if (!disposed && document.visibilityState === 'visible') void checkWatchedSources(sources)
+      void importNativeWatchEvents(sources).catch(() => 0).then(imported => {
+        if (disposed || document.visibilityState !== 'visible') return
+        // Native RSS only knows title and URL. Reparse the newly imported
+        // source once with the existing foreground adapter so the inbox can
+        // display the same image, summary and publication time as the home feed.
+        // This never fetches unmonitored sources or adds extra alerts.
+        const hydrateIds = imported > 0
+          ? new Set(loadWatchState().events.filter(event =>
+              !event.article.hasRealDate && event.article.id === event.key,
+            ).map(event => event.sourceId))
+          : undefined
+        void checkWatchedSources(sources, false, hydrateIds)
       })
     }
     const configure = () => {
@@ -1587,7 +1597,16 @@ export default function App() {
     }
 
     if (settingsRoute.name === 'source-watch') {
-      return <SourceWatchScreen sources={allRegisteredSources(prefs)} onBack={() => setSettingsRoute(null)} onOpenArticle={(article) => { setSettingsRoute(null); openArticle(article) }} />
+      return <SourceWatchScreen
+        sources={allRegisteredSources(prefs)}
+        homeFeedLayout={prefs.homeFeedLayout}
+        readIds={readIds}
+        savedIds={laterIds}
+        prestoredIds={prestore.articleIds}
+        translationPrefs={prefs.translation}
+        onBack={() => setSettingsRoute(null)}
+        onOpenArticle={(article) => { setSettingsRoute(null); openArticle(article) }}
+      />
     }
 
     if (settingsRoute.name === 'presets') {

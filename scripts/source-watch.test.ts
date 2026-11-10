@@ -26,3 +26,18 @@ test('only the current source cursor changes', () => {
   const first = { ...base, cursors: { other: ['other:foo'] } }
   assert.deepEqual(reconcileWatchArticles(first, 'openai-news', [article('a')], 1000).next.cursors.other, ['other:foo'])
 })
+
+test('foreground parsing hydrates a native title-only entry without a second notification', () => {
+  const parsed = { ...article('richer'), image: 'https://openai.com/cover.webp', summary: 'New details from the original feed', publishedAt: 1760000100, hasRealDate: true }
+  const key = watchArticleKey(parsed)
+  const native = { ...parsed, id: key, summary: '', image: undefined, hasRealDate: false, publishedAt: 2000 }
+  const initial = { ...base, cursors: { 'openai-news': [key] }, events: [{ key, sourceId: 'openai-news', article: native, discoveredAt: 2000, read: true }] }
+  const { next, added } = reconcileWatchArticles(initial, 'openai-news', [parsed], 3000)
+  assert.equal(added.length, 0)
+  assert.equal(next.events.length, 1)
+  assert.equal(next.events[0].read, true)
+  assert.equal(next.events[0].article.id, parsed.id)
+  assert.equal(next.events[0].article.image, parsed.image)
+  assert.equal(next.events[0].article.summary, parsed.summary)
+  assert.equal(next.events[0].article.publishedAt, parsed.publishedAt)
+})

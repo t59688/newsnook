@@ -272,25 +272,22 @@
   font-weight: 650;
   background: var(--paper-accent-soft);
 }
-.sw-timeline { padding-top: 17px; }
-.sw-day-label { color: var(--sw-soft); font-size: 12px; font-weight: 700; margin: 0 0 11px; }
-.sw-story {
-  display: block;
-  width: 100%;
-  min-height: 96px;
-  text-align: left;
-  padding: 17px 2px 20px;
-  border-top: 1px solid var(--sw-rule);
-  transition: background 160ms ease;
+/* Mirror the home feed's edge-to-edge article rhythm, not a second list UI. */
+.sw-feed-bleed {
+  margin: 6px -22px 0;
+  /* Settings palettes are softer than feed palettes: keep small metadata legible. */
+  --color-paper-faint: var(--paper-muted);
 }
-.sw-story:active { background: var(--sw-wash); }
-.sw-story-meta { display: flex; align-items: center; gap: 9px; color: var(--sw-soft); font-size: 12px; line-height: 1.5; }
-.sw-story-source { font-weight: 680; color: var(--sw-soft); }
-.sw-unread-dot { margin-left: auto; width: 7px; height: 7px; border-radius: 50%; background: var(--sw-accent); flex: none; }
-.sw-story h4 { margin: 8px 0 0; font-size: 17px; line-height: 1.5; font-weight: 650; color: var(--sw-ink); letter-spacing: -.015em; }
-.sw-story p { margin: 8px 0 0; font-size: 13px; line-height: 1.65; color: var(--sw-soft); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
-.sw-story--read h4 { font-weight: 480; color: var(--sw-soft); }
-.sw-story-end { display: inline-flex; align-items: center; gap: 3px; margin-top: 10px; color: var(--sw-accent); font-size: 12px; }
+html .sw-feed-bleed .editorial-article-item[data-read='true'] .editorial-card-summary {
+  color: var(--paper-muted) !important;
+}
+.sw-feed-bleed .editorial-feed-list {
+  padding-bottom: 4px;
+}
+.sw-inbox-more {
+  padding: 8px 20px;
+  margin: 10px auto 0;
+}
 .sw-filter-empty { text-align: center; color: var(--sw-soft); padding: 65px 0 20px; font-size: 14px; }
 .sw-filter-empty button { color: var(--sw-accent); margin-left: 8px; font-weight: 650; }
 
@@ -543,6 +540,7 @@
 }
 @media (max-width: 360px) {
   .sw-page { padding-left: 16px; padding-right: 16px; }
+  .sw-feed-bleed { margin-left: -16px; margin-right: -16px; }
   .sw-tabs-wrap { padding-left: 12px; padding-right: 12px; }
   .sw-groups { margin-left: -16px; margin-right: -16px; padding-left: 16px; padding-right: 16px; }
   .sw-headline { font-size: 25px; }
