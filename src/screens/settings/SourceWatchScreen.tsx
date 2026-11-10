@@ -15,7 +15,7 @@ import { checkWatchedSources } from '../../features/sourceWatch/runtime'
 import { WatchArticleFeed } from '../../features/sourceWatch/WatchArticleFeed'
 import { supportsNativeSourceWatch } from '../../features/sourceWatch/eligibility'
 import { getNativeWatchStatus, openWatchNotificationSettings, requestWatchNotificationPermission, sendWatchTestNotification, type NativeWatchStatus } from '../../features/sourceWatch/native'
-import { loadWatchState, saveWatchState, watchArticleKey, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
+import { loadWatchState, saveWatchState, watchArticleKey, normalizeWatchInterval, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
 import type { NewsSource, SourceGroup } from '../../sources/registry'
 import type { HomeFeedLayout } from '../../sources/preferences'
 import type { TranslationPrefs } from '../../features/translation/types'
@@ -531,8 +531,8 @@ export function SourceWatchScreen({
                 <div className="sw-settings-list">
                   <button type="button" className="sw-setting-row" onClick={() => setIntervalPicker(true)}>
                     <span className="sw-setting-icon"><Clock3 size={19} strokeWidth={1.7}/></span>
-                    <span className="sw-setting-copy"><strong>检查频率</strong><small>Android 会按系统调度执行</small></span>
-                    <span className="sw-setting-value">{state.intervalMinutes === 120 ? '每 2 小时' : '每 ' + state.intervalMinutes + ' 分钟'}</span>
+                    <span className="sw-setting-copy"><strong>检查频率</strong><small>5/10 分钟尽力检测，省电模式可能延后</small></span>
+                    <span className="sw-setting-value">{'约每 ' + state.intervalMinutes + ' 分钟'}</span>
                     <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />
                   </button>
                   <div className="sw-setting-row">
@@ -605,11 +605,13 @@ export function SourceWatchScreen({
         title="检查频率"
         value={String(state.intervalMinutes)}
         options={[
-          { id: '30', label: '每 30 分钟', description: '更新更快，检查次数更多' },
-          { id: '60', label: '每 60 分钟', description: '推荐，兼顾及时性与电量' },
-          { id: '120', label: '每 2 小时', description: '更节省流量与电量' },
+          { id: '5', label: '约每 5 分钟', description: '尽力执行，后台可能延后' },
+          { id: '10', label: '约每 10 分钟', description: '尽力执行，后台可能延后' },
+          { id: '15', label: '约每 15 分钟', description: 'Android 系统最低周期任务间隔' },
+          { id: '30', label: '约每 30 分钟', description: '均衡检查频率与资源占用' },
+          { id: '60', label: '约每 60 分钟', description: '更节省电量与网络流量' },
         ]}
-        onChange={value => { commit({ ...state, intervalMinutes: Number(value) }); setIntervalPicker(false) }}
+        onChange={value => { commit({ ...state, intervalMinutes: normalizeWatchInterval(Number(value)) }); setIntervalPicker(false) }}
         onCancel={() => setIntervalPicker(false)}
       />
       {selectedSource && ruleMap.has(selectedSource.id) && <WatchSourceSheet

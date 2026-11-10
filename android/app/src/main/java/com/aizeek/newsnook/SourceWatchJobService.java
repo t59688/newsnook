@@ -16,6 +16,7 @@ import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Background RSS/Atom checks never run a WebView.
@@ -25,17 +26,40 @@ public class SourceWatchJobService extends JobService {
     static final Object LOCK = new Object();
     private static final ExecutorService EXECUTOR = Executors.newSingleThreadExecutor();
     private volatile boolean stopped;
+    private static final AtomicInteger RUNNING = new AtomicInteger();
+
+    static boolean isRunning() { return RUNNING.get() > 0; }
 
     @Override public boolean onStartJob(JobParameters params) {
         stopped = false;
+        RUNNING.incrementAndGet();
         EXECUTOR.execute(() -> {
-            try { performChecks(); }
-            finally { jobFinished(params, false); }
+            boolean nextScheduled = true;
+            try {
+                performChecks();
+            } catch (Exception error) {
+                android.util.Log.w("SourceWatch", "Background watch check failed", error);
+            } finally {
+                if (!stopped) {
+                    // The alternate ID is persisted *before* the current job
+                    // finishes. Scheduling the currently running ID would
+                    // terminate the job on Android instead of chaining it.
+                    if (params.getJobId() == SourceWatchPlugin.JOB_ID ||
+                        params.getJobId() == SourceWatchPlugin.SHORT_JOB_ID) {
+                        nextScheduled = SourceWatchPlugin.scheduleShortFollowUp(this, params.getJobId());
+                    }
+                    jobFinished(params, !nextScheduled);
+                }
+                RUNNING.decrementAndGet();
+            }
         });
         return true;
     }
+
     @Override public boolean onStopJob(JobParameters params) {
         stopped = true;
+        // Android itself retries interrupted one-shot work. Do not also enqueue
+        // a new short job here; retries plus our chain would duplicate polls.
         return true;
     }
 

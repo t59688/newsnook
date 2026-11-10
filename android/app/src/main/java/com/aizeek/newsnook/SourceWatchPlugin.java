@@ -32,6 +32,17 @@ public class SourceWatchPlugin extends Plugin {
     static final String CONFIG = "config";
     static final String CHANNEL = "newsnook-source-watch";
     static final int JOB_ID = 0x39753;
+    static final int SHORT_JOB_ID = JOB_ID + 1;
+
+    static int intervalMinutes(int requested) {
+        switch (requested) {
+            case 5: case 10: case 15: case 30: case 60: return requested;
+            default: return 60;
+        }
+    }
+
+    static boolean usesShortJobs(int minutes) { return minutes < 15; }
+
 
     @PluginMethod
     public void requestNotificationPermission(PluginCall call) {
@@ -66,7 +77,8 @@ public class SourceWatchPlugin extends Plugin {
         result.put("enabled", notificationsEnabled(getContext()));
         JobScheduler jobs = (JobScheduler) getContext().getSystemService(Context.JOB_SCHEDULER_SERVICE);
         android.content.SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
-        result.put("scheduled", jobs != null && jobs.getPendingJob(JOB_ID) != null);
+        result.put("scheduled", jobs != null &&
+            (jobs.getPendingJob(JOB_ID) != null || jobs.getPendingJob(SHORT_JOB_ID) != null || SourceWatchJobService.isRunning()));
         result.put("lastJobAt", prefs.getLong("lastJobAt", 0));
         result.put("lastJobChecked", prefs.getInt("lastJobChecked", 0));
         result.put("lastJobNew", prefs.getInt("lastJobNew", 0));
@@ -108,7 +120,7 @@ public class SourceWatchPlugin extends Plugin {
         JSONObject config = new JSONObject();
         try {
             config.put("sources", sources);
-            config.put("intervalMinutes", Math.max(15, call.getInt("intervalMinutes", 60)));
+            config.put("intervalMinutes", intervalMinutes(call.getInt("intervalMinutes", 60)));
             config.put("quietHours", Boolean.TRUE.equals(call.getBoolean("quietHours", true)));
             config.put("wifiOnly", Boolean.TRUE.equals(call.getBoolean("wifiOnly", false)));
             synchronized (SourceWatchJobService.LOCK) {
@@ -162,9 +174,16 @@ public class SourceWatchPlugin extends Plugin {
             boolean changed = !signature.equals(preferences.getString("scheduleSignature", null));
             JobScheduler jobs = (JobScheduler) getContext().getSystemService(Context.JOB_SCHEDULER_SERVICE);
             boolean shouldBeScheduled = scheduledSources.length() > 0;
-            // Jobs can disappear after an app update, OS restore or quota reset.
-            // Recover even when the user's configuration has not changed.
-            boolean missing = jobs == null || (jobs.getPendingJob(JOB_ID) != null) != shouldBeScheduled;
+            // Keep short one-off jobs alive even when the other ID is running.
+            // Distinguish persisted 15+ minute periodic jobs from 5/10-minute
+            // one-shot chains. Rebuild after a crash/update if either is missing.
+            JobInfo a = jobs != null ? jobs.getPendingJob(JOB_ID) : null;
+            JobInfo b = jobs != null ? jobs.getPendingJob(SHORT_JOB_ID) : null;
+            boolean present = a != null || b != null || SourceWatchJobService.isRunning();
+            boolean correctMode = usesShortJobs(config.optInt("intervalMinutes"))
+                ? (a != null && !a.isPeriodic()) || (b != null && !b.isPeriodic()) || SourceWatchJobService.isRunning()
+                : a != null && a.isPeriodic() && b == null;
+            boolean missing = jobs == null || (shouldBeScheduled ? !present || !correctMode : present);
             preferences.edit().putString(CONFIG, config.toString()).apply();
             if (changed || missing) {
                 if (!schedule(getContext(), config)) {
@@ -178,21 +197,51 @@ public class SourceWatchPlugin extends Plugin {
         } catch (Exception error) { call.reject("Unable to configure source monitoring", error); }
     }
 
+    static JobInfo buildScheduledJob(Context context, JSONObject config, int jobId) {
+        int minutes = intervalMinutes(config.optInt("intervalMinutes", 60));
+        JobInfo.Builder builder = new JobInfo.Builder(jobId, new ComponentName(context, SourceWatchJobService.class))
+            .setPersisted(true)
+            .setRequiredNetworkType(config.optBoolean("wifiOnly") ? JobInfo.NETWORK_TYPE_UNMETERED : JobInfo.NETWORK_TYPE_ANY);
+        if (usesShortJobs(minutes)) {
+            // setPeriodic() is capped at 15 minutes by Android. Use a persisted
+            // one-off job scheduled after each completed poll for 5/10 minutes.
+            // setMinimumLatency is earliest eligibility, NEVER an exact alarm.
+            builder.setMinimumLatency(minutes * 60_000L);
+        } else {
+            builder.setPeriodic(minutes * 60_000L);
+        }
+        return builder.build();
+    }
+
     static boolean schedule(Context context, JSONObject config) {
         JobScheduler jobs = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
         if (jobs == null) return false;
         JSONArray sources = config.optJSONArray("sources");
         if (sources == null || sources.length() == 0) {
             jobs.cancel(JOB_ID);
+            jobs.cancel(SHORT_JOB_ID);
             return true;
         }
-        long period = Math.max(15, config.optInt("intervalMinutes", 60)) * 60_000L;
-        JobInfo.Builder builder = new JobInfo.Builder(JOB_ID, new ComponentName(context, SourceWatchJobService.class))
-            .setPeriodic(period).setPersisted(true)
-            .setRequiredNetworkType(config.optBoolean("wifiOnly") ? JobInfo.NETWORK_TYPE_UNMETERED : JobInfo.NETWORK_TYPE_ANY);
-        // Scheduling the same ID replaces its old constraints atomically.
-        // Do not cancel first: a scheduling failure must not remove a valid job.
-        return jobs.schedule(builder.build()) == JobScheduler.RESULT_SUCCESS;
+        // Schedule the new chain before removing the other ID. A failed
+        // schedule must never erase the last successfully persisted job.
+        if (jobs.schedule(buildScheduledJob(context, config, JOB_ID)) != JobScheduler.RESULT_SUCCESS) return false;
+        jobs.cancel(SHORT_JOB_ID);
+        return true;
+    }
+
+    /** Alternate IDs so rescheduling cannot stop the currently running job. */
+    static boolean scheduleShortFollowUp(Context context, int finishedId) {
+        android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        JSONObject config;
+        try { config = new JSONObject(prefs.getString(CONFIG, "{}")); }
+        catch (Exception error) { return false; }
+        JSONArray sources = config.optJSONArray("sources");
+        if (sources == null || sources.length() == 0 ||
+            !usesShortJobs(intervalMinutes(config.optInt("intervalMinutes", 60)))) return true;
+        JobScheduler jobs = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        if (jobs == null) return false;
+        int nextId = finishedId == JOB_ID ? SHORT_JOB_ID : JOB_ID;
+        return jobs.schedule(buildScheduledJob(context, config, nextId)) == JobScheduler.RESULT_SUCCESS;
     }
 
     /** Called only for genuinely new, explicitly watched foreground articles. */

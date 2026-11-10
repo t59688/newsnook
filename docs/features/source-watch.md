@@ -187,3 +187,23 @@ previously broken scheduling and foreground notification pipeline.
 The notification deep-link handler also suppresses a duplicate in-app banner
 while the user is navigating to the article from the Android notification
 shade. Foreground-only events continue to use the normal banner behavior.
+
+## Interval selection: 5 / 10 / 15 / 30 / 60 minutes
+
+User-selectable intervals are exactly 5, 10, 15, 30 and 60 minutes;
+legacy 120-minute preferences migrate to 60. Short intervals use two
+alternating, persisted Android one-off JobScheduler IDs, each with
+`setMinimumLatency()` equal to the selected interval. Before a 5/10-minute
+job finishes it schedules the alternate job ID, so the running job is not
+stopped and there is no process-dependent gap between jobs. For 15/30/60,
+Android's standard persistent periodic JobScheduler API is used. Switching
+cadences replaces old constraints and cancels the obsolete alternate ID.
+Only explicitly followed, native-supported HTTPS RSS/Atom sources are
+included. With no followed sources both jobs are canceled.
+
+**Cadence is best effort, not an exact alarm:** JobScheduler may delay
+one-off or periodic work due to Doze, standby buckets, connectivity, quotas
+and manufacturer battery limits. A normal app exit or recent-app dismissal
+usually leaves persisted jobs registered; an explicit force-stop prevents
+background execution until the app is relaunched. No always-on foreground
+service, exact-alarm privilege, paid backend, or push provider is introduced.

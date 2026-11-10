@@ -41,3 +41,12 @@ test('foreground parsing hydrates a native title-only entry without a second not
   assert.equal(next.events[0].article.summary, parsed.summary)
   assert.equal(next.events[0].article.publishedAt, parsed.publishedAt)
 })
+
+test('supported watch intervals are 5, 10, 15, 30 and 60 minutes', async () => {
+  const { WATCH_INTERVAL_CHOICES, normalizeWatchInterval } = await import('../src/features/sourceWatch/store')
+  assert.deepEqual(WATCH_INTERVAL_CHOICES, [5, 10, 15, 30, 60])
+  for (const period of WATCH_INTERVAL_CHOICES) assert.equal(normalizeWatchInterval(period), period)
+  assert.equal(normalizeWatchInterval(120), 60) // migrate removed legacy option
+  assert.equal(normalizeWatchInterval(1), 60)
+  assert.equal(normalizeWatchInterval(undefined), 60)
+})

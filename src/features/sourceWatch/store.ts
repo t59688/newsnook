@@ -4,12 +4,18 @@ export type WatchMode = 'instant' | 'digest' | 'inbox'
 export interface WatchRule { sourceId: string; mode: WatchMode; enabled: boolean }
 export interface WatchEvent { key: string; sourceId: string; article: Article; discoveredAt: number; read: boolean }
 export interface WatchState { rules: WatchRule[]; events: WatchEvent[]; cursors: Record<string, string[]>; lastChecked: Record<string, number>; intervalMinutes: number; quietHours: boolean; wifiOnly: boolean }
+export const WATCH_INTERVAL_CHOICES = [5, 10, 15, 30, 60] as const
+
+export function normalizeWatchInterval(value: unknown): number {
+  return typeof value === 'number' && WATCH_INTERVAL_CHOICES.some(choice => choice === value) ? value : 60
+}
+
 const KEY = 'newsnook:source-watch:v1'
 const DEFAULT: WatchState = { rules: [], events: [], cursors: {}, lastChecked: {}, intervalMinutes: 60, quietHours: true, wifiOnly: false }
 export function loadWatchState(): WatchState {
   try {
     const data = JSON.parse(localStorage.getItem(KEY) || 'null') as Partial<WatchState> | null
-    return data && Array.isArray(data.rules) ? { ...DEFAULT, ...data, rules: data.rules.filter(rule => typeof rule.sourceId === 'string' && ['instant','digest','inbox'].includes(rule.mode)), events: Array.isArray(data.events) ? data.events : [], cursors: data.cursors || {}, lastChecked: data.lastChecked || {} } : { ...DEFAULT }
+    return data && Array.isArray(data.rules) ? { ...DEFAULT, ...data, intervalMinutes: normalizeWatchInterval(data.intervalMinutes), rules: data.rules.filter(rule => typeof rule.sourceId === 'string' && ['instant','digest','inbox'].includes(rule.mode)), events: Array.isArray(data.events) ? data.events : [], cursors: data.cursors || {}, lastChecked: data.lastChecked || {} } : { ...DEFAULT }
   } catch { return { ...DEFAULT } }
 }
 export function saveWatchState(state: WatchState): void {
