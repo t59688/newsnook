@@ -1,15 +1,31 @@
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import { announceWatchEvents } from './announcements'
+import { groupWatchNotificationEvents } from './notificationBatch'
+import type { WatchEvent, WatchState } from './store'
 
 interface SourceWatchNativePlugin {
   syncRules(options: { sources: { id: string; name: string; url: string; mode: string; seen?: string[] }[]; intervalMinutes: number; quietHours: boolean; wifiOnly: boolean }): Promise<void>
   drainEvents(): Promise<{ events: { key: string; sourceId: string; sourceName: string; title: string; url: string; discoveredAt: number }[] }>
   acknowledge(options: { keys: string[] }): Promise<void>
   requestNotificationPermission(): Promise<{ granted: boolean }>
-  getNotificationStatus(): Promise<{ enabled: boolean }>
+  getNotificationStatus(): Promise<NativeWatchStatus>
+  notifyNewArticles(options: {
+    sources: { id: string; name: string; articles: { key: string; title: string; url: string }[] }[]
+    quietHours: boolean
+  }): Promise<{ delivered: number }>
   sendTestNotification(): Promise<{ delivered: boolean }>
   openNotificationSettings(): Promise<void>
 }
+export interface NativeWatchStatus {
+  enabled: boolean
+  scheduled: boolean
+  lastJobAt: number
+  lastJobChecked: number
+  lastJobNew: number
+  lastJobNotified: number
+  lastJobErrors: number
+}
+
 const Native = registerPlugin<SourceWatchNativePlugin>('SourceWatch')
 export async function syncNativeWatchRules(sources: { id: string; name: string; url: string; mode: string; seen?: string[] }[], intervalMinutes: number, quietHours: boolean, wifiOnly: boolean): Promise<void> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('SourceWatch')) return
@@ -20,6 +36,22 @@ export async function getWatchNotificationStatus(): Promise<boolean | null> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('SourceWatch')) return null
   const result = await Native.getNotificationStatus()
   return result.enabled
+}
+
+export async function getNativeWatchStatus(): Promise<NativeWatchStatus | null> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('SourceWatch')) return null
+  return Native.getNotificationStatus()
+}
+
+/** Deliver genuine foreground discoveries to the Android notification tray.
+ * Quiet hours, source selection, and silent modes are filtered before crossing
+ * the native bridge; native dispatch deduplicates against background jobs. */
+export async function notifyNativeWatchUpdates(events: WatchEvent[], state: WatchState): Promise<number> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('SourceWatch')) return 0
+  const groups = groupWatchNotificationEvents(events, state)
+  if (!groups.length) return 0
+  const result = await Native.notifyNewArticles({ sources: groups, quietHours: state.quietHours })
+  return result.delivered
 }
 
 export async function sendWatchTestNotification(): Promise<boolean> {

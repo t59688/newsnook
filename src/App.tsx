@@ -18,6 +18,7 @@ import { syncRouteFromAppUrl } from './features/sync/nativeNotification'
 import { checkWatchedSources } from './features/sourceWatch/runtime'
 import { supportsNativeSourceWatch } from './features/sourceWatch/eligibility'
 import { WatchBanner } from './features/sourceWatch/WatchBanner'
+import { muteWatchBannersForNotificationOpen } from './features/sourceWatch/announcements'
 import { loadWatchState, markWatchArticleRead } from './features/sourceWatch/store'
 import { useWatchUnreadCount } from './features/sourceWatch/useWatchUnreadCount'
 import { importNativeWatchEvents, syncNativeWatchRules } from './features/sourceWatch/native'
@@ -441,7 +442,9 @@ export default function App() {
       const nativeSignature = JSON.stringify([nativeRules, state.intervalMinutes, state.quietHours, state.wifiOnly])
       if (nativeSignature !== previousNativeRules) {
         previousNativeRules = nativeSignature
-        void syncNativeWatchRules(nativeRules, state.intervalMinutes, state.quietHours, state.wifiOnly).catch(() => {})
+        void syncNativeWatchRules(nativeRules, state.intervalMinutes, state.quietHours, state.wifiOnly)
+          .then(() => window.dispatchEvent(new Event('newsnook:source-watch-native-synced')))
+          .catch(error => log.app.warn('Android source-watch schedule sync failed', error))
       }
       const scheduleSignature = JSON.stringify([watched.map(source => source.id), state.intervalMinutes])
       if (scheduleSignature === previousSchedule) return
@@ -1114,6 +1117,7 @@ export default function App() {
 
       // The test notification is an inbox shortcut, not an artificial article.
       if (trimmed === 'newsnook://watch/inbox') {
+        muteWatchBannersForNotificationOpen()
         leaveActiveSite()
         setTab('me')
         setSettingsRoute({ name: 'source-watch' })
@@ -1125,6 +1129,7 @@ export default function App() {
 
       // Local source-watch notification opens the exact article without switching presets.
       if (trimmed.startsWith('newsnook://watch?')) {
+        muteWatchBannersForNotificationOpen()
         const params = new URLSearchParams(trimmed.slice('newsnook://watch?'.length))
         const sourceId = params.get('source') || ''
         const url = params.get('url') || ''

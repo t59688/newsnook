@@ -64,6 +64,14 @@ public class SourceWatchPlugin extends Plugin {
     public void getNotificationStatus(PluginCall call) {
         JSObject result = new JSObject();
         result.put("enabled", notificationsEnabled(getContext()));
+        JobScheduler jobs = (JobScheduler) getContext().getSystemService(Context.JOB_SCHEDULER_SERVICE);
+        android.content.SharedPreferences prefs = getContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+        result.put("scheduled", jobs != null && jobs.getPendingJob(JOB_ID) != null);
+        result.put("lastJobAt", prefs.getLong("lastJobAt", 0));
+        result.put("lastJobChecked", prefs.getInt("lastJobChecked", 0));
+        result.put("lastJobNew", prefs.getInt("lastJobNew", 0));
+        result.put("lastJobNotified", prefs.getInt("lastJobNotified", 0));
+        result.put("lastJobErrors", prefs.getInt("lastJobErrors", 0));
         call.resolve(result);
     }
 
@@ -115,6 +123,7 @@ public class SourceWatchPlugin extends Plugin {
                     if (key.startsWith("seen:") && !activeIds.contains(key.substring(5))) cleanup.remove(key);
                     if (key.startsWith("etag:") && !activeIds.contains(key.substring(5))) cleanup.remove(key);
                     if (key.startsWith("modified:") && !activeIds.contains(key.substring(9))) cleanup.remove(key);
+                    if (key.startsWith("notified:") && !activeIds.contains(key.substring(9))) cleanup.remove(key);
                 }
                 cleanup.apply();
                 // Fold the JS cursor into the native cursor: a feed already seen in the
@@ -151,22 +160,101 @@ public class SourceWatchPlugin extends Plugin {
                 .put("wifiOnly", config.optBoolean("wifiOnly"));
             String signature = scheduleOnly.toString();
             boolean changed = !signature.equals(preferences.getString("scheduleSignature", null));
-            preferences.edit().putString(CONFIG, config.toString()).putString("scheduleSignature", signature).apply();
-            if (changed) schedule(getContext(), config);
+            JobScheduler jobs = (JobScheduler) getContext().getSystemService(Context.JOB_SCHEDULER_SERVICE);
+            boolean shouldBeScheduled = scheduledSources.length() > 0;
+            // Jobs can disappear after an app update, OS restore or quota reset.
+            // Recover even when the user's configuration has not changed.
+            boolean missing = jobs == null || (jobs.getPendingJob(JOB_ID) != null) != shouldBeScheduled;
+            preferences.edit().putString(CONFIG, config.toString()).apply();
+            if (changed || missing) {
+                if (!schedule(getContext(), config)) {
+                    preferences.edit().remove("scheduleSignature").apply();
+                    call.reject("Android did not schedule source monitoring");
+                    return;
+                }
+            }
+            preferences.edit().putString("scheduleSignature", signature).apply();
             call.resolve();
         } catch (Exception error) { call.reject("Unable to configure source monitoring", error); }
     }
 
-    static void schedule(Context context, JSONObject config) {
+    static boolean schedule(Context context, JSONObject config) {
         JobScheduler jobs = (JobScheduler) context.getSystemService(Context.JOB_SCHEDULER_SERVICE);
-        if (jobs == null) return;
-        jobs.cancel(JOB_ID);
-        if (config.optJSONArray("sources") == null || config.optJSONArray("sources").length() == 0) return;
+        if (jobs == null) return false;
+        JSONArray sources = config.optJSONArray("sources");
+        if (sources == null || sources.length() == 0) {
+            jobs.cancel(JOB_ID);
+            return true;
+        }
         long period = Math.max(15, config.optInt("intervalMinutes", 60)) * 60_000L;
         JobInfo.Builder builder = new JobInfo.Builder(JOB_ID, new ComponentName(context, SourceWatchJobService.class))
             .setPeriodic(period).setPersisted(true)
             .setRequiredNetworkType(config.optBoolean("wifiOnly") ? JobInfo.NETWORK_TYPE_UNMETERED : JobInfo.NETWORK_TYPE_ANY);
-        jobs.schedule(builder.build());
+        // Scheduling the same ID replaces its old constraints atomically.
+        // Do not cancel first: a scheduling failure must not remove a valid job.
+        return jobs.schedule(builder.build()) == JobScheduler.RESULT_SUCCESS;
+    }
+
+    /** Called only for genuinely new, explicitly watched foreground articles. */
+    @PluginMethod
+    public void notifyNewArticles(PluginCall call) {
+        JSONArray groups = call.getArray("sources");
+        if (groups == null) { call.reject("sources required"); return; }
+        int hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY);
+        JSObject result = new JSObject();
+        if (Boolean.TRUE.equals(call.getBoolean("quietHours", false)) && (hour >= 23 || hour < 8)) {
+            result.put("delivered", 0);
+            call.resolve(result);
+            return;
+        }
+        int delivered = 0;
+        for (int i = 0; i < groups.length(); i++) {
+            JSONObject group = groups.optJSONObject(i);
+            if (group == null) continue;
+            String id = group.optString("id");
+            if (id.isEmpty()) continue;
+            JSONArray articles = group.optJSONArray("articles");
+            if (articles != null && postWatchedUpdates(getContext(), id, group.optString("name", id), articles)) delivered++;
+        }
+        result.put("delivered", delivered);
+        call.resolve(result);
+    }
+
+    /** Deduplicate article notifications across foreground scans and JobScheduler. */
+    static boolean postWatchedUpdates(Context context, String sourceId, String sourceName, JSONArray articles) {
+        if (!notificationsEnabled(context) || articles.length() == 0) return false;
+        synchronized (SourceWatchJobService.LOCK) {
+            android.content.SharedPreferences prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE);
+            String storageKey = "notified:" + sourceId;
+            java.util.LinkedHashSet<String> notified = new java.util.LinkedHashSet<>();
+            try {
+                JSONArray previous = new JSONArray(prefs.getString(storageKey, "[]"));
+                for (int i = 0; i < previous.length(); i++) notified.add(previous.optString(i));
+            } catch (Exception ignored) { }
+            java.util.LinkedHashSet<String> fresh = new java.util.LinkedHashSet<>();
+            JSONObject newest = null;
+            for (int i = 0; i < articles.length(); i++) {
+                JSONObject article = articles.optJSONObject(i);
+                if (article == null) continue;
+                String key = article.optString("key");
+                String link = article.optString("url");
+                if (!key.startsWith(sourceId + ":") || key.length() > 2048 ||
+                    !(link.startsWith("https://") || link.startsWith("http://")) || notified.contains(key)) continue;
+                fresh.add(key);
+                newest = article;
+            }
+            if (newest == null || fresh.isEmpty()) return false;
+            String heading = sourceName + (fresh.size() > 1 ? " · " + fresh.size() + " 篇新内容" : " 有更新");
+            boolean delivered = post(context, "watch:" + sourceId, heading, newest.optString("title"), newest.optString("url"));
+            if (delivered) {
+                java.util.LinkedHashSet<String> merged = new java.util.LinkedHashSet<>(fresh);
+                merged.addAll(notified);
+                JSONArray bounded = new JSONArray();
+                for (String key : merged) { if (bounded.length() >= 180) break; bounded.put(key); }
+                prefs.edit().putString(storageKey, bounded.toString()).apply();
+            }
+            return delivered;
+        }
     }
 
     @PluginMethod

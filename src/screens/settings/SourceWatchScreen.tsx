@@ -14,7 +14,7 @@ import type { Article } from '../../lib/types'
 import { checkWatchedSources } from '../../features/sourceWatch/runtime'
 import { WatchArticleFeed } from '../../features/sourceWatch/WatchArticleFeed'
 import { supportsNativeSourceWatch } from '../../features/sourceWatch/eligibility'
-import { getWatchNotificationStatus, openWatchNotificationSettings, requestWatchNotificationPermission, sendWatchTestNotification } from '../../features/sourceWatch/native'
+import { getNativeWatchStatus, openWatchNotificationSettings, requestWatchNotificationPermission, sendWatchTestNotification, type NativeWatchStatus } from '../../features/sourceWatch/native'
 import { loadWatchState, saveWatchState, watchArticleKey, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
 import type { NewsSource, SourceGroup } from '../../sources/registry'
 import type { HomeFeedLayout } from '../../sources/preferences'
@@ -221,6 +221,7 @@ export function SourceWatchScreen({
   const [checkResult, setCheckResult] = useState<string | null>(null)
   const [notificationHint, setNotificationHint] = useState<string | null>(null)
   const [notificationEnabled, setNotificationEnabled] = useState<boolean | null>(null)
+  const [nativeStatus, setNativeStatus] = useState<NativeWatchStatus | null>(null)
   const [testingNotification, setTestingNotification] = useState(false)
   const android = Capacitor.getPlatform() === 'android'
 
@@ -264,13 +265,21 @@ export function SourceWatchScreen({
     if (tab !== 'settings' || !android) return
     let alive = true
     const updateStatus = () => {
-      void getWatchNotificationStatus().then(enabled => {
-        if (alive) setNotificationEnabled(enabled)
+      void getNativeWatchStatus().then(status => {
+        if (alive) {
+          setNativeStatus(status)
+          setNotificationEnabled(status?.enabled ?? false)
+        }
       }).catch(() => { if (alive) setNotificationEnabled(false) })
     }
     updateStatus()
     document.addEventListener('visibilitychange', updateStatus)
-    return () => { alive = false; document.removeEventListener('visibilitychange', updateStatus) }
+    window.addEventListener('newsnook:source-watch-native-synced', updateStatus)
+    return () => {
+      alive = false
+      document.removeEventListener('visibilitychange', updateStatus)
+      window.removeEventListener('newsnook:source-watch-native-synced', updateStatus)
+    }
   }, [tab, android])
 
   const requestNotifications = async (): Promise<void> => {
@@ -551,10 +560,22 @@ export function SourceWatchScreen({
                   </button>
                   <button type="button" className="sw-setting-row" onClick={() => void requestNotifications()} disabled={!android}>
                     <span className="sw-setting-icon"><BellRing size={19} strokeWidth={1.7}/></span>
-                    <span className="sw-setting-copy"><strong>Android 系统通知</strong><small>后台 RSS 有新文章时显示通知栏消息</small></span>
+                    <span className="sw-setting-copy"><strong>Android 系统通知</strong><small>关注信源发现新文章时显示在通知栏</small></span>
                     <span className="sw-setting-value">{android ? notificationEnabled === true ? '已开启' : notificationEnabled === false ? '未开启' : '检查中' : '仅 Android'}</span>
                     {android && <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />}
                   </button>
+                  {android && nativeCount > 0 && (
+                    <div className="sw-setting-row" role="status">
+                      <span className="sw-setting-icon"><Radio size={19} strokeWidth={1.7}/></span>
+                      <span className="sw-setting-copy">
+                        <strong>Android 后台检测任务</strong>
+                        <small>{nativeStatus?.lastJobAt
+                          ? `上次 ${new Date(nativeStatus.lastJobAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })} · 已检查 ${nativeStatus.lastJobChecked} 源 · 发现 ${nativeStatus.lastJobNew} 篇 · 已通知 ${nativeStatus.lastJobNotified} 次${nativeStatus.lastJobErrors ? ' · 失败 ' + nativeStatus.lastJobErrors + ' 源' : ''}`
+                          : '尚未完成首次后台轮询，具体时间由 Android 决定'}</small>
+                      </span>
+                      <span className="sw-setting-value">{nativeStatus?.scheduled ? '已调度' : '未调度'}</span>
+                    </div>
+                  )}
                   {android && <button type="button" className="sw-setting-row" onClick={() => void sendTestNotification()} disabled={testingNotification}>
                     <span className="sw-setting-icon"><Send size={19} strokeWidth={1.7}/></span>
                     <span className="sw-setting-copy"><strong>发送测试通知</strong><small>验证权限、通知渠道与锁屏通知入口</small></span>

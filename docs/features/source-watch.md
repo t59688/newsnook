@@ -133,3 +133,57 @@ instead of an empty hero rectangle. Once the image loads, `InkImage` covers
 it normally. The cover is local SVG artwork; no additional network requests
 are introduced. Verified against the 36kr watched-feed image failure on an
 Android 14 emulator after reinstalling the debug APK.
+
+
+## Actual Android notification delivery fix (2026-11-10)
+
+Root cause was two independent delivery gaps, not a broken notification channel:
+
+1. `SourceWatchPlugin.syncRules` compared the stored schedule signature with
+   the requested rules but did not check whether the OS JobScheduler entry
+   still existed. After the OS lost a job, unchanged rules never rescheduled
+   it. The plugin now checks `getPendingJob(JOB_ID)`, recreates missing jobs,
+   replaces changed job constraints atomically, and only persists the schedule
+   signature after a successful `JobScheduler.schedule` result.
+2. Foreground WebView parsing persisted genuine new watch events and triggered
+   the in-app banner, but never posted Android notifications. On Android,
+   new events now pass through `notifyNativeWatchUpdates`, which filters for
+   enabled instant-alert sources and quiet hours, batches multiple articles
+   into one notification per source, and calls the same native notification
+   dispatcher as the background JobService.
+
+The native dispatcher persists recent notification keys (`notified:<sourceId>`)
+under a bounded source-local cursor. Foreground and JobScheduler use the same
+lock and keys: repeated scans and races do not re-notify the same articles.
+Removing a watched source also clears its notification cursor. A failed system
+post does not mark an article as notified. System notification deep links still
+open the real article. Status details now show whether the Android job is
+scheduled, the last background run, checked feeds, new articles, successful
+notification groups and failed feeds. HTTP 304 is a successful unchanged feed,
+not a failed request; HTTP errors are counted in failure diagnostics.
+
+### Device verification
+
+On an API 34 Android emulator with the existing five user-selected native RSS
+watch rules (30-minute schedule), `adb shell cmd jobscheduler get-job-state
+com.aizeek.newsnook.debug 235347` initially reported no such job despite
+valid persisted rules. Opening the updated Debug app recovered the job without
+changing any rules. The same command then reported the periodic job as active.
+
+A forced **real RSS poll** (`adb shell cmd jobscheduler run -f
+com.aizeek.newsnook.debug 235347`) returned 3 non-empty RSS feeds, detected 4
+new 36kr articles and delivered 1 Android system notification titled
+"36 氪 · 4 篇新内容" with a genuine article headline. Verified via Android's
+notification shade and `dumpsys notification --noredact`. A repeat poll
+reported 0 new and 0 newly notified articles. Tapping the first real alert
+opened the intended NewsNook article reader. The debug test never fabricated
+an article or added a fake unread event.
+
+`JobScheduler` is opportunistic: Android may defer background runs under Doze
+or power restrictions; force-stopping the app prevents background execution
+until the user opens it again. These OS constraints are distinct from the
+previously broken scheduling and foreground notification pipeline.
+
+The notification deep-link handler also suppresses a duplicate in-app banner
+while the user is navigating to the article from the Android notification
+shade. Foreground-only events continue to use the normal banner behavior.

@@ -1,8 +1,10 @@
 import { fetchSourceText } from '../../lib/http'
+import { log } from '../../lib/logger'
 import { parseSourceArticles } from '../../lib/sourceArticles'
 import type { NewsSource } from '../../sources/registry'
 import { loadWatchState, reconcileWatchArticles, saveWatchState } from './store'
 import { announceWatchEvents } from './announcements'
+import { notifyNativeWatchUpdates } from './native'
 
 let running = false
 const MAX_PARALLEL = 2
@@ -40,6 +42,9 @@ export async function checkWatchedSources(
           saveWatchState(next)
           total += added.length
           announceWatchEvents(added)
+          if (added.length) void notifyNativeWatchUpdates(added, next).catch(error => {
+            log.feed.warn('Native watch update notification failed', error)
+          })
         } catch { /* Offline, source throttling, or unsupported site: retain cursor and retry later. */ }
       }))
     }

@@ -43,9 +43,13 @@ public class SourceWatchJobService extends JobService {
         SharedPreferences prefs = getSharedPreferences(SourceWatchPlugin.PREFS, Context.MODE_PRIVATE);
         JSONObject config;
         try { config = new JSONObject(prefs.getString(SourceWatchPlugin.CONFIG, "{}")); }
-        catch (Exception e) { return; }
+        catch (Exception e) { config = new JSONObject(); }
         JSONArray sources = config.optJSONArray("sources");
-        if (sources == null) return;
+        if (sources == null) sources = new JSONArray();
+        int checked = 0;
+        int discovered = 0;
+        int notified = 0;
+        int errors = 0;
         Calendar calendar = Calendar.getInstance();
         int hour = calendar.get(Calendar.HOUR_OF_DAY);
         boolean quiet = config.optBoolean("quietHours", true) && (hour >= 23 || hour < 8);
@@ -57,6 +61,9 @@ public class SourceWatchJobService extends JobService {
             String url = source.optString("url");
             if (id.isEmpty() || url.isEmpty() || !url.startsWith("https://")) continue;
             try {
+                // A successful HTTP 304 still counts as a network check.
+                // "checked" records attempted eligible feeds; errors are separate.
+                checked++;
                 JSONArray current = fetchRss(url, prefs, id);
                 if (current.length() == 0) continue;
                 synchronized (LOCK) {
@@ -76,7 +83,7 @@ public class SourceWatchJobService extends JobService {
                         if (old != null) queued.add(old.optString("key"));
                     }
                     int added = 0;
-                    JSONObject latestNew = null;
+                    JSONArray notifyArticles = new JSONArray();
                     for (int k = current.length() - 1; k >= 0; k--) {
                         JSONObject article = current.optJSONObject(k);
                         if (article == null) continue;
@@ -88,7 +95,8 @@ public class SourceWatchJobService extends JobService {
                                 .put("title", article.optString("title")).put("url", link)
                                 .put("discoveredAt", System.currentTimeMillis());
                             pending.put(event);
-                            latestNew = article;
+                            notifyArticles.put(new JSONObject().put("key", eventKey)
+                                .put("title", article.optString("title")).put("url", link));
                             added++;
                         }
                     }
@@ -106,14 +114,23 @@ public class SourceWatchJobService extends JobService {
                     JSONArray bounded = new JSONArray();
                     for (int k = Math.max(0, pending.length() - 300); k < pending.length(); k++) bounded.put(pending.optJSONObject(k));
                     prefs.edit().putString(key, nextSeen.toString()).putString("events", bounded.toString()).apply();
+                    discovered += added;
                     if (added > 0 && "instant".equals(source.optString("mode")) && !quiet) {
-                        if (latestNew != null) SourceWatchPlugin.post(this, "watch:" + id, name + (added > 1 ? " · " + added + " 篇新内容" : " 有更新"), latestNew.optString("title"), latestNew.optString("url"));
+                        if (SourceWatchPlugin.postWatchedUpdates(this, id, name, notifyArticles)) notified++;
                     }
                 }
-            } catch (Exception ignored) {
-                // Retain cursor on network error and retry at next OS-assigned interval.
+            } catch (Exception failure) {
+                errors++;
+                // Retain the cursor on network/parser failure. Diagnostics record
+                // only the source id and exception type, never feed contents.
+                android.util.Log.w("SourceWatch", "Source check failed: " + id, failure);
             }
         }
+        prefs.edit().putLong("lastJobAt", System.currentTimeMillis())
+            .putInt("lastJobChecked", checked)
+            .putInt("lastJobNew", discovered)
+            .putInt("lastJobNotified", notified)
+            .putInt("lastJobErrors", errors).apply();
     }
 
     private static String canonicalLink(String url) {
@@ -131,7 +148,9 @@ public class SourceWatchJobService extends JobService {
         if (etag != null) connection.setRequestProperty("If-None-Match", etag);
         if (modified != null) connection.setRequestProperty("If-Modified-Since", modified);
         try {
-            if (connection.getResponseCode() != 200) return new JSONArray();
+            int httpStatus = connection.getResponseCode();
+            if (httpStatus == HttpURLConnection.HTTP_NOT_MODIFIED) return new JSONArray();
+            if (httpStatus != HttpURLConnection.HTTP_OK) throw new java.io.IOException("RSS HTTP " + httpStatus);
             String newEtag = connection.getHeaderField("ETag");
             String newModified = connection.getHeaderField("Last-Modified");
             if (connection.getContentLengthLong() > 2_000_000) return new JSONArray();

@@ -32,8 +32,16 @@ export function WatchBanner({
       setEvent(null)
       setPreview(true)
     }
+    const dismissForNativeOpen = () => {
+      setEvent(null)
+      setPreview(false)
+    }
     window.addEventListener('newsnook:source-watch-preview', showPreview)
-    return () => window.removeEventListener('newsnook:source-watch-preview', showPreview)
+    window.addEventListener('newsnook:source-watch-dismiss-banner', dismissForNativeOpen)
+    return () => {
+      window.removeEventListener('newsnook:source-watch-preview', showPreview)
+      window.removeEventListener('newsnook:source-watch-dismiss-banner', dismissForNativeOpen)
+    }
   }, [])
 
   useEffect(() => {
