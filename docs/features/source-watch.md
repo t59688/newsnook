@@ -41,3 +41,17 @@ The inbox remains usable without that permission.
 - Physical device: turn on one RSS source, verify first baseline, publish a test
   item, exercise JobScheduler with Doze / denied notifications / app force-stop.
   Force-stop explicitly prevents periodic jobs until app relaunch.
+
+## Settings UI and layout regression
+
+The Source Watch workspace is an opaque `SettingsShell`, not a second normal
+flex item appended to the MeScreen. This is required because App keeps the
+underlying tab and its bottom navigation mounted while a settings route is open.
+It uses the current theme tokens and the existing SettingsShell back/safe-area
+contract. The three adjacent views are: inbox, source discovery, and reminders.
+
+- Visual review: 360x780, 390x844, and 768x1024 for empty inbox, source list,
+  reminder settings, and bottom sheet. Day/night schemes checked separately.
+- UI actions: follow, choose silent delivery, cancel sheet, back with Escape.
+- `node --import tsx --test scripts/source-watch-ui.test.ts` guards the
+  fullscreen shell and the truthful background-ready source label.

@@ -1,86 +1,509 @@
-import { useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, Bell, BellOff, Check, ChevronRight, Clock3, Radio, Search, Settings2, Wifi } from 'lucide-react'
-import type { Article } from '../../lib/types'
-import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
-import type { NewsSource } from '../../sources/registry'
-import { checkWatchedSources } from '../../features/sourceWatch/runtime'
-import { requestWatchNotificationPermission, syncNativeWatchRules } from '../../features/sourceWatch/native'
-import { loadWatchState, saveWatchState, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
+import {
+  Bell, BellRing, Check, CheckCheck, ChevronRight, Clock3, Info,
+  LoaderCircle, Plus, Radio, Search, ShieldCheck, Wifi, X,
+} from 'lucide-react'
 
-interface Props { sources: NewsSource[]; onBack: () => void; onOpenArticle: (article: Article) => void }
-const modes: { id: WatchMode; title: string; detail: string }[] = [
-  { id: 'instant', title: '发现后提醒', detail: '收到新内容时显示通知' },
-  { id: 'inbox', title: '仅收件箱', detail: '静默记录，不发送提醒' },
+import { SettingsShell } from '../../components/SettingsShell'
+import { OptionPickerDialog } from '../../components/ConfirmDialog'
+import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
+import { haptics } from '../../lib/haptics'
+import type { Article } from '../../lib/types'
+import { checkWatchedSources } from '../../features/sourceWatch/runtime'
+import { supportsNativeSourceWatch } from '../../features/sourceWatch/eligibility'
+import { requestWatchNotificationPermission } from '../../features/sourceWatch/native'
+import { loadWatchState, saveWatchState, type WatchEvent, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
+import type { NewsSource, SourceGroup } from '../../sources/registry'
+
+interface Props {
+  sources: NewsSource[]
+  onBack: () => void
+  onOpenArticle: (article: Article) => void
+}
+
+type WatchTab = 'inbox' | 'sources' | 'settings'
+type GroupFilter = 'all' | SourceGroup
+
+const TABS: { id: WatchTab; label: string }[] = [
+  { id: 'inbox', label: '新动态' },
+  { id: 'sources', label: '关注信源' },
+  { id: 'settings', label: '提醒设置' },
 ]
+const GROUPS: { id: GroupFilter; label: string }[] = [
+  { id: 'all', label: '全部' },
+  { id: 'ai', label: 'AI' },
+  { id: 'tech', label: '科技' },
+  { id: 'intl', label: '国际' },
+  { id: 'cn', label: '国内' },
+  { id: 'special', label: '其他' },
+  { id: 'custom', label: '自定义' },
+]
+const MODES: { id: WatchMode; title: string; detail: string }[] = [
+  { id: 'instant', title: '有更新就提醒', detail: '前台横幅或 Android 系统通知' },
+  { id: 'inbox', title: '只存入收件箱', detail: '静默收集，阅读时再来看' },
+]
+
+const fmtTime = (at: number): string => {
+  if (Date.now() - at < 60_000) return '刚刚'
+  if (Date.now() - at < 3_600_000) return Math.max(1, Math.floor((Date.now() - at) / 60_000)) + ' 分钟前'
+  if (Date.now() - at < 86_400_000) return Math.max(1, Math.floor((Date.now() - at) / 3_600_000)) + ' 小时前'
+  return new Date(at).toLocaleDateString('zh-CN', { month: 'numeric', day: 'numeric' })
+}
+
+function QuietIllustration() {
+  return (
+    <svg viewBox="0 0 180 156" fill="none" className="sw-quiet-art" aria-hidden="true">
+      <rect x="36" y="17" width="110" height="122" rx="14" className="sw-art-back" />
+      <path d="M55 17V10a8 8 0 0 1 8-8h73" className="sw-art-muted" strokeWidth="1.4" strokeLinecap="round" />
+      <rect x="26" y="30" width="108" height="116" rx="13" className="sw-art-page" />
+      <path d="M49 65h48M49 79h60M49 93h40" className="sw-art-lines" strokeWidth="3" strokeLinecap="round" />
+      <circle cx="117" cy="42" r="23" className="sw-art-seal" />
+      <path d="M117 29v15m0 6v1" className="sw-art-signal" strokeWidth="2.8" strokeLinecap="round" />
+      <path d="M10 118h19M147 111h23M151 124h12" className="sw-art-muted" strokeWidth="1.6" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+function SourceRow({
+  source, watched, mode, onToggle, onConfigure,
+}: {
+  source: NewsSource
+  watched: boolean
+  mode: WatchMode
+  onToggle: () => void
+  onConfigure: () => void
+}) {
+  const backgroundReady = supportsNativeSourceWatch(source)
+  return (
+    <div className={'sw-source-row' + (watched ? ' sw-source-row--on' : '')}>
+      <span className="sw-source-monogram" aria-hidden="true">{source.name.trim().slice(0, 1).toUpperCase()}</span>
+      <button
+        type="button"
+        className="sw-source-copy"
+        onClick={watched ? onConfigure : onToggle}
+        aria-label={watched ? '设置 ' + source.name + ' 的提醒方式' : '关注 ' + source.name}
+      >
+        <span className="sw-source-name">{source.name}</span>
+        <span className="sw-source-description">
+          {watched ? (mode === 'inbox' ? '静默收集' : '更新提醒') + ' · ' : ''}
+          {source.paused ? '信源已暂停' : backgroundReady ? '支持后台检测' : '打开应用时检测'}
+        </span>
+      </button>
+      {watched && (
+        <button type="button" onClick={onConfigure} className="sw-configure" aria-label={'调整 ' + source.name + ' 提醒设置'}>
+          <ChevronRight size={18} strokeWidth={1.8} aria-hidden="true" />
+        </button>
+      )}
+      <button
+        type="button"
+        className="sw-watch-toggle"
+        aria-label={(watched ? '取消关注 ' : '关注 ') + source.name}
+        aria-pressed={watched}
+        onClick={onToggle}
+      >
+        {watched ? <BellRing size={19} strokeWidth={1.8} aria-hidden="true" /> : <Bell size={19} strokeWidth={1.7} aria-hidden="true" />}
+      </button>
+    </div>
+  )
+}
+
+function Toggle({ checked, onChange, label }: { checked: boolean; onChange: () => void; label: string }) {
+  return (
+    <button type="button" className="sw-switch" role="switch" aria-label={label} aria-checked={checked} data-checked={checked} onClick={onChange}>
+      <span className="sw-switch-thumb" />
+    </button>
+  )
+}
+
+function WatchSourceSheet({
+  source, mode, onMode, onRemove, onClose,
+}: {
+  source: NewsSource
+  mode: WatchMode
+  onMode: (mode: WatchMode) => void
+  onRemove: () => void
+  onClose: () => void
+}) {
+  const [permissionHint, setPermissionHint] = useState<string | null>(null)
+  useHardwareBackLayer(true, () => { onClose(); return true })
+
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onEscape)
+    return () => window.removeEventListener('keydown', onEscape)
+  }, [onClose])
+
+  if (typeof document === 'undefined') return null
+  return createPortal(
+    <div className="sw-modal-layer" role="presentation" onClick={onClose}>
+      <div
+        className="sw-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="sw-source-title"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="sw-modal-grip" aria-hidden="true" />
+        <div className="sw-modal-heading">
+          <div>
+            <div className="sw-eyebrow">信源提醒</div>
+            <h2 id="sw-source-title" className="sw-modal-title">{source.name}</h2>
+            <p className="sw-modal-subtitle">{supportsNativeSourceWatch(source) ? '可在 Android 后台检查更新' : '应用打开时检查更新'}</p>
+          </div>
+          <button type="button" aria-label="关闭提醒设置" className="sw-icon-button" onClick={onClose}><X size={20} /></button>
+        </div>
+        <div className="sw-modal-options" role="radiogroup" aria-label="提醒方式">
+          {MODES.map(item => (
+            <button
+              type="button"
+              role="radio"
+              aria-checked={mode === item.id}
+              className={'sw-mode-option' + (mode === item.id ? ' sw-mode-option--active' : '')}
+              key={item.id}
+              onClick={() => {
+                onMode(item.id)
+                void haptics.tick()
+                if (item.id === 'instant') {
+                  void requestWatchNotificationPermission().then(granted => {
+                    setPermissionHint(granted ? '系统通知已开启' : '系统通知未授权，更新仍会保留在收件箱')
+                  }).catch(() => setPermissionHint('暂时无法申请通知权限'))
+                } else setPermissionHint(null)
+              }}
+            >
+              <span className="sw-mode-copy"><strong>{item.title}</strong><small>{item.detail}</small></span>
+              <span className="sw-radio-dot">{mode === item.id && <Check size={13} strokeWidth={2.3} aria-hidden="true" />}</span>
+            </button>
+          ))}
+        </div>
+        {permissionHint && <p className="sw-permission-hint" role="status">{permissionHint}</p>}
+        <div className="sw-modal-footer">
+          <button type="button" className="sw-text-destructive" onClick={onRemove}>取消关注</button>
+          <button type="button" className="sw-primary sw-modal-done" onClick={onClose}>完成</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  )
+}
+
 export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
   const [state, setState] = useState(loadWatchState)
-  const [tab, setTab] = useState<'inbox' | 'sources' | 'settings'>('inbox')
+  const [tab, setTab] = useState<WatchTab>('inbox')
   const [query, setQuery] = useState('')
-  const [selected, setSelected] = useState<string | null>(null)
-  const [checking, setChecking] = useState(false)
+  const [group, setGroup] = useState<GroupFilter>('all')
+  const [visibleLimit, setVisibleLimit] = useState(40)
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [intervalPicker, setIntervalPicker] = useState(false)
   const [showUnread, setShowUnread] = useState(false)
-  useHardwareBackLayer(Boolean(selected), () => { setSelected(null); return true })
+  const [checking, setChecking] = useState(false)
+  const [checkResult, setCheckResult] = useState<string | null>(null)
+  const [notificationHint, setNotificationHint] = useState<string | null>(null)
+
   const sourceMap = useMemo(() => new Map(sources.map(source => [source.id, source])), [sources])
-  const watchedIds = useMemo(() => new Set(state.rules.filter(rule => rule.enabled).map(rule => rule.sourceId)), [state.rules])
-  const count = watchedIds.size
-  const unread = state.events.filter(event => !event.read).length
-  const available = useMemo(() => sources.filter(source => !source.workspaceOnly && source.url && !source.paused && (source.name.toLowerCase().includes(query.toLowerCase()) || source.label.toLowerCase().includes(query.toLowerCase()))).sort((a,b) => Number(watchedIds.has(b.id))-Number(watchedIds.has(a.id)) || a.name.localeCompare(b.name)).slice(0, query ? 150 : 70), [sources, query, watchedIds])
-  const commit = (next: WatchState) => {
+  const ruleMap = useMemo(() => new Map(state.rules.filter(rule => rule.enabled).map(rule => [rule.sourceId, rule])), [state.rules])
+  const followed = useMemo(() => sources.filter(source => ruleMap.has(source.id)), [sources, ruleMap])
+  const count = followed.length
+  const unread = state.events.reduce((total, event) => total + (event.read ? 0 : 1), 0)
+  const nativeCount = followed.filter(supportsNativeSourceWatch).length
+  const lastChecked = Math.max(0, ...followed.map(source => state.lastChecked[source.id] || 0))
+  const selectedSource = selectedId ? sourceMap.get(selectedId) : undefined
+
+  const commit = useCallback((next: WatchState) => {
     setState(next)
     saveWatchState(next)
-    const active = next.rules.filter(rule => rule.enabled).map(rule => sourceMap.get(rule.sourceId)).filter((source): source is NewsSource => Boolean(source))
-    // Only RSS/Atom XML can be safely parsed by the native background worker.
-    void syncNativeWatchRules(active.filter(source => (source.kind === 'feed' || source.kind === 'google-news') && source.url.startsWith('https://') && source.requestMethod !== 'POST' && source.discovery?.generator !== 'rsshub').map(source => ({ id: source.id, name: source.name, url: source.url, mode: next.rules.find(rule => rule.sourceId === source.id)?.mode || 'inbox', seen: (next.cursors[source.id] || []).map(key => key.slice(source.id.length + 1)) })), next.intervalMinutes, next.quietHours, next.wifiOnly).catch(() => {})
-  }
-  useEffect(() => {
-    const update = () => setState(loadWatchState())
-    window.addEventListener('newsnook:source-watch-changed', update)
-    return () => window.removeEventListener('newsnook:source-watch-changed', update)
   }, [])
-  const toggle = (id: string) => {
-    const existing = state.rules.filter(rule => rule.sourceId !== id)
-    const active = !watchedIds.has(id)
+
+  useEffect(() => {
+    const reload = () => setState(loadWatchState())
+    window.addEventListener('newsnook:source-watch-changed', reload)
+    return () => window.removeEventListener('newsnook:source-watch-changed', reload)
+  }, [])
+
+  const toggleWatch = (sourceId: string) => {
+    const enabled = ruleMap.has(sourceId)
     const cursors = { ...state.cursors }
-    delete cursors[id]
-    commit({ ...state, cursors, rules: active ? [...existing, { sourceId: id, mode: 'instant', enabled: true }] : existing })
-    if (active) { setSelected(id); void requestWatchNotificationPermission().catch(() => {}) }
+    delete cursors[sourceId]
+    const rules = state.rules.filter(rule => rule.sourceId !== sourceId)
+    commit({ ...state, cursors, rules: enabled ? rules : [...rules, { sourceId, enabled: true, mode: 'instant' }] })
+    void haptics.tick()
+    if (enabled) setSelectedId(null)
+    else setSelectedId(sourceId)
   }
-  const setMode = (id: string, mode: WatchMode) => commit({ ...state, rules: state.rules.map(rule => rule.sourceId === id ? { ...rule, mode } : rule) })
+
+  const changeMode = (sourceId: string, mode: WatchMode) => {
+    commit({
+      ...state,
+      rules: state.rules.map(rule => rule.sourceId === sourceId ? { ...rule, mode } : rule),
+    })
+  }
+
   const refresh = async () => {
-    if (checking) return
+    if (checking || count === 0) return
     setChecking(true)
-    try { await checkWatchedSources(sources, true) } finally { setState(loadWatchState()); setChecking(false) }
+    setCheckResult(null)
+    try {
+      const added = await checkWatchedSources(sources, true)
+      setCheckResult(added ? '本轮发现 ' + added + ' 篇新内容' : '本轮没有发现新内容')
+    } catch {
+      setCheckResult('本轮检测未完成，请稍后重试')
+    } finally {
+      setState(loadWatchState())
+      setChecking(false)
+    }
   }
-  const section = 'mt-5 text-[12px] font-semibold tracking-wide text-paper-muted'
-  return <section className="paper-settings-root flex min-h-0 flex-1 flex-col">
-    <header className="paper-settings-header"><div className="paper-settings-container">
-      <button type="button" aria-label="返回" className="paper-settings-back" onClick={onBack}><ArrowLeft size={21}/></button>
-      <h1 className="!mt-1">关注动态</h1><p className="paper-settings-reading-count">只留意你真正关心的信息</p>
-    </div></header>
-    <div className="mx-4 flex shrink-0 border-b border-haze">
-      {([['inbox','新动态'], ['sources','关注信源'], ['settings','提醒设置']] as const).map(([id,title]) =>
-        <button key={id} type="button" onClick={() => { setTab(id); setSelected(null) }} className={'flex-1 py-3 text-sm transition-colors '+ (tab === id ? 'border-b-2 border-cinnabar font-semibold text-paper' : 'text-paper-muted')}>{title}{id === 'inbox' && unread > 0 ? ' · '+unread : ''}</button>)}
-    </div>
-    <div className="paper-settings-scroller scroll-hidden"><div className="paper-settings-container pb-12">
-      {tab === 'inbox' && <>
-        <div className="flex items-center justify-between mt-6 gap-2"><div><p className="text-2xl font-semibold text-paper">{unread} <span className="text-sm font-normal text-paper-muted">篇未读</span></p><p className="text-xs text-paper-muted mt-1">{count} 个关注来源 · 与预设无关</p></div><button type="button" onClick={() => { setTab('sources'); setSelected(null) }} className="rounded-xl border border-haze px-3 py-2 text-sm text-paper"><Settings2 size={14} className="inline mr-1"/>管理</button></div>
-        <div className="flex gap-2 mt-6"><button type="button" className={'px-3 py-2 text-sm rounded-xl '+(!showUnread?'bg-cinnabar/15 text-cinnabar':'text-paper-muted')} onClick={() => setShowUnread(false)}>全部动态</button><button type="button" className={'px-3 py-2 text-sm rounded-xl '+(showUnread?'bg-cinnabar/15 text-cinnabar':'text-paper-muted')} onClick={() => setShowUnread(true)}>仅未读</button><button type="button" className="ml-auto text-xs text-paper-muted" onClick={() => commit({ ...state, events: state.events.map(event => ({ ...event, read: true })) })}>全部已读</button></div>
-        {state.events.filter(event => !showUnread || !event.read).length === 0 ? <div className="py-20 text-center"><Bell size={34} strokeWidth={1.2} className="mx-auto mb-4 text-cinnabar"/><h2 className="text-lg font-semibold">{count ? '暂时没有新动态' : '留意值得关注的事'}</h2><p className="mt-2 text-sm text-paper-muted">{count ? '检测到更新后，文章会出现在这里。' : '先选择几个喜欢的来源，不再错过其他预设的更新。'}</p><button className="mt-6 rounded-xl bg-cinnabar px-5 py-3 text-white text-sm" onClick={() => setTab('sources')}>{count ? '管理关注' : '去选择信源'}</button></div> : <div className="mt-4 border-t border-haze">{state.events.filter(event => !showUnread || !event.read).map(event => <button key={event.key} type="button" className="block w-full border-b border-haze py-4 text-left" onClick={() => { commit({ ...state, events: state.events.map(item => item.key === event.key ? { ...item, read: true } : item) }); onOpenArticle(event.article) }}><div className="mb-2 flex items-center gap-2 text-xs text-paper-muted">{!event.read && <span className="h-1.5 w-1.5 rounded-full bg-cinnabar"/>}{sourceMap.get(event.sourceId)?.name || event.article.sourceName}<span className="ml-auto">{new Date(event.discoveredAt).toLocaleString()}</span></div><h3 className={'text-[16px] leading-relaxed '+(!event.read?'font-semibold text-paper':'text-paper-muted')}>{event.article.title}</h3></button>)}</div>}
-      </>}
-      {tab === 'sources' && <>
-        <h2 className={section}>已关注 {count} 个信源</h2>
-        <div className="mt-3 flex items-center gap-2 rounded-xl border border-haze bg-ink-raised px-3 py-2"><Search size={17} className="text-paper-muted"/><input aria-label="搜索信源" className="w-full bg-transparent py-1 text-sm outline-none placeholder:text-paper-muted" value={query} onChange={e => setQuery(e.target.value)} placeholder="搜索所有预设中的来源"/></div>
-        <p className="mt-3 text-xs leading-relaxed text-paper-muted">只有开启铃铛的来源会加入检测队列，多个预设共用同一份关注状态。</p>
-        <div className="mt-3 border-y border-haze">{available.map(source => <div key={source.id} className="flex items-center gap-3 border-b border-haze/60 py-3.5"><span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ink-deep text-cinnabar text-sm font-semibold">{source.name.slice(0,1)}</span><button className="min-w-0 flex-1 text-left" onClick={() => watchedIds.has(source.id) ? setSelected(source.id) : toggle(source.id)}><span className="block truncate text-sm font-semibold text-paper">{source.name}</span><span className="block truncate text-xs text-paper-muted mt-1">{source.label} · {watchedIds.has(source.id) ? modes.find(mode => mode.id === state.rules.find(rule => rule.sourceId === source.id)?.mode)?.title : '未关注'}</span></button>{watchedIds.has(source.id) && <button type="button" aria-label={'设置'+source.name} className="p-2 text-paper-muted" onClick={() => setSelected(source.id)}><ChevronRight size={18}/></button>}<button type="button" aria-label={(watchedIds.has(source.id)?'取消关注':'关注')+source.name} className={'h-10 w-10 rounded-full grid place-items-center '+(watchedIds.has(source.id)?'bg-cinnabar/15 text-cinnabar':'bg-ink-deep text-paper-muted')} onClick={() => toggle(source.id)}>{watchedIds.has(source.id)?<Bell size={19}/>:<BellOff size={19}/>}</button></div>)}</div>
-      </>}
-      {tab === 'settings' && <>
-        <h2 className={section}>后台检测</h2>
-        <div className="mt-3 rounded-2xl border border-haze bg-ink-raised px-4"><div className="flex items-center gap-3 py-4"><Clock3 size={19} className="text-cinnabar"/><div className="flex-1"><strong className="text-sm">检查间隔</strong><p className="text-xs text-paper-muted mt-1">Android 后台执行时间由系统决定</p></div><select aria-label="检查间隔" value={state.intervalMinutes} className="rounded-lg bg-ink-deep px-2 py-2 text-sm" onChange={e => commit({ ...state, intervalMinutes: Number(e.target.value) })}><option value={30}>30 分钟</option><option value={60}>60 分钟</option><option value={120}>2 小时</option></select></div>
-        <div className="flex items-center gap-3 border-t border-haze py-4"><BellOff size={19} className="text-cinnabar"/><div className="flex-1"><strong className="text-sm">夜间免打扰</strong><p className="text-xs text-paper-muted mt-1">23:00—08:00 静音，不丢失文章</p></div><input aria-label="夜间免打扰" type="checkbox" checked={state.quietHours} onChange={e => commit({ ...state, quietHours: e.target.checked })} className="h-5 w-5 accent-cinnabar"/></div>
-        <div className="flex items-center gap-3 border-t border-haze py-4"><Wifi size={19} className="text-cinnabar"/><div className="flex-1"><strong className="text-sm">仅 Wi-Fi 后台检测</strong><p className="text-xs text-paper-muted mt-1">减少移动网络流量</p></div><input aria-label="仅 Wi-Fi" type="checkbox" checked={state.wifiOnly} onChange={e => commit({ ...state, wifiOnly: e.target.checked })} className="h-5 w-5 accent-cinnabar"/></div></div>
-        <h2 className={section}>检测状态</h2><div className="mt-3 rounded-2xl border border-haze bg-ink-raised p-4"><div className="flex items-center gap-2"><Radio size={18} className="text-cinnabar"/><strong className="text-sm">{count ? '本地检测已开启' : '未开启任何检测'}</strong></div><p className="mt-2 text-xs leading-relaxed text-paper-muted">{count ? '已关注的信源会在前台定期检查，支持直接 HTTPS RSS 的信源可在 Android 后台周期检查，特殊网页仅前台检查。' : '关注至少一个信源后才会安排后台任务，零关注时不产生检测请求。'}</p><button disabled={!count || checking} onClick={refresh} className="mt-4 w-full rounded-xl border border-cinnabar/50 py-3 text-sm font-medium text-cinnabar disabled:opacity-40">{checking?'正在检查…':'立即检查关注来源'}</button></div>
-      </>}
-    </div></div>
-    {selected && watchedIds.has(selected) && <div className="fixed inset-0 z-[80] flex items-end justify-center" role="presentation"><button type="button" aria-label="关闭弹窗" className="absolute inset-0 bg-black/55" onClick={() => setSelected(null)}/><div role="dialog" aria-modal="true" aria-label="提醒方式" className="relative w-full max-w-lg rounded-t-3xl border border-haze bg-ink-raised px-5 pb-8 pt-3 shadow-xl"><div className="mx-auto mb-5 h-1 w-10 rounded-full bg-haze"/><h2 className="text-xl font-semibold text-paper">{sourceMap.get(selected)?.name}</h2><p className="mt-1 text-sm text-paper-muted">选择这个来源的更新提醒方式</p><div className="mt-5">{modes.map(mode => <button key={mode.id} className="flex w-full items-center gap-3 border-t border-haze py-4 text-left" onClick={() => { setMode(selected, mode.id); setSelected(null) }}><span className="flex-1"><strong className="block text-sm">{mode.title}</strong><small className="mt-1 block text-xs text-paper-muted">{mode.detail}</small></span>{state.rules.find(rule => rule.sourceId === selected)?.mode === mode.id && <Check size={20} className="text-cinnabar"/>}</button>)}</div><button type="button" className="mt-3 w-full rounded-xl bg-ink-deep py-3 text-sm" onClick={() => setSelected(null)}>完成</button></div></div>}
-  </section>
+
+  const filteredSources = useMemo(() => {
+    const term = query.trim().toLocaleLowerCase()
+    return sources.filter(source => !source.workspaceOnly
+      && (ruleMap.has(source.id) || !source.paused)
+      && Boolean(source.url)
+      && (group === 'all' || source.group === group)
+      && (!term || [source.name, source.label, source.url].join(' ').toLocaleLowerCase().includes(term)))
+  }, [sources, query, group, ruleMap])
+  const matchedFollowed = useMemo(() => filteredSources.filter(source => ruleMap.has(source.id)), [filteredSources, ruleMap])
+  const unmatched = useMemo(() => filteredSources.filter(source => !ruleMap.has(source.id)).sort((a, b) => a.name.localeCompare(b.name)), [filteredSources, ruleMap])
+  const shownAvailable = unmatched.slice(0, visibleLimit)
+  const currentEvents = state.events.filter(event => !showUnread || !event.read)
+  const eventGroups = useMemo(() => {
+    const groups: { label: string; events: WatchEvent[] }[] = []
+    for (const event of currentEvents) {
+      const today = new Date()
+      const date = new Date(event.discoveredAt)
+      const key = date.toDateString() === today.toDateString() ? '今天'
+        : date.toDateString() === new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1).toDateString() ? '昨天'
+          : date.toLocaleDateString('zh-CN', { month: 'long', day: 'numeric' })
+      const last = groups[groups.length - 1]
+      if (last && last.label === key) last.events.push(event)
+      else groups.push({ label: key, events: [event] })
+    }
+    return groups
+  }, [currentEvents])
+
+  const chooseTab = (next: WatchTab) => {
+    if (tab === next) return
+    setTab(next)
+    setSelectedId(null)
+    void haptics.tick()
+  }
+
+  const toolbar = (
+    <nav className="sw-tabs-wrap" aria-label="关注动态页面">
+      <div className="sw-tabs" role="tablist" aria-label="关注动态分区">
+        <span className="sw-tab-slider" style={{ transform: 'translateX(' + TABS.findIndex(item => item.id === tab) * 100 + '%)' }} aria-hidden="true" />
+        {TABS.map(item => (
+          <button key={item.id} type="button" role="tab" aria-selected={tab === item.id} className={'sw-tab' + (tab === item.id ? ' sw-tab--active' : '')} onClick={() => chooseTab(item.id)}>
+            {item.label}{item.id === 'inbox' && unread > 0 && <span className="sw-tab-count">{unread > 99 ? '99+' : unread}</span>}
+          </button>
+        ))}
+      </div>
+    </nav>
+  )
+
+  return (
+    <>
+      <SettingsShell title="关注动态" caption="跨预设收集你关心的更新" toolbar={toolbar} onBack={onBack} className="sw-shell">
+        <div className="sw-page" key={tab}>
+          {tab === 'inbox' && (
+            <section className="sw-inbox-view">
+              <div className="sw-masthead">
+                <div>
+                  <p className="sw-eyebrow">你的关注简报</p>
+                  <h2 className="sw-headline">{count ? '新动态' : '关注，从少而精开始'}{count > 0 && <span className="sw-headline-number">{unread}</span>}</h2>
+                  <p className="sw-lead">{count ? '正在留意 ' + count + ' 个信源，与你当前浏览的预设无关。' : '只追踪你选择的来源，其他信源不会在后台检测。'}</p>
+                </div>
+                {count > 0 && (
+                  <button type="button" className="sw-masthead-link" onClick={() => chooseTab('sources')}>管理关注 <ChevronRight size={16} aria-hidden="true" /></button>
+                )}
+              </div>
+
+              {!count ? (
+                <div className="sw-quiet-state">
+                  <QuietIllustration />
+                  <h3>让重要消息自己抵达</h3>
+                  <p>从所有预设里挑选几个关心的来源。它们有更新时，文章就会出现在这里。</p>
+                  <button type="button" className="sw-primary" onClick={() => chooseTab('sources')}><Plus size={18} strokeWidth={2} aria-hidden="true" />选择关注信源</button>
+                  <div className="sw-quiet-note"><ShieldCheck size={16} strokeWidth={1.7} aria-hidden="true" />默认不监控任何信源</div>
+                </div>
+              ) : state.events.length === 0 ? (
+                <div className="sw-no-news">
+                  <div className="sw-no-news-icon"><Check size={30} strokeWidth={1.4} aria-hidden="true" /></div>
+                  <h3>暂时没有新动态</h3>
+                  <p>第一次检查只记录当前文章；之后有新内容时才会提醒。</p>
+                  <button type="button" disabled={checking} className="sw-secondary" onClick={() => void refresh()}>
+                    <Radio size={16} aria-hidden="true" />{checking ? '正在检查…' : '立即检查'}
+                  </button>
+                  {checkResult && <p className="sw-check-note" role="status">{checkResult}</p>}
+                </div>
+              ) : (
+                <>
+                  <div className="sw-inbox-tools">
+                    <div className="sw-filter-pair" role="group" aria-label="动态筛选">
+                      <button type="button" aria-pressed={!showUnread} className={!showUnread ? 'sw-filter-selected' : ''} onClick={() => setShowUnread(false)}>全部动态</button>
+                      <button type="button" aria-pressed={showUnread} className={showUnread ? 'sw-filter-selected' : ''} onClick={() => setShowUnread(true)}>仅未读</button>
+                    </div>
+                    {unread > 0 && <button type="button" className="sw-mark-all" onClick={() => { commit({ ...state, events: state.events.map(event => ({ ...event, read: true })) }); void haptics.tick() }}><CheckCheck size={16} aria-hidden="true" />全部已读</button>}
+                  </div>
+                  {eventGroups.length === 0 ? (
+                    <div className="sw-filter-empty">所有新动态都已读完。<button type="button" onClick={() => setShowUnread(false)}>查看全部</button></div>
+                  ) : eventGroups.map(group => (
+                    <section className="sw-timeline" key={group.label}>
+                      <h3 className="sw-day-label">{group.label}</h3>
+                      {group.events.map(event => (
+                        <button
+                          type="button" key={event.key} className={'sw-story' + (event.read ? ' sw-story--read' : '')}
+                          onClick={() => {
+                            commit({ ...state, events: state.events.map(item => item.key === event.key ? { ...item, read: true } : item) })
+                            onOpenArticle(event.article)
+                          }}
+                        >
+                          <div className="sw-story-meta"><span className="sw-story-source">{sourceMap.get(event.sourceId)?.name || event.article.sourceName}</span><span>{fmtTime(event.discoveredAt)}</span>{!event.read && <span className="sw-unread-dot" aria-label="未读" />}</div>
+                          <h4>{event.article.title}</h4>
+                          {event.article.summary && <p>{event.article.summary}</p>}
+                          <span className="sw-story-end"><span>阅读全文</span><ChevronRight size={14} aria-hidden="true" /></span>
+                        </button>
+                      ))}
+                    </section>
+                  ))}
+                </>
+              )}
+            </section>
+          )}
+
+          {tab === 'sources' && (
+            <section className="sw-sources-view">
+              <div className="sw-masthead">
+                <div>
+                  <p className="sw-eyebrow">关注列表</p>
+                  <h2 className="sw-headline">{count}<span className="sw-headline-unit"> 个关注信源</span></h2>
+                  <p className="sw-lead">只有开启提醒的信源会进入检测队列。</p>
+                </div>
+                {count > 0 && <span className="sw-active-indicator"><span />按需检测</span>}
+              </div>
+              <label className="sw-search">
+                <Search size={19} strokeWidth={1.8} aria-hidden="true" />
+                <input type="search" aria-label="搜索关注信源" value={query} placeholder="搜索信源名称或地址" autoComplete="off"
+                  onChange={event => { setQuery(event.target.value); setVisibleLimit(40) }} />
+                {query && <button type="button" aria-label="清除搜索" onClick={() => { setQuery(''); setVisibleLimit(40) }}><X size={18} /></button>}
+              </label>
+              <div className="sw-groups" role="group" aria-label="筛选信源分类">
+                {GROUPS.map(item => (
+                  <button type="button" key={item.id} aria-pressed={group === item.id}
+                    className={group === item.id ? 'sw-group-active' : ''}
+                    onClick={() => { setGroup(item.id); setVisibleLimit(40) }}>{item.label}</button>
+                ))}
+              </div>
+              {matchedFollowed.length > 0 && (
+                <div className="sw-source-section">
+                  <div className="sw-section-heading"><h3>已关注</h3><span>{matchedFollowed.length}</span></div>
+                  <div className="sw-source-list">
+                    {matchedFollowed.map(source => (
+                      <SourceRow key={source.id} source={source} watched mode={ruleMap.get(source.id)?.mode || 'instant'} onToggle={() => toggleWatch(source.id)} onConfigure={() => setSelectedId(source.id)} />
+                    ))}
+                  </div>
+                </div>
+              )}
+              {unmatched.length > 0 && (
+                <div className="sw-source-section">
+                  <div className="sw-section-heading"><h3>{matchedFollowed.length ? '发现更多信源' : '从这里开始关注'}</h3><span>{unmatched.length}</span></div>
+                  <div className="sw-source-list">
+                    {shownAvailable.map(source => (
+                      <SourceRow key={source.id} source={source} watched={false} mode="instant" onToggle={() => toggleWatch(source.id)} onConfigure={() => setSelectedId(source.id)} />
+                    ))}
+                  </div>
+                  {unmatched.length > shownAvailable.length && <button type="button" className="sw-more" onClick={() => setVisibleLimit(limit => limit + 40)}>显示更多来源 · 剩余 {unmatched.length - shownAvailable.length} 个 <ChevronRight size={15} aria-hidden="true" /></button>}
+                </div>
+              )}
+              {filteredSources.length === 0 && <div className="sw-list-empty"><Search size={26} strokeWidth={1.4} /><p>没有找到匹配的信源</p><button type="button" onClick={() => { setQuery(''); setGroup('all') }}>清除筛选</button></div>}
+              <p className="sw-catalog-note">多个预设中的同一个信源只会监控一次。直接 RSS 支持 Android 后台检测，特殊网页在打开应用时检查。</p>
+            </section>
+          )}
+
+          {tab === 'settings' && (
+            <section className="sw-settings-view">
+              <div className="sw-masthead">
+                <div>
+                  <p className="sw-eyebrow">自动检测</p>
+                  <h2 className="sw-headline">安静地留意更新</h2>
+                  <p className="sw-lead">关注由你决定，提醒也由你决定。</p>
+                </div>
+              </div>
+              <div className="sw-monitor-summary">
+                <span className="sw-summary-emblem"><Radio size={23} strokeWidth={1.5} aria-hidden="true" /></span>
+                <div><strong>{count ? '正在关注 ' + count + ' 个信源' : '监控尚未开启'}</strong><p>{count ? nativeCount + ' 个支持后台检测 · ' + (count - nativeCount) + ' 个前台检测' : '关注信源后，才会安排相应检查任务'}</p></div>
+                <button type="button" aria-label="管理关注列表" onClick={() => chooseTab('sources')}><ChevronRight size={19} /></button>
+              </div>
+
+              <div className="sw-settings-section">
+                <h3>检测计划</h3>
+                <div className="sw-settings-list">
+                  <button type="button" className="sw-setting-row" onClick={() => setIntervalPicker(true)}>
+                    <span className="sw-setting-icon"><Clock3 size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>检查频率</strong><small>Android 会按系统调度执行</small></span>
+                    <span className="sw-setting-value">{state.intervalMinutes === 120 ? '每 2 小时' : '每 ' + state.intervalMinutes + ' 分钟'}</span>
+                    <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />
+                  </button>
+                  <div className="sw-setting-row">
+                    <span className="sw-setting-icon"><Bell size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>夜间免打扰</strong><small>23:00—08:00 静音，仍保留新文章</small></span>
+                    <Toggle label="夜间免打扰" checked={state.quietHours} onChange={() => commit({ ...state, quietHours: !state.quietHours })} />
+                  </div>
+                  <div className="sw-setting-row">
+                    <span className="sw-setting-icon"><Wifi size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>仅在 Wi-Fi 后台检测</strong><small>避免在移动网络中主动检查</small></span>
+                    <Toggle label="仅在 Wi-Fi 后台检测" checked={state.wifiOnly} onChange={() => commit({ ...state, wifiOnly: !state.wifiOnly })} />
+                  </div>
+                </div>
+              </div>
+
+              <div className="sw-settings-section">
+                <h3>通知与状态</h3>
+                <div className="sw-settings-list">
+                  <button type="button" className="sw-setting-row" onClick={() => {
+                    void requestWatchNotificationPermission().then(granted =>
+                      setNotificationHint(granted ? '系统通知权限已允许' : '系统通知未授权，更新仍会保留在收件箱'),
+                    ).catch(() => setNotificationHint('无法申请系统通知权限'))
+                  }}>
+                    <span className="sw-setting-icon"><BellRing size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>系统通知权限</strong><small>有新文章时显示在 Android 通知栏</small></span>
+                    <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />
+                  </button>
+                  {notificationHint && <p className="sw-inline-status" role="status">{notificationHint}</p>}
+                  <div className="sw-setting-row sw-setting-row--info">
+                    <span className="sw-setting-icon"><Info size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>最近检查</strong><small>{lastChecked ? fmtTime(lastChecked) : '尚未执行过检测'} · 由设备独立完成</small></span>
+                  </div>
+                </div>
+              </div>
+
+              <button type="button" disabled={checking || count === 0} className="sw-check-now" onClick={() => void refresh()}>
+                {checking ? <LoaderCircle size={18} className="sw-spinning" aria-hidden="true" /> : <Radio size={18} aria-hidden="true" />}
+                {checking ? '正在检查已关注信源' : '立即检查关注来源'}
+              </button>
+              {checkResult && <p className="sw-check-status" role="status">{checkResult}</p>}
+              <p className="sw-settings-footnote"><ShieldCheck size={16} strokeWidth={1.7} aria-hidden="true" />所有关注记录与更新列表仅保存在本机。没有关注信源时不会发出检测请求。</p>
+            </section>
+          )}
+        </div>
+      </SettingsShell>
+      <OptionPickerDialog
+        open={intervalPicker}
+        title="检查频率"
+        value={String(state.intervalMinutes)}
+        options={[
+          { id: '30', label: '每 30 分钟', description: '更新更快，检查次数更多' },
+          { id: '60', label: '每 60 分钟', description: '推荐，兼顾及时性与电量' },
+          { id: '120', label: '每 2 小时', description: '更节省流量与电量' },
+        ]}
+        onChange={value => { commit({ ...state, intervalMinutes: Number(value) }); setIntervalPicker(false) }}
+        onCancel={() => setIntervalPicker(false)}
+      />
+      {selectedSource && ruleMap.has(selectedSource.id) && <WatchSourceSheet
+        source={selectedSource} mode={ruleMap.get(selectedSource.id)?.mode || 'instant'}
+        onMode={mode => changeMode(selectedSource.id, mode)}
+        onRemove={() => toggleWatch(selectedSource.id)}
+        onClose={() => setSelectedId(null)}
+      />}
+    </>
+  )
 }

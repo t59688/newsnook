@@ -16,6 +16,7 @@ import { SyncOnboardingPrompt } from './features/account/SyncOnboardingPrompt'
 import { useAccount } from './features/account/useAccount'
 import { syncRouteFromAppUrl } from './features/sync/nativeNotification'
 import { checkWatchedSources } from './features/sourceWatch/runtime'
+import { supportsNativeSourceWatch } from './features/sourceWatch/eligibility'
 import { WatchBanner } from './features/sourceWatch/WatchBanner'
 import { loadWatchState } from './features/sourceWatch/store'
 import { importNativeWatchEvents, syncNativeWatchRules } from './features/sourceWatch/native'
@@ -183,7 +184,10 @@ const HistoryScreen = lazyScreen(() => Promise.all([
 ]).then(([module]) => ({ default: module.HistoryScreen })))
 const LaterScreen = lazyScreen(() => import('./screens/settings/LaterScreen').then(module => ({ default: module.LaterScreen })))
 const LocalSearchScreen = lazyScreen(() => import('./screens/settings/LocalSearchScreen').then(module => ({ default: module.LocalSearchScreen })))
-const SourceWatchScreen = lazyScreen(() => import('./screens/settings/SourceWatchScreen').then(module => ({ default: module.SourceWatchScreen })))
+const SourceWatchScreen = lazyScreen(() => Promise.all([
+  import('./screens/settings/SourceWatchScreen'),
+  import('./styles/source-watch.css'),
+]).then(([module]) => ({ default: module.SourceWatchScreen })))
 const PresetListScreen = lazyScreen(() => import('./screens/settings/PresetListScreen').then(module => ({ default: module.PresetListScreen })))
 const StorageScreen = lazyScreen(() => import('./screens/settings/StorageScreen').then(module => ({ default: module.StorageScreen })))
 const TypographyScreen = lazyScreen(() => import('./screens/settings/TypographyScreen').then(module => ({ default: module.TypographyScreen })))
@@ -404,7 +408,7 @@ export default function App() {
     const configure = () => {
       const state = loadWatchState()
       const watched = sources.filter(source => !source.paused && state.rules.some(rule => rule.sourceId === source.id && rule.enabled))
-      const eligible = watched.filter(source => (source.kind === 'feed' || source.kind === 'google-news') && source.url.startsWith('https://') && source.requestMethod !== 'POST' && source.discovery?.generator !== 'rsshub')
+      const eligible = watched.filter(supportsNativeSourceWatch)
       void syncNativeWatchRules(eligible.map(source => ({ id: source.id, name: source.name, url: source.url, mode: state.rules.find(rule => rule.sourceId === source.id)?.mode || 'inbox', seen: (state.cursors[source.id] || []).map(key => key.slice(source.id.length + 1)) })), state.intervalMinutes, state.quietHours, state.wifiOnly).catch(() => {})
       if (timer) clearInterval(timer)
       if (!cancelled && watched.length) {
