@@ -55,3 +55,45 @@ contract. The three adjacent views are: inbox, source discovery, and reminders.
 - UI actions: follow, choose silent delivery, cancel sheet, back with Escape.
 - `node --import tsx --test scripts/source-watch-ui.test.ts` guards the
   fullscreen shell and the truthful background-ready source label.
+
+## Discoverability and notification delivery (2026-11-10)
+
+- The top feed toolbar always contains a bell to open the global watch inbox.
+  Its count is the number of unread watch events across all presets; a small dot
+  also appears on the Me tab, and the Me settings entry displays the unread count.
+- The bell and read/unread count are live subscribers to a local numeric snapshot,
+  not tied to the selected feed or preset.
+- A newly discovered foreground article triggers an in-app banner **only** for
+  instant-alert watch rules and outside quiet hours. The same happens for newly
+  imported Android background events after the app resumes. Already persisted
+  unread entries do not repeatedly show banners at each startup.
+- Opening an article from a banner, the watch inbox, or another NewsNook feed
+  marks its matching watch event as read. Native notification deep links
+  reconcile pending events before marking an opened article read.
+- Android system notifications are emitted by JobScheduler only for new items
+  in supported direct HTTPS RSS/Atom feeds, with Android permission and the
+  NewsNook watch channel enabled. Special HTML parsers (e.g., Anthropic)
+  remain foreground-only. There is intentionally no system notification for
+  old articles in the first scan, or for silent inbox-only watch rules.
+- Settings > Watch updates > Notification settings allows requesting permission,
+  reading status and emitting a **real test notification**; the test opens the
+  watch inbox and never inserts a fake article. A link to Android app notification
+  settings is offered when notifications are disabled.
+- Use `node --import tsx --test scripts/source-watch-notifications.test.tsx`
+  to test alert eligibility, event delivery, live bell markup, and read-state
+  persistence. Real device testing is still required for Android Doze, lock
+  screen / heads-up display, notification permission and channel behavior.
+
+### Notification smoke test on Android 14
+
+The debug app was installed on an API 34 emulator. App permission was initially
+`POST_NOTIFICATIONS: granted=false`. On granting permission through the watch
+settings UI, `sendTestNotification` posted a `newsnook-source-watch` notification
+(importance DEFAULT, native bell icon), visible in the notification shade and
+`dumpsys notification`. The notification opens `newsnook://watch/inbox` and a
+warm-activity test confirmed that it switches even an already-open settings tab
+back to the inbox. The notification is a diagnostic only: it never writes a
+fake update into the news inbox.
+
+A second UI-only "预览应用内横幅" setting displays the actual foreground banner
+without network requests or creating unread events. It also works on web.

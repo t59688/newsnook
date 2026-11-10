@@ -1,14 +1,9 @@
 import { fetchSourceText } from '../../lib/http'
 import { parseSourceArticles } from '../../lib/sourceArticles'
 import type { NewsSource } from '../../sources/registry'
-import { loadWatchState, reconcileWatchArticles, saveWatchState, type WatchEvent } from './store'
+import { loadWatchState, reconcileWatchArticles, saveWatchState } from './store'
+import { announceWatchEvents } from './announcements'
 
-type Listener = (events: WatchEvent[]) => void
-const listeners = new Set<Listener>()
-export function subscribeWatchUpdates(listener: Listener): () => void {
-  listeners.add(listener)
-  return () => { listeners.delete(listener) }
-}
 let running = false
 const MAX_PARALLEL = 2
 export async function checkWatchedSources(sources: NewsSource[], force = false): Promise<number> {
@@ -39,9 +34,7 @@ export async function checkWatchedSources(sources: NewsSource[], force = false):
           const { next, added } = reconcileWatchArticles(current, source.id, articles, Date.now())
           saveWatchState(next)
           total += added.length
-          if (added.length) {
-            listeners.forEach(listener => listener(added))
-          }
+          announceWatchEvents(added)
         } catch { /* Offline, source throttling, or unsupported site: retain cursor and retry later. */ }
       }))
     }

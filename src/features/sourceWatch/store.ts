@@ -30,3 +30,12 @@ export function reconcileWatchArticles(state: WatchState, sourceId: string, arti
   const next: WatchState = { ...state, events: [...added, ...state.events].slice(0, 300), cursors: { ...state.cursors, [sourceId]: [...new Set([...keys, ...(known || [])])].slice(0, 150) }, lastChecked: { ...state.lastChecked, [sourceId]: timestamp } }
   return { next, added }
 }
+
+/** Read a watched article anywhere in NewsNook: clear the matching inbox item. */
+export function markWatchArticleRead(article: Article): boolean {
+  const key = watchArticleKey(article)
+  const state = loadWatchState()
+  if (!state.events.some(event => event.key === key && !event.read)) return false
+  saveWatchState({ ...state, events: state.events.map(event => event.key === key ? { ...event, read: true } : event) })
+  return true
+}

@@ -18,7 +18,8 @@ import { syncRouteFromAppUrl } from './features/sync/nativeNotification'
 import { checkWatchedSources } from './features/sourceWatch/runtime'
 import { supportsNativeSourceWatch } from './features/sourceWatch/eligibility'
 import { WatchBanner } from './features/sourceWatch/WatchBanner'
-import { loadWatchState } from './features/sourceWatch/store'
+import { loadWatchState, markWatchArticleRead } from './features/sourceWatch/store'
+import { useWatchUnreadCount } from './features/sourceWatch/useWatchUnreadCount'
 import { importNativeWatchEvents, syncNativeWatchRules } from './features/sourceWatch/native'
 import { toastForSyncEvent, syncStatusCaption, type SyncToastModel } from './features/sync/notifier'
 import { useCloudSync } from './features/sync/useCloudSync'
@@ -398,30 +399,63 @@ export default function App() {
     startTransition(() => commitSettingsRoute(route))
   }, [])
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
+  const watchUnreadCount = useWatchUnreadCount()
   const [focusReturnRoute, setFocusReturnRoute] = useState<SettingsRoute | null>(null)
   const [enabledIds, setEnabledIds] = useState<string[]>(() => loadEnabledSources() ?? DEFAULT_ENABLED)
   useEffect(() => {
     if (!startupReady) return
     const sources = allRegisteredSources(prefs)
-    let cancelled = false
+    let disposed = false
     let timer: ReturnType<typeof setInterval> | undefined
+    let previousSchedule = ''
+    let previousNativeRules = ''
+
+    const checkWhenVisible = () => {
+      if (disposed || document.visibilityState !== 'visible') return
+      // Native events are reconciled first, so a foreground fetch cannot
+      // re-discover them before the Android inbox has been imported.
+      void importNativeWatchEvents(sources).catch(() => 0).finally(() => {
+        if (!disposed && document.visibilityState === 'visible') void checkWatchedSources(sources)
+      })
+    }
     const configure = () => {
+      if (disposed) return
       const state = loadWatchState()
       const watched = sources.filter(source => !source.paused && state.rules.some(rule => rule.sourceId === source.id && rule.enabled))
       const eligible = watched.filter(supportsNativeSourceWatch)
-      void syncNativeWatchRules(eligible.map(source => ({ id: source.id, name: source.name, url: source.url, mode: state.rules.find(rule => rule.sourceId === source.id)?.mode || 'inbox', seen: (state.cursors[source.id] || []).map(key => key.slice(source.id.length + 1)) })), state.intervalMinutes, state.quietHours, state.wifiOnly).catch(() => {})
+      const nativeRules = eligible.map(source => ({
+        id: source.id, name: source.name, url: source.url,
+        mode: state.rules.find(rule => rule.sourceId === source.id)?.mode || 'inbox',
+        seen: (state.cursors[source.id] || []).map(key => key.slice(source.id.length + 1)),
+      }))
+      const nativeSignature = JSON.stringify([nativeRules, state.intervalMinutes, state.quietHours, state.wifiOnly])
+      if (nativeSignature !== previousNativeRules) {
+        previousNativeRules = nativeSignature
+        void syncNativeWatchRules(nativeRules, state.intervalMinutes, state.quietHours, state.wifiOnly).catch(() => {})
+      }
+      const scheduleSignature = JSON.stringify([watched.map(source => source.id), state.intervalMinutes])
+      if (scheduleSignature === previousSchedule) return
+      previousSchedule = scheduleSignature
       if (timer) clearInterval(timer)
-      if (!cancelled && watched.length) {
-        timer = setInterval(() => { if (document.visibilityState === 'visible') void checkWatchedSources(sources) }, 60000)
-        if (document.visibilityState === 'visible') void checkWatchedSources(sources)
+      timer = undefined
+      if (watched.length) {
+        timer = setInterval(checkWhenVisible, 60000)
+        checkWhenVisible()
       }
     }
-    const visible = () => { if (document.visibilityState === 'visible') { void importNativeWatchEvents(sources).catch(() => {}); void checkWatchedSources(sources) } }
+    const visible = () => { if (document.visibilityState === 'visible') checkWhenVisible() }
     window.addEventListener('newsnook:source-watch-changed', configure)
     document.addEventListener('visibilitychange', visible)
     configure()
+    // Native jobs may have found new articles while the WebView was suspended,
+    // even when all watch rules were disabled in the meantime.
     void importNativeWatchEvents(sources).catch(() => {})
-    return () => { cancelled = true; if (timer) clearInterval(timer); window.removeEventListener('newsnook:source-watch-changed', configure); document.removeEventListener('visibilitychange', visible) }
+    return () => {
+      disposed = true
+      if (timer) clearInterval(timer)
+      window.removeEventListener('newsnook:source-watch-changed', configure)
+      document.removeEventListener('visibilitychange', visible)
+    }
   }, [prefs, startupReady])
   const presets = usePresets({
     prefs,
@@ -1038,6 +1072,7 @@ export default function App() {
   customSourcesRef.current = prefs.customSources
 
   const openArticle = useCallback((article: Article) => {
+    markWatchArticleRead(article)
     setReaderReturnArticle(null)
     setReading(article)
     setReadIds((prev) => new Set(prev).add(article.id))
@@ -1067,6 +1102,17 @@ export default function App() {
       lastHandledUrl = trimmed
       lastHandledAt = now
 
+      // The test notification is an inbox shortcut, not an artificial article.
+      if (trimmed === 'newsnook://watch/inbox') {
+        leaveActiveSite()
+        setTab('me')
+        setSettingsRoute({ name: 'source-watch' })
+        // When the watch screen is already mounted on its Settings tab, navigate
+        // within that screen instead of merely redisplaying the current route.
+        window.dispatchEvent(new Event('newsnook:source-watch-open-inbox'))
+        return
+      }
+
       // Local source-watch notification opens the exact article without switching presets.
       if (trimmed.startsWith('newsnook://watch?')) {
         const params = new URLSearchParams(trimmed.slice('newsnook://watch?'.length))
@@ -1075,9 +1121,14 @@ export default function App() {
         const title = params.get('title') || ''
         if (sourceId && title && /^https?:\/\//i.test(url)) {
           const source = findSource(sourceId, customSourcesRef.current)
-          openArticle({ id: sourceId + ':' + url, sourceId, sourceName: source?.name || sourceId,
+          const article: Article = { id: sourceId + ':' + url, sourceId, sourceName: source?.name || sourceId,
             sourceLabel: source?.label || sourceId, sourceGroup: source?.group || 'custom',
-            title, summary: '', originUrl: url, publishedAt: Date.now(), hasRealDate: false })
+            title, summary: '', originUrl: url, publishedAt: Date.now(), hasRealDate: false }
+          openArticle(article)
+          // The notification may have opened a cold app before native pending
+          // events were hydrated into the WebView inbox. Reconcile, then mark read.
+          void importNativeWatchEvents([...SOURCES, ...(customSourcesRef.current ?? [])])
+            .then(() => { markWatchArticleRead(article) }).catch(() => {})
         }
         return
       }
@@ -1131,7 +1182,7 @@ export default function App() {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [openAccountSync, openArticle])
+  }, [openAccountSync, openArticle, leaveActiveSite, setSettingsRoute])
 
   /**
    * 「在 App 中打开」引导条：网页版打开分享深链、且是 Android 浏览器时才给。
@@ -1873,6 +1924,8 @@ export default function App() {
     if (focusSource) {
       return (
         <FeedScreen
+          watchUnreadCount={watchUnreadCount}
+          onOpenWatch={() => setSettingsRoute({ name: 'source-watch' })}
           title={focusSource.name}
           caption={focusSource.url.replace(/^https?:\/\//, '').slice(0, 38)}
           articles={focusArticles}
@@ -1933,6 +1986,7 @@ export default function App() {
           onOpenCategories={() => setSettingsRoute({ name: 'categories', returnTo: 'me' })}
           onOpenPresets={() => setSettingsRoute({ name: 'presets' })}
           onOpenSourceWatch={() => setSettingsRoute({ name: 'source-watch' })}
+          watchUnreadCount={watchUnreadCount}
           onOpenTypographySettings={() => setSettingsRoute({ name: 'typography' })}
           onOpenAppearanceSettings={() => setSettingsRoute({ name: 'appearance' })}
           onOpenTranslationSettings={() => setSettingsRoute({ name: 'translation' })}
@@ -1981,6 +2035,8 @@ export default function App() {
     return (
       <FeedScreen
         key={`preset:${activePresetId}`}
+        watchUnreadCount={watchUnreadCount}
+        onOpenWatch={() => setSettingsRoute({ name: 'source-watch' })}
         title={BRAND_TITLE}
         caption={
           activeFilterSource
@@ -2101,7 +2157,10 @@ export default function App() {
           渐进增强为 content-visibility:hidden。两条路径都保留 React DOM/状态，并让下层长列表
           退出主题预览的渲染热路径；现代内核额外保留布局盒与滚动状态。
         */}
-        {startupReady && !reading && !settingsRoute && <WatchBanner onOpen={openArticle} />}
+        {startupReady && <WatchBanner onOpen={openArticle} onOpenInbox={() => {
+          setSettingsRoute({ name: 'source-watch' })
+          window.dispatchEvent(new Event('newsnook:source-watch-open-inbox'))
+        }} />}
         <main
           className={`relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ink${
             showSchemeOnboarding ? ' content-parked' : ''
@@ -2162,6 +2221,7 @@ export default function App() {
                 <TabBar
                   active={tab}
                   laterCount={later.length}
+                  watchUnreadCount={watchUnreadCount}
                   hasUpdate={appUpdate.hasUpdate}
                   onChange={(key) => {
                     // Preserve the current surface until a cold lazy tab is ready.

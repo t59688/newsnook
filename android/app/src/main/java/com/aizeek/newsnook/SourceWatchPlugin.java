@@ -9,9 +9,9 @@ import android.app.job.JobScheduler;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.provider.Settings;
 import android.net.Uri;
 import android.os.Build;
-import android.os.PersistableBundle;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import com.getcapacitor.JSObject;
@@ -42,8 +42,55 @@ public class SourceWatchPlugin extends Plugin {
     @PermissionCallback
     private void notificationPermissionCallback(PluginCall call) {
         JSObject result = new JSObject();
-        result.put("granted", Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || getPermissionState("notifications") == PermissionState.GRANTED);
+        result.put("granted", notificationsEnabled(getContext()));
         call.resolve(result);
+    }
+
+    /** Notification permission and channel are independent Android controls. */
+    static boolean notificationsEnabled(Context context) {
+        NotificationManagerCompat notifications = NotificationManagerCompat.from(context);
+        if (!notifications.areNotificationsEnabled()) return false;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationManager system = context.getSystemService(NotificationManager.class);
+            if (system != null) {
+                NotificationChannel channel = system.getNotificationChannel(CHANNEL);
+                if (channel != null && channel.getImportance() == NotificationManager.IMPORTANCE_NONE) return false;
+            }
+        }
+        return true;
+    }
+
+    @PluginMethod
+    public void getNotificationStatus(PluginCall call) {
+        JSObject result = new JSObject();
+        result.put("enabled", notificationsEnabled(getContext()));
+        call.resolve(result);
+    }
+
+    /** A real Android notification that never inserts a fake article in the inbox. */
+    @PluginMethod
+    public void sendTestNotification(PluginCall call) {
+        boolean delivered = post(getContext(), "watch:test", "关注动态 · 测试通知",
+            "通知已交给 Android 系统。点击返回关注动态。", "newsnook://watch/inbox");
+        JSObject result = new JSObject();
+        result.put("delivered", delivered);
+        call.resolve(result);
+    }
+
+    @PluginMethod
+    public void openNotificationSettings(PluginCall call) {
+        try {
+            Intent intent;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                intent = new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, getContext().getPackageName());
+            } else {
+                intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.parse("package:" + getContext().getPackageName()));
+            }
+            getActivity().startActivity(intent);
+            call.resolve();
+        } catch (Exception error) { call.reject("Could not open Android notification settings", error); }
     }
 
     @PluginMethod
@@ -154,20 +201,9 @@ public class SourceWatchPlugin extends Plugin {
         call.resolve();
     }
 
-    @PluginMethod
-    public void notify(PluginCall call) {
-        String id = call.getString("id");
-        String title = call.getString("title");
-        String body = call.getString("body");
-        String url = call.getString("url");
-        if (id == null || title == null || body == null || url == null) { call.reject("missing notification fields"); return; }
-        post(getContext(), id, title, body, url);
-        call.resolve();
-    }
-
-    static void post(Context context, String id, String title, String body, String url) {
+    static boolean post(Context context, String id, String title, String body, String url) {
         NotificationManagerCompat notifications = NotificationManagerCompat.from(context);
-        if (!notifications.areNotificationsEnabled()) return;
+        if (!notificationsEnabled(context)) return false;
         NotificationManager system = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
         if (Build.VERSION.SDK_INT >= 26 && system != null) {
             NotificationChannel channel = new NotificationChannel(CHANNEL, "关注信源更新", NotificationManager.IMPORTANCE_DEFAULT);
@@ -175,11 +211,13 @@ public class SourceWatchPlugin extends Plugin {
             system.createNotificationChannel(channel);
         }
         // Route directly to the NewsNook article reader instead of opening a browser tab.
-        Uri deepLink = new Uri.Builder().scheme("newsnook").authority("watch")
-            .appendQueryParameter("url", url)
-            .appendQueryParameter("title", body)
-            .appendQueryParameter("source", id.startsWith("watch:") ? id.substring(6) : id)
-            .build();
+        Uri deepLink = "newsnook://watch/inbox".equals(url)
+            ? Uri.parse(url)
+            : new Uri.Builder().scheme("newsnook").authority("watch")
+                .appendQueryParameter("url", url)
+                .appendQueryParameter("title", body)
+                .appendQueryParameter("source", id.startsWith("watch:") ? id.substring(6) : id)
+                .build();
         Intent open = new Intent(context, MainActivity.class)
             .setAction(Intent.ACTION_VIEW)
             .setData(deepLink)
@@ -188,13 +226,15 @@ public class SourceWatchPlugin extends Plugin {
         if (Build.VERSION.SDK_INT >= 23) flags |= PendingIntent.FLAG_IMMUTABLE;
         PendingIntent pending = PendingIntent.getActivity(context, id.hashCode(), open, flags);
         NotificationCompat.Builder builder = new NotificationCompat.Builder(context, CHANNEL)
-            .setSmallIcon(R.drawable.ic_sync_notification)
+            .setSmallIcon(R.drawable.ic_source_watch_notification)
             .setContentTitle(title).setContentText(body)
             .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
             .setContentIntent(pending).setAutoCancel(true)
             .setCategory(NotificationCompat.CATEGORY_RECOMMENDATION)
             .setPriority(NotificationCompat.PRIORITY_DEFAULT);
-        try { notifications.notify(0x36000000 | (id.hashCode() & 0x00FFFFFF), builder.build()); }
-        catch (SecurityException ignored) { }
+        try {
+            notifications.notify(0x36000000 | (id.hashCode() & 0x00FFFFFF), builder.build());
+            return true;
+        } catch (SecurityException ignored) { return false; }
     }
 }

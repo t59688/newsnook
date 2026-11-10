@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
+import { Capacitor } from '@capacitor/core'
 import {
   Bell, BellRing, Check, CheckCheck, ChevronRight, Clock3, Info,
-  LoaderCircle, Plus, Radio, Search, ShieldCheck, Wifi, X,
+  LoaderCircle, Plus, Radio, Search, Send, ShieldCheck, Wifi, X, Eye,
 } from 'lucide-react'
 
 import { SettingsShell } from '../../components/SettingsShell'
@@ -12,7 +13,7 @@ import { haptics } from '../../lib/haptics'
 import type { Article } from '../../lib/types'
 import { checkWatchedSources } from '../../features/sourceWatch/runtime'
 import { supportsNativeSourceWatch } from '../../features/sourceWatch/eligibility'
-import { requestWatchNotificationPermission } from '../../features/sourceWatch/native'
+import { getWatchNotificationStatus, openWatchNotificationSettings, requestWatchNotificationPermission, sendWatchTestNotification } from '../../features/sourceWatch/native'
 import { loadWatchState, saveWatchState, type WatchEvent, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
 import type { NewsSource, SourceGroup } from '../../sources/registry'
 
@@ -117,13 +118,14 @@ function Toggle({ checked, onChange, label }: { checked: boolean; onChange: () =
 }
 
 function WatchSourceSheet({
-  source, mode, onMode, onRemove, onClose,
+  source, mode, onMode, onRemove, onClose, initialPermissionHint,
 }: {
   source: NewsSource
   mode: WatchMode
   onMode: (mode: WatchMode) => void
   onRemove: () => void
   onClose: () => void
+  initialPermissionHint?: string | null
 }) {
   const [permissionHint, setPermissionHint] = useState<string | null>(null)
   useHardwareBackLayer(true, () => { onClose(); return true })
@@ -147,7 +149,6 @@ function WatchSourceSheet({
         <div className="sw-modal-grip" aria-hidden="true" />
         <div className="sw-modal-heading">
           <div>
-            <div className="sw-eyebrow">信源提醒</div>
             <h2 id="sw-source-title" className="sw-modal-title">{source.name}</h2>
             <p className="sw-modal-subtitle">{supportsNativeSourceWatch(source) ? '可在 Android 后台检查更新' : '应用打开时检查更新'}</p>
           </div>
@@ -176,7 +177,7 @@ function WatchSourceSheet({
             </button>
           ))}
         </div>
-        {permissionHint && <p className="sw-permission-hint" role="status">{permissionHint}</p>}
+        {mode === 'instant' && (permissionHint || initialPermissionHint) && <p className="sw-permission-hint" role="status">{permissionHint || initialPermissionHint}</p>}
         <div className="sw-modal-footer">
           <button type="button" className="sw-text-destructive" onClick={onRemove}>取消关注</button>
           <button type="button" className="sw-primary sw-modal-done" onClick={onClose}>完成</button>
@@ -199,6 +200,9 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
   const [checking, setChecking] = useState(false)
   const [checkResult, setCheckResult] = useState<string | null>(null)
   const [notificationHint, setNotificationHint] = useState<string | null>(null)
+  const [notificationEnabled, setNotificationEnabled] = useState<boolean | null>(null)
+  const [testingNotification, setTestingNotification] = useState(false)
+  const android = Capacitor.getPlatform() === 'android'
 
   const sourceMap = useMemo(() => new Map(sources.map(source => [source.id, source])), [sources])
   const ruleMap = useMemo(() => new Map(state.rules.filter(rule => rule.enabled).map(rule => [rule.sourceId, rule])), [state.rules])
@@ -220,6 +224,61 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
     return () => window.removeEventListener('newsnook:source-watch-changed', reload)
   }, [])
 
+  useEffect(() => {
+    const openInbox = () => {
+      setSelectedId(null)
+      setShowUnread(false)
+      setTab('inbox')
+    }
+    window.addEventListener('newsnook:source-watch-open-inbox', openInbox)
+    return () => window.removeEventListener('newsnook:source-watch-open-inbox', openInbox)
+  }, [])
+
+  useEffect(() => {
+    const scroller = document.querySelector<HTMLElement>('.sw-shell [data-settings-scroll]')
+    if (scroller) scroller.scrollTop = 0
+  }, [tab])
+
+
+  useEffect(() => {
+    if (tab !== 'settings' || !android) return
+    let alive = true
+    const updateStatus = () => {
+      void getWatchNotificationStatus().then(enabled => {
+        if (alive) setNotificationEnabled(enabled)
+      }).catch(() => { if (alive) setNotificationEnabled(false) })
+    }
+    updateStatus()
+    document.addEventListener('visibilitychange', updateStatus)
+    return () => { alive = false; document.removeEventListener('visibilitychange', updateStatus) }
+  }, [tab, android])
+
+  const requestNotifications = async (): Promise<void> => {
+    if (!android) return
+    try {
+      const granted = await requestWatchNotificationPermission()
+      setNotificationEnabled(granted)
+      setNotificationHint(granted ? '系统通知已开启' : '系统通知尚未开启；更新仍会保留在收件箱')
+    } catch { setNotificationHint('通知权限检查失败，请在系统设置中确认') }
+  }
+
+  const sendTestNotification = async (): Promise<void> => {
+    if (!android || testingNotification) return
+    setTestingNotification(true)
+    try {
+      const allowed = await requestWatchNotificationPermission()
+      setNotificationEnabled(allowed)
+      if (!allowed) {
+        setNotificationHint('未获得系统通知权限，请在 Android 设置中开启后重试')
+        return
+      }
+      const delivered = await sendWatchTestNotification()
+      setNotificationHint(delivered ? '已交给 Android 通知栏；如果未显示，请检查系统通知渠道或免打扰设置' : '系统拒绝了通知，请检查系统通知设置')
+    } catch { setNotificationHint('发送测试通知失败，请检查系统通知设置') }
+    finally { setTestingNotification(false) }
+  }
+
+
   const toggleWatch = (sourceId: string) => {
     const enabled = ruleMap.has(sourceId)
     const cursors = { ...state.cursors }
@@ -228,7 +287,13 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
     commit({ ...state, cursors, rules: enabled ? rules : [...rules, { sourceId, enabled: true, mode: 'instant' }] })
     void haptics.tick()
     if (enabled) setSelectedId(null)
-    else setSelectedId(sourceId)
+    else {
+      setSelectedId(sourceId)
+      setNotificationHint(null)
+      // Selecting a bell is an explicit opt-in; request Android 13+ permission
+      // here, not only when the user re-selects the default "instant" mode.
+      if (android) void requestNotifications()
+    }
   }
 
   const changeMode = (sourceId: string, mode: WatchMode) => {
@@ -308,7 +373,6 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
             <section className="sw-inbox-view">
               <div className="sw-masthead">
                 <div>
-                  <p className="sw-eyebrow">你的关注简报</p>
                   <h2 className="sw-headline">{count ? '新动态' : '关注，从少而精开始'}{count > 0 && <span className="sw-headline-number">{unread}</span>}</h2>
                   <p className="sw-lead">{count ? '正在留意 ' + count + ' 个信源，与你当前浏览的预设无关。' : '只追踪你选择的来源，其他信源不会在后台检测。'}</p>
                 </div>
@@ -374,7 +438,6 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
             <section className="sw-sources-view">
               <div className="sw-masthead">
                 <div>
-                  <p className="sw-eyebrow">关注列表</p>
                   <h2 className="sw-headline">{count}<span className="sw-headline-unit"> 个关注信源</span></h2>
                   <p className="sw-lead">只有开启提醒的信源会进入检测队列。</p>
                 </div>
@@ -423,7 +486,6 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
             <section className="sw-settings-view">
               <div className="sw-masthead">
                 <div>
-                  <p className="sw-eyebrow">自动检测</p>
                   <h2 className="sw-headline">安静地留意更新</h2>
                   <p className="sw-lead">关注由你决定，提醒也由你决定。</p>
                 </div>
@@ -460,15 +522,25 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
                 <h3>通知与状态</h3>
                 <div className="sw-settings-list">
                   <button type="button" className="sw-setting-row" onClick={() => {
-                    void requestWatchNotificationPermission().then(granted =>
-                      setNotificationHint(granted ? '系统通知权限已允许' : '系统通知未授权，更新仍会保留在收件箱'),
-                    ).catch(() => setNotificationHint('无法申请系统通知权限'))
+                    window.dispatchEvent(new Event('newsnook:source-watch-preview'))
                   }}>
-                    <span className="sw-setting-icon"><BellRing size={19} strokeWidth={1.7}/></span>
-                    <span className="sw-setting-copy"><strong>系统通知权限</strong><small>有新文章时显示在 Android 通知栏</small></span>
+                    <span className="sw-setting-icon"><Eye size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>预览应用内横幅</strong><small>在当前页面顶部查看提醒效果，不新增文章</small></span>
                     <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />
                   </button>
+                  <button type="button" className="sw-setting-row" onClick={() => void requestNotifications()} disabled={!android}>
+                    <span className="sw-setting-icon"><BellRing size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>Android 系统通知</strong><small>后台 RSS 有新文章时显示通知栏消息</small></span>
+                    <span className="sw-setting-value">{android ? notificationEnabled === true ? '已开启' : notificationEnabled === false ? '未开启' : '检查中' : '仅 Android'}</span>
+                    {android && <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />}
+                  </button>
+                  {android && <button type="button" className="sw-setting-row" onClick={() => void sendTestNotification()} disabled={testingNotification}>
+                    <span className="sw-setting-icon"><Send size={19} strokeWidth={1.7}/></span>
+                    <span className="sw-setting-copy"><strong>发送测试通知</strong><small>验证权限、通知渠道与锁屏通知入口</small></span>
+                    {testingNotification ? <LoaderCircle size={17} className="sw-spinning sw-setting-chevron" aria-hidden="true" /> : <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />}
+                  </button>}
                   {notificationHint && <p className="sw-inline-status" role="status">{notificationHint}</p>}
+                  {android && notificationEnabled === false && <button type="button" className="sw-notification-settings-link" onClick={() => void openWatchNotificationSettings().catch(() => setNotificationHint('无法打开系统通知设置'))}>打开 Android 通知设置 <ChevronRight size={15} aria-hidden="true" /></button>}
                   <div className="sw-setting-row sw-setting-row--info">
                     <span className="sw-setting-icon"><Info size={19} strokeWidth={1.7}/></span>
                     <span className="sw-setting-copy"><strong>最近检查</strong><small>{lastChecked ? fmtTime(lastChecked) : '尚未执行过检测'} · 由设备独立完成</small></span>
@@ -502,6 +574,7 @@ export function SourceWatchScreen({ sources, onBack, onOpenArticle }: Props) {
         source={selectedSource} mode={ruleMap.get(selectedSource.id)?.mode || 'instant'}
         onMode={mode => changeMode(selectedSource.id, mode)}
         onRemove={() => toggleWatch(selectedSource.id)}
+        initialPermissionHint={notificationHint}
         onClose={() => setSelectedId(null)}
       />}
     </>
