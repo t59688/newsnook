@@ -123,6 +123,7 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+        <service android:name=".SourceWatchJobService" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
     </application>
 
     <!-- Permissions -->
@@ -140,6 +141,7 @@
         android:name="android.permission.NEARBY_WIFI_DEVICES"
         android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- AppUpdate：隐藏系统 DownloadManager 通知，改由自管进度通知 -->
     <uses-permission android:name="android.permission.DOWNLOAD_WITHOUT_NOTIFICATION" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />

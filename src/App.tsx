@@ -15,6 +15,10 @@ import { SchemeOnboardingPrompt } from './components/SchemeOnboardingPrompt'
 import { SyncOnboardingPrompt } from './features/account/SyncOnboardingPrompt'
 import { useAccount } from './features/account/useAccount'
 import { syncRouteFromAppUrl } from './features/sync/nativeNotification'
+import { checkWatchedSources } from './features/sourceWatch/runtime'
+import { WatchBanner } from './features/sourceWatch/WatchBanner'
+import { loadWatchState } from './features/sourceWatch/store'
+import { importNativeWatchEvents, syncNativeWatchRules } from './features/sourceWatch/native'
 import { toastForSyncEvent, syncStatusCaption, type SyncToastModel } from './features/sync/notifier'
 import { useCloudSync } from './features/sync/useCloudSync'
 import { SyncToast } from './components/SyncToast'
@@ -179,6 +183,7 @@ const HistoryScreen = lazyScreen(() => Promise.all([
 ]).then(([module]) => ({ default: module.HistoryScreen })))
 const LaterScreen = lazyScreen(() => import('./screens/settings/LaterScreen').then(module => ({ default: module.LaterScreen })))
 const LocalSearchScreen = lazyScreen(() => import('./screens/settings/LocalSearchScreen').then(module => ({ default: module.LocalSearchScreen })))
+const SourceWatchScreen = lazyScreen(() => import('./screens/settings/SourceWatchScreen').then(module => ({ default: module.SourceWatchScreen })))
 const PresetListScreen = lazyScreen(() => import('./screens/settings/PresetListScreen').then(module => ({ default: module.PresetListScreen })))
 const StorageScreen = lazyScreen(() => import('./screens/settings/StorageScreen').then(module => ({ default: module.StorageScreen })))
 const TypographyScreen = lazyScreen(() => import('./screens/settings/TypographyScreen').then(module => ({ default: module.TypographyScreen })))
@@ -391,6 +396,29 @@ export default function App() {
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
   const [focusReturnRoute, setFocusReturnRoute] = useState<SettingsRoute | null>(null)
   const [enabledIds, setEnabledIds] = useState<string[]>(() => loadEnabledSources() ?? DEFAULT_ENABLED)
+  useEffect(() => {
+    if (!startupReady) return
+    const sources = allRegisteredSources(prefs)
+    let cancelled = false
+    let timer: ReturnType<typeof setInterval> | undefined
+    const configure = () => {
+      const state = loadWatchState()
+      const watched = sources.filter(source => !source.paused && state.rules.some(rule => rule.sourceId === source.id && rule.enabled))
+      const eligible = watched.filter(source => (source.kind === 'feed' || source.kind === 'google-news') && source.url.startsWith('https://') && source.requestMethod !== 'POST' && source.discovery?.generator !== 'rsshub')
+      void syncNativeWatchRules(eligible.map(source => ({ id: source.id, name: source.name, url: source.url, mode: state.rules.find(rule => rule.sourceId === source.id)?.mode || 'inbox', seen: (state.cursors[source.id] || []).map(key => key.slice(source.id.length + 1)) })), state.intervalMinutes, state.quietHours, state.wifiOnly).catch(() => {})
+      if (timer) clearInterval(timer)
+      if (!cancelled && watched.length) {
+        timer = setInterval(() => { if (document.visibilityState === 'visible') void checkWatchedSources(sources) }, 60000)
+        if (document.visibilityState === 'visible') void checkWatchedSources(sources)
+      }
+    }
+    const visible = () => { if (document.visibilityState === 'visible') { void importNativeWatchEvents(sources).catch(() => {}); void checkWatchedSources(sources) } }
+    window.addEventListener('newsnook:source-watch-changed', configure)
+    document.addEventListener('visibilitychange', visible)
+    configure()
+    void importNativeWatchEvents(sources).catch(() => {})
+    return () => { cancelled = true; if (timer) clearInterval(timer); window.removeEventListener('newsnook:source-watch-changed', configure); document.removeEventListener('visibilitychange', visible) }
+  }, [prefs, startupReady])
   const presets = usePresets({
     prefs,
     enabledIds,
@@ -1035,6 +1063,21 @@ export default function App() {
       lastHandledUrl = trimmed
       lastHandledAt = now
 
+      // Local source-watch notification opens the exact article without switching presets.
+      if (trimmed.startsWith('newsnook://watch?')) {
+        const params = new URLSearchParams(trimmed.slice('newsnook://watch?'.length))
+        const sourceId = params.get('source') || ''
+        const url = params.get('url') || ''
+        const title = params.get('title') || ''
+        if (sourceId && title && /^https?:\/\//i.test(url)) {
+          const source = findSource(sourceId, customSourcesRef.current)
+          openArticle({ id: sourceId + ':' + url, sourceId, sourceName: source?.name || sourceId,
+            sourceLabel: source?.label || sourceId, sourceGroup: source?.group || 'custom',
+            title, summary: '', originUrl: url, publishedAt: Date.now(), hasRealDate: false })
+        }
+        return
+      }
+
       // 1. 同步通知点开后落到「账户与同步」，不是分享深链
       if (syncRouteFromAppUrl(trimmed)) {
         openAccountSync()
@@ -1488,6 +1531,10 @@ export default function App() {
       )
     }
 
+    if (settingsRoute.name === 'source-watch') {
+      return <SourceWatchScreen sources={allRegisteredSources(prefs)} onBack={() => setSettingsRoute(null)} onOpenArticle={(article) => { setSettingsRoute(null); openArticle(article) }} />
+    }
+
     if (settingsRoute.name === 'presets') {
       return (
         <PresetListScreen
@@ -1881,6 +1928,7 @@ export default function App() {
           onOpenFeedStore={() => setSettingsRoute({ name: 'feed-store' })}
           onOpenCategories={() => setSettingsRoute({ name: 'categories', returnTo: 'me' })}
           onOpenPresets={() => setSettingsRoute({ name: 'presets' })}
+          onOpenSourceWatch={() => setSettingsRoute({ name: 'source-watch' })}
           onOpenTypographySettings={() => setSettingsRoute({ name: 'typography' })}
           onOpenAppearanceSettings={() => setSettingsRoute({ name: 'appearance' })}
           onOpenTranslationSettings={() => setSettingsRoute({ name: 'translation' })}
@@ -2049,6 +2097,7 @@ export default function App() {
           渐进增强为 content-visibility:hidden。两条路径都保留 React DOM/状态，并让下层长列表
           退出主题预览的渲染热路径；现代内核额外保留布局盒与滚动状态。
         */}
+        {startupReady && !reading && !settingsRoute && <WatchBanner onOpen={openArticle} />}
         <main
           className={`relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ink${
             showSchemeOnboarding ? ' content-parked' : ''

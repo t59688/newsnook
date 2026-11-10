@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import {
   ArrowLeft,
   Bookmark,
+  Bell,
   ChevronRight,
   CloudUpload,
   Contrast,
@@ -49,6 +50,7 @@ interface Props {
   onOpenFeedStore: () => void
   onOpenCategories: () => void
   onOpenPresets: () => void
+  onOpenSourceWatch: () => void
   onOpenTypographySettings: () => void
   onOpenAppearanceSettings: () => void
   onOpenTranslationSettings: () => void
@@ -113,6 +115,7 @@ export function MeScreen({
   onOpenFeedStore,
   onOpenCategories,
   onOpenPresets,
+  onOpenSourceWatch,
   onOpenTypographySettings,
   onOpenAppearanceSettings,
   onOpenTranslationSettings,
@@ -150,6 +153,7 @@ export function MeScreen({
           <Entry icon={Rss} title="自定义订阅与 OPML" subtitle={customSourcesSummary ?? 'RSS / Atom · OPML 导入导出'} onClick={onOpenCustomSources} dataTour="me-custom-sources"/>
           <Entry icon={LayoutGrid} title="分类与自动刷新" subtitle={categoriesSummary ?? '顺序、信源与刷新方式'} onClick={onOpenCategories}/>
           <Entry icon={LayoutTemplate} title="场景预设" subtitle={presetsSummary} onClick={onOpenPresets} dataTour="me-presets"/>
+          <Entry icon={Bell} title="关注动态" subtitle="跨预设更新提醒 · 按需监控" onClick={onOpenSourceWatch}/>
         </Group>
         <Group title="阅读体验">
           <Entry icon={Type} title="阅读字体" subtitle={typographySummary} onClick={onOpenTypographySettings}/>
