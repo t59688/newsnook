@@ -106,3 +106,29 @@ test('inbox renders at most 40 articles before loading more, retaining unread co
     else Reflect.deleteProperty(globalThis, 'localStorage')
   }
 })
+
+test('lead story keeps the shared editorial cover visible when an image cannot load', async () => {
+  const { LeadStory } = await import('../src/components/ArticleItem')
+  const html = renderToStaticMarkup(React.createElement(LeadStory, {
+    article: events[0].article,
+    read: false,
+    saved: false,
+    prestored: false,
+    onOpen: () => {},
+    revealed: true,
+    variant: 'lead',
+  }))
+  assert.match(html, /editorial-lead-mobile-photo/)
+  assert.match(html, /editorial-cover-root/)
+  assert.match(html, /editorial-scene-svg/)
+  assert.match(html, /editorial-lead-mobile-title/)
+  const withoutCover = renderToStaticMarkup(React.createElement(LeadStory, {
+    article: { ...events[0].article, image: undefined },
+    read: false,
+    saved: false,
+    onOpen: () => {},
+    revealed: true,
+    variant: 'lead',
+  }))
+  assert.match(withoutCover, /editorial-cover-root/)
+})

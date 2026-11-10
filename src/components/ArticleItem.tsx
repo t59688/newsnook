@@ -506,17 +506,28 @@ export const LeadStory = memo(function LeadStory({
           className={`editorial-lead-mobile lead-hero h-[14.5rem] sm:h-[16rem] group text-left ${framed ? 'is-framed' : ''} ${variant === 'auto' ? 'lg:hidden' : ''}`}
         >
           {/* 外层固定高度：封面补救失败后 InkImage 可能卸载，头条框仍须占位 */}
-          <span className="editorial-lead-mobile-photo block h-[14.5rem] w-full overflow-hidden sm:h-[16rem]" aria-hidden={!cover}>
-            {cover ? (
+          <span className="editorial-lead-mobile-photo relative block h-[14.5rem] w-full overflow-hidden sm:h-[16rem]" aria-hidden="true">
+            {/* Keep the existing editorial artwork visible while the photo is
+                pending, blocked or unrecoverable. A failed image must never
+                leave a large empty hero panel in the reading feed. */}
+            <EditorialCoverPlaceholder
+              article={article}
+              read={read}
+              showUnreadDot={false}
+              showVideoBadge={false}
+              className="absolute inset-0 h-full w-full"
+            />
+            {cover && (
               <InkImage
                 src={cover}
                 onFailed={onFailed}
                 eager
-                className={`h-full w-full ${
+                collapseOnError
+                className={`relative h-full w-full ${
                   read ? 'opacity-[0.78] grayscale-[0.12] saturate-[0.9]' : 'opacity-100'
                 }`}
               />
-            ) : null}
+            )}
           </span>
           <span className="editorial-lead-mobile-veil lead-cover-veil" aria-hidden />
           <span className={`editorial-lead-mobile-copy lead-hero-copy page-x pb-4 pt-10 sm:pb-4.5 ${read ? 'is-read' : ''}`}>
@@ -587,15 +598,24 @@ export const LeadStory = memo(function LeadStory({
           >
             {/* 左侧大图 (7 栅格) */}
             <div className="editorial-lead-desktop-photo col-span-7 h-[300px] xl:h-[350px] 2xl:h-[400px] w-full overflow-hidden rounded-xl bg-ink border border-haze/70 relative">
-              <InkImage
-                src={cover}
-                onFailed={onFailed}
-                eager
-                collapseOnError
-                className={`h-full w-full object-cover transition-all duration-700 ease-ink group-hover:scale-105 ${
-                  read ? 'opacity-80 grayscale-[0.15] saturate-[0.88]' : 'opacity-100'
-                }`}
+              <EditorialCoverPlaceholder
+                article={article}
+                read={read}
+                showUnreadDot={false}
+                showVideoBadge={false}
+                className="absolute inset-0 h-full w-full"
               />
+              {cover && (
+                <InkImage
+                  src={cover}
+                  onFailed={onFailed}
+                  eager
+                  collapseOnError
+                  className={`relative h-full w-full object-cover transition-all duration-700 ease-ink group-hover:scale-105 ${
+                    read ? 'opacity-80 grayscale-[0.15] saturate-[0.88]' : 'opacity-100'
+                  }`}
+                />
+              )}
             </div>
 
             {/* 右侧深度排版区 (5 栅格) */}

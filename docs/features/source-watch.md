@@ -122,3 +122,14 @@ UI regression: `scripts/source-watch-feed-ui.test.tsx`, plus the updated
 `settings-paper-ui.test.tsx` test accounting for the Source Watch shortcut.
 Viewport review: 360x780, 390x844 and 768x1024; classic list, mobile/desktop
 cards, light/dark themes, image-led story, unread-only and mark-all-read.
+
+### Image fallback on the shared hero
+
+The shared homepage `LeadStory` now paints the existing
+`EditorialCoverPlaceholder` behind its asynchronous photo, on both phone
+and desktop. While a preview image is pending or an upstream host returns an
+unrecoverable image, the feature shows the app's native editorial cover
+instead of an empty hero rectangle. Once the image loads, `InkImage` covers
+it normally. The cover is local SVG artwork; no additional network requests
+are introduced. Verified against the 36kr watched-feed image failure on an
+Android 14 emulator after reinstalling the debug APK.
