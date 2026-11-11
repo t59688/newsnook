@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react'
 import {
   ArrowLeft,
   Bookmark,
+  Bell,
   ChevronRight,
   CloudUpload,
   Contrast,
@@ -49,6 +50,8 @@ interface Props {
   onOpenFeedStore: () => void
   onOpenCategories: () => void
   onOpenPresets: () => void
+  onOpenSourceWatch: () => void
+  watchUnreadCount?: number
   onOpenTypographySettings: () => void
   onOpenAppearanceSettings: () => void
   onOpenTranslationSettings: () => void
@@ -113,6 +116,8 @@ export function MeScreen({
   onOpenFeedStore,
   onOpenCategories,
   onOpenPresets,
+  onOpenSourceWatch,
+  watchUnreadCount = 0,
   onOpenTypographySettings,
   onOpenAppearanceSettings,
   onOpenTranslationSettings,
@@ -146,6 +151,7 @@ export function MeScreen({
           <ul className="paper-settings-panel paper-settings-search-panel"><Entry icon={Search} title="本地搜索" onClick={onOpenLocalSearch}/></ul>
         </section>
         <Group title="订阅与内容">
+          <Entry icon={Bell} title="关注动态" subtitle={watchUnreadCount ? `${watchUnreadCount} 篇新动态 · 跨预设提醒` : '跨预设更新提醒 · 按需监控'} badge={watchUnreadCount ? `${watchUnreadCount > 99 ? '99+' : watchUnreadCount} 未读` : null} onClick={onOpenSourceWatch}/>
           <Entry icon={Store} title="RSS 订阅商店" subtitle="发现和添加订阅" onClick={onOpenFeedStore} dataTour="me-feed-store"/>
           <Entry icon={Rss} title="自定义订阅与 OPML" subtitle={customSourcesSummary ?? 'RSS / Atom · OPML 导入导出'} onClick={onOpenCustomSources} dataTour="me-custom-sources"/>
           <Entry icon={LayoutGrid} title="分类与自动刷新" subtitle={categoriesSummary ?? '顺序、信源与刷新方式'} onClick={onOpenCategories}/>

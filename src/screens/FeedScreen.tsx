@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, Loader2, RotateCw, Search, X } from 'lucide-react'
+import { WatchInboxButton } from '../features/sourceWatch/WatchInboxButton'
 
 import { ArticleRow, LeadStory } from '../components/ArticleItem'
 import { BrandLogo } from '../components/BrandLogo'
@@ -83,6 +84,9 @@ interface Props {
   onBrandTap?: () => void
   /** 打开本地离线搜索；与 searchTemplate 的站内联网搜索是两回事 */
   onOpenLocalSearch?: () => void
+  /** 全局关注动态收件箱。未读数量跨预设计算，不依赖当前信息流。 */
+  onOpenWatch?: () => void
+  watchUnreadCount?: number
   /** 递增时触发与下拉相同的刷新动画与加载（底栏双击速闻） */
   pullRefreshSeq?: number
   catalogSource?: NewsSource
@@ -244,6 +248,8 @@ export const FeedScreen = memo(function FeedScreen({
   onBack,
   onBrandTap,
   onOpenLocalSearch,
+  onOpenWatch,
+  watchUnreadCount = 0,
   pullRefreshSeq = 0,
   catalogSource,
   resolvedTheme,
@@ -895,7 +901,7 @@ export const FeedScreen = memo(function FeedScreen({
               </div>
             ) : (
               <div className="flex min-w-0 items-center gap-2">
-                <h1 className="shrink-0 font-display text-[19px] sm:text-[20px] leading-tight text-paper md:text-[20px] lg:text-[22px]">
+                <h1 className="min-w-0 truncate font-display text-[19px] sm:text-[20px] leading-tight text-paper md:text-[20px] lg:text-[22px]">
                   {title}
                 </h1>
                 <p className="hidden md:inline-block min-w-0 truncate font-mono text-[11px] lg:text-[11.5px] tracking-[0.12em] text-paper-faint">
@@ -919,6 +925,8 @@ export const FeedScreen = memo(function FeedScreen({
                 onChange={onHomeFeedLayoutChange}
               />
             )}
+
+            {onOpenWatch && <WatchInboxButton unreadCount={watchUnreadCount} onOpen={onOpenWatch} />}
 
             {onOpenLocalSearch && (
               <button

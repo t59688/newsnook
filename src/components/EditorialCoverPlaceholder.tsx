@@ -29,10 +29,11 @@ export const EditorialCoverPlaceholder = memo(function EditorialCoverPlaceholder
   showVideoBadge = true,
 }: Props) {
   const config = useMemo(() => getEditorialCoverConfig(article), [article])
+  const hasExplicitPosition = /\b(?:absolute|fixed|sticky|static)\b/.test(className)
 
   return (
     <span
-      className={`editorial-cover-root relative block w-full select-none overflow-hidden bg-ink-deep/30 transition-[opacity,filter] duration-300 ${
+      className={`editorial-cover-root ${hasExplicitPosition ? '' : 'relative '}block w-full select-none overflow-hidden bg-ink-deep/30 transition-[opacity,filter] duration-300 ${
         read ? 'opacity-[0.76] saturate-[0.72] contrast-[0.96]' : 'opacity-[0.98]'
       } ${className}`}
       aria-hidden="true"
