@@ -14,7 +14,14 @@ import type { Article } from '../../lib/types'
 import { checkWatchedSources } from '../../features/sourceWatch/runtime'
 import { WatchArticleFeed } from '../../features/sourceWatch/WatchArticleFeed'
 import { supportsNativeSourceWatch } from '../../features/sourceWatch/eligibility'
-import { getNativeWatchStatus, openWatchNotificationSettings, requestWatchNotificationPermission, sendWatchTestNotification, type NativeWatchStatus } from '../../features/sourceWatch/native'
+import {
+  getNativeWatchStatus,
+  openWatchBatterySettings,
+  openWatchNotificationSettings,
+  requestWatchNotificationPermission,
+  sendWatchTestNotification,
+  type NativeWatchStatus,
+} from '../../features/sourceWatch/native'
 import { loadWatchState, saveWatchState, watchArticleKey, normalizeWatchInterval, type WatchMode, type WatchState } from '../../features/sourceWatch/store'
 import type { NewsSource, SourceGroup } from '../../sources/registry'
 import type { HomeFeedLayout } from '../../sources/preferences'
@@ -286,7 +293,9 @@ export function SourceWatchScreen({
     if (!android) return
     try {
       const granted = await requestWatchNotificationPermission()
-      setNotificationEnabled(granted)
+      const status = await getNativeWatchStatus().catch(() => null)
+      if (status) setNativeStatus(status)
+      setNotificationEnabled(status?.enabled ?? granted)
       setNotificationHint(granted ? '系统通知已开启' : '系统通知尚未开启；更新仍会保留在收件箱')
     } catch { setNotificationHint('通知权限检查失败，请在系统设置中确认') }
   }
@@ -302,7 +311,9 @@ export function SourceWatchScreen({
         return
       }
       const delivered = await sendWatchTestNotification()
-      setNotificationHint(delivered ? '已交给 Android 通知栏；如果未显示，请检查系统通知渠道或免打扰设置' : '系统拒绝了通知，请检查系统通知设置')
+      const status = await getNativeWatchStatus().catch(() => null)
+      if (status) setNativeStatus(status)
+      setNotificationHint(delivered ? '已交给 Android 通知栏；如果未显示，请检查系统锁屏通知、通知渠道或免打扰设置' : '系统拒绝了通知，请检查系统通知设置')
     } catch { setNotificationHint('发送测试通知失败，请检查系统通知设置') }
     finally { setTestingNotification(false) }
   }
@@ -560,8 +571,13 @@ export function SourceWatchScreen({
                   </button>
                   <button type="button" className="sw-setting-row" onClick={() => void requestNotifications()} disabled={!android}>
                     <span className="sw-setting-icon"><BellRing size={19} strokeWidth={1.7}/></span>
-                    <span className="sw-setting-copy"><strong>Android 系统通知</strong><small>关注信源发现新文章时显示在通知栏</small></span>
-                    <span className="sw-setting-value">{android ? notificationEnabled === true ? '已开启' : notificationEnabled === false ? '未开启' : '检查中' : '仅 Android'}</span>
+                    <span className="sw-setting-copy">
+                      <strong>Android 系统通知</strong>
+                      <small>{android && notificationEnabled !== false && nativeStatus?.lockscreenVisible === false
+                        ? '系统锁屏通知未开启，锁屏页面将不显示提醒'
+                        : '关注信源发现新文章时在锁屏和通知栏提醒'}</small>
+                    </span>
+                    <span className="sw-setting-value">{android ? notificationEnabled === true ? (nativeStatus?.lockscreenVisible === false ? '锁屏关闭' : '已开启') : notificationEnabled === false ? '未开启' : '检查中' : '仅 Android'}</span>
                     {android && <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />}
                   </button>
                   {android && nativeCount > 0 && (
@@ -576,13 +592,26 @@ export function SourceWatchScreen({
                       <span className="sw-setting-value">{nativeStatus?.scheduled ? '已调度' : '未调度'}</span>
                     </div>
                   )}
+                  {android && (
+                    <button type="button" className="sw-setting-row" onClick={() => void openWatchBatterySettings().catch(() => setNotificationHint('无法打开系统省电设置'))}>
+                      <span className="sw-setting-icon"><ShieldCheck size={19} strokeWidth={1.7}/></span>
+                      <span className="sw-setting-copy">
+                        <strong>锁屏后台运行权限</strong>
+                        <small>{nativeStatus?.ignoringBatteryOptimizations
+                          ? '已设为无限制，锁屏后可按期唤醒检查更新'
+                          : '建议在系统电池设置中设为「无限制」，避免锁屏休眠延误通知'}</small>
+                      </span>
+                      <span className="sw-setting-value">{nativeStatus ? (nativeStatus.ignoringBatteryOptimizations ? '无限制' : '可能受限') : '查看'}</span>
+                      <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />
+                    </button>
+                  )}
                   {android && <button type="button" className="sw-setting-row" onClick={() => void sendTestNotification()} disabled={testingNotification}>
                     <span className="sw-setting-icon"><Send size={19} strokeWidth={1.7}/></span>
                     <span className="sw-setting-copy"><strong>发送测试通知</strong><small>验证权限、通知渠道与锁屏通知入口</small></span>
                     {testingNotification ? <LoaderCircle size={17} className="sw-spinning sw-setting-chevron" aria-hidden="true" /> : <ChevronRight size={17} className="sw-setting-chevron" aria-hidden="true" />}
                   </button>}
                   {notificationHint && <p className="sw-inline-status" role="status">{notificationHint}</p>}
-                  {android && notificationEnabled === false && <button type="button" className="sw-notification-settings-link" onClick={() => void openWatchNotificationSettings().catch(() => setNotificationHint('无法打开系统通知设置'))}>打开 Android 通知设置 <ChevronRight size={15} aria-hidden="true" /></button>}
+                  {android && (notificationEnabled === false || nativeStatus?.lockscreenVisible === false) && <button type="button" className="sw-notification-settings-link" onClick={() => void openWatchNotificationSettings().catch(() => setNotificationHint('无法打开系统通知设置'))}>打开 Android 通知设置 <ChevronRight size={15} aria-hidden="true" /></button>}
                   <div className="sw-setting-row sw-setting-row--info">
                     <span className="sw-setting-icon"><Info size={19} strokeWidth={1.7}/></span>
                     <span className="sw-setting-copy"><strong>最近检查</strong><small>{lastChecked ? fmtTime(lastChecked) : '尚未执行过检测'} · 由设备独立完成</small></span>

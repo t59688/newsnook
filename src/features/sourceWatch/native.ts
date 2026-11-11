@@ -15,9 +15,12 @@ interface SourceWatchNativePlugin {
   }): Promise<{ delivered: number }>
   sendTestNotification(): Promise<{ delivered: boolean }>
   openNotificationSettings(): Promise<void>
+  openBatteryOptimizationSettings(): Promise<void>
 }
 export interface NativeWatchStatus {
   enabled: boolean
+  lockscreenVisible?: boolean
+  ignoringBatteryOptimizations?: boolean
   scheduled: boolean
   lastJobAt: number
   lastJobChecked: number
@@ -63,6 +66,11 @@ export async function sendWatchTestNotification(): Promise<boolean> {
 export async function openWatchNotificationSettings(): Promise<void> {
   if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('SourceWatch')) return
   await Native.openNotificationSettings()
+}
+
+export async function openWatchBatterySettings(): Promise<void> {
+  if (!Capacitor.isNativePlatform() || !Capacitor.isPluginAvailable('SourceWatch')) return
+  await Native.openBatteryOptimizationSettings()
 }
 
 export async function requestWatchNotificationPermission(): Promise<boolean> {

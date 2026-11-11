@@ -275,8 +275,6 @@
 /* Mirror the home feed's edge-to-edge article rhythm, not a second list UI. */
 .sw-feed-bleed {
   margin: 6px -22px 0;
-  /* Settings palettes are softer than feed palettes: keep small metadata legible. */
-  --color-paper-faint: var(--paper-muted);
 }
 html .sw-feed-bleed .editorial-article-item[data-read='true'] .editorial-card-summary {
   color: var(--paper-muted) !important;

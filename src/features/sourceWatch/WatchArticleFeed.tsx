@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useCallback, useEffect, useMemo } from 'react'
 
 import { ArticleRow, LeadStory } from '../../components/ArticleItem'
 import { useIsDesktop } from '../../hooks/useMediaQuery'
@@ -8,7 +8,7 @@ import { DEFAULT_TRANSLATION_PREFS } from '../translation/config'
 import { useFeedTranslation } from '../translation/useFeedTranslation'
 import type { TranslationPrefs } from '../translation/types'
 import type { HomeFeedLayout } from '../../sources/preferences'
-import type { WatchEvent } from './store'
+import { hydrateWatchEventsFromCache, updateWatchArticlePreview, type WatchEvent } from './store'
 
 interface Props {
   events: readonly WatchEvent[]
@@ -42,6 +42,12 @@ export const WatchArticleFeed = memo(function WatchArticleFeed({
   const { translations } = useFeedTranslation(articles, translationPrefs, {
     enabled: translationPrefs.translateFeed !== false,
   })
+  useEffect(() => {
+    hydrateWatchEventsFromCache()
+  }, [])
+  const handleCoverResolved = useCallback((article: Article, imageUrl: string) => {
+    updateWatchArticlePreview({ ...article, image: imageUrl }, { replaceImage: true })
+  }, [])
   const lead = events.find(({ article }) => Boolean(article.image))
   const rest = useMemo(
     () => lead ? events.filter(event => event.key !== lead.key) : events,
@@ -71,9 +77,16 @@ export const WatchArticleFeed = memo(function WatchArticleFeed({
     onOpen,
     revealed: true,
   })
+  const rowProps = (event: WatchEvent) => ({
+    ...sharedProps(event),
+    read: isRead(event),
+    fallbackCover: true,
+    recoverMissingCover: true,
+    onCoverResolved: handleCoverResolved,
+  })
 
   return (
-    <div className="sw-feed-body editorial-feed-list w-full">
+    <div className="sw-feed-body editorial-feed-list w-full max-w-[2400px] mx-auto pb-12">
       {lead && (
         <LeadStory
           key={lead.key}
@@ -88,8 +101,7 @@ export const WatchArticleFeed = memo(function WatchArticleFeed({
           {rest.map(event => (
             <ArticleRow
               key={event.key}
-              {...sharedProps(event)}
-              read={isRead(event)}
+              {...rowProps(event)}
               variant="compact-card"
             />
           ))}
@@ -105,8 +117,7 @@ export const WatchArticleFeed = memo(function WatchArticleFeed({
               {items.map(event => (
                 <ArticleRow
                   key={event.key}
-                  {...sharedProps(event)}
-                  read={isRead(event)}
+                  {...rowProps(event)}
                   variant="row"
                 />
               ))}
@@ -125,8 +136,7 @@ export const WatchArticleFeed = memo(function WatchArticleFeed({
                 {items.map(event => (
                   <ArticleRow
                     key={event.key}
-                    {...sharedProps(event)}
-                    read={isRead(event)}
+                    {...rowProps(event)}
                     variant="row"
                   />
                 ))}
@@ -139,8 +149,7 @@ export const WatchArticleFeed = memo(function WatchArticleFeed({
           {rest.map(event => (
             <ArticleRow
               key={event.key}
-              {...sharedProps(event)}
-              read={isRead(event)}
+              {...rowProps(event)}
               variant="card"
             />
           ))}

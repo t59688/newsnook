@@ -1,3 +1,6 @@
+import { withCachedBodyPreview } from '../../lib/bodyCache'
+import { previewImageUrl } from '../../lib/articlePreview'
+import { loadCachedList } from '../../lib/storage'
 import type { Article } from '../../lib/types'
 
 export type WatchMode = 'instant' | 'digest' | 'inbox'
@@ -25,9 +28,56 @@ export function saveWatchState(state: WatchState): void {
 export function watchArticleKey(article: Article): string {
   return article.sourceId + ':' + (article.originUrl || article.id).trim().replace(/#.*$/, '').replace(/\/$/, '')
 }
+
+function safeEnrichFromBody(article: Article): Article {
+  try {
+    return withCachedBodyPreview(article)
+  } catch {
+    return article
+  }
+}
+
+function articleChanged(before: Article, after: Article): boolean {
+  return after.id !== before.id
+    || after.title !== before.title
+    || after.summary !== before.summary
+    || after.image !== before.image
+    || after.publishedAt !== before.publishedAt
+    || after.hasRealDate !== before.hasRealDate
+    || after.contentType !== before.contentType
+    || after.videoUrl !== before.videoUrl
+    || after.audioUrl !== before.audioUrl
+}
+
+function mergeWatchArticle(
+  before: Article,
+  incoming: Article,
+  options: { preferIncomingImage?: boolean; preserveExistingId?: boolean } = {},
+): Article {
+  const safeIncomingImage = incoming.image
+    ? previewImageUrl(incoming.image, incoming.originUrl || before.originUrl)
+    : undefined
+  const nextImage = options.preferIncomingImage
+    ? (safeIncomingImage || incoming.image || before.image)
+    : (before.image || safeIncomingImage || incoming.image)
+
+  return {
+    ...before,
+    id: options.preserveExistingId ? before.id : (incoming.id || before.id),
+    title: incoming.title || before.title,
+    summary: incoming.summary || before.summary,
+    image: nextImage,
+    publishedAt: incoming.hasRealDate ? incoming.publishedAt : before.publishedAt,
+    hasRealDate: incoming.hasRealDate || before.hasRealDate,
+    contentType: incoming.contentType || before.contentType,
+    videoUrl: incoming.videoUrl || before.videoUrl,
+    audioUrl: incoming.audioUrl || before.audioUrl,
+  }
+}
+
 export function reconcileWatchArticles(state: WatchState, sourceId: string, articles: Article[], timestamp: number): { next: WatchState; added: WatchEvent[] } {
   const known = state.cursors[sourceId]
-  const items = articles.slice(0, 50)
+  const items = articles.slice(0, 50).map(safeEnrichFromBody)
   const keys = [...new Set(items.map(watchArticleKey))]
   const old = new Set(known || [])
   // First successful scan only establishes a baseline. It must not flood notifications.
@@ -42,29 +92,85 @@ export function reconcileWatchArticles(state: WatchState, sourceId: string, arti
   const events = state.events.map(event => {
     if (event.sourceId !== sourceId) return event
     const fresh = articlesByKey.get(event.key)
-    if (!fresh) return event
     const before = event.article
-    const hydrated: Article = {
-      ...before,
-      id: fresh.id,
-      title: fresh.title || before.title,
-      summary: fresh.summary || before.summary,
-      image: fresh.image || before.image,
-      publishedAt: fresh.hasRealDate ? fresh.publishedAt : before.publishedAt,
-      hasRealDate: fresh.hasRealDate || before.hasRealDate,
-      contentType: fresh.contentType || before.contentType,
-      videoUrl: fresh.videoUrl || before.videoUrl,
-      audioUrl: fresh.audioUrl || before.audioUrl,
-    }
-    return hydrated.id !== before.id || hydrated.title !== before.title || hydrated.summary !== before.summary
-      || hydrated.image !== before.image || hydrated.publishedAt !== before.publishedAt
-      || hydrated.hasRealDate !== before.hasRealDate || hydrated.contentType !== before.contentType
-      || hydrated.videoUrl !== before.videoUrl || hydrated.audioUrl !== before.audioUrl
-      ? { ...event, article: hydrated }
-      : event
+    const hydrated = fresh
+      ? safeEnrichFromBody(mergeWatchArticle(before, fresh, { preferIncomingImage: true }))
+      : safeEnrichFromBody(before)
+    return articleChanged(before, hydrated) ? { ...event, article: hydrated } : event
   })
   const next: WatchState = { ...state, events: [...added, ...events].slice(0, 300), cursors: { ...state.cursors, [sourceId]: [...new Set([...keys, ...(known || [])])].slice(0, 150) }, lastChecked: { ...state.lastChecked, [sourceId]: timestamp } }
   return { next, added }
+}
+
+/** 从本地首页列表缓存与正文缓存补全关注条目（封面图、摘要与真实发布时间），不触发网络请求。 */
+export function hydrateWatchEventsFromCache(): boolean {
+  const state = loadWatchState()
+  if (!state.events.length) return false
+
+  const cachedBySource = new Map<string, Map<string, Article>>()
+  const listArticlesFor = (sourceId: string) => {
+    let map = cachedBySource.get(sourceId)
+    if (map) return map
+    map = new Map<string, Article>()
+    try {
+      const cached = loadCachedList(sourceId)
+      for (const item of cached?.items || []) {
+        map.set(watchArticleKey(item), item)
+      }
+    } catch {
+      // 忽略损坏或不完整的列表缓存，继续用正文缓存补全
+    }
+    cachedBySource.set(sourceId, map)
+    return map
+  }
+
+  let changed = false
+  const events = state.events.map(event => {
+    const before = event.article
+    const fromList = listArticlesFor(event.sourceId).get(event.key)
+    const merged = fromList
+      ? mergeWatchArticle(before, fromList, { preferIncomingImage: true })
+      : before
+    const hydrated = safeEnrichFromBody(merged)
+    if (!articleChanged(before, hydrated)) return event
+    changed = true
+    return { ...event, article: hydrated }
+  })
+
+  if (!changed) return false
+  saveWatchState({ ...state, events })
+  return true
+}
+
+/** 将正文缓存/封面补救结果同步回关注条目，避免已找到的封面图仅停留在首页缓存中。 */
+export function updateWatchArticlePreview(
+  article: Article,
+  options: { replaceImage?: boolean } = {},
+): boolean {
+  const state = loadWatchState()
+  if (!state.events.length) return false
+
+  const targetKey = watchArticleKey(article)
+  const safeImage = article.image ? previewImageUrl(article.image, article.originUrl) : undefined
+  const incoming = safeImage !== article.image ? { ...article, image: safeImage } : article
+
+  let changed = false
+  const events = state.events.map(event => {
+    if (event.key !== targetKey && event.article.id !== article.id) return event
+    const before = event.article
+    const canUpgradeSkeletonId = before.id === event.key && !before.hasRealDate && incoming.hasRealDate
+    const hydrated = mergeWatchArticle(before, incoming, {
+      preferIncomingImage: Boolean(options.replaceImage),
+      preserveExistingId: !canUpgradeSkeletonId,
+    })
+    if (!articleChanged(before, hydrated)) return event
+    changed = true
+    return { ...event, article: hydrated }
+  })
+
+  if (!changed) return false
+  saveWatchState({ ...state, events })
+  return true
 }
 
 /** Read a watched article anywhere in NewsNook: clear the matching inbox item. */

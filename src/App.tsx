@@ -19,7 +19,7 @@ import { checkWatchedSources } from './features/sourceWatch/runtime'
 import { supportsNativeSourceWatch } from './features/sourceWatch/eligibility'
 import { WatchBanner } from './features/sourceWatch/WatchBanner'
 import { muteWatchBannersForNotificationOpen } from './features/sourceWatch/announcements'
-import { loadWatchState, markWatchArticleRead } from './features/sourceWatch/store'
+import { loadWatchState, markWatchArticleRead, updateWatchArticlePreview } from './features/sourceWatch/store'
 import { useWatchUnreadCount } from './features/sourceWatch/useWatchUnreadCount'
 import { importNativeWatchEvents, syncNativeWatchRules } from './features/sourceWatch/native'
 import { toastForSyncEvent, syncStatusCaption, type SyncToastModel } from './features/sync/notifier'
@@ -865,6 +865,7 @@ export default function App() {
     if (article) {
       updateArticlePreview(article)
       updatePrestorePreview(article)
+      updateWatchArticlePreview(article)
     }
     notifyCacheChange()
   }, [notifyCacheChange, updateArticlePreview, updatePrestorePreview])
