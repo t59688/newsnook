@@ -202,7 +202,9 @@ export function useSwipeCategory({
       if (busyRef.current) return
       if (startRef.current) abortInteraction()
       const touch = event.touches[0]
-      widthRef.current = measureWidth()
+      // The width was measured at mount and is refreshed on resize. Re-reading
+      // clientWidth at every touchstart can force layout before a scroll gesture.
+      if (widthRef.current <= 0) measureWidth()
       activeTouchId = touch.identifier
       startRef.current = { x: touch.clientX, y: touch.clientY }
       lastRef.current = { x: touch.clientX, t: event.timeStamp }

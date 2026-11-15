@@ -1117,6 +1117,38 @@ try {
   assert.equal(bounds.at(-1)?.top, 250)
   await act(async () => { fireResize(); await new Promise(resolve => setTimeout(resolve, 20)) })
   assert.equal(bounds.length, beforeResize + 2, '未变化的像素边界无需重复发送')
+  await mount()
+  await visit('https://example.com/opener')
+  const openerId = current.tabId!
+  await act(async () => {
+    const childId = nextTabId++
+    tabList.push({index: tabList.length, id: childId, url: 'about:blank',
+      title: '网页', active: true, loading: true, openerTabId: openerId})
+    tabList.forEach(tab => {tab.active = tab.id === childId})
+    current = {...blank(), url: 'about:blank', tabId: childId, openerTabId: openerId,
+      openingPopup: true, loading: true}
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  assert.ok(document.body.textContent?.includes('正在打开新标签页'), 'a popup waiting for native transport must not show the start page')
+  assert.ok(!document.querySelector('.browser-start'), 'blank popup is not a new user tab homepage')
+  await act(async () => {
+    current = {...current, openingPopup: false, loading: false}
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  await back()
+  assert.equal(commands.at(-1)?.action, 'back', 'child popup at home must ask native browser to return to its opener')
+  assert.equal(closeCalls, 0, 'child popup back must not exit entire browser')
+  await act(async () => {
+    current = {...current, url: 'https://example.com/unreachable', retrying: true, loading: true}
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  assert.ok(document.body.textContent?.includes('正在重新加载网页'), 'failed-page retry displays immediate busy feedback')
+  assert.equal(document.querySelector('.browser-start'), null, 'retry never renders start page')
+  console.log('Browser popup loading, opener back dispatch, and retry status OK')
+
   console.log('Browser native viewport resize: frame coalescing, in-flight dedupe and latest position OK')
 
   console.log('Browser external intent: cold launch, hot navigation and menu exit OK')

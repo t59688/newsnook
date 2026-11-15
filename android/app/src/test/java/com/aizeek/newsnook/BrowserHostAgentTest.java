@@ -452,6 +452,39 @@ public class BrowserHostAgentTest {
         assertEquals(View.VISIBLE, frame.getVisibility());
     }
 
+    @Test public void nestedGesturePopupsReturnToTheirOpenerAfterEachHome() throws Exception {
+        WebView first = view();
+        int aId = (int) field(tab(), "id");
+        WebView.WebViewTransport bTransport = first.new WebViewTransport();
+        Message bMessage = Message.obtain(new Handler(Looper.getMainLooper())); bMessage.obj = bTransport;
+        assertTrue(first.getWebChromeClient().onCreateWindow(first, false, true, bMessage));
+        WebView second = view();
+        assertEquals("new popup must remember its opener", aId, (int) field(tab(), "openerTabId"));
+        second.getWebViewClient().onPageStarted(second, "https://example.com/b", null);
+        second.getWebViewClient().onPageFinished(second, "https://example.com/b");
+        int bId = (int) field(tab(), "id");
+
+        WebView.WebViewTransport cTransport = second.new WebViewTransport();
+        Message cMessage = Message.obtain(new Handler(Looper.getMainLooper())); cMessage.obj = cTransport;
+        assertTrue(second.getWebChromeClient().onCreateWindow(second, false, true, cMessage));
+        WebView third = view();
+        assertEquals(bId, (int) field(tab(), "openerTabId"));
+        third.getWebViewClient().onPageStarted(third, "https://example.com/c", null);
+        third.getWebViewClient().onPageFinished(third, "https://example.com/c");
+
+        host.navigate(new Call("navigate", new JSObject().put("action", "back")));
+        assertEquals("about:blank", field(tab(), "url"));
+        assertSame("first back in C must not switch away from C", third, view());
+        host.navigate(new Call("navigate", new JSObject().put("action", "back")));
+        assertEquals(bId, (int) field(tab(), "id"));
+        assertEquals(2, ((List<?>) field(host, "tabs")).size());
+        host.navigate(new Call("navigate", new JSObject().put("action", "back")));
+        assertEquals("about:blank", field(tab(), "url"));
+        host.navigate(new Call("navigate", new JSObject().put("action", "back")));
+        assertEquals(aId, (int) field(tab(), "id"));
+        assertEquals(1, ((List<?>) field(host, "tabs")).size());
+    }
+
     @Test public void aPopupWithoutAUserGestureDoesNotCreateOrRedirectATab() throws Exception {
         WebView opener = view();
         WebView.WebViewTransport transport = opener.new WebViewTransport();

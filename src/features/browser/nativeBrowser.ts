@@ -14,6 +14,9 @@ export interface BrowserState {
   loading?: boolean
   progress?: number
   error?: string | null
+  openerTabId?: number | null
+  openingPopup?: boolean
+  retrying?: boolean
   privateMode?: boolean
   userAgent?: string
   recordHistory?: boolean

@@ -248,7 +248,10 @@ export function usePullToRefresh({
 
     const move = (x: number, y: number, prevent: () => void) => {
       if (!gesture || phaseRef.current === 'refreshing') return
-      if (!isAtTop(gesture.scrollPath)) {
+      // Geometry and computed transform are established at touchstart, then verified
+      // again on release. Reading layout on each touchmove can synchronously block
+      // WebView's scrolling frame; only check the current scroll owners while moving.
+      if (gesture.scrollPath.some((node) => node.scrollTop > 0)) {
         // Drop the whole sequence, including a queued paint and a previous ready phase.
         settle(true)
         return

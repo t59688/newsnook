@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, BookmarkCheck, ChevronRight, Clock3, Copy,
-  Download, Film, Globe2, Home, Images, Laptop, LogOut, ScanText, Share2, Shield,
+  Download, Film, Globe2, Home, Images, Laptop, LoaderCircle, LogOut, ScanText, Share2, Shield,
   MoreHorizontal, Pencil, Play, Plus, RefreshCw, Settings2, ShieldCheck, Trash2, X, BotMessageSquare,
 } from 'lucide-react'
 import { Share } from '@capacitor/share'
@@ -284,6 +284,7 @@ export function BrowserWorkspace({
     if (!session.ready) {close(); return true}
     if (active && session.state.back) {void session.command('back'); return true}
     if (active) {goHome(); return true}
+    if (session.state.openerTabId != null) {void session.command('back'); return true}
     close()
     return true
   }
@@ -590,11 +591,19 @@ export function BrowserWorkspace({
     style={{paddingTop:'var(--sat)', paddingBottom:'var(--sab)'}}>
     {!bottomAddress && toolbar}
     <div ref={viewport} data-browser-viewport className="relative min-h-0 flex-1 overflow-hidden bg-ink">
-      {!active && !playing && <BrowserStartPage privateMode={privateMode} incognitoMode={preferences.incognitoMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
+      {session.state.openingPopup && !active && !playing && <div role="status" className="flex h-full flex-col items-center justify-center gap-3 text-paper-muted">
+        <LoaderCircle size={26} className="browser-loading-icon" aria-hidden="true"/>
+        <span className="text-sm">正在打开新标签页…</span>
+      </div>}
+      {!active && !session.state.openingPopup && !playing && <BrowserStartPage privateMode={privateMode} incognitoMode={preferences.incognitoMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
         hideRecent={hideRecent} onToggleHideRecent={toggleHideRecent}
         onOpen={url => {void openAddress(url)}} onAddShortcut={() => editShortcut({name:'',url:''})}
         onShortcutOptions={index => setPlaceAction({kind:'shortcut', index})}
         onHistoryOptions={entry => setPlaceAction({kind:'history', entry})} onPanel={openPanel}/>}
+      {active && session.state.retrying && !playing && <div role="status" className="flex h-full flex-col items-center justify-center gap-3 text-paper-muted">
+        <LoaderCircle size={26} className="browser-loading-icon" aria-hidden="true"/>
+        <span className="text-sm">正在重新加载网页…</span>
+      </div>}
       {active && session.state.error && !playing && <div className="flex h-full flex-col items-center justify-center px-7 text-center">
         <Globe2 size={34} strokeWidth={1.4} className="text-paper-muted"/>
         <h2 className="mt-5 text-[20px] font-semibold">网页加载失败</h2>

@@ -239,7 +239,7 @@ export function useBrowserSession(
     }
   }, [refresh, invalidateImages, settleInitialSession, options.transientSearch])
 
-  const visible = ready && /^https?:\/\//i.test(state.url || '') && !state.error && !covered
+  const visible = ready && /^https?:\/\//i.test(state.url || '') && !state.error && !state.retrying && !covered
   useLayoutEffect(() => {
     if (!ready) return
     const generation = epoch.current

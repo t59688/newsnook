@@ -129,6 +129,30 @@ await check('release must recheck the top even without another move event', asyn
   assert.equal(refreshes, 0)
   assert.equal(phase(), 'idle')
 })
+await check('pull movement does not synchronously force geometry reads for each touch frame', async () => {
+  await touch('touchstart')
+  const originalRect = window.HTMLElement.prototype.getBoundingClientRect
+  const originalComputed = window.getComputedStyle
+  let layouts = 0
+  let computedStyles = 0
+  window.HTMLElement.prototype.getBoundingClientRect = function (...args: []) {
+    layouts++
+    return originalRect.apply(this, args)
+  }
+  window.getComputedStyle = ((...args: Parameters<typeof getComputedStyle>) => {
+    computedStyles++
+    return originalComputed(...args)
+  }) as typeof getComputedStyle
+  try {
+    for (let y = 12; y < 200; y += 14) await touch('touchmove', y)
+    assert.equal(layouts, 0, 'the gesture must not measure geometry on every move')
+    assert.equal(computedStyles, 0, 'the gesture must not inspect transform matrices on every move')
+  } finally {
+    window.HTMLElement.prototype.getBoundingClientRect = originalRect
+    window.getComputedStyle = originalComputed
+    await touch('touchend')
+  }
+})
 await check('a legitimate pull at the top refreshes exactly once and resets', async () => {
   await touch('touchstart')
   assert.equal(await touch('touchmove', 200), true)

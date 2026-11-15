@@ -330,6 +330,37 @@ public class UserscriptRuntimeLifecycleTest {
         } finally { runtime.close(); cache.delete(); view.destroy(); }
     }
 
+    @Test public void privateTabsReusePreparedDependenciesOnlyWithinTheirSession() throws Exception {
+        java.util.Map<String, byte[]> shared = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>());
+        String url = "https://cdn.example.com/require-" + java.util.UUID.randomUUID() + ".js";
+        org.json.JSONArray snapshot = new org.json.JSONArray().put(
+            script("us-fast-popup", "none").put("requires", new org.json.JSONArray().put(url)));
+        WebView firstView = new WebView(RuntimeEnvironment.getApplication());
+        UserscriptRuntime first = new UserscriptRuntime(firstView.getContext(), firstView, true, shared);
+        java.util.concurrent.atomic.AtomicInteger requests = new java.util.concurrent.atomic.AtomicInteger();
+        OkHttpClient intercepted = new OkHttpClient.Builder().addInterceptor(chain -> {
+            requests.incrementAndGet();
+            return new Response.Builder().request(chain.request()).protocol(okhttp3.Protocol.HTTP_1_1).code(200)
+                .message("OK").body(okhttp3.ResponseBody.create(
+                    okhttp3.MediaType.get("application/javascript"), "window.__requireReady=1;")).build();
+        }).build();
+        Field client = UserscriptRuntime.class.getDeclaredField("client");
+        client.setAccessible(true);
+        client.set(first, intercepted);
+        try {
+            first.prepare(snapshot);
+            assertEquals(1, requests.get());
+        } finally { first.close(); firstView.destroy(); }
+        WebView popupView = new WebView(RuntimeEnvironment.getApplication());
+        UserscriptRuntime popup = new UserscriptRuntime(popupView.getContext(), popupView, true, shared);
+        client.set(popup, intercepted);
+        try {
+            popup.prepare(snapshot);
+            assertEquals("popup must use the session's already prepared @require bytes", 1, requests.get());
+            assertEquals(1, popup.getMatchedScriptCount(PAGE));
+        } finally { popup.close(); popupView.destroy(); shared.clear(); }
+    }
+
     @Test public void matchingGrantNoneFrameMayReportStartButCannotUseNativeBridge() throws Exception {
         DocumentWebView view = new DocumentWebView();
         UserscriptRuntime runtime = new UserscriptRuntime(view.getContext(), view);

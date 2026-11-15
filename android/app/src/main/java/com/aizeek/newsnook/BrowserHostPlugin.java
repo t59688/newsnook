@@ -157,6 +157,10 @@ public class BrowserHostPlugin extends Plugin {
         // A tab outlives its renderer. Clear this reference before releasing callbacks.
         volatile WebView webView;
         final int id;
+        int openerTabId = -1;
+        boolean popupPending;
+        boolean retrying;
+        boolean retryAttempt;
         String userAgentMode = "system";
         String findQuery = "";
         int findMatch = -1;
@@ -340,6 +344,15 @@ public class BrowserHostPlugin extends Plugin {
     private TextView menuButton;
     private PopupWindow linkContextPopup;
     private final List<Tab> tabs = new ArrayList<>();
+    // LRU of public @require bytes in the current in-memory browser context.
+    // No filesystem persistence in private/incognito mode; clear at every
+    // context switch and close, so script dependencies cannot cross sessions.
+    private final java.util.Map<String, byte[]> scriptDependencies = java.util.Collections.synchronizedMap(
+        new java.util.LinkedHashMap<String, byte[]>(16, .75f, true) {
+            @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, byte[]> entry) {
+                return size() > 16;
+            }
+        });
     private int nextTabId = 1;
     private Tab current;
     private JSArray scriptSnapshot;
@@ -501,6 +514,7 @@ public class BrowserHostPlugin extends Plugin {
         current = null;
         for (Tab tab : retired) releaseTab(tab);
         String oldProfile = temporaryProfileName;
+        scriptDependencies.clear();
         temporaryProfileName = nextProfile;
         browserSettings = requested;
         disposeTemporaryProfile(oldProfile);
@@ -1001,6 +1015,7 @@ public class BrowserHostPlugin extends Plugin {
             String previous = scriptSnapshot == null ? "[]" : scriptSnapshot.toString();
             if (next.equals(previous)) { call.resolve(); return; }
             scriptSnapshot = scripts;
+            scriptDependencies.clear();
             scriptVersion++;
             // Existing documents keep their running scripts and granted ports until navigation.
             // runNavigation prepares the latest snapshot before the next document is loaded.
@@ -1014,6 +1029,9 @@ public class BrowserHostPlugin extends Plugin {
         state.put("tabId", tab == null ? JSONObject.NULL : tab.id);
         state.put("title", tab == null ? "" : tab.title);
         state.put("back", tab != null && tab.webView != null && tab.webView.canGoBack());
+        state.put("openerTabId", tab == null || findTabById(tab.openerTabId) == null ? JSONObject.NULL : tab.openerTabId);
+        state.put("openingPopup", tab != null && tab.popupPending);
+        state.put("retrying", tab != null && tab.retrying);
         state.put("forward", tab != null && tab.webView != null && tab.webView.canGoForward());
         state.put("desktop", tab != null && tab.desktop);
         state.put("privateMode", privateMode());
@@ -1098,6 +1116,7 @@ public class BrowserHostPlugin extends Plugin {
                 entry.put("title",tab.title);
                 entry.put("url",tab.url);
                 entry.put("active",tab == current);
+                entry.put("openerTabId", findTabById(tab.openerTabId) == null ? JSONObject.NULL : tab.openerTabId);
                 entry.put("loading",tab.loading || tab.preparing);
                 entry.put("error",tab.error == null ? JSONObject.NULL : tab.error);
                 if (includePreviews) entry.put("preview",tab.preview == null ? JSONObject.NULL : tab.preview);
@@ -1795,12 +1814,17 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void createTab(String url, PluginCall call, boolean activate) {
+        createTab(url, call, activate, -1);
+    }
+
+    private void createTab(String url, PluginCall call, boolean activate, int openerTabId) {
         if (tabs.size() >= MAX_TABS) {
             if (call != null) call.reject("最多同时打开 6 个标签页");
             Toast.makeText(getContext(), "最多同时打开 6 个标签页", Toast.LENGTH_SHORT).show();
             return;
         }
         Tab tab = createBrowserTab(url, nextTabId++, browserSettings);
+        tab.openerTabId = findTabById(openerTabId) == null ? -1 : openerTabId;
         tab.pendingOpen = call;
         tabs.add(tab);
         initializeTab(tab, activate);
@@ -1912,6 +1936,7 @@ public class BrowserHostPlugin extends Plugin {
                     tab.agent.onPageStarted(address);
                 }
                 tab.url = address; tab.loading = true; tab.progress = 0; tab.error = null;
+                tab.popupPending = false;
                 tab.recordHistory = !recordingDisabled();
                 tab.documentScriptVersion = tab.scriptVersion;
                 tab.freshDocumentRequired = false;
@@ -1931,7 +1956,9 @@ public class BrowserHostPlugin extends Plugin {
                 if (!isLive(tab, web) || (tab.loading && !address.equals(tab.url))) return;
                 if (tab.runtime != null) tab.runtime.onDocumentCommitted(address);
                 tab.url = address; tab.title = web.getTitle() == null ? address : web.getTitle();
-                tab.loading = false; tab.progress = 100;
+                tab.loading = false; tab.progress = 100; tab.retrying = false;
+                tab.popupPending = false;
+                if (tab.error == null) tab.retryAttempt = false;
                 if (current == tab) updateChrome();
                 if (!embeddedMode && tab.recordHistory && !recordingDisabled() && isHttpUrl(address)) recordVisit(tab.title, address);
                 if (tab.pageProfile != null) tab.pageProfile.onPageFinished();
@@ -1988,13 +2015,11 @@ public class BrowserHostPlugin extends Plugin {
             }
             @Override public void onReceivedError(WebView web, WebResourceRequest request, android.webkit.WebResourceError error) {
                 if (!isLive(tab, web) || !request.isForMainFrame()) return;
-                tab.loading = false;
-                tab.error = "页面加载失败";
-                if (current == tab) {
-                    updateChrome();
-                    sendNavigation(tab.url, "state");
-                    if (progress != null) progress.setText("页面加载失败 · " + error.getDescription());
-                }
+                finishPageError(tab, error == null ? "" : String.valueOf(error.getDescription()));
+            }
+            @Override public void onReceivedError(WebView web, int errorCode, String description, String failingUrl) {
+                if (!isLive(tab, web)) return;
+                finishPageError(tab, description);
             }
         });
         view.setWebChromeClient(new WebChromeClient() {
@@ -2006,6 +2031,10 @@ public class BrowserHostPlugin extends Plugin {
                 createTab("about:blank", null);
                 Tab popup = current;
                 if (popup == null || popup == tab || popup.webView == null) return false;
+                popup.openerTabId = tab.id;
+                popup.popupPending = true;
+                popup.loading = true;
+                sendNavigation(popup.url, "state");
                 // The transport owns the first navigation. Userscript preparation must not
                 // later overwrite a login window's URL with our initial about:blank value.
                 popup.hasLoaded = true;
@@ -2210,7 +2239,7 @@ public class BrowserHostPlugin extends Plugin {
         card.addView(createLinkActionRow(isImage ? "新标签页查看图片" : "新标签页打开", "link-open-foreground",
             LinkActionIconType.EXTERNAL_LINK, true, () -> {
                 dismissLinkActionSurface(null, true);
-                if (!closing && tabs.contains(source)) createTab(target, null, true);
+                if (!closing && tabs.contains(source)) createTab(target, null, true, source.id);
             }), new LinearLayout.LayoutParams(-1, dp(40)));
 
         card.addView(createLinkActionRow(isImage ? "后台打开图片" : "后台标签页打开", "link-open-background",
@@ -2452,7 +2481,7 @@ public class BrowserHostPlugin extends Plugin {
 
     private void animatePaperFlyIntoTabBadge(Tab source, String targetUrl) {
         if (source == null || source.webView == null || closing || destroyed || getActivity() == null) {
-            createTab(targetUrl, null, false);
+            createTab(targetUrl, null, false, source == null ? -1 : source.id);
             return;
         }
 
@@ -2462,7 +2491,7 @@ public class BrowserHostPlugin extends Plugin {
         final FrameLayout rootContainer = embeddedRoot();
 
         if (w <= 0 || h <= 0 || rootContainer == null) {
-            createTab(targetUrl, null, false);
+            createTab(targetUrl, null, false, source.id);
             return;
         }
 
@@ -2578,17 +2607,19 @@ public class BrowserHostPlugin extends Plugin {
             }
 
             @Override public void onAnimationEnd(Animator animation) {
+                if (finished) return;
                 cleanUp();
                 try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); } catch (Throwable ignored) {}
                 if (!closing && tabs.contains(source)) {
-                    createTab(targetUrl, null, false);
+                    createTab(targetUrl, null, false, source.id);
                 }
             }
 
             @Override public void onAnimationCancel(Animator animation) {
+                if (finished) return;
                 cleanUp();
                 if (!closing && tabs.contains(source)) {
-                    createTab(targetUrl, null, false);
+                    createTab(targetUrl, null, false, source.id);
                 }
             }
         });
@@ -2636,7 +2667,7 @@ public class BrowserHostPlugin extends Plugin {
             });
             return;
         }
-        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view, recordingDisabled());
+        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view, recordingDisabled(), scriptDependencies);
         tab.preparingRuntime = runtime;
         new Thread(() -> {
             String warning = null;
@@ -2694,13 +2725,25 @@ public class BrowserHostPlugin extends Plugin {
         tab.recreateAfterSiteClear = false;
         tab.url = url;
         tab.error = null;
+        tab.loading = true;
+        tab.progress = 0;
+        tab.retrying = false;
+        tab.retryAttempt = false;
+        tab.popupPending = false;
+        if (tab == current) { updateChrome(); sendNavigation(url, "state"); }
         if (tab.webView == null) initializeTab(tab);
         else runNavigation(tab, () -> tab.webView.loadUrl(url));
     }
 
     private void reloadTab(Tab tab) {
         if (deferForSiteClear(tab, tab.url)) return;
+        boolean retry = tab.error != null;
+        tab.retrying = retry;
+        tab.retryAttempt = retry;
         tab.error = null;
+        tab.loading = true;
+        tab.progress = 0;
+        if (tab == current) { updateChrome(); sendNavigation(tab.url, "state"); }
         if (tab.webView == null) initializeTab(tab);
         else if (tab.webView.getUrl() == null) loadTabUrl(tab, tab.url);
         else runNavigation(tab, () -> {
@@ -2712,12 +2755,26 @@ public class BrowserHostPlugin extends Plugin {
         });
     }
 
+    private void finishPageError(Tab tab, String description) {
+        tab.loading = false;
+        tab.retrying = false;
+        tab.popupPending = false;
+        String reason = description == null || description.trim().isEmpty() ? "网页无法访问" : description.trim();
+        tab.error = (tab.retryAttempt ? "重新加载失败：" : "页面加载失败：") + reason;
+        if (current == tab) {
+            updateChrome();
+            sendNavigation(tab.url, "state");
+        }
+    }
+
     private void stopTab(Tab tab) {
         if (tab.preparingRuntime != null) tab.preparingRuntime.close();
         tab.preparingRuntime = null;
         tab.pendingNavigation = null;
         tab.preparing = false;
         tab.loading = false;
+        tab.retrying = false;
+        tab.popupPending = false;
         tab.hasLoaded = true;
         if (tab.webView != null) tab.webView.stopLoading();
         resolvePendingOpen(tab);
@@ -2991,11 +3048,25 @@ public class BrowserHostPlugin extends Plugin {
         updateChrome();
         reloadTab(current);
     }
+    private Tab findTabById(int id) {
+        if (id < 0) return null;
+        for (Tab tab : tabs) if (tab.id == id) return tab;
+        return null;
+    }
+
     private void goBack() {
-        if (current != null && current.webView != null && current.webView.canGoBack()) {
-            final Tab tab = current;
+        if (current == null) return;
+        final Tab tab = current;
+        Tab opener = findTabById(tab.openerTabId);
+        if ("about:blank".equals(tab.url) && opener != null) {
+            closeTab(tab);
+        } else if (tab.webView != null && tab.webView.canGoBack()) {
             runNavigation(tab, () -> tab.webView.goBack());
-        } else closeNative();
+        } else if (!"about:blank".equals(tab.url)) {
+            loadTabUrl(tab, "about:blank");
+        } else {
+            closeNative();
+        }
     }
     private void showTabs() {
         if (current == null) return;
@@ -3017,10 +3088,12 @@ public class BrowserHostPlugin extends Plugin {
         boolean wasCurrent = current == tab;
         if (fullscreenTab == tab) exitFullscreen();
         if (wasCurrent) current = null;
+        Tab opener = findTabById(tab.openerTabId);
         tabs.remove(tab);
+        for (Tab other : tabs) if (other.openerTabId == tab.id) other.openerTabId = opener == null ? -1 : opener.id;
         releaseTab(tab);
         if (tabs.isEmpty()) { closeNative(); return; }
-        if (wasCurrent) selectTab(tabs.get(Math.min(index, tabs.size() - 1)));
+        if (wasCurrent) selectTab(opener != null ? opener : tabs.get(Math.min(index, tabs.size() - 1)));
         updateChrome();
     }
     private void showMore() {
@@ -3271,6 +3344,7 @@ public class BrowserHostPlugin extends Plugin {
         disposeTemporaryProfile(retiredProfile);
         finishAgentDrain(null);
         nextTabId = 1;
+        scriptDependencies.clear();
         scriptSnapshot=null; address=null; titleView=null; tabCounter=null; menuButton=null;
         progress=null; backButton=null; forwardButton=null; desktopButton=null;
         pageFrame=null; root=null;

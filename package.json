@@ -28,7 +28,7 @@
     "test:encoding": "rolldown scripts/text-encoding.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/text-encoding.test.mjs && node node_modules/.cache/newsnook/text-encoding.test.mjs",
     "test:edge-swipe": "rolldown scripts/edge-swipe-back.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/edge-swipe-back.test.mjs && node node_modules/.cache/newsnook/edge-swipe-back.test.mjs",
     "test:pull-to-refresh": "node --import tsx scripts/pull-to-refresh.test.ts && node --import tsx scripts/pull-to-refresh-gesture.test.tsx",
-    "test:gesture-styles": "rolldown scripts/gesture-styles.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/gesture-styles.test.mjs && node node_modules/.cache/newsnook/gesture-styles.test.mjs",
+    "test:gesture-styles": "rolldown scripts/gesture-styles.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/gesture-styles.test.mjs && node node_modules/.cache/newsnook/gesture-styles.test.mjs && node --import tsx scripts/swipe-category-performance.test.tsx",
     "test:scroll-lifecycle": "node --import tsx scripts/scroll-lifecycle.test.tsx",
     "test:tab-navigation": "node scripts/tab-navigation-layout.test.mjs",
     "test:screen-loading": "node --import tsx scripts/lazy-screen.test.tsx",

@@ -56,6 +56,8 @@ final class UserscriptRuntime {
     private static final String JS_PORT = "__NewsNookUserScriptPort";
     private final WebView webView;
     private final Context context;
+    // Shared only by tabs in one browser context, never across private sessions.
+    private final Map<String, byte[]> sessionDependencies;
     private volatile SharedPreferences storage;
     private final MemoryPreferences temporaryStorage = new MemoryPreferences();
     private final Object storageLock = new Object();
@@ -131,7 +133,12 @@ final class UserscriptRuntime {
     }
 
     UserscriptRuntime(Context context, WebView webView, boolean privateMode) {
+        this(context, webView, privateMode, null);
+    }
+
+    UserscriptRuntime(Context context, WebView webView, boolean privateMode, Map<String, byte[]> dependencies) {
         this.context = context.getApplicationContext(); this.webView = webView;
+        this.sessionDependencies = dependencies;
         this.privateMode = privateMode;
         this.storage = privateMode ? temporaryStorage
             : this.context.getSharedPreferences("newsnook-userscript-storage", Context.MODE_PRIVATE);
@@ -422,6 +429,7 @@ final class UserscriptRuntime {
                     try (InputStream in = new FileInputStream(target)) { bytes = readBounded(in, MAX_RESOURCE_BYTES); }
                 }
             }
+            if (bytes == null && sessionDependencies != null) bytes = sessionDependencies.get(value);
             if (bytes == null) {
                 Request request = new Request.Builder().url(uri).build();
                 Call call = trackedCall(request);
@@ -435,6 +443,11 @@ final class UserscriptRuntime {
                     if (target != null && !privateMode && resourceEpoch == storageEpoch)
                         try (FileOutputStream output = new FileOutputStream(target)) { output.write(bytes); }
                 }
+            }
+            synchronized (storageLock) {
+                if (closed) return "";
+                if (sessionDependencies != null && resourceEpoch == storageEpoch)
+                    sessionDependencies.put(value, bytes);
             }
             bundled.append("\n").append(new String(bytes, StandardCharsets.UTF_8)).append("\n;");
         }
