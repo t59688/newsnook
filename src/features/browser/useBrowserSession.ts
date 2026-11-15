@@ -125,18 +125,27 @@ export function useBrowserSession(
     settleInitialSession()
   }, [settleInitialSession])
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (includePreviews = false) => {
     const request = ++refreshSequence.current
     const generation = epoch.current
     try {
-      const [next, result] = await Promise.all([nativeBrowser.state(), nativeBrowser.tabs()])
+      const [next, result] = await Promise.all([nativeBrowser.state(), nativeBrowser.tabs({includePreviews})])
       if (!live.current || generation !== epoch.current || request !== refreshSequence.current) return
       opened.current = result.tabs.length > 0
       setReady(opened.current)
       if (stateRef.current.tabId !== next.tabId) {invalidateImages(); setFindResult(null)}
       stateRef.current = next
       setState(next)
-      setTabs(result.tabs)
+      setTabs(previous => {
+        if (includePreviews) return result.tabs
+        // Preserve a previously loaded thumbnail across metadata-only updates.
+        // Never reuse one after the tab navigates to a different URL.
+        const byId = new Map(previous.map(tab => [tab.id, tab]))
+        return result.tabs.map(tab => {
+          const prior = byId.get(tab.id)
+          return prior?.url === tab.url && prior.preview ? {...tab, preview: prior.preview} : tab
+        })
+      })
       initialSession.current.snapshot = request
       initialSession.current.hasTabs = opened.current
       const ids = new Set(result.tabs.map(tab => tab.id))
@@ -466,7 +475,9 @@ export function useBrowserSession(
     await nativeBrowser.close().catch(() => undefined)
   }, [])
 
+  const refreshTabs = useCallback(() => refresh(true), [refresh])
+
   return {state, tabs, mediaTabs, ready, initialSessionSettled, pending, error, setError, open, command, activate, remove, updateScripts, updateSettings, updatePalette, clearSiteData,
     images, scanningImages, imageError, scanImages, loadImage, cancelImageRequests, invalidateImages, findResult, findInPage, findNext, clearFind, close,
-    refreshTabs: refresh}
+    refreshTabs}
 }

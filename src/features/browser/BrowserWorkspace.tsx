@@ -22,7 +22,8 @@ import {
   removeSiteHistory, saveBrowserVisit, type BrowserShortcut, type BrowserVisit,
 } from './browserHistory'
 import { browserMediaResources, browserResourceTitle, browserResourceDetails, browserResourceTracks } from './browserMedia'
-import { loadBrowserBookmarks, saveBrowserBookmarks, toggleBrowserBookmark, type BookmarkScope } from './browserBookmarks'
+import { saveBrowserBookmarks, toggleBrowserBookmark, type BookmarkScope } from './browserBookmarks'
+import { hasBookmarkLibrary, loadBookmarkLibrary, saveBookmarkLibrary, type BrowserBookmarkLibrary } from './browserBookmarkLibrary'
 import {
   BROWSER_ENGINES, BROWSER_KEYS, browserHostLabel, loadBrowserSearchEngine, readBrowserList, readBrowserPreference,
   resolveBrowserAddress, writeBrowserPreference, loadBrowserPreferences, saveBrowserPreferences, toggleBrowserDesktopMode, type BrowserPreferences, type BrowserSearchChoice,
@@ -38,6 +39,7 @@ import { BrowserAgentPanel } from './agent/BrowserAgentPanel'
 import { BrowserStartPage } from './BrowserStartPage'
 import { BrowserSearchPanel } from './BrowserSearchPanel'
 import { BrowserPlacesPanel } from './BrowserPlacesPanel'
+import { BrowserBookmarkManager } from './BrowserBookmarkManager'
 import { BrowserTabsPanel } from './BrowserTabsPanel'
 import { BrowserSettingsPanel } from './BrowserSettingsPanel'
 import { BROWSER_OPEN_EVENT, type BrowserOpenDetail } from './browserOpen'
@@ -137,8 +139,12 @@ export function BrowserWorkspace({
   const [playError, setPlayError] = useState('')
   const playbackSelection = useRef(0)
   const [history, setHistory] = useState(() => normalizeBrowserVisits(readBrowserList(BROWSER_KEYS.history)))
-  const [marks, setMarks] = useState(() => loadBrowserBookmarks('normal'))
-  const [privateMarks, setPrivateMarks] = useState(() => loadBrowserBookmarks('private'))
+  const [normalLibrary, setNormalLibrary] = useState(() => loadBookmarkLibrary('normal'))
+  const [privateLibrary, setPrivateLibrary] = useState(() => loadBookmarkLibrary('private'))
+  const marks = normalLibrary.bookmarks
+  const privateMarks = privateLibrary.bookmarks
+  const bookmarkBackRef = useRef<() => boolean>(() => false)
+  const registerBookmarkBack = useCallback((handler: () => boolean) => {bookmarkBackRef.current = handler}, [])
   const [hiddenHosts, setHiddenHosts] = useState(() => normalizeHiddenBrowserHosts(readBrowserList(BROWSER_KEYS.hiddenHosts)))
   const [shortcuts, setShortcuts] = useState(() => normalizeBrowserShortcuts(readBrowserList(BROWSER_KEYS.shortcuts)))
   const [hideRecent, setHideRecent] = useState(() => readBrowserPreference(BROWSER_KEYS.hideRecent) === 'true')
@@ -267,6 +273,7 @@ export function BrowserWorkspace({
     if (confirmation) {setConfirmation(null); return true}
     if (shortcutDraft) {setShortcutDraft(null); return true}
     if (placeAction) {setPlaceAction(null); return true}
+    if (panel === 'bookmarks' && bookmarkBackRef.current()) return true
     if (searchOpen) {setSearchOpen(false); return true}
     if (panel) {if (panel === 'images') session.invalidateImages(); setPanel(null); return true}
     if (findOpen) {closeFind(); return true}
@@ -337,7 +344,7 @@ export function BrowserWorkspace({
     if (next) setAgentMinimized(true)
     setSearchOpen(false)
     setPanel(next)
-    if (next === 'tabs') void session.refreshTabs?.()
+    // BrowserTabsPanel refreshes thumbnails on mount; avoid a second capture here.
   }
   const runCommand = (command: BrowserCommand) => {
     setPanel(null)
@@ -361,12 +368,29 @@ export function BrowserWorkspace({
   const saveHistory = (next: BrowserVisit[]) => persist(BROWSER_KEYS.history, next, () => {historyRef.current = next; setHistory(next)})
   const saveMarks = (scope: BookmarkScope, next: BrowserVisit[]): boolean => {
     try {
-      const saved = saveBrowserBookmarks(scope, next)
-      if (scope === 'private') setPrivateMarks(saved)
-      else setMarks(saved)
+      saveBrowserBookmarks(scope, next)
+      const saved = loadBookmarkLibrary(scope)
+      if (scope === 'private') setPrivateLibrary(saved)
+      else setNormalLibrary(saved)
       return true
     } catch (error) {
       setNotice({message: error instanceof Error ? error.message : '保存失败，请重试', error: true})
+      return false
+    }
+  }
+  const saveLibrary = (scope:BookmarkScope, next:BrowserBookmarkLibrary): boolean => {
+    // Keep the original flat key for simple edits until a folder structure is first needed.
+    if (!hasBookmarkLibrary(scope) && next.folders.length === 0 && next.bookmarks.every(item => item.folderId === null)) {
+      return saveMarks(scope, next.bookmarks)
+    }
+    try {
+      const saved = saveBookmarkLibrary(scope, next)
+      if (scope === 'private') setPrivateLibrary(saved)
+      else setNormalLibrary(saved)
+      setNotice({message:'书签已更新'})
+      return true
+    } catch (error) {
+      setNotice({message:error instanceof Error ? error.message : '保存失败，请重试',error:true})
       return false
     }
   }
@@ -555,6 +579,14 @@ export function BrowserWorkspace({
   return <div ref={workspace} tabIndex={-1} role="dialog" aria-label="NewsNook 网页浏览器" aria-modal="true"
     data-private-mode={privateMode ? 'true' : undefined}
     className="browser-workspace fixed inset-0 z-[95] flex min-w-0 flex-col overflow-hidden bg-ink text-paper outline-none"
+    onPointerDownCapture={event => { event.currentTarget.dataset.focusInput = 'pointer' }}
+    onKeyDownCapture={event => {
+      // Preserve keyboard/D-pad focus indication on legacy Android WebView where
+      // :focus-visible is unsupported. No React state update on each tap/key.
+      if (event.key === 'Tab' || event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
+        event.currentTarget.dataset.focusInput = 'keyboard'
+      }
+    }}
     style={{paddingTop:'var(--sat)', paddingBottom:'var(--sab)'}}>
     {!bottomAddress && toolbar}
     <div ref={viewport} data-browser-viewport className="relative min-h-0 flex-1 overflow-hidden bg-ink">
@@ -632,15 +664,16 @@ export function BrowserWorkspace({
       onSelect={tab => finishTabChange(session.activate(tab))}
       onRemove={tab => {void session.remove(tab).then(ok => {if (ok && playing?.tabId === tab.id) setPlaying(null)})}}
       onNew={() => finishTabChange(session.command('new'))}/></BrowserFullPage>}
-    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateBookmarks} key={panel + ':' + privateMode + ':' + preferences.incognitoMode} kind={panel} entries={panel === 'history' ? (historyHidden ? [] : history) : marks}
-      privateEntries={privateBookmarks && panel === 'bookmarks' ? privateMarks : []}
+    {panel === 'history' && <BrowserFullPage title="浏览历史"><BrowserPlacesPanel privateMode={privateBookmarks} kind="history" entries={historyHidden ? [] : history}
       hiddenHostCount={hiddenHosts.length} onBack={() => setPanel(null)} onOpen={url => {void openAddress(url)}}
-      onRemove={url => {if (panel === 'history') saveHistory(history.filter(item => item.url !== url)); else saveMarks('normal', marks.filter(item => item.url !== url))}}
-      onClear={() => confirmClear(panel)}
-      onPrivateRemove={url => saveMarks('private', privateMarks.filter(item => item.url !== url))}
-      onPrivateClear={() => confirmClear('privateBookmarks')}
+      onRemove={url => saveHistory(history.filter(item => item.url !== url))} onClear={() => confirmClear('history')}
       onRestoreHidden={() => {if (persist(BROWSER_KEYS.hiddenHosts, [], () => setHiddenHosts([]))) setNotice({message:'首页网站已恢复'})}}
       onHistoryOptions={entry => setPlaceAction({kind:'history', entry})}/></BrowserFullPage>}
+    {panel === 'bookmarks' && <BrowserFullPage title="书签"><BrowserBookmarkManager
+      key={privateBookmarks ? 'private' : 'normal'} normal={normalLibrary} privateLibrary={privateLibrary} privateMode={privateBookmarks}
+      onBack={() => setPanel(null)} onOpen={url => {void openAddress(url)}} onChange={saveLibrary}
+      onClear={scope => confirmClear(scope === 'private' ? 'privateBookmarks' : 'bookmarks')}
+      onConfirm={setConfirmation} onRegisterBack={registerBookmarkBack}/></BrowserFullPage>}
     {panel === 'settings' && <BrowserFullPage title="浏览器设置"><BrowserSettingsPanel search={search} bottomAddress={bottomAddress} desktop={session.state.desktop}
       hasPage={active} pending={session.pending} historyCount={historyHidden ? 0 : history.length} onBack={() => setPanel(null)}
       onSearchChange={saveSearchEngine}

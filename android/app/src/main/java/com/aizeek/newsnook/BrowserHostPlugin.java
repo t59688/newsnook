@@ -1082,8 +1082,11 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     @PluginMethod public void tabs(PluginCall call) {
+        // Navigation state reads must not render WebView into a bitmap or transfer
+        // JPEG thumbnails through the JS bridge. Only the tab switcher needs them.
+        final boolean includePreviews = Boolean.TRUE.equals(call.getBoolean("includePreviews", false));
         onUi(call, () -> {
-            if (current != null && current.webView != null) {
+            if (includePreviews && embeddedVisible && current != null && current.webView != null) {
                 captureTabPreview(current);
             }
             JSArray list = new JSArray();
@@ -1097,7 +1100,7 @@ public class BrowserHostPlugin extends Plugin {
                 entry.put("active",tab == current);
                 entry.put("loading",tab.loading || tab.preparing);
                 entry.put("error",tab.error == null ? JSONObject.NULL : tab.error);
-                entry.put("preview",tab.preview == null ? JSONObject.NULL : tab.preview);
+                if (includePreviews) entry.put("preview",tab.preview == null ? JSONObject.NULL : tab.preview);
                 list.put(entry);
             }
             JSObject result=new JSObject();result.put("tabs",list);call.resolve(result);
@@ -1934,11 +1937,8 @@ public class BrowserHostPlugin extends Plugin {
                 if (tab.pageProfile != null) tab.pageProfile.onPageFinished();
                 if (current == tab) sendNavigation(address, "end");
                 if (tab.media != null) tab.media.onPageFinished();
-                if (isLive(tab, web)) {
-                    web.postDelayed(() -> {
-                        if (isLive(tab, web)) captureTabPreview(tab);
-                    }, 350);
-                }
+                // A completed website is not evidence that the user needs a tab
+                // screenshot. Capture on the explicit switcher request instead.
             }
             @Override public boolean onRenderProcessGone(WebView web, RenderProcessGoneDetail detail) {
                 if (!recordingDisabled()) android.util.Log.e("NewsNookBrowser", "Renderer terminated: crashed=" + detail.didCrash()
@@ -2040,9 +2040,17 @@ public class BrowserHostPlugin extends Plugin {
             }
             @Override public void onProgressChanged(WebView web, int percent) {
                 if (!isLive(tab, web)) return;
+                int before = tab.progress;
                 tab.progress = Math.max(0, Math.min(100, percent));
-                if (current == tab) {
-                    if (tab.loading && progress != null) progress.setText(percent < 100 ? "正在加载 · " + percent + "%" : "");
+                // WebChromeClient may call this for every single percentage. Each
+                // JS bridge event otherwise drives two native state queries and a
+                // complete browser React render. The progress UI needs 10% steps,
+                // while the exact final state remains available from state().
+                boolean significant = tab.progress == 100 || tab.progress < before
+                    || tab.progress / 10 != before / 10;
+                if (current == tab && significant && tab.progress != before) {
+                    if (tab.loading && progress != null)
+                        progress.setText(tab.progress < 100 ? "正在加载 · " + tab.progress + "%" : "");
                     sendNavigation(tab.url, "state");
                 }
             }

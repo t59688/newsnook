@@ -1,7 +1,7 @@
 {
   "name": "web",
   "private": true,
-  "version": "1.9.3-beta.4",
+  "version": "1.9.3-beta.5",
   "license": "AGPL-3.0-or-later",
   "type": "module",
   "workspaces": [
@@ -63,7 +63,8 @@
     "test:feed-body-general": "npx tsx scripts/feed-body-general.test.ts",
     "test:source-picker": "npx tsx scripts/source-picker.test.ts",
     "test:refresh-progress": "rolldown scripts/refresh-progress.test.ts --platform=node --format=esm --file=node_modules/.cache/newsnook/refresh-progress.test.mjs && node node_modules/.cache/newsnook/refresh-progress.test.mjs",
-    "test:browser": "node --import tsx scripts/browser-private-bookmarks.test.ts && node --experimental-test-module-mocks --import tsx scripts/browser-workspace.test.tsx && node --import tsx scripts/browser-product-panels.test.tsx && node --import tsx scripts/browser-preferences.test.ts && node --import tsx scripts/browser-search-catalog.test.ts && node --import tsx scripts/browser-desktop-viewport.test.ts && node --import tsx scripts/browser-userscripts.test.ts && node --import tsx scripts/browser-external-intent.test.ts && npm run test:browser-images && npm run test:browser-agent",
+    "test:browser-bookmarks": "tsx scripts/browser-bookmark-library.test.ts && tsx scripts/browser-bookmark-manager.test.tsx",
+    "test:browser": "npm run test:browser-bookmarks && node --import tsx scripts/browser-private-bookmarks.test.ts && node --experimental-test-module-mocks --import tsx scripts/browser-workspace.test.tsx && node --import tsx scripts/browser-product-panels.test.tsx && node --import tsx scripts/browser-preferences.test.ts && node --import tsx scripts/browser-search-catalog.test.ts && node --import tsx scripts/browser-desktop-viewport.test.ts && node --import tsx scripts/browser-userscripts.test.ts && node --import tsx scripts/browser-external-intent.test.ts && npm run test:browser-images && npm run test:browser-agent",
     "test:browser-agent": "node --import tsx scripts/browser-agent-config.test.ts && node scripts/browser-agent.test.mjs && node scripts/browser-agent-dom.test.mjs && node scripts/browser-agent-styles.test.mjs && node --import tsx scripts/browser-agent-policy.test.ts && node --import tsx scripts/browser-agent-react.test.ts && node --import tsx scripts/browser-agent-runtime.test.ts && node --import tsx scripts/browser-agent-sheet.test.ts && node --experimental-test-module-mocks --import tsx scripts/browser-agent-panel.test.tsx",
     "test:browser-agent:chromium": "node scripts/browser-agent-chromium.test.mjs",
     "test:browser-images": "node --import tsx scripts/browser-images.test.ts && node --import tsx scripts/browser-image-probe.test.ts && node --import tsx scripts/browser-images-panel.test.tsx && node --experimental-test-module-mocks --import tsx scripts/browser-image-chrome.test.tsx && node --experimental-test-module-mocks --import tsx scripts/browser-image-file-actions.test.ts",

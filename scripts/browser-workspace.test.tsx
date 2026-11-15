@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
+import postcss from 'postcss'
 import { mock } from 'node:test'
 import React, { act, useState } from 'react'
 import { parseHTML } from 'linkedom'
@@ -341,7 +343,31 @@ async function playFirst() {
 }
 
 try {
+  // Legacy WebViews discard an entire selector group when it contains the
+  // unsupported :focus-visible pseudo-class. Keep the keyboard fallback separate.
+  const focusStyles = postcss.parse(readFileSync(new URL('../src/features/browser/browser.css', import.meta.url), 'utf8'))
+  const cssRules = focusStyles.nodes.filter(rule => rule.type === 'rule')
+  const touchRule = cssRules.find(rule => rule.selector.includes('.browser-workspace button:focus,') && rule.selector.includes('.browser-workspace a:focus'))
+  assert.ok(touchRule && touchRule.nodes.some(node => node.type === 'decl' && node.prop === 'outline' && node.value === 'none'),
+    'touch-focused browser buttons have no persistent outline even without :focus-visible')
+  const keyboardRule = cssRules.find(rule => rule.selector.includes(".browser-workspace[data-focus-input='keyboard'] button:focus"))
+  assert.ok(keyboardRule && !keyboardRule.selector.includes(':focus-visible'),
+    'legacy keyboard focus fallback must not share a selector group with an unsupported pseudo-class')
+  assert.ok(keyboardRule.nodes.some(node => node.type === 'decl' && node.prop === 'outline' && node.value.includes('2px')),
+    'legacy hardware keyboard focus stays visible')
   await mount()
+  // A touch-focused address button must never retain the legacy WebView focus
+  // outline; keyboard/D-pad navigation must still have an explicit focus cue.
+  const browserRoot = select('.browser-workspace') as HTMLElement
+  const addressButton = button('搜索或输入网址')
+  await act(async () => {
+    const tab = new window.Event('keydown', { bubbles: true, cancelable: true })
+    Object.defineProperty(tab, 'key', { value: 'Tab' })
+    addressButton.dispatchEvent(tab)
+  })
+  assert.equal(browserRoot.dataset.focusInput, 'keyboard', 'Tab enables visible legacy keyboard focus')
+  await act(async () => addressButton.dispatchEvent(new window.Event('pointerdown', { bubbles: true })))
+  assert.equal(browserRoot.dataset.focusInput, 'pointer', 'touch/pen/mouse must clear the keyboard focus flag')
   await visit('https://historical.example/regular-search')
   const normalHistoryBeforeIncognito = storage.get(HISTORY)
   await menu('主页')

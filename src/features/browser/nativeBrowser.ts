@@ -41,7 +41,7 @@ interface NativeBrowser {
   takeRecoverySession(): Promise<{session: BrowserRecoverySession | null}>
   navigate(args: {action: BrowserCommand | 'url'; url?: string}): Promise<void>
   state(): Promise<BrowserState>
-  tabs(): Promise<{tabs: BrowserTab[]}>
+  tabs(args?: {includePreviews?: boolean}): Promise<{tabs: BrowserTab[]}>
   activateTab(args: {index: number}): Promise<void>
   removeTab(args: {index: number}): Promise<void>
   setBounds(args: {top: number; bottom: number; occludedBottom: number; visible: boolean; agentOperating: boolean}): Promise<void>

@@ -124,6 +124,31 @@ public class BrowserHostLifecycleTest {
         return (WebView) webView.get(tab);
     }
 
+    @Test public void navigationTabSnapshotsOmitHeavyPreviewsUnlessRequested() throws Exception {
+        assertNull(open("https://example.com/performance").error);
+        Field currentField = BrowserHostPlugin.class.getDeclaredField("current");
+        currentField.setAccessible(true);
+        Object tab = currentField.get(host);
+        Field preview = tab.getClass().getDeclaredField("preview");
+        preview.setAccessible(true);
+        preview.set(tab, "data:image/jpeg;base64,CACHED");
+
+        Call metadata = new Call("tabs", new JSObject());
+        host.tabs(metadata);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(metadata.resolved);
+        assertFalse("Routine navigation state must never transfer JPEG thumbnails",
+            metadata.result.getJSONArray("tabs").getJSONObject(0).has("preview"));
+        assertEquals("data:image/jpeg;base64,CACHED", preview.get(tab));
+
+        Call switcher = new Call("tabs", new JSObject().put("includePreviews", true));
+        host.tabs(switcher);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(switcher.resolved);
+        assertTrue("Tab switcher must receive a preview property",
+            switcher.result.getJSONArray("tabs").getJSONObject(0).has("preview"));
+    }
+
     @org.robolectric.annotation.Implements(android.webkit.CookieManager.class)
     public static class CookiesWithPerViewPolicy extends org.robolectric.shadows.ShadowCookieManager {
         private static android.webkit.CookieManager instance;
@@ -366,6 +391,20 @@ public class BrowserHostLifecycleTest {
         assertNotNull("unsupported precise cleanup must fail closed", clear.error);
         assertSame(ordinary, currentView());
         assertTrue(cookies.getCookie("https://example.com").contains("ordinary_session=preserve"));
+    }
+
+    @Test public void webProgressCallbacksOnlyBridgeSignificantChanges() throws Exception {
+        assertNull(open("https://example.com/progress").error);
+        WebView view = currentView();
+        view.getWebViewClient().onPageStarted(view, "https://example.com/progress", null);
+        host.events.clear();
+        host.payloads.clear();
+        for (int percent = 1; percent <= 100; percent++)
+            view.getWebChromeClient().onProgressChanged(view, percent);
+        int updates = 0;
+        for (String event : host.events) if ("navigation".equals(event)) updates++;
+        assertEquals("UI refresh and bridge traffic must be bounded to 10%% steps", 10, updates);
+        assertEquals(100, state().getInt("progress"));
     }
 
     @Test public void embeddedProgressAndTitleDoNotRequireDialogChrome() throws Exception {
