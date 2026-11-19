@@ -71,6 +71,8 @@ export function useSwipeCategory({
 
     let moveRafId = 0
     let pendingDragX: number | null = null
+    let lastReactDragUpdate = 0
+    let renderedDragX = 0
     let activeTouchId: number | null = null
     let settleTimer = 0
     let commitTimer = 0
@@ -87,9 +89,19 @@ export function useSwipeCategory({
 
     const flushDrag = () => {
       moveRafId = 0
-      if (pendingDragX !== null) {
-        setDragX(pendingDragX)
-        pendingDragX = null
+      if (pendingDragX === null) return
+      const value = pendingDragX
+      pendingDragX = null
+      // Move the composited track directly, without reconciling every article
+      // and its translated content on each 60/120 Hz pointer frame.
+      element.style.setProperty('--feed-swipe-x', `${value}px`)
+      // React state still drives neighbour mounting and the category rail,
+      // but only needs periodic updates; the visible track remains frame-accurate.
+      const now = performance.now()
+      if (Math.sign(value) !== Math.sign(renderedDragX) || now - lastReactDragUpdate >= 48) {
+        renderedDragX = value
+        lastReactDragUpdate = now
+        setDragX(value)
       }
     }
 
@@ -106,6 +118,23 @@ export function useSwipeCategory({
       setTransitionMs(ms)
       if (ms > 0 || value === 0) {
         cancelDragRaf()
+        // Release must start its CSS transition before changing the variable;
+        // otherwise the final swipe snaps to the edge without animating.
+        if (ms > 0) {
+          for (const layer of element.children) {
+            if (layer instanceof HTMLElement) {
+              layer.style.transition = `transform ${ms}ms var(--ease-ink)`
+            }
+          }
+          // One layout read on release is preferable to forced layouts per move.
+          void element.getBoundingClientRect()
+        } else {
+          for (const layer of element.children) {
+            if (layer instanceof HTMLElement) layer.style.transition = 'none'
+          }
+        }
+        element.style.setProperty('--feed-swipe-x', `${value}px`)
+        renderedDragX = value
         setDragX(value)
       } else {
         pendingDragX = value
@@ -288,6 +317,7 @@ export function useSwipeCategory({
 
     return () => {
       abortInteraction()
+      element.style.removeProperty('--feed-swipe-x')
       window.removeEventListener('resize', measureWidth)
       element.removeEventListener('touchstart', onTouchStart)
       element.removeEventListener('touchmove', onTouchMove)

@@ -21,7 +21,9 @@ const flush = () => {
 const { createRoot } = await import('react-dom/client')
 const root = createRoot(document.getElementById('root')!)
 const commits: string[] = []
+let renders = 0
 function Fixture() {
+  renders++
   const containerRef = useRef<HTMLDivElement>(null)
   const { dragX, transitionMs } = useSwipeCategory({
     containerRef, reduced: true, canGo: () => true,
@@ -54,7 +56,13 @@ assert.equal(reads, 0, 'touchstart reuses the measured width until resize, witho
 await touch('touchstart', 280)
 assert.equal(await touch('touchmove', 140), true, 'horizontal swipe retains ownership')
 assert.equal(track.dataset.dragX, '-140', 'horizontal swipe still moves with the finger')
-await touch('touchend', 140)
+const rendersBeforeContinuousDrag = renders
+for (let x = 130; x >= 30; x -= 5) {
+  await touch('touchmove', x)
+  assert.equal(track.style.getPropertyValue('--feed-swipe-x'), `${x - 280}px`, 'composited swipe tracks each pointer frame')
+}
+assert.ok(renders - rendersBeforeContinuousDrag < 10, 'continuous drag does not reconcile the entire feed each frame')
+await touch('touchend', 30)
 assert.deepEqual(commits, ['next'])
 assert.equal(track.dataset.dragX, '0', 'commit resets the previous category transform')
 await act(async () => root.unmount())

@@ -277,9 +277,20 @@ export const FeedScreen = memo(function FeedScreen({
   const searchTemplate = Boolean(profile?.search)
   const frameworkCategories = profile?.categories
   const searching = catalogMode === 'search' && catalogState.loading
-  const searchResults = catalogMode === 'search' ? catalogState.history.flatMap((page) => page.articles).filter((article, index, all) => all.findIndex((item) => item.id === article.id) === index) : null
+  // Catalog pagination may contain duplicates. Deduplicate once per history
+  // update instead of doing O(n²) findIndex work on every gesture render.
+  const catalogArticles = useMemo(() => {
+    if (catalogMode === null) return null
+    const seen = new Set<string>()
+    return catalogState.history.flatMap((page) => page.articles).filter((article) => {
+      if (seen.has(article.id)) return false
+      seen.add(article.id)
+      return true
+    })
+  }, [catalogMode, catalogState.history])
+  const searchResults = catalogMode === 'search' ? catalogArticles : null
   const searchError = catalogState.error ?? null
-  const fwCatArticles = catalogMode === 'category' ? catalogState.history.flatMap((page) => page.articles).filter((article, index, all) => all.findIndex((item) => item.id === article.id) === index) : null
+  const fwCatArticles = catalogMode === 'category' ? catalogArticles : null
   const fwCatLoading = catalogMode === 'category' && catalogState.loading
   const fwCatExhausted = catalogState.exhausted
   useEffect(() => {
@@ -1059,7 +1070,7 @@ export const FeedScreen = memo(function FeedScreen({
             <div
               className="pointer-events-none absolute inset-0 overflow-hidden bg-ink"
               style={{
-                transform: `translate3d(calc(${dragX}px - 100%), 0, 0)`,
+                transform: 'translate3d(calc(var(--feed-swipe-x, 0px) - 100%), 0, 0)',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
               }}
@@ -1087,7 +1098,7 @@ export const FeedScreen = memo(function FeedScreen({
                 transform:
                   dragX === 0 && transitionMs === 0
                     ? undefined
-                    : `translate3d(${dragX}px, 0, 0)`,
+                    : 'translate3d(var(--feed-swipe-x, 0px), 0, 0)',
                 transition: swipeTransition,
                 backfaceVisibility:
                   dragX === 0 && transitionMs === 0 ? undefined : 'hidden',
@@ -1103,7 +1114,7 @@ export const FeedScreen = memo(function FeedScreen({
             <div
               className="pointer-events-none absolute inset-0 overflow-hidden bg-ink"
               style={{
-                transform: `translate3d(calc(${dragX}px + 100%), 0, 0)`,
+                transform: 'translate3d(calc(var(--feed-swipe-x, 0px) + 100%), 0, 0)',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
               }}

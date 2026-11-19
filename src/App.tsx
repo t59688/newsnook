@@ -1,4 +1,4 @@
-import { lazy, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 
@@ -395,9 +395,10 @@ export default function App() {
     () => defaultFeedCategoryId(visibleCategories(prefs)),
   )
   const [settingsRoute, commitSettingsRoute] = useState<SettingsRoute | null>(null)
-  // Keep the current page (and its back controls) until a cold destination is ready.
+  // Navigation is an urgent user action: commit the route synchronously so the
+  // Suspense boundary can show feedback immediately even when the page is cold.
   const setSettingsRoute = useCallback((route: SettingsRoute | null) => {
-    startTransition(() => commitSettingsRoute(route))
+    commitSettingsRoute(route)
   }, [])
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
   const watchUnreadCount = useWatchUnreadCount()
@@ -2168,10 +2169,8 @@ export default function App() {
           onNavigateLater={() => setSettingsRoute({ name: 'later' })}
           onNavigateHistory={() => setSettingsRoute({ name: 'history' })}
           onNavigateSettings={() => {
-            startTransition(() => {
-              setTab('me')
-              setSettingsRoute(null)
-            })
+            setTab('me')
+            setSettingsRoute(null)
           }}
           onNavigateAbout={() => setSettingsRoute({ name: 'about' })}
           onBrandTap={onBrandTap}
@@ -2249,13 +2248,11 @@ export default function App() {
                   watchUnreadCount={watchUnreadCount}
                   hasUpdate={appUpdate.hasUpdate}
                   onChange={(key) => {
-                    // Preserve the current surface until a cold lazy tab is ready.
-                    startTransition(() => {
-                      setFocusSourceId(null)
-                      setFocusReturnRoute(null)
-                      if (key !== 'me') setReaderReturnArticle(null)
-                      setTab(key)
-                    })
+                    // Tab taps are urgent; Suspense shows a loading state for cold tabs.
+                    setFocusSourceId(null)
+                    setFocusReturnRoute(null)
+                    if (key !== 'me') setReaderReturnArticle(null)
+                    setTab(key)
                   }}
                   onTodayDoubleTap={() => setTodayPullRefreshSeq((seq) => seq + 1)}
                   presetSwitcher={presetSwitcherConfig}
