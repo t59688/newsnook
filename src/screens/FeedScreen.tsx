@@ -4,7 +4,7 @@ import { WatchInboxButton } from '../features/sourceWatch/WatchInboxButton'
 
 import { ArticleRow, LeadStory } from '../components/ArticleItem'
 import { BrandLogo } from '../components/BrandLogo'
-import { CategoryRail } from '../components/CategoryRail'
+import { CategoryRail, type CategoryRailGestureHandle } from '../components/CategoryRail'
 import { FeedLayoutSwitcher } from '../components/FeedLayoutSwitcher'
 import { FeedSkeleton } from '../components/FeedSkeleton'
 import { PullIndicator } from '../components/PullIndicator'
@@ -94,7 +94,7 @@ interface Props {
 }
 
 /** 邻页预览：排版与正式列表对齐，并恢复该分类上次滚动位置，避免滑入时先顶后跳 */
-function CategoryPeek({
+const CategoryPeek = memo(function CategoryPeek({
   articles,
   showLead,
   readIds,
@@ -205,7 +205,7 @@ function CategoryPeek({
       </div>
     </div>
   )
-}
+})
 
 export const FeedScreen = memo(function FeedScreen({
   title,
@@ -261,6 +261,10 @@ export const FeedScreen = memo(function FeedScreen({
   const listRef = useRef<HTMLDivElement>(null)
   const pulseRef = useRef<HTMLSpanElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
+  const categoryRailGestureRef = useRef<CategoryRailGestureHandle>(null)
+  const followSwipe = useCallback((offset: number, width: number, animationMs: number) => {
+    categoryRailGestureRef.current?.followSwipe(offset, width, animationMs)
+  }, [])
   const wasRefreshing = useRef(refreshing)
   /** 各分类独立记住滚动位置，避免共用滚动容器时互相串位 */
   const scrollByCategory = useRef<Partial<Record<CategoryId, number>>>({})
@@ -376,6 +380,7 @@ export const FeedScreen = memo(function FeedScreen({
 
   const { dragX, transitionMs, containerWidth } = useSwipeCategory({
     containerRef: trackRef,
+    activeKey: categoryId ?? undefined,
     disabled: !swipeEnabled,
     reduced,
     canGo: (direction) => Boolean(neighbourOf(direction)),
@@ -386,6 +391,7 @@ export const FeedScreen = memo(function FeedScreen({
       onCategoryChange?.(target.id)
     },
     onHorizontalLock: cancelPull,
+    onDragFrame: followSwipe,
   })
 
   const lead = showLead ? articles.find((item) => item.image) : undefined
@@ -859,7 +865,7 @@ export const FeedScreen = memo(function FeedScreen({
 
   return (
     <section className="editorial-feed-shell relative flex min-h-0 flex-1 flex-col">
-      <header className="editorial-feed-header relative z-20 shrink-0 bg-ink/90 pt-2 pb-1.5 backdrop-blur-xl border-b border-haze/30">
+      <header className="editorial-feed-header relative z-20 shrink-0 pt-2 pb-1.5 border-b border-haze/30">
         <div className="page-x lg:px-6 xl:px-8 2xl:px-10 max-w-[2400px] mx-auto flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             {onBack && (
@@ -978,6 +984,7 @@ export const FeedScreen = memo(function FeedScreen({
         {categoryId && categories && categories.length > 0 && onCategoryChange && (
           <div className="mt-1 lg:hidden" data-tour="category-rail">
             <CategoryRail
+              ref={categoryRailGestureRef}
               categories={categories}
               activeId={categoryId}
               onChange={onCategoryChange}
@@ -1062,15 +1069,14 @@ export const FeedScreen = memo(function FeedScreen({
           className="relative h-full w-full"
           style={{ touchAction: swipeEnabled ? 'pan-y' : undefined }}
         >
-          {/*
-            三页均 absolute inset-0：布局盒始终在裁剪视口内，各自 translate 跟手。
-            按手势方向单向挂载邻页视图（向右滑挂载上一分类，向左滑挂载下一分类），消除不可见反方向的 DOM 与图片开销。
-          */}
-          {swipeEnabled && dragX > 0 && prevCategory && (
+          {/* 预先准备两侧各 8 条邻页预览。拖动期间只更新合成层，不再挂载 React 子树。 */}
+          {swipeEnabled && prevCategory && (
             <div
+              data-swipe-layer="prev"
               className="pointer-events-none absolute inset-0 overflow-hidden bg-ink"
               style={{
-                transform: 'translate3d(calc(var(--feed-swipe-x, 0px) - 100%), 0, 0)',
+                transform: 'translate3d(-100%, 0, 0)',
+                visibility: 'hidden',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
               }}
@@ -1091,6 +1097,7 @@ export const FeedScreen = memo(function FeedScreen({
 
           {swipeEnabled ? (
             <div
+              data-swipe-layer="current"
               className="absolute inset-0"
               style={{
                 // 静止时不要让纵向滚动容器常驻合成层；Android WebView 在触摸
@@ -1098,7 +1105,7 @@ export const FeedScreen = memo(function FeedScreen({
                 transform:
                   dragX === 0 && transitionMs === 0
                     ? undefined
-                    : 'translate3d(var(--feed-swipe-x, 0px), 0, 0)',
+                    : `translate3d(${dragX}px, 0, 0)`,
                 transition: swipeTransition,
                 backfaceVisibility:
                   dragX === 0 && transitionMs === 0 ? undefined : 'hidden',
@@ -1110,11 +1117,13 @@ export const FeedScreen = memo(function FeedScreen({
             listScroller
           )}
 
-          {swipeEnabled && dragX < 0 && nextCategory && (
+          {swipeEnabled && nextCategory && (
             <div
+              data-swipe-layer="next"
               className="pointer-events-none absolute inset-0 overflow-hidden bg-ink"
               style={{
-                transform: 'translate3d(calc(var(--feed-swipe-x, 0px) + 100%), 0, 0)',
+                transform: 'translate3d(100%, 0, 0)',
+                visibility: 'hidden',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
               }}

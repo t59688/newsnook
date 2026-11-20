@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 export type SwipeDirection = 'next' | 'prev'
 
@@ -20,7 +20,11 @@ interface Options {
   containerRef: React.RefObject<HTMLElement | null>
   canGo: (direction: SwipeDirection) => boolean
   onCommit: (direction: SwipeDirection) => void
+  /** Current category/mode key: defer visual reset until the next page has committed. */
+  activeKey?: string
   onHorizontalLock?: () => void
+  /** Per-frame compositor progress; when supplied, React only mounts/unmounts neighbours. */
+  onDragFrame?: (offset: number, width: number, transitionMs: number) => void
   disabled?: boolean
   reduced?: boolean
 }
@@ -33,7 +37,9 @@ export function useSwipeCategory({
   containerRef,
   canGo,
   onCommit,
+  activeKey,
   onHorizontalLock,
+  onDragFrame,
   disabled = false,
   reduced = false,
 }: Options) {
@@ -43,9 +49,21 @@ export function useSwipeCategory({
   const dragXRef = useRef(0)
   const startRef = useRef<{ x: number; y: number } | null>(null)
   const lastRef = useRef<{ x: number; t: number } | null>(null)
+  const recentVelocityRef = useRef(0)
   const lockRef = useRef<'none' | 'horizontal' | 'vertical'>('none')
   const widthRef = useRef(0)
   const busyRef = useRef(false)
+  const previousActiveKey = useRef(activeKey)
+  const hasActiveKeyRef = useRef(activeKey !== undefined)
+  hasActiveKeyRef.current = activeKey !== undefined
+  const completeCommitRef = useRef<(() => void) | null>(null)
+  useLayoutEffect(() => {
+    if (previousActiveKey.current === activeKey) return
+    previousActiveKey.current = activeKey
+    // Called after React has replaced the article list but before the browser
+    // paints it; only now is it safe to remove the outgoing full-page offset.
+    completeCommitRef.current?.()
+  }, [activeKey])
 
   const canGoRef = useRef(canGo)
   canGoRef.current = canGo
@@ -53,6 +71,8 @@ export function useSwipeCategory({
   onCommitRef.current = onCommit
   const onLockRef = useRef(onHorizontalLock)
   onLockRef.current = onHorizontalLock
+  const onDragFrameRef = useRef(onDragFrame)
+  onDragFrameRef.current = onDragFrame
 
   useEffect(() => {
     const element = containerRef.current
@@ -87,21 +107,59 @@ export function useSwipeCategory({
       finishFrame = 0
     }
 
+    const positionLayers = (value: number, animated: boolean) => {
+      // CSS variables on a parent are inherited by every article and invalidate
+      // its style tree on old Android WebViews. Move only the 1-3 composited
+      // surfaces instead; never touch the long list's inherited styles.
+      for (const child of element.children) {
+        if (!(child instanceof HTMLElement)) continue
+        const role = child.dataset.swipeLayer
+        if (!role) continue
+        if (!animated) child.style.transition = 'none'
+        if (child.hasAttribute('data-swipe-fade')) {
+          child.style.opacity = String(0.86 + Math.min(1, Math.abs(value) / Math.max(1, widthRef.current)) * 0.14)
+        }
+        if (role === 'current') {
+          if (child.hasAttribute('data-swipe-shadow')) {
+            child.style.boxShadow = value !== 0 || animated ? '0 0 32px rgb(0 0 0 / 0.08)' : ''
+          }
+          if (value === 0 && !animated) {
+            child.style.removeProperty('transform')
+            child.style.removeProperty('will-change')
+          } else {
+            child.style.transform = `translate3d(${value}px, 0, 0)`
+            child.style.willChange = 'transform'
+          }
+        } else if (role === 'prev' || role === 'next') {
+          const shown = role === 'prev' ? value > 0 : value < 0
+          const keepUntilSettle = animated && child.style.visibility === 'visible'
+          child.style.visibility = shown || keepUntilSettle ? 'visible' : 'hidden'
+          child.style.transform = role === 'prev'
+            ? `translate3d(calc(${value}px - 100%), 0, 0)`
+            : `translate3d(calc(${value}px + 100%), 0, 0)`
+          if (shown || keepUntilSettle) child.style.willChange = 'transform'
+          else child.style.removeProperty('will-change')
+        }
+      }
+    }
+
     const flushDrag = () => {
       moveRafId = 0
       if (pendingDragX === null) return
       const value = pendingDragX
       pendingDragX = null
-      // Move the composited track directly, without reconciling every article
-      // and its translated content on each 60/120 Hz pointer frame.
-      element.style.setProperty('--feed-swipe-x', `${value}px`)
-      // React state still drives neighbour mounting and the category rail,
-      // but only needs periodic updates; the visible track remains frame-accurate.
-      const now = performance.now()
-      if (Math.sign(value) !== Math.sign(renderedDragX) || now - lastReactDragUpdate >= 48) {
-        renderedDragX = value
-        lastReactDragUpdate = now
-        setDragX(value)
+      positionLayers(value, false)
+      onDragFrameRef.current?.(value, widthRef.current, 0)
+      // Prepared neighbour layers and the header indicator can follow the
+      // finger without React: reconciling the full article list on each drag
+      // start was the measured cause of 50+ ms frames on Android WebView 69.
+      if (!onDragFrameRef.current) {
+        const now = performance.now()
+        if (Math.sign(value) !== Math.sign(renderedDragX) || now - lastReactDragUpdate >= 48) {
+          renderedDragX = value
+          lastReactDragUpdate = now
+          setDragX(value)
+        }
       }
     }
 
@@ -113,29 +171,24 @@ export function useSwipeCategory({
       pendingDragX = null
     }
 
-    const apply = (value: number, ms: number) => {
+    const apply = (value: number, ms: number, notifyIndicator = true) => {
       dragXRef.current = value
-      setTransitionMs(ms)
+      if (!onDragFrameRef.current) setTransitionMs(ms)
       if (ms > 0 || value === 0) {
         cancelDragRaf()
-        // Release must start its CSS transition before changing the variable;
-        // otherwise the final swipe snaps to the edge without animating.
         if (ms > 0) {
-          for (const layer of element.children) {
-            if (layer instanceof HTMLElement) {
-              layer.style.transition = `transform ${ms}ms var(--ease-ink)`
+          for (const child of element.children) {
+            if (child instanceof HTMLElement && child.dataset.swipeLayer) {
+              child.style.transition = `transform ${ms}ms var(--ease-ink)${child.hasAttribute('data-swipe-fade') ? `, opacity ${ms}ms var(--ease-ink)` : ''}`
             }
           }
-          // One layout read on release is preferable to forced layouts per move.
-          void element.getBoundingClientRect()
-        } else {
-          for (const layer of element.children) {
-            if (layer instanceof HTMLElement) layer.style.transition = 'none'
-          }
         }
-        element.style.setProperty('--feed-swipe-x', `${value}px`)
+        // The previous painted drag transform is already the transition origin;
+        // forcing getBoundingClientRect() here caused synchronous layout at release.
+        positionLayers(value, ms > 0)
+        if (notifyIndicator) onDragFrameRef.current?.(value, widthRef.current, ms)
         renderedDragX = value
-        setDragX(value)
+        if (!onDragFrameRef.current) setDragX(value)
       } else {
         pendingDragX = value
         if (!moveRafId) {
@@ -147,6 +200,7 @@ export function useSwipeCategory({
     const resetTouch = () => {
       startRef.current = null
       lastRef.current = null
+      recentVelocityRef.current = 0
       lockRef.current = 'none'
       activeTouchId = null
     }
@@ -160,10 +214,19 @@ export function useSwipeCategory({
       if (needsTransition) {
         settleTimer = window.setTimeout(() => {
           settleTimer = 0
-          setTransitionMs(0)
+          positionLayers(0, false)
+          if (!onDragFrameRef.current) setTransitionMs(0)
         }, SETTLE_MS)
       }
     }
+
+    const completeCommit = () => {
+      if (!busyRef.current) return
+      clearTimers()
+      apply(0, 0, false)
+      busyRef.current = false
+    }
+    completeCommitRef.current = completeCommit
 
     const commit = (direction: SwipeDirection) => {
       clearTimers()
@@ -173,15 +236,29 @@ export function useSwipeCategory({
       const out = direction === 'next' ? -width : width
 
       const finish = () => {
-        // 先换分类再归零：与 React 同帧提交，配合 FeedScreen 跳过入场透明，减少闪一下
+        // With an active key, keep the destination preview fully covering the
+        // viewport until React commits the new page. Clearing it now exposed the
+        // old article list for one frame when React was busy.
         onCommitRef.current(direction)
-        apply(0, 0)
-        busyRef.current = false
+        if (!busyRef.current) return
+        if (hasActiveKeyRef.current && onDragFrameRef.current) {
+          // Defensive recovery if the parent rejects/drops the category change.
+          commitTimer = window.setTimeout(() => {
+            commitTimer = 0
+            completeCommit()
+          }, 800)
+        } else {
+          completeCommit()
+        }
       }
 
       if (reduced) {
         busyRef.current = true
-        finish()
+        apply(out, 0)
+        finishFrame = window.requestAnimationFrame(() => {
+          finishFrame = 0
+          finish()
+        })
         return
       }
 
@@ -237,6 +314,7 @@ export function useSwipeCategory({
       activeTouchId = touch.identifier
       startRef.current = { x: touch.clientX, y: touch.clientY }
       lastRef.current = { x: touch.clientX, t: event.timeStamp }
+      recentVelocityRef.current = 0
       lockRef.current = 'none'
     }
 
@@ -266,7 +344,16 @@ export function useSwipeCategory({
 
       if (lockRef.current !== 'horizontal') return
 
-      if (event.cancelable) event.preventDefault()
+      // The track declares touch-action: pan-y. Horizontal movement belongs to
+      // this gesture; vertical scrolling stays with the WebView compositor.
+      // Never block its input thread with a non-passive touchmove listener.
+      const last = lastRef.current
+      const elapsed = last ? event.timeStamp - last.t : 0
+      // Velocity must be sampled from successive positions, not the entire
+      // drag distance divided by only the final release-to-move interval.
+      if (last && elapsed > 0 && elapsed < 150) {
+        recentVelocityRef.current = (touch.clientX - last.x) / elapsed
+      }
       lastRef.current = { x: touch.clientX, t: event.timeStamp }
 
       const direction: SwipeDirection = dx < 0 ? 'next' : 'prev'
@@ -291,8 +378,8 @@ export function useSwipeCategory({
       const offset = dragXRef.current
       const direction: SwipeDirection = offset < 0 ? 'next' : 'prev'
       const last = lastRef.current
-      const elapsed = last ? Math.max(1, event.timeStamp - last.t) : 1
-      const velocity = last ? Math.abs(last.x - start.x) / Math.max(1, elapsed + 16) : 0
+      const releaseLag = last ? event.timeStamp - last.t : Infinity
+      const velocity = releaseLag >= 0 && releaseLag <= 75 ? Math.abs(recentVelocityRef.current) : 0
       const width = widthRef.current || measureWidth()
 
       const passed =
@@ -308,7 +395,7 @@ export function useSwipeCategory({
     }
 
     element.addEventListener('touchstart', onTouchStart, { passive: true })
-    element.addEventListener('touchmove', onTouchMove, { passive: false })
+    element.addEventListener('touchmove', onTouchMove, { passive: true })
     element.addEventListener('touchend', onTouchEnd)
     element.addEventListener('touchcancel', onTouchCancel)
     window.addEventListener('blur', abortInteraction)
@@ -317,7 +404,7 @@ export function useSwipeCategory({
 
     return () => {
       abortInteraction()
-      element.style.removeProperty('--feed-swipe-x')
+      completeCommitRef.current = null
       window.removeEventListener('resize', measureWidth)
       element.removeEventListener('touchstart', onTouchStart)
       element.removeEventListener('touchmove', onTouchMove)

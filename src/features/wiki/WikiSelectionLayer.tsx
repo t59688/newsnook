@@ -15,6 +15,8 @@ import './wiki.css'
 
 interface SelectionInfo { text: string; x: number; y: number }
 type View = 'peek' | 'article' | 'settings' | 'search'
+
+const READING_SURFACE = '.reader-prose, .linuxdo-post-prose, .zhihu-prose, .reader-content, .article-body, .post-body, .topic-body, .markdown-body, .cooked'
 export function WikiSelectionLayer() {
   const [settings, setSettings] = useState<WikiSettings>(loadWikiSettings)
   const [selected, setSelected] = useState<SelectionInfo | null>(null)
@@ -173,8 +175,7 @@ export function WikiSelectionLayer() {
       const excluded = 'input, textarea, [contenteditable]:not([contenteditable="false"]), button, .wiki-lookup-ui, [role="textbox"]'
       if (!node || !focus || node.closest(excluded) || focus.closest(excluded)) return false
       // Restrict to actual reading surfaces; never intercept editing or configuration controls.
-      const readingSurface = '.reader-prose, .linuxdo-post-prose, .zhihu-prose, .reader-content, .article-body, .post-body, .topic-body, .markdown-body, .cooked'
-      if (!node.closest(readingSurface) || !focus.closest(readingSurface)) return false
+      if (!node.closest(READING_SURFACE) || !focus.closest(READING_SURFACE)) return false
       const rect = selection.getRangeAt(0).getBoundingClientRect()
       if (rect.width === 0 && rect.height === 0) return false
       const x = Math.min(window.innerWidth - 12, Math.max(12, rect.left + rect.width / 2))
@@ -212,13 +213,20 @@ export function WikiSelectionLayer() {
       if (!selectedRef.current || viewRef.current !== 'peek') return
       scheduleCapture(40)
     }
+    function shouldScheduleFor(target: EventTarget | null) {
+      const element = target as Element | null
+      if (element?.closest?.('.wiki-lookup-ui')) return false
+      if (element?.closest?.(READING_SURFACE)) return true
+      // Preserve range drag-and-release outside the reader; ordinary feed
+      // scrolling has no range and must not schedule a global selection scan.
+      const selection = window.getSelection()
+      return Boolean(selection && !selection.isCollapsed && selection.rangeCount)
+    }
     function onPointerUp(event: PointerEvent) {
-      if ((event.target as Element)?.closest?.('.wiki-lookup-ui')) return
-      scheduleCapture(40)
+      if (shouldScheduleFor(event.target)) scheduleCapture(40)
     }
     function onTouchEnd(event: TouchEvent) {
-      if ((event.target as Element)?.closest?.('.wiki-lookup-ui')) return
-      scheduleCapture(100)
+      if (shouldScheduleFor(event.target)) scheduleCapture(100)
     }
     function onKeyUp(event: KeyboardEvent) {
       if (event.shiftKey || event.key === 'Shift') scheduleCapture(0)

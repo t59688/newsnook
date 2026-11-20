@@ -893,6 +893,7 @@ public class MediaSnifferPlugin extends Plugin {
     @PluginMethod
     public void setLiveSessionInteractive(PluginCall call) {
         boolean interactive = call.getBoolean("interactive", false);
+        boolean animateReveal = Boolean.TRUE.equals(call.getBoolean("animateReveal", false));
         String sessionId = call.getString("sessionId");
         getActivity().runOnUiThread(() -> {
             if (sessionId != null && !sessionId.equals(liveSessionId)) { call.resolve(); return; }
@@ -909,7 +910,18 @@ public class MediaSnifferPlugin extends Plugin {
                     pauseLiveSessionMedia(webView);
                     setLiveWebViewAudioMuted(webView, true);
                 }
-                webView.setAlpha(effectiveInteractive ? 1f : 0f);
+                webView.animate().cancel();
+                if (effectiveInteractive && animateReveal) {
+                    webView.setAlpha(0f);
+                    webView.postOnAnimation(() -> {
+                        if (webView == liveWebView && liveSurfaceInteractive
+                            && liveSurfaceRequestedVisible && !liveSurfaceSuppressed) {
+                            webView.animate().alpha(1f).setDuration(160L).start();
+                        }
+                    });
+                } else {
+                    webView.setAlpha(effectiveInteractive ? 1f : 0f);
+                }
                 webView.setImportantForAccessibility(effectiveInteractive
                     ? View.IMPORTANT_FOR_ACCESSIBILITY_AUTO
                     : View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS);

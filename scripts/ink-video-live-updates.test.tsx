@@ -185,8 +185,10 @@ const cases: Array<[string, (render: Render) => Promise<void>]> = [
     const back = [...document.querySelectorAll('button')].find(b => b.textContent === '返回原站播放器')
     assert.ok(back)
     await act(async () => back.click())
+    assert.ok(document.querySelector('video'), 'the custom layer remains while the native origin is being restored')
     await navigate(2, 'https://example.com/watch/sticky')
     await emit({ url: src, width: 1920, height: 1080 })
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 215)) })
     assert.equal(Boolean(document.querySelector('video')), false, 'manual origin choice must survive a native document restore')
     assert.ok(document.body.textContent?.includes('手动辅助识别中'))
   }],

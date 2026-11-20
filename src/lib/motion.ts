@@ -61,7 +61,12 @@ export function revealItems(root: HTMLElement | null, reduced: boolean, selector
   }, settleMs)
 }
 
-/** 阅读页：标题先落定，正文随后错落展开 */
+/** Animate only the initial reading viewport, not hundreds of off-screen paragraphs. */
+export function readerEntranceBudget<T>(items: readonly T[]): { animated: T[]; immediate: T[] } {
+  return { animated: items.slice(0, 8), immediate: items.slice(8) }
+}
+
+/** 阅读页：标题先落定，首屏正文随后错落展开；长文其余段落立即可读。 */
 export function revealReader(root: HTMLElement | null, reduced: boolean) {
   if (!root) return
   const head = root.querySelector<HTMLElement>('[data-reader-head]')
@@ -91,15 +96,17 @@ export function revealReader(root: HTMLElement | null, reduced: boolean) {
       },
     })
   }
-  if (blocks.length) {
-    animate(blocks, {
+  const { animated, immediate } = readerEntranceBudget(blocks)
+  immediate.forEach(clearInlineMotion)
+  if (animated.length) {
+    animate(animated, {
       opacity: [0, 1],
       translateY: [14, 0],
       duration: 640,
       delay: stagger(60, { start: 140 }),
       ease: 'out(3)',
       onComplete: () => {
-        blocks.forEach((block) => {
+        animated.forEach((block) => {
           if (block.isConnected) clearInlineMotion(block)
         })
       },

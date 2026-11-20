@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, BookmarkCheck, ChevronRight, Clock3, Copy,
   Download, Film, Globe2, Home, Images, Laptop, LoaderCircle, LogOut, ScanText, Share2, Shield,
@@ -14,6 +14,7 @@ import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
 import { useStartupBlocker } from '../../hooks/useStartupReadiness'
 import { suppressBrowserLogs } from '../../lib/logger'
 import { InkVideoPlayer } from '../../components/InkVideoPlayer'
+import { VideoSessionManagerContext } from '../floatingVideo/context'
 import type { MediaResourceDescriptor } from '../mediaSniffer/types'
 import { ScriptManager } from './ScriptManager'
 import {
@@ -78,6 +79,7 @@ export function BrowserWorkspace({
   initialUrl?: string
 }) {
   const workspace = useBrowserDialogFocus<HTMLDivElement>()
+  const videoSessions = useContext(VideoSessionManagerContext)
   const viewport = useRef<HTMLDivElement>(null)
   const [panel, setPanel] = useState<Panel>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -136,6 +138,9 @@ export function BrowserWorkspace({
   }, [])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [playing, setPlaying] = useState<BrowserPlayback | null>(null)
+  // Keep the player composited behind the native WebView until the native
+  // visibility bridge acknowledges the handoff, avoiding a blank return frame.
+  const [revealingPage, setRevealingPage] = useState(false)
   const [playError, setPlayError] = useState('')
   const playbackSelection = useRef(0)
   const [history, setHistory] = useState(() => normalizeBrowserVisits(readBrowserList(BROWSER_KEYS.history)))
@@ -203,10 +208,12 @@ export function BrowserWorkspace({
     const next = saveBrowserVisit(historyRef.current, url, title)
     persist(BROWSER_KEYS.history, next, () => {historyRef.current = next; setHistory(next)})
   }, [persist])
-  const covered = Boolean(panel || searchOpen || placeAction || shortcutDraft || confirmation || playing)
+  const covered = Boolean(panel || searchOpen || placeAction || shortcutDraft || confirmation || (playing && !revealingPage))
   const session = useBrowserSession(viewport, covered, recordVisit, bottomAddress, recoverySession, {
     settings: preferences, initialUrl: initialAddress ?? undefined, agentSheetRef, agentSheetVisible: agentOpen && !agentMinimized && !covered,
     agentOperating: agentOpen && agentOperating,
+    animateReveal: revealingPage,
+    capturePreviewOnHide: panel === 'tabs',
   })
   useStartupBlocker(!session.initialSessionSettled)
   const current = session.state.url || ''
@@ -219,6 +226,33 @@ export function BrowserWorkspace({
   const clearPageFind = session.clearFind
   useEffect(() => {setFindOpen(false); clearPageFind()}, [current, session.state.tabId, clearPageFind])
   const active = /^https?:\/\//i.test(current)
+  const closePlaybackToPage = () => {
+    if (!playing || revealingPage) return
+    if (!active || !session.ready || session.state.error || session.state.retrying) {
+      setPlaying(null)
+      return
+    }
+    // The native page can resume audio as soon as it becomes visible; pause
+    // the React player before starting the cross-surface transition.
+    videoSessions?.pauseAll()
+    workspace.current?.querySelectorAll('video').forEach(video => video.pause())
+    setRevealingPage(true)
+  }
+  useEffect(() => {
+    if (!revealingPage) return
+    if (!playing || !active || !session.ready || session.state.error || session.state.retrying) {
+      setRevealingPage(false)
+      setPlaying(null)
+      return
+    }
+    if (!session.nativePageVisible) return
+    // The native View animates its alpha for 160ms after the setBounds ACK.
+    const timer = window.setTimeout(() => {
+      setPlaying(null)
+      setRevealingPage(false)
+    }, 190)
+    return () => window.clearTimeout(timer)
+  }, [revealingPage, playing, active, session.ready, session.nativePageVisible, session.state.error, session.state.retrying])
   const title = session.state.title && session.state.title !== '网页' ? session.state.title : browserHostLabel(current)
   // Scope follows the current recording mode. A private save never changes a public star.
   const marked = (privateBookmarks ? privateMarks : marks).some(item => item.url === current)
@@ -265,8 +299,9 @@ export function BrowserWorkspace({
     if (findOpen) closeFind()
     setPanel(null)
     setSearchOpen(false)
-    setPlaying(null)
-    if (session.ready) void session.command('home')
+    // Keep the existing player cover until the native page has navigated home.
+    if (session.ready) void session.command('home').finally(() => setPlaying(null))
+    else setPlaying(null)
   }
   const handleBack = () => {
     if (panel === 'images' && imageOverlayCloser.current?.()) return true
@@ -277,7 +312,7 @@ export function BrowserWorkspace({
     if (searchOpen) {setSearchOpen(false); return true}
     if (panel) {if (panel === 'images') session.invalidateImages(); setPanel(null); return true}
     if (findOpen) {closeFind(); return true}
-    if (playing) {setPlaying(null); return true}
+    if (playing) {closePlaybackToPage(); return true}
     if (agentOpen && !agentMinimized) {setAgentMinimized(true); return true}
     // The first navigation event can precede open's acknowledgement while scripts prepare.
     // Closing bypasses that pending operation, so Back always remains immediately effective.
@@ -614,7 +649,7 @@ export function BrowserWorkspace({
       </div>}
       {playing && <div className="absolute inset-0 z-20 flex flex-col bg-ink">
         <header className="flex min-h-14 items-center gap-2 border-b border-haze px-2">
-          <BrowserIconButton label="返回网页" onClick={() => setPlaying(null)}><ArrowLeft size={21}/></BrowserIconButton>
+          <BrowserIconButton label="返回网页" onClick={closePlaybackToPage}><ArrowLeft size={21}/></BrowserIconButton>
           <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold">网页视频</h2>
           <button type="button" onClick={() => setPanel('media')} className="min-h-11 px-3 text-[14px] text-paper-muted">切换资源</button>
         </header>
@@ -724,7 +759,7 @@ export function BrowserWorkspace({
       {currentResources.length ? <ul className="divide-y divide-haze">{currentResources.map(resource => <li key={resource.id || resource.url} className="flex items-center gap-3 py-4">
         <Film size={21} className="shrink-0 text-paper-muted"/>
         <MediaResourceSummary resource={resource}/>
-        <button type="button" aria-label={'播放 ' + browserResourceTitle(resource)} onClick={() => {setPlayError(''); setPlaying({resource, resources:currentResources, title, selection:++playbackSelection.current, tabId:session.state.tabId}); setPanel(null)}}
+        <button type="button" aria-label={'播放 ' + browserResourceTitle(resource)} onClick={() => {setPlayError(''); setRevealingPage(false); setPlaying({resource, resources:currentResources, title, selection:++playbackSelection.current, tabId:session.state.tabId}); setPanel(null)}}
           className="browser-media-play" title="播放"><Play size={20} strokeWidth={1.9} aria-hidden="true"/></button>
       </li>)}</ul> : <div className="flex min-h-40 flex-col items-center justify-center text-paper-muted"><Film size={30} strokeWidth={1.4}/><p className="mt-4 text-[14px]">暂未发现可播放资源</p></div>}
       {!!blockedResources.length && <details className="mt-3 border-t border-haze pt-3 text-[13px] text-paper-muted">

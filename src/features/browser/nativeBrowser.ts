@@ -47,7 +47,7 @@ interface NativeBrowser {
   tabs(args?: {includePreviews?: boolean}): Promise<{tabs: BrowserTab[]}>
   activateTab(args: {index: number}): Promise<void>
   removeTab(args: {index: number}): Promise<void>
-  setBounds(args: {top: number; bottom: number; occludedBottom: number; visible: boolean; agentOperating: boolean}): Promise<void>
+  setBounds(args: {top: number; bottom: number; occludedBottom: number; visible: boolean; agentOperating: boolean; animateReveal?: boolean; capturePreviewOnHide?: boolean}): Promise<void>
   updateScripts(args: {scripts: ReturnType<typeof loadUserScripts>}): Promise<void>
   updateSettings(args: {settings: BrowserPreferences}): Promise<void>
   updatePalette(args: {palette: Record<string, string>}): Promise<void>

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type MutableRefObject } from 'react'
+import { useCallback, useContext, useEffect, useRef, useState, type MutableRefObject } from 'react'
 import { X } from 'lucide-react'
 import { fetchAbsoluteText } from '../lib/http'
 import { catalogRequestOptions } from '../features/siteCatalog/requestIdentity'
@@ -15,7 +15,7 @@ import { discoverMediaDescriptor, enrichMediaDescriptorFromObservations } from '
 import { appendReaderObservation, mergeReaderDescriptors } from '../features/mediaSniffer/readerCandidates'
 import type { MediaDescriptor, MediaObservation } from '../features/mediaSniffer/types'
 import { InkVideoPlayer, type InkVideoPlayerFullscreenHandle } from './InkVideoPlayer'
-import { useHasGlobalVideoSurface } from '../features/floatingVideo/context'
+import { useHasGlobalVideoSurface, VideoSessionManagerContext } from '../features/floatingVideo/context'
 
 type Mode = 'origin' | 'custom'
 
@@ -110,6 +110,7 @@ export function OriginPlayerSurface({
   embedded = false,
 }: Props) {
   const globalVideoSurface = useHasGlobalVideoSurface()
+  const videoSessions = useContext(VideoSessionManagerContext)
   const [mode, setMode] = useState<Mode>('origin')
   const [candidate, setCandidate] = useState<MediaDescriptor | null>(null)
   // Live ranking feeds the resource picker; playback stays on the chosen snapshot.
@@ -131,6 +132,42 @@ export function OriginPlayerSurface({
   const manualOriginRef = useRef(false)
   const surfaceIntentRef = useRef<'automatic' | 'assisted' | 'custom'>('automatic')
   const discoveryAbortRef = useRef<AbortController | null>(null)
+  const restoringOriginRef = useRef(false)
+
+  // The native origin WebView sits above React. Restore and crossfade it before
+  // unmounting the custom player, not the other way around.
+  const backToOrigin = useCallback(() => {
+    if (restoringOriginRef.current) return
+    restoringOriginRef.current = true
+    manualOriginRef.current = true
+    surfaceIntentRef.current = 'assisted'
+    discoveryAbortRef.current?.abort()
+    const version = {}
+    handoffVersionRef.current = version
+    preparingRef.current = false
+    const sessionId = sessionIdRef.current
+    videoSessions?.pauseAll()
+    slotRef.current?.querySelectorAll('video').forEach((video) => video.pause())
+    lastBoundsKeyRef.current = ''
+    if (slotRef.current && sessionReadyRef.current) {
+      pushLiveSessionBounds(slotRef.current, lastBoundsKeyRef, true, sessionId)
+    }
+    void (async () => {
+      if (sessionId) {
+        await setNativeLiveSessionVisible(true, sessionId)
+        if (version !== handoffVersionRef.current || sessionId !== sessionIdRef.current) return
+        await setNativeLiveSessionInteractive(true, sessionId, true)
+        if (version !== handoffVersionRef.current || sessionId !== sessionIdRef.current) return
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 190))
+      }
+      if (version !== handoffVersionRef.current || sessionId !== sessionIdRef.current) return
+      setAssistMode(true)
+      setActiveCandidate(null)
+      setMode('origin')
+    })().finally(() => {
+      if (version === handoffVersionRef.current) restoringOriginRef.current = false
+    })
+  }, [videoSessions])
 
   useEffect(() => {
     if (!closeHandleRef) return
@@ -142,30 +179,14 @@ export function OriginPlayerSurface({
           return true
         }
         if (mode !== 'custom') return false
-        manualOriginRef.current = true
-        surfaceIntentRef.current = 'assisted'
-        discoveryAbortRef.current?.abort()
-        handoffVersionRef.current = {}
-        preparingRef.current = false
-        setActiveCandidate(null)
-        setMode('origin')
-        if (sessionIdRef.current) {
-          void setNativeLiveSessionVisible(true, sessionIdRef.current)
-          void setNativeLiveSessionInteractive(true, sessionIdRef.current)
-        }
-        setAssistMode(true)
-        lastBoundsKeyRef.current = ''
-        const el = slotRef.current
-        if (el && sessionReadyRef.current) {
-          pushLiveSessionBounds(el, lastBoundsKeyRef, true, sessionIdRef.current)
-        }
+        backToOrigin()
         return true
       },
     }
     return () => {
       closeHandleRef.current = null
     }
-  }, [closeHandleRef, mode])
+  }, [backToOrigin, closeHandleRef, mode])
 
   useEffect(() => {
     let stopped = false
@@ -177,6 +198,7 @@ export function OriginPlayerSurface({
     surfaceIntentRef.current = 'automatic'
     handoffVersionRef.current = {}
     preparingRef.current = false
+    restoringOriginRef.current = false
     setActiveCandidate(null)
     setCandidate(null)
     setSessionError(null)
@@ -201,8 +223,12 @@ export function OriginPlayerSurface({
         if (stopped) return
         discoveryAbortRef.current?.abort()
         observationsRef.current = []
-        handoffVersionRef.current = {}
-        preparingRef.current = false
+        // A live-document reload while restoring the origin must not cancel the
+        // in-flight native-visible ACK and strand the custom player on screen.
+        if (!restoringOriginRef.current) {
+          handoffVersionRef.current = {}
+          preparingRef.current = false
+        }
         // Native about:blank restoration is navigation, not renewed user consent.
         setCandidate(null)
       },
@@ -402,26 +428,6 @@ export function OriginPlayerSurface({
     autoSwitchedRef.current = true
     void openCustom()
   }, [autoUseReader, candidate, mode, nativeReady, openCustom])
-
-  const backToOrigin = () => {
-    manualOriginRef.current = true
-    surfaceIntentRef.current = 'assisted'
-    handoffVersionRef.current = {}
-    preparingRef.current = false
-    setActiveCandidate(null)
-    setMode('origin')
-    if (sessionIdRef.current) {
-      void setNativeLiveSessionVisible(true, sessionIdRef.current)
-      void setNativeLiveSessionInteractive(true, sessionIdRef.current)
-    }
-    discoveryAbortRef.current?.abort()
-    setAssistMode(true)
-    lastBoundsKeyRef.current = ''
-    const el = slotRef.current
-    if (el && sessionReadyRef.current) {
-      pushLiveSessionBounds(el, lastBoundsKeyRef, true, sessionIdRef.current)
-    }
-  }
 
   return (
     <div className={embedded ? 'w-full' : 'mt-5 page-x lg:px-8'}>

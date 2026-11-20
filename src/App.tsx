@@ -43,7 +43,7 @@ import { recoverAppScrollAfterNavigation } from './lib/gestureStyles'
 import { dismissTopHardwareBackLayer } from './lib/hardwareBackStack'
 import { useLaterArticles } from './hooks/useLaterArticles'
 import { log } from './lib/logger'
-import { scheduleIdleWork } from './lib/idleWork'
+import { scheduleAfterPaint, scheduleIdleWork } from './lib/idleWork'
 import { startCatalogMaintenance } from './features/rssCatalog/maintenance'
 import {
   buildReadingProfile,
@@ -1087,11 +1087,16 @@ export default function App() {
   customSourcesRef.current = prefs.customSources
 
   const openArticle = useCallback((article: Article) => {
-    markWatchArticleRead(article)
+    // React can show the reader on this tap without first parsing watch state
+    // and serializing up to 500 reading-history entries on the JS main thread.
     setReaderReturnArticle(null)
     setReading(article)
-    setReadIds((prev) => new Set(prev).add(article.id))
-    setReadingHistory(recordArticleRead(article, findSource(article.sourceId, customSourcesRef.current)?.kind === 'web-catalog' ? 'cms' : 'feed'))
+    setReadIds((prev) => prev.has(article.id) ? prev : new Set(prev).add(article.id))
+    const historyOrigin = findSource(article.sourceId, customSourcesRef.current)?.kind === 'web-catalog' ? 'cms' : 'feed'
+    scheduleAfterPaint(() => {
+      markWatchArticleRead(article)
+      setReadingHistory(recordArticleRead(article, historyOrigin))
+    })
   }, [])
 
   /**

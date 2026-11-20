@@ -60,7 +60,7 @@ let nativeGeneration = 0
 let nextTabId = 1
 let exits = 0
 let fixture = 0
-type Bounds = { top: number; bottom: number; visible: boolean }
+type Bounds = { top: number; bottom: number; visible: boolean; animateReveal?: boolean; capturePreviewOnHide?: boolean }
 type OpenCall = Bounds & { url: string; embedded: boolean; recoverySession?: BrowserRecoverySession; scripts: unknown[]; palette: Record<string, string> }
 const openCalls: OpenCall[] = []
 const bounds: Bounds[] = []
@@ -590,9 +590,29 @@ try {
   await click(button('播放 movie', select('[role="dialog"][aria-label="媒体资源"]')))
   assert.ok(select('[data-test-player]'), 'the address-bar entry leads to the existing playback pipeline')
   assert.equal(addressMediaCount(), '0', 'dedicated playback does not keep showing a redundant discovery affordance')
+  const revealGate = deferred()
+  boundsGate = revealGate
   await click(button('返回网页'))
+  assert.ok(select('[data-test-player]'), 'return keeps the player mounted until the native page acknowledges visibility')
+  assert.equal(bounds.at(-1)?.visible, true, 'return first requests the original webpage to be visible')
+  assert.equal(bounds.at(-1)?.animateReveal, true, 'the native compositor crossfades over the player')
+  assert.equal(addressMediaCount(), '0', 'the player stays on screen while the bridge is pending')
+  await act(async () => {
+    boundsGate = null
+    revealGate.resolve()
+    await Promise.resolve()
+  })
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 215)) })
+  assert.equal(Boolean(document.querySelector('[data-test-player]')), false, 'the player unmounts only after the native handoff settles')
   assert.equal(addressMediaCount(), '1', 'the count remains discoverable after playback')
+  assert.equal(bounds.at(-1)?.capturePreviewOnHide, false, 'player handoff does not perform a JPEG snapshot')
   await click(button('标签页'))
+  assert.equal(bounds.at(-1)?.capturePreviewOnHide, true, 'only the tab switcher captures a live thumbnail')
+  const thumbnail = 'data:image/jpeg;base64,dGVzdA=='
+  await act(async () => listeners.get('tabPreviewReady')?.({tabId: mediaTab, url: 'https://wrong.example/', preview: thumbnail}))
+  assert.equal(Boolean(document.querySelector('.browser-tab-preview-img')), false, 'a stale thumbnail cannot overwrite a new document')
+  await act(async () => listeners.get('tabPreviewReady')?.({tabId: mediaTab, url: current.url, preview: thumbnail}))
+  assert.equal(select('.browser-tab-preview-img').getAttribute('src'), thumbnail, 'native worker completion updates the visible tab preview without remounting the panel')
   await click(button('新建标签页'))
   assert.equal(addressMediaCount(), '0', 'a blank tab never inherits another tab\'s media')
   await visit('https://other.example/another-film')

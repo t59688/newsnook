@@ -95,6 +95,20 @@ export function usePullToRefresh({
     let frame = 0
     let settleTimer = 0
     let disposed = false
+    let blockingTouchMoveAttached = false
+    // Native scrolling must not wait on JS touchmove when the user starts
+    // inside the list or moves up. Arm the blocking listener only for a
+    // gesture that can actually become pull-to-refresh at the top.
+    const detachBlockingTouchMove = () => {
+      if (!blockingTouchMoveAttached) return
+      element.removeEventListener('touchmove', onTouchMove)
+      blockingTouchMoveAttached = false
+    }
+    const attachBlockingTouchMove = () => {
+      if (blockingTouchMoveAttached) return
+      element.addEventListener('touchmove', onTouchMove, { passive: false })
+      blockingTouchMoveAttached = true
+    }
 
     const clearTimer = () => {
       if (settleTimer) window.clearTimeout(settleTimer)
@@ -288,38 +302,49 @@ export function usePullToRefresh({
     }
 
     cancelRef.current = () => {
+      detachBlockingTouchMove()
       if (phaseRef.current !== 'refreshing') settle()
     }
 
     triggerRef.current = () => {
       if (phaseRef.current === 'refreshing' || disposed) return
+      detachBlockingTouchMove()
       element.scrollTop = 0
       void runRefreshing()
     }
 
     const onTouchStart = (event: TouchEvent) => {
+      detachBlockingTouchMove()
       if (event.touches.length !== 1) {
         if (gesture) settle(true)
         return
       }
       const touch = event.touches[0]
       begin(touch.clientX, touch.clientY, event.target)
+      if (gesture) attachBlockingTouchMove()
     }
     const onTouchMove = (event: TouchEvent) => {
       if (event.touches.length !== 1 || !event.cancelable) {
         // Once the browser owns scrolling we cannot take it back, even after a reversal.
         if (gesture) settle(true)
+        detachBlockingTouchMove()
         return
       }
       const touch = event.touches[0]
       move(touch.clientX, touch.clientY, () => {
         if (event.cancelable) event.preventDefault()
       })
+      if (!gesture) detachBlockingTouchMove()
     }
     const onTouchEnd = (event: TouchEvent) => {
-      if (event.touches.length === 0 && gesture) void finish()
+      if (event.touches.length !== 0) return
+      detachBlockingTouchMove()
+      if (gesture) void finish()
     }
-    const onTouchCancel = () => settle()
+    const onTouchCancel = () => {
+      detachBlockingTouchMove()
+      settle()
+    }
 
     const onPointerDown = (event: PointerEvent) => {
       if (event.pointerType === 'touch' || !event.isPrimary) return
@@ -342,6 +367,7 @@ export function usePullToRefresh({
     }
 
     const resetInterruptedGesture = () => {
+      detachBlockingTouchMove()
       if (phaseRef.current === 'refreshing') {
         clearGesture()
         return
@@ -353,7 +379,6 @@ export function usePullToRefresh({
     }
 
     element.addEventListener('touchstart', onTouchStart, { passive: true })
-    element.addEventListener('touchmove', onTouchMove, { passive: false })
     element.addEventListener('touchend', onTouchEnd)
     element.addEventListener('touchcancel', onTouchCancel)
     element.addEventListener('pointerdown', onPointerDown)
@@ -367,7 +392,7 @@ export function usePullToRefresh({
     return () => {
       disposed = true
       element.removeEventListener('touchstart', onTouchStart)
-      element.removeEventListener('touchmove', onTouchMove)
+      detachBlockingTouchMove()
       element.removeEventListener('touchend', onTouchEnd)
       element.removeEventListener('touchcancel', onTouchCancel)
       element.removeEventListener('pointerdown', onPointerDown)

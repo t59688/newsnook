@@ -33,6 +33,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.PixelCopy;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -76,6 +77,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -387,6 +390,12 @@ public class BrowserHostPlugin extends Plugin {
     private final List<java.util.function.Consumer<String>> agentDrainFailure = new ArrayList<>();
     private boolean agentTabTransition;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // WebView.draw must run on Android UI, but JPEG encode and Base64 must not.
+    private final ExecutorService previewEncoder = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "NewsNookPreviewEncoder");
+        thread.setDaemon(true);
+        return thread;
+    });
     private Tab fullscreenTab;
     private View customFullscreen;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -1069,6 +1078,8 @@ public class BrowserHostPlugin extends Plugin {
         float bottom = call.getFloat("bottom", 0f);
         boolean visible = Boolean.TRUE.equals(call.getBoolean("visible", true));
         boolean agentOperating = Boolean.TRUE.equals(call.getBoolean("agentOperating", false));
+        boolean animateReveal = Boolean.TRUE.equals(call.getBoolean("animateReveal", false));
+        boolean capturePreviewOnHide = Boolean.TRUE.equals(call.getBoolean("capturePreviewOnHide", false));
         float occludedBottom = call.getFloat("occludedBottom", 0f);
         onUi(call, () -> {
             if (!embeddedMode || pageFrame == null) { call.resolve(); return; }
@@ -1081,14 +1092,32 @@ public class BrowserHostPlugin extends Plugin {
             // 拖拽面板期间会高频更新可视区域。仅在显隐真正改变时切换 WebView 生命周期，
             // 否则每帧 onResume()/onPause() 都会干扰渲染与视频播放。
             if (embeddedVisible != visible) {
-                if (!visible && current != null && current.webView != null) {
+                // Only the explicit tab switcher requests a fresh live thumbnail.
+                // Ordinary menus, player overlays and search must not draw and
+                // JPEG-encode the whole WebView on Android's input/UI thread.
+                if (!visible && capturePreviewOnHide && current != null && current.webView != null) {
                     captureTabPreview(current);
                 }
                 embeddedVisible = visible;
                 if (current != null && current.agent != null) current.agent.invalidateVisual();
                 if (!visible) pauseAgentForHuman("hidden");
-                pageFrame.setVisibility(visible ? View.VISIBLE : View.GONE);
-                syncTabActivity();
+                pageFrame.animate().cancel();
+                if (visible && animateReveal) {
+                    // Crossfade the native page over the still-mounted React player.
+                    pageFrame.setAlpha(0f);
+                    pageFrame.setVisibility(View.VISIBLE);
+                    syncTabActivity();
+                    final View revealedFrame = pageFrame;
+                    revealedFrame.postOnAnimation(() -> {
+                        if (embeddedMode && embeddedVisible && pageFrame == revealedFrame) {
+                            revealedFrame.animate().alpha(1f).setDuration(160L).start();
+                        }
+                    });
+                } else {
+                    pageFrame.setAlpha(1f);
+                    pageFrame.setVisibility(visible ? View.VISIBLE : View.GONE);
+                    syncTabActivity();
+                }
             }
             // Occlusion changes only the clipped overlay. The shot still requires identical
             // visible bounds at dispatch, while real View layout/scroll events retire it.
@@ -2480,6 +2509,10 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void animatePaperFlyIntoTabBadge(Tab source, String targetUrl) {
+        if (tabs.size() >= MAX_TABS) {
+            createTab(targetUrl, null, false, source == null ? -1 : source.id);
+            return;
+        }
         if (source == null || source.webView == null || closing || destroyed || getActivity() == null) {
             createTab(targetUrl, null, false, source == null ? -1 : source.id);
             return;
@@ -2502,20 +2535,19 @@ public class BrowserHostPlugin extends Plugin {
         final int startX = viewLoc[0] - rootLoc[0];
         final int startY = viewLoc[1] - rootLoc[1];
 
-        Bitmap snapshot = null;
+        // PixelCopy uses the existing Window surface and never calls WebView.draw
+        // on Android's input thread. Allocate only a flyer-sized destination;
+        // the screenshot is delivered asynchronously while the tab is opening.
+        Bitmap shot = null;
         try {
-            float snapScale = Math.min(1f, 720f / w);
-            int bw = Math.max(1, Math.round(w * snapScale));
-            int bh = Math.max(1, Math.round(h * snapScale));
-            snapshot = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(snapshot);
-            canvas.scale(snapScale, snapScale);
-            view.draw(canvas);
-        } catch (Throwable ignored) {
-            snapshot = null;
-        }
-
-        final Bitmap finalSnapshot = snapshot;
+            float scale = Math.min(1f, 720f / w);
+            shot = Bitmap.createBitmap(Math.max(1, Math.round(w * scale)),
+                Math.max(1, Math.round(h * scale)), Bitmap.Config.ARGB_8888);
+        } catch (Throwable ignored) { }
+        final Bitmap flyerBitmap = shot;
+        final boolean[] flyerFinished = {false};
+        final boolean[] shotCompleted = {false};
+        final boolean[] shotDisplayed = {false};
         final FrameLayout flyerCard = new FrameLayout(getActivity());
         flyerCard.setElevation(dp(22));
         flyerCard.setBackgroundColor(surface);
@@ -2528,12 +2560,9 @@ public class BrowserHostPlugin extends Plugin {
             flyerCard.setClipToOutline(true);
         }
 
-        if (finalSnapshot != null) {
-            ImageView iv = new ImageView(getActivity());
-            iv.setScaleType(ImageView.ScaleType.FIT_XY);
-            iv.setImageBitmap(finalSnapshot);
-            flyerCard.addView(iv, new FrameLayout.LayoutParams(-1, -1));
-        }
+        final ImageView flyerImage = new ImageView(getActivity());
+        flyerImage.setScaleType(ImageView.ScaleType.FIT_XY);
+        flyerCard.addView(flyerImage, new FrameLayout.LayoutParams(-1, -1));
 
         View borderOverlay = new View(getActivity());
         GradientDrawable borderBg = new GradientDrawable();
@@ -2546,7 +2575,8 @@ public class BrowserHostPlugin extends Plugin {
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(w, h);
         params.leftMargin = startX;
         params.topMargin = startY;
-        rootContainer.addView(flyerCard, params);
+        // Keep the native page unobstructed until PixelCopy has sampled it.
+        // The completed flyer will be attached when its asynchronous copy finishes.
 
         int rootWidth = rootContainer.getWidth() > 0 ? rootContainer.getWidth() : getContext().getResources().getDisplayMetrics().widthPixels;
         int rootHeight = rootContainer.getHeight() > 0 ? rootContainer.getHeight() : getContext().getResources().getDisplayMetrics().heightPixels;
@@ -2601,8 +2631,11 @@ public class BrowserHostPlugin extends Plugin {
                 if (finished) return;
                 finished = true;
                 try { rootContainer.removeView(flyerCard); } catch (Throwable ignored) {}
-                if (finalSnapshot != null && !finalSnapshot.isRecycled()) {
-                    try { finalSnapshot.recycle(); } catch (Throwable ignored) {}
+                flyerFinished[0] = true;
+                // If PixelCopy is still running, its callback owns recycling.
+                if (shotCompleted[0] && shotDisplayed[0] && flyerBitmap != null && !flyerBitmap.isRecycled()) {
+                    flyerImage.setImageDrawable(null);
+                    flyerBitmap.recycle();
                 }
             }
 
@@ -2610,21 +2643,54 @@ public class BrowserHostPlugin extends Plugin {
                 if (finished) return;
                 cleanUp();
                 try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); } catch (Throwable ignored) {}
-                if (!closing && tabs.contains(source)) {
-                    createTab(targetUrl, null, false, source.id);
-                }
             }
 
             @Override public void onAnimationCancel(Animator animation) {
                 if (finished) return;
                 cleanUp();
-                if (!closing && tabs.contains(source)) {
-                    createTab(targetUrl, null, false, source.id);
-                }
             }
         });
 
-        animator.start();
+        final boolean[] started = {false};
+        final Runnable startFlyer = () -> {
+            if (started[0]) return;
+            started[0] = true;
+            if (closing || destroyed || source.webView != view || !tabs.contains(source)
+                    || rootContainer.getParent() == null) {
+                flyerFinished[0] = true;
+                if (shotCompleted[0] && flyerBitmap != null && !flyerBitmap.isRecycled()) flyerBitmap.recycle();
+                return;
+            }
+            rootContainer.addView(flyerCard, params);
+            animator.start();
+        };
+        // Create the background tab immediately. Previously this operation was
+        // delayed until the 400 ms decorative flight had finished.
+        createTab(targetUrl, null, false, source.id);
+        if (flyerBitmap == null) {
+            startFlyer.run();
+            return;
+        }
+        try {
+            PixelCopy.request(getActivity().getWindow(),
+                new Rect(viewLoc[0], viewLoc[1], viewLoc[0] + w, viewLoc[1] + h),
+                flyerBitmap, result -> {
+                    shotCompleted[0] = true;
+                    if (result == PixelCopy.SUCCESS && !flyerFinished[0]) {
+                        flyerImage.setImageBitmap(flyerBitmap);
+                        shotDisplayed[0] = true;
+                    } else if (!flyerBitmap.isRecycled()) {
+                        flyerBitmap.recycle();
+                    }
+                    startFlyer.run();
+                }, mainHandler);
+            // A stalled copy may not stall tab feedback or decorative motion.
+            mainHandler.postDelayed(startFlyer, 120);
+        } catch (Throwable ignored) {
+            shotCompleted[0] = true;
+            if (!flyerBitmap.isRecycled()) flyerBitmap.recycle();
+            startFlyer.run();
+        }
     }
 
     private void finishPreparedNavigation(Tab tab, WebView view, int version, String warning) {
@@ -2782,46 +2848,56 @@ public class BrowserHostPlugin extends Plugin {
         sendNavigation(tab.url, "state");
     }
 
+    /** Encode thumbnails off the Android input/UI thread; deliver once ready. */
+    private void encodeTabPreviewAsync(Tab tab, Bitmap thumbnail) {
+        if (thumbnail == null || thumbnail.isRecycled()) return;
+        final String capturedUrl = tab.url;
+        try {
+            previewEncoder.execute(() -> {
+                try {
+                    ByteArrayOutputStream stream = new ByteArrayOutputStream();
+                    if (!thumbnail.compress(Bitmap.CompressFormat.JPEG, 65, stream)) return;
+                    final String preview = "data:image/jpeg;base64,"
+                        + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
+                    mainHandler.post(() -> {
+                        if (closing || destroyed || !tabs.contains(tab)) return;
+                        if (capturedUrl == null ? tab.url != null : !capturedUrl.equals(tab.url)) return;
+                        tab.preview = preview;
+                        notifyListeners("tabPreviewReady", new JSObject()
+                            .put("tabId", tab.id).put("url", tab.url == null ? "" : tab.url)
+                            .put("preview", preview));
+                    });
+                } catch (Throwable ignored) {
+                } finally {
+                    if (!thumbnail.isRecycled()) thumbnail.recycle();
+                }
+            });
+        } catch (RuntimeException ignored) {
+            if (!thumbnail.isRecycled()) thumbnail.recycle();
+        }
+    }
+
     private void captureTabPreview(Tab tab) {
         if (tab == null || tab.webView == null || closing || destroyed) return;
         final WebView view = tab.webView;
         int width = view.getWidth(), height = view.getHeight();
         if (width <= 0 || height <= 0) return;
         float scale = Math.min(1f, 360f / width);
-        int targetWidth = Math.max(1, Math.round(width * scale));
-        int targetHeight = Math.max(1, Math.round(height * scale));
         Bitmap bitmap = null;
         try {
-            bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.RGB_565);
+            bitmap = Bitmap.createBitmap(Math.max(1, Math.round(width * scale)),
+                Math.max(1, Math.round(height * scale)), Bitmap.Config.RGB_565);
             Canvas canvas = new Canvas(bitmap);
             canvas.drawColor(surface);
             canvas.scale(scale, scale);
             view.draw(canvas);
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 65, stream);
-            tab.preview = "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
+            Bitmap ready = bitmap;
+            bitmap = null;
+            encodeTabPreviewAsync(tab, ready);
         } catch (Throwable ignored) {
         } finally {
             if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         }
-    }
-
-    private void saveTabPreviewFromBitmap(Tab tab, Bitmap source) {
-        if (tab == null || source == null || source.isRecycled()) return;
-        try {
-            int w = source.getWidth(), h = source.getHeight();
-            if (w <= 0 || h <= 0) return;
-            float scale = Math.min(1f, 360f / w);
-            int targetW = Math.max(1, Math.round(w * scale));
-            int targetH = Math.max(1, Math.round(h * scale));
-            Bitmap thumbnail = Bitmap.createScaledBitmap(source, targetW, targetH, true);
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            thumbnail.compress(Bitmap.CompressFormat.JPEG, 65, stream);
-            tab.preview = "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
-            if (thumbnail != source && !thumbnail.isRecycled()) {
-                thumbnail.recycle();
-            }
-        } catch (Throwable ignored) {}
     }
 
     private void selectTab(Tab tab) {
@@ -2854,58 +2930,48 @@ public class BrowserHostPlugin extends Plugin {
                 && tab.webView != null && pageFrame.getWidth() > 0 && pageFrame.getHeight() > 0
                 && (!embeddedMode || embeddedVisible) && !activityPaused && !closing;
 
+        // Cancel and normalize any unfinished transition before reusing a tab.
+        // Repeated quick taps must not leave WebView alpha/translation behind.
+        for (int index = 0; index < pageFrame.getChildCount(); index++) {
+            View child = pageFrame.getChildAt(index);
+            child.animate().cancel();
+            child.setTranslationX(0f);
+            child.setAlpha(1f);
+        }
+
         if (canAnimate) {
-            Bitmap previousSnapshot = null;
-            try {
-                int w = pageFrame.getWidth();
-                int h = pageFrame.getHeight();
-                previousSnapshot = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
-                Canvas canvas = new Canvas(previousSnapshot);
-                canvas.drawColor(surface);
-                previous.webView.draw(canvas);
-                saveTabPreviewFromBitmap(previous, previousSnapshot);
-            } catch (Throwable ignored) {
-                previousSnapshot = null;
-            }
-
-            if (previousSnapshot != null) {
-                final Bitmap bmpToRecycle = previousSnapshot;
-                final ImageView snapshotView = new ImageView(getActivity());
-                snapshotView.setImageBitmap(previousSnapshot);
-                snapshotView.setScaleType(ImageView.ScaleType.FIT_XY);
-
-                pageFrame.removeAllViews();
-                pageFrame.addView(snapshotView, new FrameLayout.LayoutParams(-1, -1));
-
-                if (tab.webView.getParent() != null) {
-                    ((ViewGroup) tab.webView.getParent()).removeView(tab.webView);
-                }
-                final int width = pageFrame.getWidth();
-                tab.webView.setTranslationX(width * 0.35f);
-                tab.webView.setAlpha(0f);
-                pageFrame.addView(tab.webView, new FrameLayout.LayoutParams(-1, -1));
-
-                tab.webView.animate()
-                    .translationX(0f)
-                    .alpha(1f)
-                    .setDuration(220)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
-                    .withEndAction(() -> {
-                        if (pageFrame != null) pageFrame.removeView(snapshotView);
-                        if (bmpToRecycle != null && !bmpToRecycle.isRecycled()) bmpToRecycle.recycle();
-                    })
-                    .start();
-
-                snapshotView.animate()
-                    .translationX(-width * 0.15f)
-                    .alpha(0.6f)
-                    .setDuration(220)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
-                    .start();
-
-                layoutBackgroundAgent();
-                return;
-            }
+            // The previous code synchronously WebView.draw()'d the entire page
+            // into an RGB_565 bitmap on Android's UI thread before animating.
+            // Animate the already-rendered native WebViews instead: same visual
+            // motion, no full-screen allocation, screenshot, or JPEG work.
+            final WebView outgoing = previous.webView;
+            final WebView incoming = tab.webView;
+            final FrameLayout frame = pageFrame;
+            final int width = frame.getWidth();
+            ViewGroup oldParent = (ViewGroup) outgoing.getParent();
+            if (oldParent != null) oldParent.removeView(outgoing);
+            ViewGroup newParent = (ViewGroup) incoming.getParent();
+            if (newParent != null) newParent.removeView(incoming);
+            frame.removeAllViews();
+            frame.addView(outgoing, new FrameLayout.LayoutParams(-1, -1));
+            incoming.setTranslationX(width * 0.35f);
+            incoming.setAlpha(0f);
+            frame.addView(incoming, new FrameLayout.LayoutParams(-1, -1));
+            android.view.animation.DecelerateInterpolator easing =
+                new android.view.animation.DecelerateInterpolator(1.4f);
+            incoming.animate().translationX(0f).alpha(1f)
+                .setDuration(220).setInterpolator(easing)
+                .withEndAction(() -> {
+                    if (pageFrame == frame && current == tab && outgoing.getParent() == frame) {
+                        frame.removeView(outgoing);
+                    }
+                    outgoing.setTranslationX(0f);
+                    outgoing.setAlpha(1f);
+                }).start();
+            outgoing.animate().translationX(-width * 0.15f).alpha(0.6f)
+                .setDuration(220).setInterpolator(easing).start();
+            layoutBackgroundAgent();
+            return;
         }
 
         pageFrame.removeAllViews();
@@ -3372,6 +3438,7 @@ public class BrowserHostPlugin extends Plugin {
 
     @Override protected void handleOnDestroy() {
         destroyed = true;
+        previewEncoder.shutdown();
         if (agentChooserLauncher != null) { agentChooserLauncher.unregister(); agentChooserLauncher = null; }
         if (Looper.myLooper() == Looper.getMainLooper()) closeNative();
         else mainHandler.post(this::closeNative);

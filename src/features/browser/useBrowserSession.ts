@@ -45,7 +45,7 @@ export function useBrowserSession(
   onVisit: (url: string, title: string) => void,
   bottomAddress: boolean,
   recoverySession?: BrowserRecoverySession,
-  options: {settings?: BrowserPreferences; initialUrl?: string; transientSearch?: boolean; agentSheetRef?: RefObject<HTMLElement | null>; agentSheetVisible?: boolean; agentOperating?: boolean} = {},
+  options: {settings?: BrowserPreferences; initialUrl?: string; transientSearch?: boolean; agentSheetRef?: RefObject<HTMLElement | null>; agentSheetVisible?: boolean; agentOperating?: boolean; animateReveal?: boolean; capturePreviewOnHide?: boolean} = {},
 ) {
   const initialEntry: InitialBrowserEntry = options.initialUrl && /^https?:\/\//i.test(options.initialUrl) ? options.initialUrl
     : recoverySession && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).privateMode && !(options.settings ?? DEFAULT_BROWSER_PREFERENCES).incognitoMode ? recoverySession : null
@@ -53,6 +53,7 @@ export function useBrowserSession(
   const [tabs, setTabs] = useState<BrowserTab[]>([])
   const [mediaTabs, setMediaTabs] = useState<ReadonlyMap<number, BrowserMediaTab>>(() => new Map())
   const [ready, setReady] = useState(false)
+  const [nativePageVisible, setNativePageVisible] = useState(false)
   const [settledInitialEntry, setSettledInitialEntry] = useState<InitialBrowserEntry>(null)
   const initialSessionSettled = initialEntry === null || settledInitialEntry === initialEntry
   const [pending, setPending] = useState(false)
@@ -201,6 +202,14 @@ export function useBrowserSession(
         }
         if (opened.current) void refresh().catch(() => undefined)
       })
+      listen('tabPreviewReady', (event: {tabId?: number; url?: string; preview?: string}) => {
+        if (!event.preview || !event.url || event.tabId == null) return
+        // The JPEG is compressed on a native worker after the tab switcher has
+        // already opened. Apply only to the same tab/document; never replace a
+        // newer page's preview with an earlier capture.
+        setTabs(previous => previous.map(tab => tab.id === event.tabId && tab.url === event.url
+          ? {...tab, preview: event.preview} : tab))
+      })
       listen('mediaEvent', (event: BrowserMediaEvent) => setMediaTabs(previous => reduceBrowserMedia(previous, event)))
       listen('findResult', (event: BrowserFindResult) => {
         if (event.tabId === stateRef.current.tabId) setFindResult(event)
@@ -241,11 +250,15 @@ export function useBrowserSession(
 
   const visible = ready && /^https?:\/\//i.test(state.url || '') && !state.error && !state.retrying && !covered
   useLayoutEffect(() => {
-    if (!ready) return
+    if (!ready) {
+      setNativePageVisible(false)
+      return
+    }
+    if (!visible) setNativePageVisible(false)
     const generation = epoch.current
-    type Bounds = {top: number; bottom: number; occludedBottom: number; visible: boolean; agentOperating: boolean}
+    type Bounds = {top: number; bottom: number; occludedBottom: number; visible: boolean; agentOperating: boolean; animateReveal: boolean; capturePreviewOnHide: boolean}
     const equal = (a: Bounds | null, b: Bounds) =>
-      a?.top === b.top && a.bottom === b.bottom && a.occludedBottom === b.occludedBottom && a.visible === b.visible && a.agentOperating === b.agentOperating
+      a?.top === b.top && a.bottom === b.bottom && a.occludedBottom === b.occludedBottom && a.visible === b.visible && a.agentOperating === b.agentOperating && a.animateReveal === b.animateReveal && a.capturePreviewOnHide === b.capturePreviewOnHide
     let stopped = false
     let sending = false
     let frame: number | null = null
@@ -266,6 +279,7 @@ export function useBrowserSession(
       void nativeBrowser.setBounds(next).then(() => {
         if (!stopped && live.current && generation === epoch.current && (!desired || equal(next, desired))) {
           initialSession.current.visible = next.visible
+          setNativePageVisible(next.visible)
           checkInitialSession()
         }
       }).catch(failure => {
@@ -282,7 +296,7 @@ export function useBrowserSession(
     const sync = () => {
       if (stopped) return
       const bounds = getBounds()
-      desired = {top: Math.round(bounds.top), bottom: Math.round(bounds.bottom), occludedBottom: Math.round(bounds.occludedBottom), visible, agentOperating: Boolean(options.agentOperating)}
+      desired = {top: Math.round(bounds.top), bottom: Math.round(bounds.bottom), occludedBottom: Math.round(bounds.occludedBottom), visible, agentOperating: Boolean(options.agentOperating), animateReveal: Boolean(options.animateReveal), capturePreviewOnHide: Boolean(options.capturePreviewOnHide)}
       flush()
     }
     const schedule = () => {
@@ -309,7 +323,7 @@ export function useBrowserSession(
       window.visualViewport?.removeEventListener('resize', schedule)
       observer?.disconnect()
     }
-  }, [ready, visible, initialEntry, getBounds, viewport, bottomAddress, options.agentSheetVisible, options.agentSheetRef, options.agentOperating, checkInitialSession, settleInitialSession])
+  }, [ready, visible, initialEntry, getBounds, viewport, bottomAddress, options.agentSheetVisible, options.agentSheetRef, options.agentOperating, options.animateReveal, options.capturePreviewOnHide, checkInitialSession, settleInitialSession])
 
   const enqueue = useCallback((operation: () => Promise<void>, throwOnError = false, entry?: InitialBrowserEntry): Promise<boolean> => {
     const generation = epoch.current
@@ -477,7 +491,7 @@ export function useBrowserSession(
 
   const refreshTabs = useCallback(() => refresh(true), [refresh])
 
-  return {state, tabs, mediaTabs, ready, initialSessionSettled, pending, error, setError, open, command, activate, remove, updateScripts, updateSettings, updatePalette, clearSiteData,
+  return {state, tabs, mediaTabs, ready, nativePageVisible, initialSessionSettled, pending, error, setError, open, command, activate, remove, updateScripts, updateSettings, updatePalette, clearSiteData,
     images, scanningImages, imageError, scanImages, loadImage, cancelImageRequests, invalidateImages, findResult, findInPage, findNext, clearFind, close,
     refreshTabs}
 }
