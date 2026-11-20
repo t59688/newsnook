@@ -48,6 +48,8 @@ interface NativeBrowser {
   activateTab(args: {index: number}): Promise<void>
   removeTab(args: {index: number}): Promise<void>
   setBounds(args: {top: number; bottom: number; occludedBottom: number; visible: boolean; agentOperating: boolean; animateReveal?: boolean; capturePreviewOnHide?: boolean}): Promise<void>
+  /** Expose the app-owned floating video through the native browser WebView. CSS z-index cannot cross native view layers. */
+  setFloatingVideoBounds(args: {visible: boolean; left?: number; top?: number; width?: number; height?: number}): Promise<void>
   updateScripts(args: {scripts: ReturnType<typeof loadUserScripts>}): Promise<void>
   updateSettings(args: {settings: BrowserPreferences}): Promise<void>
   updatePalette(args: {palette: Record<string, string>}): Promise<void>

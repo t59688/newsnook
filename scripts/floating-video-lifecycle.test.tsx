@@ -36,6 +36,7 @@ let entryGate: Promise<void> | undefined
 let exitGate: Promise<void> | undefined
 const fullCalls: boolean[] = []
 const suppressionCalls: boolean[] = []
+const floatingNativeBounds: Array<{visible: boolean; left?: number; top?: number; width?: number; height?: number}> = []
 const orientationCalls: string[] = []
 Object.assign(Capacitor, { isNativePlatform: () => native, getPlatform: () => native ? 'android' : 'web', isPluginAvailable: () => native })
 const controlsMock = {
@@ -50,6 +51,12 @@ const mediaMock = {
   async setLiveSurfaceSuppressed({ suppressed }: { suppressed: boolean }) { suppressionCalls.push(suppressed) },
 }
 registerPlugin('MediaSniffer', { android: () => mediaMock, web: () => mediaMock })
+const browserMock = {
+  async setFloatingVideoBounds(bounds: {visible: boolean; left?: number; top?: number; width?: number; height?: number}) {
+    floatingNativeBounds.push(bounds)
+  },
+}
+registerPlugin('NewsNookBrowser', { android: () => browserMock, web: () => browserMock })
 const appMock = { async addListener() { return { async remove() {} } } }
 registerPlugin('App', { android: () => appMock, web: () => appMock })
 const { InkVideoPlayer } = await import('../src/components/InkVideoPlayer')
@@ -235,6 +242,22 @@ try {
   await render(true)
   await click('悬浮播放')
   assert.equal(suppressionCalls.at(-1), true, 'global video must suppress the native origin surface')
+  const nativeFloat = document.querySelector<HTMLElement>('[data-floating-video-window]')!
+  nativeFloat.getBoundingClientRect = () => {
+    const left = Number.parseFloat(nativeFloat.style.left), top = Number.parseFloat(nativeFloat.style.top)
+    const width = Number.parseFloat(nativeFloat.style.width), height = Number.parseFloat(nativeFloat.style.height)
+    return {left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() { return this }}
+  }
+  const nativeDrag = nativeFloat.querySelector<HTMLElement>('[aria-label="移动悬浮窗口"]')!
+  await act(async () => {
+    const key = new window.Event('keydown', {bubbles: true})
+    Object.assign(key, {key:'ArrowLeft'})
+    nativeDrag.dispatchEvent(key)
+    await new Promise(resolve => setTimeout(resolve, 12))
+  })
+  assert.equal(floatingNativeBounds.at(-1)?.visible, true, 'native browser receives the moving player cutout')
+  assert.equal(floatingNativeBounds.at(-1)?.left, Number.parseFloat(nativeFloat.style.left), 'cutout follows frame position')
+  assert.equal(floatingNativeBounds.at(-1)?.width, Number.parseFloat(nativeFloat.style.width), 'cutout uses player dimensions')
   await act(async () => { video().dispatchEvent(new window.Event('loadedmetadata')); video().dispatchEvent(new window.Event('canplay')) })
   entryGate = new Promise<void>(resolve => { releaseEntry = resolve })
   // Do not await the blocked native transition: close while entry is in flight.
@@ -245,6 +268,7 @@ try {
   assert.equal(document.querySelector('video'), null)
   assert.equal(fullCalls.at(-1), false, 'late native entry must be undone after close')
   assert.equal(suppressionCalls.at(-1), false)
+  assert.equal(floatingNativeBounds.at(-1)?.visible, false, 'closing the float removes the native browser cutout')
   await render(false)
   await render(true)
   const rotations = orientationCalls.length
@@ -258,6 +282,8 @@ try {
   await render(true)
   await act(async () => { video().dispatchEvent(new window.Event('loadedmetadata')); video().dispatchEvent(new window.Event('canplay')) })
   await click('全屏')
+  assert.equal(floatingNativeBounds.at(-1)?.visible, true, 'full-screen Ink Player remains above native browser')
+  assert.equal(floatingNativeBounds.at(-1)?.width, window.innerWidth, 'native website cutout expands to the full screen during immersive playback')
   let releaseExit: (() => void) | undefined
   exitGate = new Promise<void>(resolve => { releaseExit = resolve })
   await render(false, '', true)

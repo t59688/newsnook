@@ -1,0 +1,20 @@
+import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+
+const native = readFileSync(new URL('../android/app/src/main/java/com/aizeek/newsnook/BrowserHostPlugin.java', import.meta.url), 'utf8')
+const browser = readFileSync(new URL('../src/features/browser/nativeBrowser.ts', import.meta.url), 'utf8')
+const frame = native.slice(native.indexOf('private static final class ClippedBrowserFrame'), native.indexOf('private SiteDataClear siteDataClear'))
+const bridge = native.slice(native.indexOf('@PluginMethod public void setFloatingVideoBounds'), native.indexOf('@PluginMethod public void setBounds'))
+const create = native.slice(native.indexOf('private void createEmbedded'), native.indexOf('private void createDialog'))
+assert.ok(frame.length > 500, 'the existing native browser frame owns the cutout')
+assert.match(frame, /canvas\.clipOutPath\(floatingVideoCutout\)/, 'the native website is clipped above the existing HTML mini-player')
+assert.match(frame, /floatingVideoCutout\.addRoundRect\(/, 'the overlay respects Ink Player rounded corners')
+assert.match(frame, /bounds\.contains\([\s\S]*?return false/, 'touch-down inside the float passes through to Capacitor WebView')
+assert.match(frame, /occludedBottomPx/, 'assistant sheet clipping remains intact')
+assert.match(frame, /invalidate\(\);/, 'moving the overlay invalidates drawing, not WebView layout')
+assert.doesNotMatch(frame.slice(frame.indexOf('void setFloatingVideoBounds'), frame.indexOf('@Override public void draw')), /requestLayout\(|setLayoutParams\(|setVisibility\(/, 'dragging never resizes or hides the native website')
+assert.match(bridge, /Float\.isFinite\(left\)/, 'invalid coordinates cannot damage the native view')
+assert.match(bridge, /floatingVideoBounds = next/, 'bounds survive a browser page being recreated')
+assert.match(create, /setFloatingVideoBounds\(floatingVideoBounds\)/, 'opening browser over an already-floating player restores the cutout')
+assert.match(browser, /setFloatingVideoBounds\(args:/, 'the React/native bridge exposes cutout updates')
+console.log('floating-video-native-overlay: native draw/touch hole, geometry lifecycle and browser recreation guard OK')

@@ -216,6 +216,9 @@ public class BrowserHostPlugin extends Plugin {
      */
     private static final class ClippedBrowserFrame extends FrameLayout {
         private int occludedBottomPx;
+        /** Bounds in android.R.id.content coordinates; follows the moving Ink Player. */
+        private Rect floatingVideoBounds;
+        private final Path floatingVideoCutout = new Path();
         private boolean agentOperating;
         private final Paint agentPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF agentBorder = new RectF();
@@ -287,10 +290,31 @@ public class BrowserHostPlugin extends Plugin {
             invalidate();
         }
 
+        void setFloatingVideoBounds(Rect bounds) {
+            if (floatingVideoBounds == bounds || floatingVideoBounds != null && floatingVideoBounds.equals(bounds)) return;
+            floatingVideoBounds = bounds == null ? null : new Rect(bounds);
+            // Do not resize or pause the website. Its viewport, scroll state and
+            // video decoding continue unchanged beneath the app-owned player.
+            invalidate();
+        }
+
         @Override public void draw(Canvas canvas) {
             int visibleHeight = Math.max(0, getHeight() - occludedBottomPx);
             int save = canvas.save();
             canvas.clipRect(0, 0, getWidth(), visibleHeight);
+            if (floatingVideoBounds != null) {
+                // Native BrowserHostPlugin's WebView sits above the Capacitor UI:
+                // clip the exact rounded mini-window out of this native layer.
+                // CSS z-index cannot change the stacking order of two WebViews.
+                Rect area = floatingVideoBounds;
+                float left = area.left - getLeft(), top = area.top - getTop();
+                float right = area.right - getLeft(), bottom = area.bottom - getTop();
+                floatingVideoCutout.reset();
+                float radius = 13f * getResources().getDisplayMetrics().density;
+                floatingVideoCutout.addRoundRect(left, top, right, bottom,
+                    radius, radius, Path.Direction.CW);
+                canvas.clipOutPath(floatingVideoCutout);
+            }
             super.draw(canvas);
             if (occludedBottomPx > 0 && visibleHeight > 0) {
                 // HTML shadows sit UNDER this native WebView, so paint the sheet's
@@ -321,10 +345,15 @@ public class BrowserHostPlugin extends Plugin {
         }
 
         @Override public boolean dispatchTouchEvent(MotionEvent event) {
-            // Let the Capacitor HTML layer underneath handle dragging and clicking
-            // inside the assistant sheet. Native web content remains interactive above.
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN
-                    && event.getY() >= Math.max(0, getHeight() - occludedBottomPx)) return false;
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                // A touch begun in Ink Player must be dispatched to the lower
+                // Capacitor WebView, including its drag and pinch gestures.
+                Rect bounds = floatingVideoBounds;
+                if (bounds != null && bounds.contains(
+                    Math.round(event.getX()) + getLeft(), Math.round(event.getY()) + getTop())) return false;
+                // Existing agent sheet keeps its own pass-through behavior.
+                if (event.getY() >= Math.max(0, getHeight() - occludedBottomPx)) return false;
+            }
             return super.dispatchTouchEvent(event);
         }
     }
@@ -336,6 +365,8 @@ public class BrowserHostPlugin extends Plugin {
     /** Disposable session profile, shared only by tabs within the current session. */
     private String temporaryProfileName;
     private FrameLayout pageFrame;
+    /** The mini-player can predate the browser and must survive native tab recreation. */
+    private Rect floatingVideoBounds;
     private LinearLayout root;
     private EditText address;
     private TextView titleView;
@@ -1073,6 +1104,24 @@ public class BrowserHostPlugin extends Plugin {
             .put("layoutPending", view != null && (view.isLayoutRequested() || pageFrame != null && pageFrame.isLayoutRequested()));
     }
 
+    @PluginMethod public void setFloatingVideoBounds(PluginCall call) {
+        boolean visible = Boolean.TRUE.equals(call.getBoolean("visible", false));
+        float left = call.getFloat("left", 0f), top = call.getFloat("top", 0f);
+        float width = call.getFloat("width", 0f), height = call.getFloat("height", 0f);
+        if (visible && (!Float.isFinite(left) || !Float.isFinite(top)
+                || !Float.isFinite(width) || !Float.isFinite(height) || width <= 0 || height <= 0)) {
+            call.reject("Invalid floating video bounds");
+            return;
+        }
+        onUi(call, () -> {
+            Rect next = visible ? new Rect(dp(left), dp(top), dp(left + width), dp(top + height)) : null;
+            floatingVideoBounds = next;
+            if (pageFrame instanceof ClippedBrowserFrame)
+                ((ClippedBrowserFrame) pageFrame).setFloatingVideoBounds(next);
+            call.resolve();
+        });
+    }
+
     @PluginMethod public void setBounds(PluginCall call) {
         float top = call.getFloat("top", 0f);
         float bottom = call.getFloat("bottom", 0f);
@@ -1729,6 +1778,7 @@ public class BrowserHostPlugin extends Plugin {
         pageFrame.setBackgroundColor(Color.WHITE);
         pageFrame.setVisibility(embeddedVisible ? View.VISIBLE : View.GONE);
         embeddedRoot().addView(pageFrame, new FrameLayout.LayoutParams(-1, -1, Gravity.TOP));
+        ((ClippedBrowserFrame) pageFrame).setFloatingVideoBounds(floatingVideoBounds);
         setEmbeddedBounds(top, bottom);
     }
 

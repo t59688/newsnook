@@ -226,6 +226,22 @@ export function BrowserWorkspace({
   const clearPageFind = session.clearFind
   useEffect(() => {setFindOpen(false); clearPageFind()}, [current, session.state.tabId, clearPageFind])
   const active = /^https?:\/\//i.test(current)
+  // Ink Player can float without stopping playback. Let the website resume
+  // behind it; the native frame clips only the floating video's actual rect.
+  // A player originating elsewhere must not close this browser's playback UI.
+  useEffect(() => {
+    if (!playing || !videoSessions) return
+    const showWebsiteBehindFloat = () => {
+      const owner = workspace.current
+      if (owner && videoSessions.getSnapshot().some(item =>
+        item.mode === 'floating' && !item.immersive && item.props.overlayContainer === owner)) {
+        setRevealingPage(true)
+      }
+    }
+    const unsubscribe = videoSessions.subscribe(showWebsiteBehindFloat)
+    showWebsiteBehindFloat()
+    return unsubscribe
+  }, [playing, videoSessions, workspace])
   const closePlaybackToPage = () => {
     if (!playing || revealingPage) return
     if (!active || !session.ready || session.state.error || session.state.retrying) {

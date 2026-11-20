@@ -8,6 +8,8 @@ import { parseHTML } from 'linkedom'
 import type { BrowserRecoverySession, BrowserState, BrowserTab } from '../src/features/browser/useBrowserSession'
 import { installUserScript, saveUserScripts, type UserScript } from '../src/features/browser/scripts'
 import type { MediaResourceDescriptor } from '../src/features/mediaSniffer/types'
+import { VideoSessionManagerContext } from '../src/features/floatingVideo/context'
+import { createVideoSessionManager } from '../src/features/floatingVideo/session'
 
 // Node has no stylesheet loader. The dedicated launcher test exercises pending CSS;
 // this suite covers the real workspace controls and native session after styles load.
@@ -246,9 +248,12 @@ const { BrowserLauncher } = await import('../src/features/browser/BrowserLaunche
 const { openBrowserWithUrl } = await import('../src/features/browser/browserOpen')
 const { dismissTopHardwareBackLayer } = await import('../src/lib/hardwareBackStack')
 const root = createRoot(document.getElementById('root')!)
+const videoManager = createVideoSessionManager()
 function Harness({ recoverySession }: { recoverySession?: BrowserRecoverySession }) {
   const [open, setOpen] = useState(true)
-  return open ? <BrowserWorkspace recoverySession={recoverySession} onExit={() => { exits++; setOpen(false) }}/> : <div data-reader>有所闻</div>
+  return open ? <VideoSessionManagerContext.Provider value={videoManager}>
+    <BrowserWorkspace recoverySession={recoverySession} onExit={() => { exits++; setOpen(false) }}/>
+  </VideoSessionManagerContext.Provider> : <div data-reader>有所闻</div>
 }
 async function mount(preserveStorage = false, recoverySession?: BrowserRecoverySession, strict = false, privateMode = false) {
   await act(async () => root.render(null))
@@ -606,6 +611,20 @@ try {
   assert.equal(Boolean(document.querySelector('[data-test-player]')), false, 'the player unmounts only after the native handoff settles')
   assert.equal(addressMediaCount(), '1', 'the count remains discoverable after playback')
   assert.equal(bounds.at(-1)?.capturePreviewOnHide, false, 'player handoff does not perform a JPEG snapshot')
+  // Browser-owned Ink Player float is a persistent video session. The original
+  // webpage must reappear behind the floating session without pausing it.
+  await menu('媒体资源')
+  await click(button('播放 movie', select('[role="dialog"][aria-label="媒体资源"]')))
+  const browserOwner = select('[aria-label="NewsNook 网页浏览器"]') as HTMLElement
+  const testFloatId = 'browser-video-float-qa'
+  videoManager.register(testFloatId, {src:'https://cdn.example.com/movie.mp4', overlayContainer:browserOwner}, document.createElement('div'))
+  await act(async () => { videoManager.float(testFloatId); await Promise.resolve() })
+  assert.equal(bounds.at(-1)?.visible, true, 'browser page is revealed behind its own floating player')
+  assert.equal(bounds.at(-1)?.animateReveal, true, 'floating playback preserves native compositor handoff')
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 215)) })
+  assert.equal(Boolean(document.querySelector('[data-test-player]')), false, 'full-page player overlay releases after website appears')
+  assert.equal(videoManager.getSnapshot()[0]?.mode, 'floating', 'floating session survives browser handoff')
+  videoManager.close(testFloatId)
   await click(button('标签页'))
   assert.equal(bounds.at(-1)?.capturePreviewOnHide, true, 'only the tab switcher captures a live thumbnail')
   const thumbnail = 'data:image/jpeg;base64,dGVzdA=='
