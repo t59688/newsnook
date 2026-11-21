@@ -5,6 +5,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 
 import android.content.Intent;
+import android.content.pm.ApplicationInfo;
 import android.os.Build;
 import android.view.Display;
 import android.webkit.WebView;
@@ -34,6 +35,10 @@ public class DisplayRefreshPolicyInstrumentedTest {
             assertNotNull("Capacitor WebView exists", capacitor);
 
             instrumentation.runOnMainSync(() -> {
+                if (Build.VERSION.SDK_INT >= 26) {
+                    assertEquals("NewsNook must declare its non-game News category to OEM power policy",
+                            ApplicationInfo.CATEGORY_NEWS, activity.getApplicationInfo().category);
+                }
                 Display display = Build.VERSION.SDK_INT >= 30
                         ? activity.getDisplay() : activity.getWindowManager().getDefaultDisplay();
                 assertNotNull(display);
