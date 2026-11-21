@@ -193,6 +193,7 @@ public class ZhihuSessionPlugin extends Plugin {
         chrome.addView(divider, dividerParams);
 
         WebView webView = new WebView(getActivity());
+        DisplayRefreshPolicy.configureWebView(webView);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);

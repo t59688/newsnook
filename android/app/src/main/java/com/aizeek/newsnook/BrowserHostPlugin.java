@@ -1923,7 +1923,7 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private WebView createBrowserWebView(Tab tab) {
-        return new WebView(getActivity()) {
+        WebView webView = new WebView(getActivity()) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN && (tab.agentInput == null || !tab.agentInput.isDispatching())
                         && agentOwner.tabId() == tab.id) pauseAgentForHuman("user_key");
@@ -1946,6 +1946,8 @@ public class BrowserHostPlugin extends Plugin {
                 return connection;
             }
         };
+        DisplayRefreshPolicy.configureWebView(webView);
+        return webView;
     }
 
     private void initializeTab(Tab tab, boolean activate, WebView preparedView) {
@@ -3078,8 +3080,12 @@ public class BrowserHostPlugin extends Plugin {
     private void syncTabActivity() {
         if (current == null || current.webView == null) return;
         boolean active = !closing && (!activityPaused || agentBackgroundHeld && agentOwner.isRunning()) && (!embeddedMode || embeddedVisible);
-        if (active) current.webView.onResume();
-        else current.webView.onPause();
+        if (active) {
+            // A resumed native browser tab can return to the platform default
+            // vote after an Activity pause; restore its device-rate preference.
+            DisplayRefreshPolicy.configureWebView(current.webView);
+            current.webView.onResume();
+        } else current.webView.onPause();
         current.webView.getSettings().setOffscreenPreRaster(agentBackgroundHeld && agentOwner.isRunning());
         layoutBackgroundAgent();
         if (current.media != null) current.media.setActive(active && !activityPaused);

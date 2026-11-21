@@ -122,6 +122,7 @@ public class EncyclopediaPagePlugin extends Plugin {
                 script = output.toString(StandardCharsets.UTF_8.name());
             }
             WebView view = new WebView(getActivity());
+            DisplayRefreshPolicy.configureWebView(view);
             browser = view;
             WebSettings settings = view.getSettings();
             settings.setJavaScriptEnabled(true);
