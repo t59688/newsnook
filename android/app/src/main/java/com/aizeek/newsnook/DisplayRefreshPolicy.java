@@ -9,6 +9,7 @@ import android.view.Display;
 import android.view.Window;
 import android.view.WindowManager;
 import android.webkit.WebView;
+import java.util.Locale;
 
 /**
  * App-wide frame rate preference for both the Capacitor UI and native browser WebViews.
@@ -17,9 +18,15 @@ import android.webkit.WebView;
  * A HIGH category vote can still be mapped to only 90Hz on a 120Hz display,
  * so prefer the exact device-supported maximum instead of a category hint.
  *
- * Select only refresh modes at the display's current resolution. Never force a
- * resolution switch or change global/user settings. The display scheduler still
- * chooses the final rate (battery saver, thermal limits, panel capabilities).
+ * A window vote and a WebView vote complement each other on standard Android;
+ * a WebView-only vote does NOT reliably change SurfaceFlinger's render rate.
+ * HyperOS has a separate OEM per-app policy: setting preferredRefreshRate on
+ * Xiaomi-family devices can mark the app as controlling its own rate and leave
+ * the OEM policy at 60Hz. On those devices, delegate the Window mode to the
+ * OS instead of reinforcing its 60Hz classification.
+ *
+ * Never change global display settings. Battery and per-app display policy
+ * are ultimately controlled by the OS.
  */
 final class DisplayRefreshPolicy {
     private static final String TAG = "NewsNookRefresh";
@@ -43,23 +50,46 @@ final class DisplayRefreshPolicy {
         return highest > HIGH_REFRESH_THRESHOLD_HZ ? highest : 0f;
     }
 
+    static boolean useWindowPreference(String manufacturer, String brand) {
+        // Preserve the window vote on AOSP/Pixel and other standard devices:
+        // a 120Hz Android 37 emulator stays at 60Hz with WebView votes alone.
+        // HyperOS is known to impose its own max=60 vote when the app declares
+        // preferredRefreshRate, so omit the window vote on that OEM family.
+        return !isXiaomiFamily(manufacturer, brand);
+    }
+
+    private static boolean isXiaomiFamily(String manufacturer, String brand) {
+        String maker = manufacturer == null ? "" : manufacturer.toLowerCase(Locale.ROOT);
+        String name = brand == null ? "" : brand.toLowerCase(Locale.ROOT);
+        return maker.contains("xiaomi") || name.contains("xiaomi")
+                || name.contains("redmi") || name.contains("poco");
+    }
+
     static void configureWindow(Activity activity) {
+        configureWindow(activity, Build.MANUFACTURER, Build.BRAND);
+    }
+
+    // Package-private parameterized entrypoint permits a Xiaomi policy regression
+    // test on an AOSP emulator without spoofing any global device properties.
+    static void configureWindow(Activity activity, String manufacturer, String brand) {
         if (activity == null) return;
         Window window = activity.getWindow();
         if (window == null) return;
+        WindowManager.LayoutParams params = window.getAttributes();
+        if (!useWindowPreference(manufacturer, brand)) {
+            // Undo beta.8's window-level vote on Xiaomi/HyperOS (including
+            // after a retained Activity resumes). The OEM owns its mode.
+            if (params.preferredRefreshRate != 0f) {
+                params.preferredRefreshRate = 0f;
+                window.setAttributes(params);
+            }
+            return;
+        }
         Display display = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
                 ? activity.getDisplay() : activity.getWindowManager().getDefaultDisplay();
         float requested = preferredRate(display);
-        if (requested <= 0f) return;
-        WindowManager.LayoutParams params = window.getAttributes();
-        boolean hadPinnedDisplayMode = params.preferredDisplayModeId != 0;
-        if (hadPinnedDisplayMode) {
-            // Window preference is ignored while a mode ID is pinned.
-            // This application does not intentionally pin a display mode.
-            params.preferredDisplayModeId = 0;
-        }
-        if (!hadPinnedDisplayMode
-                && Math.abs(params.preferredRefreshRate - requested) < RATE_TOLERANCE_HZ) return;
+        if (requested <= 0f || params.preferredDisplayModeId != 0) return;
+        if (Math.abs(params.preferredRefreshRate - requested) < RATE_TOLERANCE_HZ) return;
         params.preferredRefreshRate = requested;
         window.setAttributes(params);
         if (BuildConfig.DEBUG) Log.i(TAG, "window preference=" + requested + "Hz");

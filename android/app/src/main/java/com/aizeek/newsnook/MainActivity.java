@@ -647,6 +647,10 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         // synthetic touch here; delayed soft kicks from scheduleCompositorWake cover lag.
         WebView webView = getCapacitorWebView();
         if (webView != null) {
+            // Focus can return after Android/HyperOS recreates the ViewRoot's
+            // surface. Reapply the per-View request after attachment, not only
+            // while constructing the Activity before its first window exists.
+            DisplayRefreshPolicy.configureWebView(webView);
             webView.resumeTimers();
             injectNativeInsets();
             if (webUiFirstFrameReady) wakeWebViewCompositor(webView, true);
