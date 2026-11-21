@@ -9,6 +9,44 @@
  * WebView 69 in layout-critical rules.
  */
 
+/* Editorial vector cover theme selection is a single static stylesheet.
+   Each SVG supplies unique gradient IDs and palette values as inline custom
+   properties; mounting cards must never install global CSS rules. */
+.editorial-scene-svg {
+  --ec-bg-grad: var(--ec-bg-dark);
+  --ec-accent: var(--ec-dark-accent);
+  --ec-accent-soft: var(--ec-dark-accent-soft);
+  --ec-line: var(--ec-dark-line);
+  --ec-line-subtle: var(--ec-dark-line-subtle);
+  --ec-text: var(--ec-dark-text);
+}
+:root[data-theme='light'] .editorial-scene-svg,
+[data-theme='light'] .editorial-scene-svg {
+  --ec-bg-grad: var(--ec-bg-light);
+  --ec-accent: var(--ec-light-accent);
+  --ec-accent-soft: var(--ec-light-accent-soft);
+  --ec-line: var(--ec-light-line);
+  --ec-line-subtle: var(--ec-light-line-subtle);
+  --ec-text: var(--ec-light-text);
+}
+[data-eink='1'] .editorial-scene-svg {
+  --ec-bg-grad: #ffffff;
+  --ec-accent: #000000;
+  --ec-accent-soft: #000000;
+  --ec-line: rgba(0, 0, 0, 0.45);
+  --ec-line-subtle: rgba(0, 0, 0, 0.15);
+  --ec-text: #000000;
+}
+[data-eink='1'] .editorial-cover-root {
+  background-color: #ffffff !important;
+  border-color: rgba(0,0,0,0.6) !important;
+}
+[data-eink='1'] .editorial-cover-tag,
+[data-eink='1'] .editorial-cover-watermark {
+  color: #000000 !important;
+  opacity: 0.9 !important;
+}
+
 /* Cover story — mobile: photograph and headline are separate surfaces.
    Unlike an image overlay, every headline stays readable on any photograph. */
 html .editorial-lead-mobile,

@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useState, type Ref } from 'react'
 import { BookmarkCheck, Cloud } from 'lucide-react'
 
 import { InkImage } from './InkImage'
@@ -10,6 +10,8 @@ import type { Article } from '../lib/types'
 import { articleRelativeTime } from '../lib/time'
 
 interface RowProps {
+  /** The legacy feed window observes the actual LI without adding layout wrappers. */
+  rootRef?: Ref<HTMLLIElement>
   article: Article
   read: boolean
   saved: boolean
@@ -32,6 +34,7 @@ interface RowProps {
 }
 
 export const ArticleRow = memo(function ArticleRow({
+  rootRef,
   article,
   read,
   saved,
@@ -89,6 +92,7 @@ export const ArticleRow = memo(function ArticleRow({
 
   return (
     <li
+      ref={rootRef}
       data-reveal={revealed ? undefined : true}
       data-read={read ? 'true' : 'false'}
       data-variant={variant}

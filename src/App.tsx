@@ -3,6 +3,7 @@ import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 
 import { AppShell } from './components/AppShell'
+import { ReaderEntranceShell } from './components/ReaderEntranceShell'
 import { StartupPending } from './components/StartupReadiness'
 import { useStartupBlocker, useStartupReady } from './hooks/useStartupReadiness'
 import { BrowserLauncher } from './features/browser/BrowserLauncher'
@@ -231,12 +232,14 @@ const LinuxDoWorkspace = lazy(() =>
 // Warm local page code after the first usable frame, one idle turn at a time.
 // Importing a screen does not mount it or start its data requests.
 const navigationScreens = [
-  FeedStoreScreen, MeScreen, AppearanceScreen, TypographyScreen,
+  // Reader is the first destination from the feed. Warm its module graph before
+  // settings screens so the first article tap never waits behind idle imports.
+  ReaderScreen, FeedStoreScreen, MeScreen, AppearanceScreen, TypographyScreen,
   CategorySettingsScreen, CustomSourcesScreen, LaterScreen, HistoryScreen,
   LocalSearchScreen, PresetListScreen, CategorySourcesScreen, CategoryEditScreen,
   CustomSchemeScreen, StorageScreen, TranslationScreen, ReadAloudScreen,
   AiSettingsScreen, ProxyScreen, AccountSyncScreen, AboutScreen,
-  ChangelogScreen, OpenSourceScreen, ChannelsScreen, SiteScreen, ReaderScreen,
+  ChangelogScreen, OpenSourceScreen, ChannelsScreen, SiteScreen,
 ]
 
 const DEFAULT_ENABLED = SOURCES.filter((source) => source.enabled).map((source) => source.id)
@@ -539,6 +542,10 @@ export default function App() {
     if (!sharedEntry?.payload) return null
     return articleFromSharePayload(sharedEntry.payload, prefs.customSources)
   })
+  const readingRef = useRef(reading)
+  readingRef.current = reading
+  const [readerShellOnly, setReaderShellOnly] = useState(false)
+  const readerEntranceSeq = useRef(0)
   const [deepLinkError, setDeepLinkError] = useState(sharedEntry?.payload === null)
 
   const [readAloudUiEnabled, setReadAloudUiEnabled] = useState(() => Boolean(reading))
@@ -747,6 +754,8 @@ export default function App() {
   }, [focusReturnRoute, setSettingsRoute])
 
   const closeReader = useCallback(() => {
+    readerEntranceSeq.current += 1
+    setReaderShellOnly(false)
     setReading(null)
     clearShareLocation()
     window.requestAnimationFrame(() => {
@@ -1090,10 +1099,28 @@ export default function App() {
     // React can show the reader on this tap without first parsing watch state
     // and serializing up to 500 reading-history entries on the JS main thread.
     setReaderReturnArticle(null)
+    const fromFeed = readingRef.current === null
+    const sequence = ++readerEntranceSeq.current
+    // The full ReaderScreen initializes media, translation and article hooks.
+    // Render the inexpensive title shell in the first click commit; mount those
+    // heavy hooks only after the browser has painted that immediate feedback.
+    setReaderShellOnly(fromFeed)
     setReading(article)
-    setReadIds((prev) => prev.has(article.id) ? prev : new Set(prev).add(article.id))
+    if (fromFeed) {
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          if (readerEntranceSeq.current === sequence) setReaderShellOnly(false)
+        }, 0)
+      })
+    }
+    // Marking an item as read changes every feed row's props and invalidates
+    // recommendation readiness. On Android 9 this used to share the same React
+    // commit as navigation through a 150+ item feed, delaying the reader shell.
+    // Keep history/read indicators accurate, but update them only after the
+    // requested reader surface has had a chance to paint.
     const historyOrigin = findSource(article.sourceId, customSourcesRef.current)?.kind === 'web-catalog' ? 'cms' : 'feed'
     scheduleAfterPaint(() => {
+      setReadIds((prev) => prev.has(article.id) ? prev : new Set(prev).add(article.id))
       markWatchArticleRead(article)
       setReadingHistory(recordArticleRead(article, historyOrigin))
     })
@@ -2282,24 +2309,14 @@ export default function App() {
         <CurrentEasterEgg onClose={() => setEggOpen(false)} />
       </EasterEggShell>
 
-      {reading && (
-        <Suspense
-          fallback={
-            <StartupPending pending={!browserOpen}><div
-              role="status"
-              aria-label="正在打开文章"
-              className="absolute inset-0 z-30 flex items-center justify-center bg-ink"
-              style={{ paddingTop: 'var(--sat)' }}
-            >
-              {/* 分享深链落地时明示状态，避免看起来像闪了一下首页 */}
-              {sharedEntry?.payload ? (
-                <span className="font-mono text-[12px] tracking-[0.12em] text-paper-muted">
-                  正在打开分享的文章…
-                </span>
-              ) : null}
-            </div></StartupPending>
-          }
-        >
+      {reading && (readerShellOnly ? (
+        <ReaderEntranceShell article={reading} onBack={closeReader} />
+      ) : (
+        <Suspense fallback={
+          <StartupPending pending={!browserOpen}>
+            <ReaderEntranceShell article={reading} onBack={closeReader} shared={Boolean(sharedEntry?.payload)} />
+          </StartupPending>
+        }>
           <ReaderScreen
             article={reading}
             startupVisible={!browserOpen}
@@ -2340,7 +2357,7 @@ export default function App() {
             onOpenRelated={openArticle}
           />
         </Suspense>
-      )}
+      ))}
 
       {showOpenInAppBanner && openInAppUrl && (
         <OpenInAppBanner href={openInAppUrl} onDismiss={() => setOpenInAppDismissed(true)} />

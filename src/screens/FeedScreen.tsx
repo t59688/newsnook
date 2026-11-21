@@ -3,6 +3,7 @@ import { ChevronLeft, Loader2, RotateCw, Search, X } from 'lucide-react'
 import { WatchInboxButton } from '../features/sourceWatch/WatchInboxButton'
 
 import { ArticleRow, LeadStory } from '../components/ArticleItem'
+import { ViewportArticleRow } from '../components/ViewportArticleRow'
 import { BrandLogo } from '../components/BrandLogo'
 import { CategoryRail, type CategoryRailGestureHandle } from '../components/CategoryRail'
 import { FeedLayoutSwitcher } from '../components/FeedLayoutSwitcher'
@@ -699,7 +700,7 @@ export const FeedScreen = memo(function FeedScreen({
             /* 手机双列卡片：保留双列高密度，首条变为跨列编辑特写以建立阅读节奏。 */
             <ul className="editorial-mobile-card-grid grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
               {rest.map((article) => (
-                <ArticleRow
+                <ViewportArticleRow
                   key={article.id}
                   article={article}
                   read={readIds.has(article.id)}
@@ -723,7 +724,7 @@ export const FeedScreen = memo(function FeedScreen({
                 </div>
                 <ul className="editorial-feed-rows divide-y divide-haze/35">
                   {items.map((article) => (
-                    <ArticleRow
+                    <ViewportArticleRow
                       key={article.id}
                       article={article}
                       read={readIds.has(article.id)}
