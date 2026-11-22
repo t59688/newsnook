@@ -638,6 +638,10 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) return;
 
+        // Reassert the Window vote after a focus/surface transition, not only
+        // during onResume: an OEM may reset this preference on reattachment.
+        DisplayRefreshPolicy.configureWindow(this);
+
         // 重新获焦时若仍处视频全屏，系统栏隐藏状态可能已被复位，补一次隐藏
         if (videoFullscreenActive) {
             scheduleFullscreenReassert();

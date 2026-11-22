@@ -44,22 +44,8 @@ public class DisplayRefreshPolicyInstrumentedTest {
                 assertNotNull(display);
                 float supported = DisplayRefreshPolicy.preferredRate(display);
                 float windowRate = activity.getWindow().getAttributes().preferredRefreshRate;
-                boolean allowWindowVote = DisplayRefreshPolicy.useWindowPreference(Build.MANUFACTURER, Build.BRAND);
-                if (allowWindowVote && supported > 0f) {
-                    assertEquals("Standard Android must retain its window + WebView vote",
-                            supported, windowRate, 0.2f);
-                } else {
-                    assertEquals("Xiaomi and 60Hz-only displays retain system-managed modes",
-                            0f, windowRate, 0.2f);
-                }
-                assertTrue("Android 15+ standard Android must keep its window vote",
-                        DisplayRefreshPolicy.useWindowPreference("Google", "Pixel"));
-                assertTrue("Xiaomi must never emit a Window preference",
-                        !DisplayRefreshPolicy.useWindowPreference("Xiaomi", "Xiaomi"));
-                assertTrue("Redmi and Poco follow the same OEM policy",
-                        !DisplayRefreshPolicy.useWindowPreference("Xiaomi", "POCO"));
-                assertTrue("Older non-Xiaomi Android retains compatibility",
-                        DisplayRefreshPolicy.useWindowPreference("Google", "Pixel"));
+                assertEquals("All devices must retain a window vote when a higher mode exists",
+                        supported, windowRate, 0.2f);
 
                 if (Build.VERSION.SDK_INT >= 35 && supported > 0f) {
                     // The first vote must work for a WebView that still reports
@@ -80,14 +66,10 @@ public class DisplayRefreshPolicyInstrumentedTest {
                     browser.destroy();
                 }
 
-                // Exercise the actual Window policy (not only its predicate)
-                // on the same 120Hz AOSP device: a Xiaomi vote must clear an
-                // existing beta.8 preference, then standard Android restores it.
-                DisplayRefreshPolicy.configureWindow(activity, "Xiaomi", "Xiaomi");
-                assertEquals("OEM policy must remove the offending window vote",
-                        0f, activity.getWindow().getAttributes().preferredRefreshRate, 0.2f);
-                DisplayRefreshPolicy.configureWindow(activity, "Google", "Pixel");
-                assertEquals("AOSP must retain the high-rate window preference",
+                // Reassertion is idempotent across focus/configuration transitions.
+                // A previous OEM-specific exclusion incorrectly cleared this vote.
+                DisplayRefreshPolicy.configureWindow(activity);
+                assertEquals("Reapplication must retain the high-rate window preference",
                         supported, activity.getWindow().getAttributes().preferredRefreshRate, 0.2f);
                 assertTrue("The policy must not pin a display mode ID",
                         activity.getWindow().getAttributes().preferredDisplayModeId == 0);

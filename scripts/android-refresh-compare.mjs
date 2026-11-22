@@ -47,7 +47,12 @@ const displayMetrics = (source, tag) => {
     || source.split('\n').find(s => s.includes('DisplayDeviceInfo{')) || ''
   const ratePattern = /(?:renderFrameRate|mActiveRenderFrameRate)\s*[=:]\s*([\d.]+)/i
   const rate = builtIn.match(ratePattern)?.[1] || source.match(ratePattern)?.[1] || 'not exposed'
-  const physicalMode = builtIn.match(/\bmodeId\s+\d+.*?\bfps=([\d.]+)/)?.[1] || 'not exposed'
+  // The first supported mode is not necessarily the active one. Xiaomi and
+  // Android 15+ commonly list 60Hz before 120Hz even when modeId selects 120.
+  const activeModeId = builtIn.match(/\bmodeId\s+(\d+)/)?.[1]
+  const supportedModes = builtIn.match(/\bsupportedModes\s*\[([^\]]+)\]/)?.[1] || ''
+  const modes = [...supportedModes.matchAll(/\{id=(\d+)\b[^}]*\bfps=([\d.]+)/g)]
+  const physicalMode = modes.find(mode => mode[1] === activeModeId)?.[2] || 'not exposed'
   const voteLines = source.split('\n').filter((s,i,a) =>
     /PRIORITY_MIUI_REFRESH_RATE|mIgnorePreferredRefreshRate|SWITCHING_TYPE_NONE|mActiveRenderFrameRate/.test(s)
     || (i>0 && /PRIORITY_MIUI_REFRESH_RATE/.test(a[i-1]) && /max|60|120/i.test(s)))
