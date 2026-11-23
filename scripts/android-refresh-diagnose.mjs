@@ -11,6 +11,7 @@
 import { spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { readDisplayMetrics } from './android-refresh-metrics.mjs'
 
 function adbBinary() {
   const filename = process.platform === 'win32' ? 'adb.exe' : 'adb'
@@ -62,48 +63,34 @@ const display = shell('dumpsys', 'display')
 const powerSave = shell('settings', 'get', 'global', 'low_power')
 const miuiRate = shell('settings', 'get', 'secure', 'miui_refresh_rate')
 const peakRate = shell('settings', 'get', 'system', 'peak_refresh_rate')
-const focus = shell('dumpsys', 'window').match(/mCurrentFocus=([^\n]+)/)?.[1]?.trim() || 'unknown'
 const activity = shell('dumpsys', 'activity', 'activities')
-const resumed = activity.match(/(?:topResumedActivity|mResumedActivity):?\s*([^\n]+)/)?.[1] || ''
-const newsNookForeground = /com\.aizeek\.newsnook(?:\.debug)?/.test(focus + ' ' + resumed)
-const displayInfo = display.split('\n').find(line => line.includes('DisplayDeviceInfo{') && line.includes('Built-in')) || ''
-const number = (text, pattern) => {
-  const match = text.match(pattern)
-  return match ? Number(match[1]) : null
-}
-const currentRenderRate = number(displayInfo, /renderFrameRate\s*[=:]?\s*([0-9.]+)/)
-  ?? number(display, /mActiveRenderFrameRate\s*[=:]?\s*([0-9.]+)/)
-const modes = [...displayInfo.matchAll(/\bfps=([0-9.]+)/g)].map(match => Number(match[1]))
-const supportedRates = displayInfo.match(/supportedRefreshRates\s*\[([^\]]+)\]/)?.[1]
-  ?.split(',').map(s => Number(s.trim())).filter(Number.isFinite) || []
-const maximum = Math.max(0, ...supportedRates, ...modes)
-const vendorVotes = display.split('\n')
-  .filter(line => /PRIORITY_MIUI_REFRESH_RATE|mIgnorePreferredRefreshRate|SWITCHING_TYPE_NONE|mActiveRenderFrameRate/.test(line))
-  .map(line => line.trim()).slice(0, 16)
+const foreground = activity.match(/^\s*(?:topResumedActivity|mResumedActivity)[:=]\s*[^\n]*?\s([\w.]+)\//m)?.[1]
+const newsNookForeground = foreground === 'com.aizeek.newsnook' || foreground === 'com.aizeek.newsnook.debug'
+const { renderRate, physicalRate, maximumRate, miuiMaxRate, votes } = readDisplayMetrics(display)
 
 console.log('NewsNook refresh-rate diagnostics (read-only)')
 console.log('Manufacturer / brand:', maker + ' / ' + brand)
 console.log('Android version / SDK:', androidVersion + ' / ' + buildSdk)
 console.log('Foreground:', newsNookForeground ? 'NewsNook' : 'Other app or unknown')
-console.log('System render frame rate:', currentRenderRate == null ? 'not exposed' : currentRenderRate + ' Hz')
-console.log('Maximum supported display rate:', maximum || 'not exposed')
+console.log('System render frame rate:', renderRate == null ? 'not exposed' : renderRate + ' Hz')
+console.log('Physical display refresh rate:', physicalRate == null ? 'not exposed' : physicalRate + ' Hz')
+console.log('Maximum supported display rate:', maximumRate || 'not exposed')
 console.log('System peak_refresh_rate:', peakRate)
 console.log('HyperOS miui_refresh_rate:', miuiRate)
 console.log('Power saver (1=enabled):', powerSave)
-if (vendorVotes.length) {
-  console.log('Display scheduler votes:')
-  for (const line of vendorVotes) console.log('  ' + line.slice(0, 360))
+if (votes.length) {
+  console.log('Current display scheduler votes:')
+  for (const line of votes) console.log('  ' + line.slice(0, 360))
 }
 if (!newsNookForeground) console.log('TIP: Open NewsNook and keep it in the foreground before sampling.')
 if (!newsNookForeground) {
   console.log('RESULT: No NewsNook-specific conclusion: a different app is currently foreground.')
-} else if (maximum > 60.5 && currentRenderRate !== null && currentRenderRate <= 60.5) {
-  console.log('RESULT: The system is currently scheduling at ~60Hz despite a higher supported mode.')
-  const vote = vendorVotes.find(line => /PRIORITY_MIUI_REFRESH_RATE/.test(line) && /max(?:RefreshRate)?[=:]?\s*60(?:\.0)?\b/i.test(line))
-  if (vote) console.log('CAUSE: A HyperOS PRIORITY_MIUI_REFRESH_RATE vote explicitly caps this display at 60Hz.')
-  else console.log('NEXT: Check OEM app-specific refresh policy and compare this output while Chrome is foreground.')
-} else if (currentRenderRate > 60.5) {
+} else if (miuiMaxRate != null && renderRate != null && renderRate <= miuiMaxRate + 0.5 && miuiMaxRate < maximumRate - 0.5) {
+  console.log('RESULT: The active HyperOS vote limits the render-rate range to ' + miuiMaxRate + ' Hz.')
+} else if (maximumRate > 60.5 && renderRate !== null && renderRate <= 60.5) {
+  console.log('RESULT: The system is currently scheduling at ~60 Hz despite a higher supported mode.')
+} else if (renderRate > 60.5) {
   console.log('RESULT: The display is rendering above 60Hz. If scrolling is still ~60fps, inspect WebView rAF/compositor pacing.')
 } else {
-  console.log('RESULT: No high-rate display mode detected. Check system display settings and source diagnostics.')
+  console.log('RESULT: A high-rate display mode could not be confirmed from this sample.')
 }

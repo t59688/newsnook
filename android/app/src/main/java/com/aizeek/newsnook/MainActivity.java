@@ -638,10 +638,6 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         super.onWindowFocusChanged(hasFocus);
         if (!hasFocus) return;
 
-        // Reassert the Window vote after a focus/surface transition, not only
-        // during onResume: an OEM may reset this preference on reattachment.
-        DisplayRefreshPolicy.configureWindow(this);
-
         // 重新获焦时若仍处视频全屏，系统栏隐藏状态可能已被复位，补一次隐藏
         if (videoFullscreenActive) {
             scheduleFullscreenReassert();
@@ -651,10 +647,6 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         // synthetic touch here; delayed soft kicks from scheduleCompositorWake cover lag.
         WebView webView = getCapacitorWebView();
         if (webView != null) {
-            // Focus can return after Android/HyperOS recreates the ViewRoot's
-            // surface. Reapply the per-View request after attachment, not only
-            // while constructing the Activity before its first window exists.
-            DisplayRefreshPolicy.configureWebView(webView);
             webView.resumeTimers();
             injectNativeInsets();
             if (webUiFirstFrameReady) wakeWebViewCompositor(webView, true);

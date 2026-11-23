@@ -9,6 +9,7 @@
 import { spawn, spawnSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
+import { readDisplayMetrics } from './android-refresh-metrics.mjs'
 
 const sdkDirs = [process.env.ANDROID_SDK_ROOT, process.env.ANDROID_HOME,
   process.env.LOCALAPPDATA && join(process.env.LOCALAPPDATA, 'Android', 'Sdk'),
@@ -42,25 +43,10 @@ const packageInfo = pkg => {
     debug: /\b(?:pkgFlags|flags)=\[[^\]]*\bDEBUGGABLE\b/.test(data),
   }
 }
-const displayMetrics = (source, tag) => {
-  const builtIn = source.split('\n').find(s => s.includes('DisplayDeviceInfo{') && (s.includes('Built-in') || s.includes('内置')))
-    || source.split('\n').find(s => s.includes('DisplayDeviceInfo{')) || ''
-  const ratePattern = /(?:renderFrameRate|mActiveRenderFrameRate)\s*[=:]\s*([\d.]+)/i
-  const rate = builtIn.match(ratePattern)?.[1] || source.match(ratePattern)?.[1] || 'not exposed'
-  // The first supported mode is not necessarily the active one. Xiaomi and
-  // Android 15+ commonly list 60Hz before 120Hz even when modeId selects 120.
-  const activeModeId = builtIn.match(/\bmodeId\s+(\d+)/)?.[1]
-  const supportedModes = builtIn.match(/\bsupportedModes\s*\[([^\]]+)\]/)?.[1] || ''
-  const modes = [...supportedModes.matchAll(/\{id=(\d+)\b[^}]*\bfps=([\d.]+)/g)]
-  const physicalMode = modes.find(mode => mode[1] === activeModeId)?.[2] || 'not exposed'
-  const voteLines = source.split('\n').filter((s,i,a) =>
-    /PRIORITY_MIUI_REFRESH_RATE|mIgnorePreferredRefreshRate|SWITCHING_TYPE_NONE|mActiveRenderFrameRate/.test(s)
-    || (i>0 && /PRIORITY_MIUI_REFRESH_RATE/.test(a[i-1]) && /max|60|120/i.test(s)))
-    .map(s => s.trim().slice(0,300)).slice(0,14)
-  return { sample: tag, rateHz: rate, physicalModeHz: physicalMode, votes: voteLines }
-}
+const sampleDisplay = sample => ({ sample, ...readDisplayMetrics(shell('dumpsys', 'display')) })
 const wmSize = shell('wm','size')
-const dims = wmSize.match(/(?:Physical|Override) size:\s*(\d+)x(\d+)/i)
+const dims = wmSize.match(/Override size:\s*(\d+)x(\d+)/i)
+  ?? wmSize.match(/Physical size:\s*(\d+)x(\d+)/i)
 if (!dims) throw Error('Could not determine display size: ' + wmSize)
 const [w,h] = dims.slice(1).map(Number)
 const coords = [Math.round(w * .55), Math.round(h * .78), Math.round(h * .36)]
@@ -87,16 +73,20 @@ for (const pkg of packages) {
   console.log('\n'+pkg, JSON.stringify(packageInfo(pkg)))
   shell('am','start','-W','-n',pkg+'/'+activityName)
   await sleep(1700)
-  const samples = [displayMetrics(shell('dumpsys','display'),'before swipe')]
+  const activities = shell('dumpsys', 'activity', 'activities')
+  const foreground = activities.match(/^\s*(?:topResumedActivity|mResumedActivity)[:=]\s*[^\n]*?\s([\w.]+)\//m)?.[1]
+  if (foreground !== pkg) throw Error('Could not verify foreground package: ' + pkg)
+  const samples = [sampleDisplay('before swipe')]
   for (let i=0;i<2;i++) {
     const swiping = swipe()
     await sleep(130)
-    samples.push(displayMetrics(shell('dumpsys','display'), 'during swipe '+(i+1)))
+    samples.push(sampleDisplay('during swipe '+(i+1)))
     await swiping
     await sleep(350)
   }
   for (const s of samples) {
-    console.log(' ',s.sample, 'renderFrameRate=',s.rateHz,'Hz, displayMode=',s.physicalModeHz,'Hz')
+    console.log(' ',s.sample, 'renderFrameRate=',s.renderRate ?? 'not exposed',
+      'Hz, displayMode=',s.physicalRate ?? 'not exposed', 'Hz, MIUI max=',s.miuiMaxRate ?? 'not exposed', 'Hz')
     for (const vote of s.votes) console.log('   ',vote)
   }
 }
