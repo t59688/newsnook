@@ -665,8 +665,11 @@ try {
     assert.equal(openCalls[0].visible, false, 'new native hosts start hidden until their React bounds are committed')
     assert.equal(bounds.at(-1)?.visible, true)
     const originalTab = current.tabId
+    const workspace = select('[aria-label="NewsNook 网页浏览器"]') as HTMLElement
+    assert.match(workspace.style.paddingTop, /^0(?:px)?$/, 'the bottom-toolbar webpage extends behind the status bar')
     await click(button('搜索或输入网址'))
     assert.equal(bounds.at(-1)?.visible, false, 'search hides native input interception')
+    assert.equal(workspace.style.paddingTop, 'var(--sat)', 'browser controls still avoid the status bar')
     await back()
     assert.equal(document.querySelector('[aria-label="搜索与地址"]'), null)
     assert.equal(current.tabId, originalTab, 'dismissing search restores the same tab')

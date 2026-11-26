@@ -228,6 +228,8 @@ export function BrowserWorkspace({
   const clearPageFind = session.clearFind
   useEffect(() => {setFindOpen(false); clearPageFind()}, [current, session.state.tabId, clearPageFind])
   const active = /^https?:\/\//i.test(current)
+  const pageBehindStatusBar = bottomAddress && active && !covered && !playing
+    && !session.state.error && !session.state.retrying
   // Ink Player can float without stopping playback. Let the website resume
   // behind it; the native frame clips only the floating video's actual rect.
   // A player originating elsewhere must not close this browser's playback UI.
@@ -641,7 +643,7 @@ export function BrowserWorkspace({
         event.currentTarget.dataset.focusInput = 'keyboard'
       }
     }}
-    style={{paddingTop:'var(--sat)', paddingBottom:'var(--sab)'}}>
+    style={{paddingTop:pageBehindStatusBar ? 0 : 'var(--sat)', paddingBottom:'var(--sab)'}}>
     {!bottomAddress && toolbar}
     <div ref={viewport} data-browser-viewport className="relative min-h-0 flex-1 overflow-hidden bg-ink">
       {session.state.openingPopup && !active && !playing && <div role="status" className="flex h-full flex-col items-center justify-center gap-3 text-paper-muted">
