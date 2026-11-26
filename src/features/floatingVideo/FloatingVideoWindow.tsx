@@ -1,11 +1,13 @@
-import { useCallback, useEffect, useRef, useState, type RefObject, type PointerEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type RefObject, type PointerEvent } from 'react'
 import { GripVertical, Maximize2, X } from 'lucide-react'
 import { useWindowGesture } from './useWindowGesture'
+import type { FloatingVideoBounds } from './nativeSurfaceCoordinator'
+import type { WindowRect } from './types'
 
 const CHROME_IDLE_MS = 2600
 
 /** Video-first, app-scoped floating player. The slot always retains the same media node. */
-export function FloatingVideoWindow({ title, active, hidden, domFullscreen, slotRef, onRestore, onClose }: {
+export function FloatingVideoWindow({ title, active, hidden, domFullscreen, slotRef, onRestore, onClose, onBoundsChange, restoredRect }: {
   title: string
   active: boolean
   hidden: boolean
@@ -13,9 +15,31 @@ export function FloatingVideoWindow({ title, active, hidden, domFullscreen, slot
   slotRef: RefObject<HTMLDivElement | null>
   onRestore: () => void
   onClose: () => void
+  onBoundsChange?: (bounds: FloatingVideoBounds) => void
+  restoredRect?: WindowRect
 }) {
   const rootRef = useRef<HTMLDivElement>(null)
-  const { rect, drag, resize, pinch, tip, dismissTip } = useWindowGesture(rootRef, slotRef, hidden)
+  const { rect, drag, resize, pinch, tip, dismissTip } = useWindowGesture(rootRef, slotRef, hidden, restoredRect)
+  // A transformed browser owner may shift the fixed frame. Measure that owner
+  // offset once, not a getBoundingClientRect layout read on every drag frame.
+  const hostOffset = useRef({ x: 0, y: 0 })
+  useLayoutEffect(() => {
+    if (!active || hidden || domFullscreen) return
+    const bounds = rootRef.current?.getBoundingClientRect()
+    if (bounds && bounds.width > 0 && bounds.height > 0)
+      hostOffset.current = { x: bounds.left - rect.x, y: bounds.top - rect.y }
+    // A portal target change remounts this window and remeasures its owner.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, hidden, domFullscreen])
+  // Native browser is a second Android WebView above this DOM. Keep a rounded
+  // touch-through cutout aligned to the player without resizing the webpage.
+  useLayoutEffect(() => {
+    if (!active || hidden || domFullscreen || !onBoundsChange) return
+    onBoundsChange({
+      left: rect.x + hostOffset.current.x, top: rect.y + hostOffset.current.y,
+      width: rect.width, height: rect.height,
+    })
+  }, [active, hidden, domFullscreen, rect, onBoundsChange])
   const [chromeVisible, setChromeVisible] = useState(true)
   const chromeTimer = useRef<number | null>(null)
   const touches = useRef(new Map<number, { x: number; y: number }>())

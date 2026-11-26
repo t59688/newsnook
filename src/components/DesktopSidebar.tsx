@@ -74,7 +74,7 @@ export const DesktopSidebar = memo(function DesktopSidebar({
   return (
     <aside
       aria-label="桌面导航"
-      className="hidden lg:flex w-64 xl:w-72 shrink-0 flex-col border-r border-haze bg-ink select-none h-full overflow-hidden"
+      className="editorial-desktop-sidebar hidden lg:flex w-64 xl:w-72 shrink-0 flex-col border-r border-haze bg-ink select-none h-full overflow-hidden"
     >
       {/* 顶部品牌与题头 */}
       <div className="p-5 pb-3">

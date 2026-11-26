@@ -89,7 +89,7 @@ export function LocalSearchScreen({
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="搜索标题、摘要或来源"
-            className="w-full rounded-xl border border-haze bg-ink-raised/60 py-2.5 pl-10 pr-9 text-[14px] text-paper placeholder-paper-faint/50 transition-colors focus:border-cinnabar focus:outline-none"
+            className="w-full min-h-12 rounded-xl border border-haze bg-ink-raised/60 py-2.5 pl-10 pr-9 text-[15px] text-paper placeholder:text-paper-faint/75 transition-colors focus:border-cinnabar focus:outline-none"
           />
           {query && (
             <button
@@ -112,7 +112,7 @@ export function LocalSearchScreen({
                 type="button"
                 onClick={() => setOrigin(filter.id)}
                 aria-pressed={origin === filter.id}
-                className={`shrink-0 rounded-full border px-3 py-1 font-mono text-[11px] transition-colors ${
+                className={`shrink-0 min-h-8 rounded-full border px-3 py-1 font-mono text-[12px] transition-colors ${
                   origin === filter.id
                     ? 'border-cinnabar bg-cinnabar/20 text-cinnabar-soft'
                     : 'border-haze bg-paper/5 text-paper-muted hover:text-paper'
@@ -130,15 +130,17 @@ export function LocalSearchScreen({
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full border border-haze bg-paper/5 text-paper-faint">
             <Search size={22} strokeWidth={1.5} />
           </div>
-          <p className="mt-4 font-display text-[16px] text-paper">搜索本地内容</p>
+          <p className="mt-4 font-display text-[16px] font-medium text-paper">搜索本地内容</p>
+          <p className="mx-auto mt-1.5 max-w-xs text-[12.5px] leading-relaxed text-paper-muted">查找已缓存文章的标题、摘要与来源，无需联网。</p>
         </div>
       ) : results.length === 0 ? (
         <div className="page-x py-14 text-center">
-          <p className="text-[13.5px] text-paper">无匹配结果</p>
+          <p className="text-[14px] font-medium text-paper">没有匹配的内容</p>
+          <p className="mt-1.5 text-[12.5px] text-paper-muted">试试其他关键词或切换上方范围。</p>
         </div>
       ) : (
         <>
-          <p className="page-x pt-4 pb-1 font-mono text-[10.5px] text-paper-faint">
+          <p className="page-x pt-4 pb-1 font-mono text-[12px] text-paper-muted">
             命中 {results.length} 条
           </p>
           <ul className="divide-y divide-haze border-y border-haze">

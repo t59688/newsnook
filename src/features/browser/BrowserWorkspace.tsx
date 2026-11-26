@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Bookmark, BookmarkCheck, ChevronRight, Clock3, Copy,
-  Download, Film, Globe2, Home, Images, Laptop, LogOut, ScanText, Share2, Shield,
+  Download, Film, Globe2, Home, Images, Laptop, LoaderCircle, LogOut, ScanText, Share2, Shield,
   MoreHorizontal, Pencil, Play, Plus, RefreshCw, Settings2, ShieldCheck, Trash2, X, BotMessageSquare,
 } from 'lucide-react'
 import { Share } from '@capacitor/share'
@@ -14,6 +14,7 @@ import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
 import { useStartupBlocker } from '../../hooks/useStartupReadiness'
 import { suppressBrowserLogs } from '../../lib/logger'
 import { InkVideoPlayer } from '../../components/InkVideoPlayer'
+import { VideoSessionManagerContext } from '../floatingVideo/context'
 import type { MediaResourceDescriptor } from '../mediaSniffer/types'
 import { ScriptManager } from './ScriptManager'
 import {
@@ -22,7 +23,8 @@ import {
   removeSiteHistory, saveBrowserVisit, type BrowserShortcut, type BrowserVisit,
 } from './browserHistory'
 import { browserMediaResources, browserResourceTitle, browserResourceDetails, browserResourceTracks } from './browserMedia'
-import { loadBrowserBookmarks, saveBrowserBookmarks, toggleBrowserBookmark, type BookmarkScope } from './browserBookmarks'
+import { saveBrowserBookmarks, toggleBrowserBookmark, type BookmarkScope } from './browserBookmarks'
+import { hasBookmarkLibrary, loadBookmarkLibrary, saveBookmarkLibrary, type BrowserBookmarkLibrary } from './browserBookmarkLibrary'
 import {
   BROWSER_ENGINES, BROWSER_KEYS, browserHostLabel, loadBrowserSearchEngine, readBrowserList, readBrowserPreference,
   resolveBrowserAddress, writeBrowserPreference, loadBrowserPreferences, saveBrowserPreferences, toggleBrowserDesktopMode, type BrowserPreferences, type BrowserSearchChoice,
@@ -38,6 +40,7 @@ import { BrowserAgentPanel } from './agent/BrowserAgentPanel'
 import { BrowserStartPage } from './BrowserStartPage'
 import { BrowserSearchPanel } from './BrowserSearchPanel'
 import { BrowserPlacesPanel } from './BrowserPlacesPanel'
+import { BrowserBookmarkManager } from './BrowserBookmarkManager'
 import { BrowserTabsPanel } from './BrowserTabsPanel'
 import { BrowserSettingsPanel } from './BrowserSettingsPanel'
 import { BROWSER_OPEN_EVENT, type BrowserOpenDetail } from './browserOpen'
@@ -70,12 +73,15 @@ export function BrowserWorkspace({
   onExit,
   recoverySession,
   initialUrl,
+  returnToReader = false,
 }: {
   onExit: () => void
   recoverySession?: BrowserRecoverySession
   initialUrl?: string
+  returnToReader?: boolean
 }) {
   const workspace = useBrowserDialogFocus<HTMLDivElement>()
+  const videoSessions = useContext(VideoSessionManagerContext)
   const viewport = useRef<HTMLDivElement>(null)
   const [panel, setPanel] = useState<Panel>(null)
   const [searchOpen, setSearchOpen] = useState(false)
@@ -134,11 +140,18 @@ export function BrowserWorkspace({
   }, [])
   const [notice, setNotice] = useState<Notice | null>(null)
   const [playing, setPlaying] = useState<BrowserPlayback | null>(null)
+  // Keep the player composited behind the native WebView until the native
+  // visibility bridge acknowledges the handoff, avoiding a blank return frame.
+  const [revealingPage, setRevealingPage] = useState(false)
   const [playError, setPlayError] = useState('')
   const playbackSelection = useRef(0)
   const [history, setHistory] = useState(() => normalizeBrowserVisits(readBrowserList(BROWSER_KEYS.history)))
-  const [marks, setMarks] = useState(() => loadBrowserBookmarks('normal'))
-  const [privateMarks, setPrivateMarks] = useState(() => loadBrowserBookmarks('private'))
+  const [normalLibrary, setNormalLibrary] = useState(() => loadBookmarkLibrary('normal'))
+  const [privateLibrary, setPrivateLibrary] = useState(() => loadBookmarkLibrary('private'))
+  const marks = normalLibrary.bookmarks
+  const privateMarks = privateLibrary.bookmarks
+  const bookmarkBackRef = useRef<() => boolean>(() => false)
+  const registerBookmarkBack = useCallback((handler: () => boolean) => {bookmarkBackRef.current = handler}, [])
   const [hiddenHosts, setHiddenHosts] = useState(() => normalizeHiddenBrowserHosts(readBrowserList(BROWSER_KEYS.hiddenHosts)))
   const [shortcuts, setShortcuts] = useState(() => normalizeBrowserShortcuts(readBrowserList(BROWSER_KEYS.shortcuts)))
   const [hideRecent, setHideRecent] = useState(() => readBrowserPreference(BROWSER_KEYS.hideRecent) === 'true')
@@ -197,10 +210,12 @@ export function BrowserWorkspace({
     const next = saveBrowserVisit(historyRef.current, url, title)
     persist(BROWSER_KEYS.history, next, () => {historyRef.current = next; setHistory(next)})
   }, [persist])
-  const covered = Boolean(panel || searchOpen || placeAction || shortcutDraft || confirmation || playing)
+  const covered = Boolean(panel || searchOpen || placeAction || shortcutDraft || confirmation || (playing && !revealingPage))
   const session = useBrowserSession(viewport, covered, recordVisit, bottomAddress, recoverySession, {
     settings: preferences, initialUrl: initialAddress ?? undefined, agentSheetRef, agentSheetVisible: agentOpen && !agentMinimized && !covered,
     agentOperating: agentOpen && agentOperating,
+    animateReveal: revealingPage,
+    capturePreviewOnHide: panel === 'tabs',
   })
   useStartupBlocker(!session.initialSessionSettled)
   const current = session.state.url || ''
@@ -213,6 +228,49 @@ export function BrowserWorkspace({
   const clearPageFind = session.clearFind
   useEffect(() => {setFindOpen(false); clearPageFind()}, [current, session.state.tabId, clearPageFind])
   const active = /^https?:\/\//i.test(current)
+  // Ink Player can float without stopping playback. Let the website resume
+  // behind it; the native frame clips only the floating video's actual rect.
+  // A player originating elsewhere must not close this browser's playback UI.
+  useEffect(() => {
+    if (!playing || !videoSessions) return
+    const showWebsiteBehindFloat = () => {
+      const owner = workspace.current
+      if (owner && videoSessions.getSnapshot().some(item =>
+        item.mode === 'floating' && !item.immersive && item.props.overlayContainer === owner)) {
+        setRevealingPage(true)
+      }
+    }
+    const unsubscribe = videoSessions.subscribe(showWebsiteBehindFloat)
+    showWebsiteBehindFloat()
+    return unsubscribe
+  }, [playing, videoSessions, workspace])
+  const closePlaybackToPage = () => {
+    if (!playing || revealingPage) return
+    if (!active || !session.ready || session.state.error || session.state.retrying) {
+      setPlaying(null)
+      return
+    }
+    // The native page can resume audio as soon as it becomes visible; pause
+    // the React player before starting the cross-surface transition.
+    videoSessions?.pauseAll()
+    workspace.current?.querySelectorAll('video').forEach(video => video.pause())
+    setRevealingPage(true)
+  }
+  useEffect(() => {
+    if (!revealingPage) return
+    if (!playing || !active || !session.ready || session.state.error || session.state.retrying) {
+      setRevealingPage(false)
+      setPlaying(null)
+      return
+    }
+    if (!session.nativePageVisible) return
+    // The native View animates its alpha for 160ms after the setBounds ACK.
+    const timer = window.setTimeout(() => {
+      setPlaying(null)
+      setRevealingPage(false)
+    }, 190)
+    return () => window.clearTimeout(timer)
+  }, [revealingPage, playing, active, session.ready, session.nativePageVisible, session.state.error, session.state.retrying])
   const title = session.state.title && session.state.title !== '网页' ? session.state.title : browserHostLabel(current)
   // Scope follows the current recording mode. A private save never changes a public star.
   const marked = (privateBookmarks ? privateMarks : marks).some(item => item.url === current)
@@ -259,24 +317,27 @@ export function BrowserWorkspace({
     if (findOpen) closeFind()
     setPanel(null)
     setSearchOpen(false)
-    setPlaying(null)
-    if (session.ready) void session.command('home')
+    // Keep the existing player cover until the native page has navigated home.
+    if (session.ready) void session.command('home').finally(() => setPlaying(null))
+    else setPlaying(null)
   }
   const handleBack = () => {
     if (panel === 'images' && imageOverlayCloser.current?.()) return true
     if (confirmation) {setConfirmation(null); return true}
     if (shortcutDraft) {setShortcutDraft(null); return true}
     if (placeAction) {setPlaceAction(null); return true}
+    if (panel === 'bookmarks' && bookmarkBackRef.current()) return true
     if (searchOpen) {setSearchOpen(false); return true}
     if (panel) {if (panel === 'images') session.invalidateImages(); setPanel(null); return true}
     if (findOpen) {closeFind(); return true}
-    if (playing) {setPlaying(null); return true}
+    if (playing) {closePlaybackToPage(); return true}
     if (agentOpen && !agentMinimized) {setAgentMinimized(true); return true}
     // The first navigation event can precede open's acknowledgement while scripts prepare.
     // Closing bypasses that pending operation, so Back always remains immediately effective.
     if (!session.ready) {close(); return true}
     if (active && session.state.back) {void session.command('back'); return true}
-    if (active) {goHome(); return true}
+    if (active && (!returnToReader || session.state.openerTabId != null)) {goHome(); return true}
+    if (session.state.openerTabId != null) {void session.command('back'); return true}
     close()
     return true
   }
@@ -337,7 +398,7 @@ export function BrowserWorkspace({
     if (next) setAgentMinimized(true)
     setSearchOpen(false)
     setPanel(next)
-    if (next === 'tabs') void session.refreshTabs?.()
+    // BrowserTabsPanel refreshes thumbnails on mount; avoid a second capture here.
   }
   const runCommand = (command: BrowserCommand) => {
     setPanel(null)
@@ -361,12 +422,29 @@ export function BrowserWorkspace({
   const saveHistory = (next: BrowserVisit[]) => persist(BROWSER_KEYS.history, next, () => {historyRef.current = next; setHistory(next)})
   const saveMarks = (scope: BookmarkScope, next: BrowserVisit[]): boolean => {
     try {
-      const saved = saveBrowserBookmarks(scope, next)
-      if (scope === 'private') setPrivateMarks(saved)
-      else setMarks(saved)
+      saveBrowserBookmarks(scope, next)
+      const saved = loadBookmarkLibrary(scope)
+      if (scope === 'private') setPrivateLibrary(saved)
+      else setNormalLibrary(saved)
       return true
     } catch (error) {
       setNotice({message: error instanceof Error ? error.message : '保存失败，请重试', error: true})
+      return false
+    }
+  }
+  const saveLibrary = (scope:BookmarkScope, next:BrowserBookmarkLibrary): boolean => {
+    // Keep the original flat key for simple edits until a folder structure is first needed.
+    if (!hasBookmarkLibrary(scope) && next.folders.length === 0 && next.bookmarks.every(item => item.folderId === null)) {
+      return saveMarks(scope, next.bookmarks)
+    }
+    try {
+      const saved = saveBookmarkLibrary(scope, next)
+      if (scope === 'private') setPrivateLibrary(saved)
+      else setNormalLibrary(saved)
+      setNotice({message:'书签已更新'})
+      return true
+    } catch (error) {
+      setNotice({message:error instanceof Error ? error.message : '保存失败，请重试',error:true})
       return false
     }
   }
@@ -555,14 +633,30 @@ export function BrowserWorkspace({
   return <div ref={workspace} tabIndex={-1} role="dialog" aria-label="NewsNook 网页浏览器" aria-modal="true"
     data-private-mode={privateMode ? 'true' : undefined}
     className="browser-workspace fixed inset-0 z-[95] flex min-w-0 flex-col overflow-hidden bg-ink text-paper outline-none"
+    onPointerDownCapture={event => { event.currentTarget.dataset.focusInput = 'pointer' }}
+    onKeyDownCapture={event => {
+      // Preserve keyboard/D-pad focus indication on legacy Android WebView where
+      // :focus-visible is unsupported. No React state update on each tap/key.
+      if (event.key === 'Tab' || event.key.startsWith('Arrow') || event.key === 'Home' || event.key === 'End') {
+        event.currentTarget.dataset.focusInput = 'keyboard'
+      }
+    }}
     style={{paddingTop:'var(--sat)', paddingBottom:'var(--sab)'}}>
     {!bottomAddress && toolbar}
     <div ref={viewport} data-browser-viewport className="relative min-h-0 flex-1 overflow-hidden bg-ink">
-      {!active && !playing && <BrowserStartPage privateMode={privateMode} incognitoMode={preferences.incognitoMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
+      {session.state.openingPopup && !active && !playing && <div role="status" className="flex h-full flex-col items-center justify-center gap-3 text-paper-muted">
+        <LoaderCircle size={26} className="browser-loading-icon" aria-hidden="true"/>
+        <span className="text-sm">正在打开新标签页…</span>
+      </div>}
+      {!active && !session.state.openingPopup && !playing && <BrowserStartPage privateMode={privateMode} incognitoMode={preferences.incognitoMode} shortcuts={shortcuts} recent={recent} onSearch={showSearch}
         hideRecent={hideRecent} onToggleHideRecent={toggleHideRecent}
         onOpen={url => {void openAddress(url)}} onAddShortcut={() => editShortcut({name:'',url:''})}
         onShortcutOptions={index => setPlaceAction({kind:'shortcut', index})}
         onHistoryOptions={entry => setPlaceAction({kind:'history', entry})} onPanel={openPanel}/>}
+      {active && session.state.retrying && !playing && <div role="status" className="flex h-full flex-col items-center justify-center gap-3 text-paper-muted">
+        <LoaderCircle size={26} className="browser-loading-icon" aria-hidden="true"/>
+        <span className="text-sm">正在重新加载网页…</span>
+      </div>}
       {active && session.state.error && !playing && <div className="flex h-full flex-col items-center justify-center px-7 text-center">
         <Globe2 size={34} strokeWidth={1.4} className="text-paper-muted"/>
         <h2 className="mt-5 text-[20px] font-semibold">网页加载失败</h2>
@@ -573,7 +667,7 @@ export function BrowserWorkspace({
       </div>}
       {playing && <div className="absolute inset-0 z-20 flex flex-col bg-ink">
         <header className="flex min-h-14 items-center gap-2 border-b border-haze px-2">
-          <BrowserIconButton label="返回网页" onClick={() => setPlaying(null)}><ArrowLeft size={21}/></BrowserIconButton>
+          <BrowserIconButton label="返回网页" onClick={closePlaybackToPage}><ArrowLeft size={21}/></BrowserIconButton>
           <h2 className="min-w-0 flex-1 truncate text-[15px] font-semibold">网页视频</h2>
           <button type="button" onClick={() => setPanel('media')} className="min-h-11 px-3 text-[14px] text-paper-muted">切换资源</button>
         </header>
@@ -632,15 +726,16 @@ export function BrowserWorkspace({
       onSelect={tab => finishTabChange(session.activate(tab))}
       onRemove={tab => {void session.remove(tab).then(ok => {if (ok && playing?.tabId === tab.id) setPlaying(null)})}}
       onNew={() => finishTabChange(session.command('new'))}/></BrowserFullPage>}
-    {(panel === 'history' || panel === 'bookmarks') && <BrowserFullPage title={panel === 'history' ? '浏览历史' : '书签'}><BrowserPlacesPanel privateMode={privateBookmarks} key={panel + ':' + privateMode + ':' + preferences.incognitoMode} kind={panel} entries={panel === 'history' ? (historyHidden ? [] : history) : marks}
-      privateEntries={privateBookmarks && panel === 'bookmarks' ? privateMarks : []}
+    {panel === 'history' && <BrowserFullPage title="浏览历史"><BrowserPlacesPanel privateMode={privateBookmarks} kind="history" entries={historyHidden ? [] : history}
       hiddenHostCount={hiddenHosts.length} onBack={() => setPanel(null)} onOpen={url => {void openAddress(url)}}
-      onRemove={url => {if (panel === 'history') saveHistory(history.filter(item => item.url !== url)); else saveMarks('normal', marks.filter(item => item.url !== url))}}
-      onClear={() => confirmClear(panel)}
-      onPrivateRemove={url => saveMarks('private', privateMarks.filter(item => item.url !== url))}
-      onPrivateClear={() => confirmClear('privateBookmarks')}
+      onRemove={url => saveHistory(history.filter(item => item.url !== url))} onClear={() => confirmClear('history')}
       onRestoreHidden={() => {if (persist(BROWSER_KEYS.hiddenHosts, [], () => setHiddenHosts([]))) setNotice({message:'首页网站已恢复'})}}
       onHistoryOptions={entry => setPlaceAction({kind:'history', entry})}/></BrowserFullPage>}
+    {panel === 'bookmarks' && <BrowserFullPage title="书签"><BrowserBookmarkManager
+      key={privateBookmarks ? 'private' : 'normal'} normal={normalLibrary} privateLibrary={privateLibrary} privateMode={privateBookmarks}
+      onBack={() => setPanel(null)} onOpen={url => {void openAddress(url)}} onChange={saveLibrary}
+      onClear={scope => confirmClear(scope === 'private' ? 'privateBookmarks' : 'bookmarks')}
+      onConfirm={setConfirmation} onRegisterBack={registerBookmarkBack}/></BrowserFullPage>}
     {panel === 'settings' && <BrowserFullPage title="浏览器设置"><BrowserSettingsPanel search={search} bottomAddress={bottomAddress} desktop={session.state.desktop}
       hasPage={active} pending={session.pending} historyCount={historyHidden ? 0 : history.length} onBack={() => setPanel(null)}
       onSearchChange={saveSearchEngine}
@@ -682,7 +777,7 @@ export function BrowserWorkspace({
       {currentResources.length ? <ul className="divide-y divide-haze">{currentResources.map(resource => <li key={resource.id || resource.url} className="flex items-center gap-3 py-4">
         <Film size={21} className="shrink-0 text-paper-muted"/>
         <MediaResourceSummary resource={resource}/>
-        <button type="button" aria-label={'播放 ' + browserResourceTitle(resource)} onClick={() => {setPlayError(''); setPlaying({resource, resources:currentResources, title, selection:++playbackSelection.current, tabId:session.state.tabId}); setPanel(null)}}
+        <button type="button" aria-label={'播放 ' + browserResourceTitle(resource)} onClick={() => {setPlayError(''); setRevealingPage(false); setPlaying({resource, resources:currentResources, title, selection:++playbackSelection.current, tabId:session.state.tabId}); setPanel(null)}}
           className="browser-media-play" title="播放"><Play size={20} strokeWidth={1.9} aria-hidden="true"/></button>
       </li>)}</ul> : <div className="flex min-h-40 flex-col items-center justify-center text-paper-muted"><Film size={30} strokeWidth={1.4}/><p className="mt-4 text-[14px]">暂未发现可播放资源</p></div>}
       {!!blockedResources.length && <details className="mt-3 border-t border-haze pt-3 text-[13px] text-paper-muted">

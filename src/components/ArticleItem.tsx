@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { memo, useState, type Ref } from 'react'
 import { BookmarkCheck, Cloud } from 'lucide-react'
 
 import { InkImage } from './InkImage'
@@ -10,6 +10,8 @@ import type { Article } from '../lib/types'
 import { articleRelativeTime } from '../lib/time'
 
 interface RowProps {
+  /** The legacy feed window observes the actual LI without adding layout wrappers. */
+  rootRef?: Ref<HTMLLIElement>
   article: Article
   read: boolean
   saved: boolean
@@ -21,11 +23,18 @@ interface RowProps {
   onSourceClick?: (sourceId: string) => void
   /** 邻页预览等场景跳过入场透明，避免横滑露白 */
   revealed?: boolean
+  /** 无缩略图或缩略图失败时，仍保留 4:3 编辑封面占位槽（如关注收件箱） */
+  fallbackCover?: boolean
+  /** 缺失封面图时，按需从本地缓存/原文页补救封面 */
+  recoverMissingCover?: boolean
+  /** 缺失封面补救成功后的回写通知 */
+  onCoverResolved?: (article: Article, imageUrl: string) => void
   /** 布局变体：单列横排 (row) / 移动端双栏卡片 (compact-card) / 桌面网格卡片 (card) / 自适应 (auto) */
   variant?: 'row' | 'compact-card' | 'card' | 'auto'
 }
 
 export const ArticleRow = memo(function ArticleRow({
+  rootRef,
   article,
   read,
   saved,
@@ -35,6 +44,9 @@ export const ArticleRow = memo(function ArticleRow({
   onOpen,
   onSourceClick,
   revealed = false,
+  fallbackCover = false,
+  recoverMissingCover = false,
+  onCoverResolved,
   variant = 'auto',
 }: RowProps) {
   const [showOriginal, setShowOriginal] = useState(false)
@@ -50,7 +62,11 @@ export const ArticleRow = memo(function ArticleRow({
   )
   const originalDisplayTitle = feedDisplayTitle(article.title, article.summary)
   const displaySummary = cleanSummaryText(activeSummary, activeTitle)
-  const { cover, onFailed } = useArticleCover(article)
+  const { cover, hasOriginal, onFailed } = useArticleCover(article, {
+    recoverMissing: recoverMissingCover,
+    onResolved: onCoverResolved,
+  })
+  const showRowCover = Boolean(cover || hasOriginal || fallbackCover)
 
   const renderTranslateBadge = () => {
     if (!hasTranslation) return null
@@ -76,8 +92,11 @@ export const ArticleRow = memo(function ArticleRow({
 
   return (
     <li
+      ref={rootRef}
       data-reveal={revealed ? undefined : true}
-      className={`article-row-item relative transition-colors duration-300 ${
+      data-read={read ? 'true' : 'false'}
+      data-variant={variant}
+      className={`editorial-article-item article-row-item relative transition-colors duration-300 ${
         variant === 'card'
           ? 'h-full bg-transparent'
           : variant === 'compact-card'
@@ -92,7 +111,7 @@ export const ArticleRow = memo(function ArticleRow({
         <button
           type="button"
           onClick={() => onOpen(article)}
-          className={`group pressable-card relative flex w-full items-center gap-4 px-4 py-3.5 text-left sm:px-5 sm:py-4 ${
+          className={`editorial-article-row group pressable-card relative flex w-full items-center gap-4 px-4 py-3.5 text-left sm:px-5 sm:py-4 ${
             variant === 'auto' ? 'md:hidden' : ''
           } ${
             read
@@ -103,7 +122,7 @@ export const ArticleRow = memo(function ArticleRow({
           <span className="min-w-0 flex-1">
             {/* 顶部信源与时间元数据 */}
             <span
-              className={`flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04em] ${
+              className={`editorial-article-meta flex items-center gap-1.5 font-mono text-[11px] tracking-[0.04em] ${
                 read ? 'text-paper-faint/75' : 'text-paper-faint'
               }`}
             >
@@ -146,7 +165,7 @@ export const ArticleRow = memo(function ArticleRow({
 
             {/* 文章标题：450~500 挺拔字重，典雅深墨色，消除暴力加粗 */}
             <span
-              className={`row-title mt-1.5 line-clamp-2 text-[16.5px] leading-[1.5] tracking-[-0.012em] transition-colors ${
+              className={`editorial-article-title row-title mt-1.5 line-clamp-2 text-[16.5px] leading-[1.5] tracking-[-0.012em] transition-colors ${
                 read
                   ? 'font-normal text-paper-muted/70'
                   : 'font-medium text-paper/93 group-hover:text-cinnabar'
@@ -165,7 +184,7 @@ export const ArticleRow = memo(function ArticleRow({
             {/* 清洗后的正文摘要：灰度回填至 92%，消除黑度断层 */}
             {displaySummary && (
               <span
-                className={`mt-2 line-clamp-2 text-[13px] leading-[1.62] ${
+                className={`editorial-article-summary mt-2 line-clamp-2 text-[13px] leading-[1.62] ${
                   read ? 'text-paper-faint/75' : 'text-paper-muted/92'
                 }`}
               >
@@ -174,21 +193,30 @@ export const ArticleRow = memo(function ArticleRow({
             )}
           </span>
 
-          {/* 缩略图容器：升级为 4:3 比例杂志画幅，配合微倒角与轻柔阴影 */}
-          {cover && (
-            <span className="relative h-16 w-[5.35rem] shrink-0 overflow-hidden rounded-[10px] border border-haze/60 bg-ink-deep/25 shadow-[0_2px_8px_rgba(0,0,0,0.04)] sm:h-[4.5rem] sm:w-[6rem]">
-              <InkImage
-                src={cover}
-                onFailed={onFailed}
-                collapseOnError
-                className={`h-full w-full object-cover transition-all duration-300 ${
-                  read
-                    ? 'opacity-[0.62] grayscale-[0.25] saturate-[0.8] group-active:opacity-85'
-                    : 'opacity-[0.98] group-active:opacity-100'
-                }`}
+          {/* 缩略图容器：升级为 4:3 比例杂志画幅，配合微倒角与轻柔阴影；原图失败或显式占位时保留编辑艺术封面 */}
+          {showRowCover && (
+            <span className="editorial-article-cover relative h-16 w-[5.35rem] shrink-0 overflow-hidden rounded-[10px] border border-haze/60 bg-ink-deep/25 shadow-[0_2px_8px_rgba(0,0,0,0.04)] sm:h-[4.5rem] sm:w-[6rem]">
+              <EditorialCoverPlaceholder
+                article={article}
+                read={read}
+                showUnreadDot={false}
+                showVideoBadge={false}
+                className="absolute inset-0 h-full w-full"
               />
+              {cover && (
+                <InkImage
+                  src={cover}
+                  onFailed={onFailed}
+                  collapseOnError
+                  className={`relative h-full w-full object-cover transition-all duration-300 ${
+                    read
+                      ? 'opacity-[0.62] grayscale-[0.25] saturate-[0.8] group-active:opacity-85'
+                      : 'opacity-[0.98] group-active:opacity-100'
+                  }`}
+                />
+              )}
               {article.contentType === 'video' && (
-                <span className="absolute bottom-1 right-1 rounded bg-black/60 px-1 py-0.5 font-mono text-[8.5px] leading-none text-white/90 backdrop-blur-sm">
+                <span className="absolute z-10 bottom-1 right-1 rounded bg-black/60 px-1 py-0.5 font-mono text-[8.5px] leading-none text-white/90 backdrop-blur-sm">
                   视频
                 </span>
               )}
@@ -300,7 +328,7 @@ export const ArticleRow = memo(function ArticleRow({
         <button
           type="button"
           onClick={() => onOpen(article)}
-          className={`group pressable-card chamfer-surface relative h-full w-full flex-col justify-between rounded-xl border p-5 text-left transition-all duration-300 ${
+          className={`editorial-story-tile group pressable-card chamfer-surface relative h-full w-full flex-col justify-between rounded-xl border p-5 text-left transition-all duration-300 ${
             variant === 'auto' ? 'hidden md:flex' : 'flex'
           } ${
             read
@@ -311,7 +339,7 @@ export const ArticleRow = memo(function ArticleRow({
           <div className="w-full">
             {/* 大图展示 (如果有图)，无图时展示形式化编辑封面以维持网格对齐 */}
             {cover ? (
-              <div className="relative mb-3.5 overflow-hidden rounded-lg bg-ink border border-haze/60">
+              <div className="editorial-card-media relative mb-3.5 overflow-hidden rounded-lg bg-ink border border-haze/60">
                 <InkImage
                   src={cover}
                   onFailed={onFailed}
@@ -329,7 +357,7 @@ export const ArticleRow = memo(function ArticleRow({
                 )}
               </div>
             ) : (
-              <div className="relative mb-3.5 overflow-hidden rounded-lg border border-haze/60">
+              <div className="editorial-card-media relative mb-3.5 overflow-hidden rounded-lg border border-haze/60">
                 <EditorialCoverPlaceholder
                   article={article}
                   read={read}
@@ -383,7 +411,7 @@ export const ArticleRow = memo(function ArticleRow({
 
             {/* 文章标题 */}
             <h2
-              className={`row-title mt-2 line-clamp-3 text-[18px] xl:text-[19px] leading-[1.42] tracking-[0.005em] transition-colors duration-200 ${
+              className={`editorial-card-title row-title mt-2 line-clamp-3 text-[18px] xl:text-[19px] leading-[1.42] tracking-[0.005em] transition-colors duration-200 ${
                 read
                   ? 'font-normal text-paper-muted/80'
                   : 'font-medium text-paper group-hover:text-cinnabar'
@@ -402,7 +430,7 @@ export const ArticleRow = memo(function ArticleRow({
             {/* 摘要导读 */}
             {displaySummary && (
               <p
-                className={`mt-2 line-clamp-3 text-[13.5px] leading-[1.65] ${
+                className={`editorial-card-summary mt-2 line-clamp-3 text-[13.5px] leading-[1.65] ${
                   read ? 'text-paper-faint/80' : 'text-paper-muted'
                 }`}
               >
@@ -412,7 +440,7 @@ export const ArticleRow = memo(function ArticleRow({
           </div>
 
           {/* 卡片底栏提示 */}
-          <div className="mt-4 flex items-center justify-between pt-3 border-t border-haze/50 font-mono text-[10.5px] text-paper-faint">
+          <div className="editorial-card-footer mt-4 flex items-center justify-between pt-3 border-t border-haze/50 font-mono text-[10.5px] text-paper-faint">
             <span>{read ? '已读 · 点击重温' : '点击阅读全文'}</span>
             <span className="text-paper-muted group-hover:text-cinnabar group-hover:translate-x-0.5 transition-all">
               →
@@ -501,24 +529,35 @@ export const LeadStory = memo(function LeadStory({
           data-reveal={revealed ? undefined : true}
           type="button"
           onClick={() => onOpen(article)}
-          className={`lead-hero h-[14.5rem] sm:h-[16rem] group text-left ${framed ? 'is-framed' : ''} ${variant === 'auto' ? 'lg:hidden' : ''}`}
+          className={`editorial-lead-mobile lead-hero h-[14.5rem] sm:h-[16rem] group text-left ${framed ? 'is-framed' : ''} ${variant === 'auto' ? 'lg:hidden' : ''}`}
         >
           {/* 外层固定高度：封面补救失败后 InkImage 可能卸载，头条框仍须占位 */}
-          <span className="block h-[14.5rem] w-full overflow-hidden sm:h-[16rem]" aria-hidden={!cover}>
-            {cover ? (
+          <span className="editorial-lead-mobile-photo relative block h-[14.5rem] w-full overflow-hidden sm:h-[16rem]" aria-hidden="true">
+            {/* Keep the existing editorial artwork visible while the photo is
+                pending, blocked or unrecoverable. A failed image must never
+                leave a large empty hero panel in the reading feed. */}
+            <EditorialCoverPlaceholder
+              article={article}
+              read={read}
+              showUnreadDot={false}
+              showVideoBadge={false}
+              className="absolute inset-0 h-full w-full"
+            />
+            {cover && (
               <InkImage
                 src={cover}
                 onFailed={onFailed}
                 eager
-                className={`h-full w-full ${
+                collapseOnError
+                className={`relative h-full w-full ${
                   read ? 'opacity-[0.78] grayscale-[0.12] saturate-[0.9]' : 'opacity-100'
                 }`}
               />
-            ) : null}
+            )}
           </span>
-          <span className="lead-cover-veil" aria-hidden />
-          <span className={`lead-hero-copy page-x pb-4 pt-10 sm:pb-4.5 ${read ? 'is-read' : ''}`}>
-            <span className="lead-hero-kicker flex items-center gap-2 font-mono text-[11px] tracking-[0.14em]">
+          <span className="editorial-lead-mobile-veil lead-cover-veil" aria-hidden />
+          <span className={`editorial-lead-mobile-copy lead-hero-copy page-x pb-4 pt-10 sm:pb-4.5 ${read ? 'is-read' : ''}`}>
+            <span className="editorial-lead-kicker lead-hero-kicker flex items-center gap-2 font-mono text-[11px] tracking-[0.14em]">
               <span className="h-[2px] w-3.5 rounded-full bg-cinnabar" aria-hidden />
               <span
                 role={onSourceClick ? 'button' : undefined}
@@ -546,7 +585,7 @@ export const LeadStory = memo(function LeadStory({
               )}
               {renderTranslateBadge()}
             </span>
-            <span className="lead-title mt-2 line-clamp-2 sm:line-clamp-3 text-[19px] font-medium leading-[1.42] tracking-[-0.01em] sm:text-[21px]">
+            <span className="editorial-lead-mobile-title lead-title mt-2 line-clamp-2 sm:line-clamp-3 text-[19px] font-medium leading-[1.42] tracking-[-0.01em] sm:text-[21px]">
               {activeTitle}
             </span>
             {isTranslated && displayMode === 'compare' && (
@@ -572,32 +611,41 @@ export const LeadStory = memo(function LeadStory({
       {showBanner && (
         <div
           data-reveal={revealed ? undefined : true}
-          className={`${variant === 'auto' ? 'hidden lg:block' : ''} my-6 px-6 xl:px-8 2xl:px-10`}
+          className={`editorial-lead-desktop ${variant === 'auto' ? 'hidden lg:block' : ''} my-6 px-6 xl:px-8 2xl:px-10`}
         >
           <button
             type="button"
             onClick={() => onOpen(article)}
-            className={`group relative grid w-full grid-cols-12 gap-8 items-center rounded-2xl border p-6 xl:p-8 2xl:p-10 text-left transition-all duration-300 ${
+            className={`editorial-lead-spread group relative grid w-full grid-cols-12 gap-8 items-center rounded-2xl border p-6 xl:p-8 2xl:p-10 text-left transition-all duration-300 ${
               read
                 ? 'border-haze bg-ink/50 hover:bg-ink-raised/50 opacity-90'
                 : 'border-haze bg-ink-raised/60 hover:border-paper-faint/40 hover:bg-ink-raised hover:shadow-xl'
             }`}
           >
             {/* 左侧大图 (7 栅格) */}
-            <div className="col-span-7 h-[300px] xl:h-[350px] 2xl:h-[400px] w-full overflow-hidden rounded-xl bg-ink border border-haze/70 relative">
-              <InkImage
-                src={cover}
-                onFailed={onFailed}
-                eager
-                collapseOnError
-                className={`h-full w-full object-cover transition-all duration-700 ease-ink group-hover:scale-105 ${
-                  read ? 'opacity-80 grayscale-[0.15] saturate-[0.88]' : 'opacity-100'
-                }`}
+            <div className="editorial-lead-desktop-photo col-span-7 h-[300px] xl:h-[350px] 2xl:h-[400px] w-full overflow-hidden rounded-xl bg-ink border border-haze/70 relative">
+              <EditorialCoverPlaceholder
+                article={article}
+                read={read}
+                showUnreadDot={false}
+                showVideoBadge={false}
+                className="absolute inset-0 h-full w-full"
               />
+              {cover && (
+                <InkImage
+                  src={cover}
+                  onFailed={onFailed}
+                  eager
+                  collapseOnError
+                  className={`relative h-full w-full object-cover transition-all duration-700 ease-ink group-hover:scale-105 ${
+                    read ? 'opacity-80 grayscale-[0.15] saturate-[0.88]' : 'opacity-100'
+                  }`}
+                />
+              )}
             </div>
 
             {/* 右侧深度排版区 (5 栅格) */}
-            <div className="col-span-5 flex flex-col justify-between h-full py-2">
+            <div className="editorial-lead-desktop-copy col-span-5 flex flex-col justify-between h-full py-2">
               <div>
                 <div className="flex items-center gap-2 font-mono text-[11px] tracking-[0.14em] text-cinnabar-soft">
                   <span className="h-px w-6 bg-cinnabar" aria-hidden />
@@ -629,7 +677,7 @@ export const LeadStory = memo(function LeadStory({
                 </div>
 
                 <h1
-                  className={`lead-title mt-4 line-clamp-3 text-[26px] xl:text-[30px] leading-[1.32] font-medium transition-colors duration-200 ${
+                  className={`editorial-lead-desktop-title lead-title mt-4 line-clamp-3 text-[26px] xl:text-[30px] leading-[1.32] font-medium transition-colors duration-200 ${
                     read
                       ? 'text-paper-muted/90'
                       : 'text-paper group-hover:text-cinnabar'

@@ -1,0 +1,17 @@
+# Dependencies & build
+node_modules/
+dist/
+
+# Vite / TypeScript local caches
+.vite/
+*.tsbuildinfo
+
+# Env & machine-local
+.env
+.env.*
+!.env.example
+*.local
+
+# Curator / design working artifacts (screenshots, recordings)
+.curate-cache.json
+design/evidence/

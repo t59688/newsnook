@@ -17,6 +17,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import { openContentLink } from '../features/browser/browserOpen'
 import type { FrameworkHint } from '../features/frameworkDetect/types'
 import type { NewsSource } from '../sources/registry'
 import type { Article } from '../lib/types'
@@ -160,11 +161,9 @@ export const SiteScreen = memo(function SiteScreen({
     }
   }
 
-  const handleOpenExternal = () => {
+  const handleOpenOriginal = () => {
     const url = state.page?.url || selectedUrl || source?.url
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer')
-    }
+    if (url) openContentLink(url)
   }
 
   const handlePageChange = (type: 'prev' | 'next') => {
@@ -217,7 +216,7 @@ export const SiteScreen = memo(function SiteScreen({
   }
 
   return (
-    <div ref={containerRef} className="relative h-full overflow-y-auto overscroll-contain bg-ink text-paper selection:bg-cinnabar/30">
+    <div ref={containerRef} className="editorial-site-screen relative h-full overflow-y-auto overscroll-contain bg-ink text-paper selection:bg-cinnabar/30">
       {/* 沉浸式紧凑顶部 Header（无巨大空白，极简优雅原生质感） */}
       <header className="sticky top-0 z-20 border-b border-haze/40 bg-ink/95 backdrop-blur-xl transition-colors">
         {/* 第一行：紧凑主导航栏 */}
@@ -299,7 +298,7 @@ export const SiteScreen = memo(function SiteScreen({
 
             <button
               type="button"
-              onClick={handleOpenExternal}
+              onClick={handleOpenOriginal}
               aria-label="在浏览器中打开"
               title="在浏览器中打开"
               className="hidden size-8.5 items-center justify-center rounded-full text-paper-muted transition-colors hover:bg-paper/8 hover:text-paper sm:inline-flex active:scale-95"
@@ -370,18 +369,14 @@ export const SiteScreen = memo(function SiteScreen({
           </div>
         )}
 
-        {/* 第二行：分类胶囊栏（优雅 NewsNook 朱砂强调色，告别死黑白方块） */}
+        {/* 主分类：统一选中指示线，消除荧光实心块与换行。 */}
         {!!profile?.categories.length && (
-          <nav aria-label="全站导航" className="page-x flex gap-1.5 overflow-x-auto scroll-hidden pb-2 pt-0.5">
+          <nav aria-label="全站导航" className="editorial-cms-main-nav page-x flex gap-3 overflow-x-auto scroll-hidden">
             <button
               type="button"
               onClick={() => openUrl(source.url)}
               aria-current={loadedUrl === source.url && !searchActive ? 'page' : undefined}
-              className={`shrink-0 rounded-full px-3.5 py-1 text-[12px] font-medium transition-all active:scale-95 ${
-                loadedUrl === source.url && !searchActive
-                  ? 'bg-cinnabar text-white shadow-xs shadow-cinnabar/20'
-                  : 'text-paper-muted hover:text-paper hover:bg-paper/6'
-              }`}
+              className="editorial-cms-nav-tab shrink-0"
             >
               {rootNavigation?.title || '全部'}
             </button>
@@ -393,11 +388,7 @@ export const SiteScreen = memo(function SiteScreen({
                   type="button"
                   onClick={() => openUrl(link.url)}
                   aria-current={active ? 'page' : undefined}
-                  className={`shrink-0 rounded-full px-3.5 py-1 text-[12px] font-medium transition-all active:scale-95 ${
-                    active
-                      ? 'bg-cinnabar text-white shadow-xs shadow-cinnabar/20'
-                      : 'text-paper-muted hover:text-paper hover:bg-paper/6'
-                  }`}
+                  className="editorial-cms-nav-tab shrink-0"
                 >
                   {link.title}
                 </button>
@@ -434,7 +425,7 @@ export const SiteScreen = memo(function SiteScreen({
             capabilities={capabilities}
             loading={state.loading}
             onChoose={(controlId, choiceId) => { void session?.choose(controlId, choiceId) }}
-            onOpenOriginal={handleOpenExternal}
+            onOpenOriginal={handleOpenOriginal}
           />
         )}
       </header>

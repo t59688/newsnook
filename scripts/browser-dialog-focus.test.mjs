@@ -235,9 +235,13 @@ try {
     assert.equal(await inside(playerOwner), true, 'Fullscreen Escape leaves the browser player open')
     await click('[aria-label="悬浮播放"]')
     assert.equal(await evaluate('document.querySelector("[data-test-player-owner]").contains(document.querySelector("[data-floating-video-window]"))'), true, 'An owned floating window stays in the browser focus container')
+    const previousFloatingRect = await evaluate('(() => {const r=document.querySelector("[data-floating-video-window]").getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height}})()')
     await click('#player-back')
     assert.equal(await evaluate('document.querySelector("[data-test-player-owner]") === null'), true)
     assert.equal(await evaluate('document.querySelector("[data-floating-video-window]").parentElement === document.body'), true, 'A detached floating session returns to the app container')
+    const detachedFloatingRect = await evaluate('(() => {const r=document.querySelector("[data-floating-video-window]").getBoundingClientRect();return {left:r.left,top:r.top,width:r.width,height:r.height}})()')
+    assert.ok(Math.abs(detachedFloatingRect.left - previousFloatingRect.left) <= 8 && Math.abs(detachedFloatingRect.top - previousFloatingRect.top) <= 8, 'moving the floating portal to the app layer preserves on-screen position')
+    assert.ok(Math.abs(detachedFloatingRect.width - previousFloatingRect.width) <= 1 && Math.abs(detachedFloatingRect.height - previousFloatingRect.height) <= 1, 'moving the floating portal preserves its size')
     assert.equal(await evaluate('window.__videoManager.getSnapshot()[0].props.overlayContainer === undefined'), true, 'A detached session releases its removed browser container')
     await click('[aria-label="关闭悬浮播放"]')
 

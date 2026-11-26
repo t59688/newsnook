@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react'
+import { memo, useMemo, type CSSProperties } from 'react'
 import type { Article } from '../lib/types'
 import {
   getEditorialCoverConfig,
@@ -29,10 +29,11 @@ export const EditorialCoverPlaceholder = memo(function EditorialCoverPlaceholder
   showVideoBadge = true,
 }: Props) {
   const config = useMemo(() => getEditorialCoverConfig(article), [article])
+  const hasExplicitPosition = /\b(?:absolute|fixed|sticky|static)\b/.test(className)
 
   return (
     <span
-      className={`editorial-cover-root relative block w-full select-none overflow-hidden bg-ink-deep/30 transition-[opacity,filter] duration-300 ${
+      className={`editorial-cover-root ${hasExplicitPosition ? '' : 'relative '}block w-full select-none overflow-hidden bg-ink-deep/30 transition-[opacity,filter] duration-300 ${
         read ? 'opacity-[0.76] saturate-[0.72] contrast-[0.96]' : 'opacity-[0.98]'
       } ${className}`}
       aria-hidden="true"
@@ -78,12 +79,30 @@ const EditorialVectorScene = memo(function EditorialVectorScene({ config }: Vect
   const patternId = `ec-p-${seed}`
   const gradId = `ec-g-${seed}`
   const radialId = `ec-r-${seed}`
+  // Unique palette values belong to this SVG, never to a global stylesheet.
+  // The previous <style> element emitted one unscoped .editorial-scene-svg rule
+  // per card, causing all covers to repaint whenever a card mounted/unmounted.
+  const themeVars = {
+    '--ec-bg-dark': `url(#${gradId}-dark)`,
+    '--ec-bg-light': `url(#${gradId}-light)`,
+    '--ec-dark-accent': palette.dark.accent,
+    '--ec-dark-accent-soft': palette.dark.accentSoft,
+    '--ec-dark-line': palette.dark.line,
+    '--ec-dark-line-subtle': palette.dark.lineSubtle,
+    '--ec-dark-text': palette.dark.text,
+    '--ec-light-accent': palette.light.accent,
+    '--ec-light-accent-soft': palette.light.accentSoft,
+    '--ec-light-line': palette.light.line,
+    '--ec-light-line-subtle': palette.light.lineSubtle,
+    '--ec-light-text': palette.light.text,
+  } as CSSProperties
 
   return (
     <svg
       viewBox="0 0 240 180"
       preserveAspectRatio="xMidYMid slice"
       className="editorial-scene-svg h-full w-full"
+      style={themeVars}
       xmlns="http://www.w3.org/2000/svg"
     >
       <defs>
@@ -110,44 +129,6 @@ const EditorialVectorScene = memo(function EditorialVectorScene({ config }: Vect
           <circle cx="8" cy="8" r="0.65" fill="var(--ec-line-subtle, rgba(255,255,255,0.08))" />
         </pattern>
       </defs>
-
-      {/* 动态主题 CSS 变量绑定：昼夜无缝切换，墨水屏自动纯化 */}
-      <style>{`
-        .editorial-scene-svg {
-          --ec-bg-grad: url(#${gradId}-dark);
-          --ec-accent: ${palette.dark.accent};
-          --ec-accent-soft: ${palette.dark.accentSoft};
-          --ec-line: ${palette.dark.line};
-          --ec-line-subtle: ${palette.dark.lineSubtle};
-          --ec-text: ${palette.dark.text};
-        }
-        :root[data-theme='light'] .editorial-scene-svg,
-        [data-theme='light'] .editorial-scene-svg {
-          --ec-bg-grad: url(#${gradId}-light);
-          --ec-accent: ${palette.light.accent};
-          --ec-accent-soft: ${palette.light.accentSoft};
-          --ec-line: ${palette.light.line};
-          --ec-line-subtle: ${palette.light.lineSubtle};
-          --ec-text: ${palette.light.text};
-        }
-        [data-eink] .editorial-scene-svg {
-          --ec-bg-grad: #ffffff;
-          --ec-accent: #000000;
-          --ec-accent-soft: #000000;
-          --ec-line: rgba(0, 0, 0, 0.45);
-          --ec-line-subtle: rgba(0, 0, 0, 0.15);
-          --ec-text: #000000;
-        }
-        [data-eink] .editorial-cover-root {
-          background-color: #ffffff !important;
-          border-color: rgba(0,0,0,0.6) !important;
-        }
-        [data-eink] .editorial-cover-tag,
-        [data-eink] .editorial-cover-watermark {
-          color: #000000 !important;
-          opacity: 0.9 !important;
-        }
-      `}</style>
 
       {/* 渐变底图 */}
       <rect width="240" height="180" fill="var(--ec-bg-grad)" />

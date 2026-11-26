@@ -187,6 +187,20 @@ for (const item of STATIC_SCHEMES) {
       block.includes(themeSurface(item.id, mode).toLowerCase()),
       `${item.id}/${mode} 表面色未出现在 CSS 块中`,
     )
+    // 全产品可读性底线：来源、时间、设置说明在页面和浮层均不得过浅。
+    const textFaint = block.match(/--tone-paper-faint:\s*(#[0-9a-f]{6})/)
+    const surfaces = ['--tone-ink:', '--tone-ink-raised:'].map((token) => {
+      const value = block.match(new RegExp(`${token}\\s*(#[0-9a-f]{6})`))
+      assert.ok(value, `${item.id}/${mode} 缺少底色 ${token}`)
+      return value[1]
+    })
+    assert.ok(textFaint, `${item.id}/${mode} 缺少辅助文字色`)
+    for (const background of surfaces) {
+      assert.ok(
+        contrastRatio(textFaint[1], background) >= 4.5,
+        `${item.id}/${mode} 辅助文字 ${textFaint[1]} 在 ${background} 上不够清晰`,
+      )
+    }
   }
 }
 
@@ -200,6 +214,80 @@ for (const id of STATIC_SCHEMES.map((item) => item.id).filter((id) => id !== 'in
 assert.ok(html.includes("scheme === 'custom'"), 'index.html 防闪白名单缺少 custom')
 
 console.log('theme-scheme css: ok')
+
+// 不二昼读：亮绿仅作信号底色，文章标题悬停/链接等文本始终保持可读对比度。
+const buerCss = readFileSync(resolve('src/styles/buer.css'), 'utf8')
+for (const token of ['--buer-accent-text', '--buer-accent-text-soft']) {
+  const match = buerCss.match(new RegExp(`${token}:\\s*(#[0-9a-fA-F]{6})`))
+  assert.ok(match, `不二缺少 ${token}`)
+  for (const background of ['#FFFFFF', '#FAFAFC', '#EEF6CE']) {
+    assert.ok(
+      contrastRatio(match[1], background) >= 4.5,
+      `不二 ${token} 与浅色背景 ${background} 的对比度不足`,
+    )
+  }
+}
+assert.ok(buerCss.includes(".group:hover [class*='group-hover:text-cinnabar']"), '不二文章标题悬停态未覆盖')
+assert.ok(buerCss.includes("[class*='hover:text-cinnabar']:hover"), '不二普通链接悬停态未覆盖')
+assert.ok(buerCss.includes("[class*=' text-cinnabar/']"), '不二透明度文字未覆盖')
+assert.ok(contrastRatio('#000000', '#C8F008') >= 4.5, '荧光绿按钮必须使用黑色文字')
+assert.ok(contrastRatio('#69717D', '#FFFFFF') >= 4.5, '不二昼读辅助信息需达到可读对比度')
+assert.ok(contrastRatio('#777C86', '#090A0C') >= 4.5, '不二夜读辅助信息需达到可读对比度')
+// 编辑式布局属于全应用，不应继续限制在单一主题内。
+const editorialCss = readFileSync(resolve('src/styles/editorial-system.css'), 'utf8')
+assert.ok(readFileSync(resolve("src/index.css"), "utf8").includes("@import './styles/editorial-system.css'"), '缺少全局编辑式样式入口')
+for (const selector of [
+  '.editorial-feed-timeline',
+  '.editorial-article-row',
+  '.editorial-article-title',
+  '.editorial-article-meta',
+  '.editorial-article-summary',
+  '.editorial-reader-toolbar',
+  '.editorial-reader-column',
+  '.editorial-reader-heading',
+]) {
+  assert.ok(editorialCss.includes(selector), `全局编辑式布局缺少 ${selector}`)
+}
+for (const [file, marker] of [
+  ['src/screens/FeedScreen.tsx', 'editorial-feed-timeline'],
+  ['src/screens/ReaderScreen.tsx', 'editorial-reader-toolbar'],
+  ['src/components/ArticleItem.tsx', 'editorial-article-title'],
+  ['src/components/DesktopSidebar.tsx', 'editorial-desktop-sidebar'],
+  ['src/components/AppShell.tsx', 'editorial-app-shell'],
+  ['src/screens/SiteScreen.tsx', 'editorial-site-screen'],
+  ['src/features/rssCatalog/RssCatalogBrowser.tsx', 'editorial-rss-catalog'],
+  ['src/features/zhihu/ui/ZhihuWorkspace.tsx', 'editorial-zhihu-workspace'],
+]) {
+  assert.ok(readFileSync(resolve(file), 'utf8').includes(marker), `${file} 缺少全局布局节点 ${marker}`)
+}
+assert.ok(editorialCss.includes('[data-eink=\'1\']'), '阅读器微调不得影响墨水屏分页')
+
+// 杂志排版属于共享布局，不能绑定某个配色，也不能破坏 Android 9 WebView 69。
+const magazineCss = readFileSync(resolve('src/styles/editorial-magazine.css'), 'utf8')
+assert.ok(readFileSync(resolve('src/index.css'), 'utf8').includes("@import './styles/editorial-magazine.css'"), '缺少杂志布局入口')
+for (const selector of [
+  '.editorial-lead-mobile',
+  '.editorial-lead-spread',
+  '.editorial-desktop-card-grid',
+  '.editorial-mobile-card-grid',
+  '.editorial-feed-day',
+  '.editorial-reader-heading',
+]) {
+  assert.ok(magazineCss.includes(selector), `杂志布局缺少 ${selector}`)
+}
+for (const [file, marker] of [
+  ['src/screens/FeedScreen.tsx', 'editorial-mobile-card-grid'],
+  ['src/screens/FeedScreen.tsx', 'editorial-desktop-card-grid'],
+  ['src/components/ArticleItem.tsx', 'editorial-lead-spread'],
+  ['src/components/ArticleItem.tsx', 'editorial-card-title'],
+]) {
+  assert.ok(readFileSync(resolve(file), 'utf8').includes(marker), `${file} 缺少 ${marker}`)
+}
+assert.ok(!magazineCss.includes("[data-scheme='buer']"), '杂志版式不得限定在不二主题')
+assert.ok(!/:has\(|\bclamp\(/.test(magazineCss), '杂志布局不能依赖 WebView 69 不支持的选择器或尺寸函数')
+assert.ok(magazineCss.includes("html:not([data-eink='1']) .editorial-reader-heading"), '杂志阅读页必须隔离墨水屏')
+
+console.log('buer contrast + global editorial and magazine layouts: ok')
 
 // —— 颜色工具与推导：hex 往返、混合、对比度兜底 ——
 

@@ -1,5 +1,5 @@
 import { ExternalLink } from 'lucide-react'
-import { Browser } from '@capacitor/browser'
+import { openContentLink } from '../../features/browser/browserOpen'
 
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import {
@@ -11,14 +11,6 @@ import {
 
 interface Props {
   onBack: () => void
-}
-
-async function openExternalUrl(url: string) {
-  try {
-    await Browser.open({ url })
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
 }
 
 function LicenseRow({ entry }: { entry: OssLicenseEntry }) {
@@ -49,7 +41,7 @@ function LicenseRow({ entry }: { entry: OssLicenseEntry }) {
     <li className="transition-colors hover:bg-ink-raised/30 active:bg-ink-raised/50">
       <button
         type="button"
-        onClick={() => void openExternalUrl(entry.url!)}
+        onClick={() => openContentLink(entry.url!)}
         className="page-x flex w-full items-center gap-3.5 py-3.5 text-left"
       >
         {content}

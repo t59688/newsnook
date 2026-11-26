@@ -1,4 +1,4 @@
-import { Browser } from '@capacitor/browser'
+import { openContentLink } from '../../browser/browserOpen'
 import { ArrowLeft, BatteryLow, Bookmark, Check, ChevronDown, GitBranch, Hash, Heart, Link, List, Loader2, MessageCircle, MoreHorizontal, Pencil, Quote, Reply, Rocket, Send, Shield, Trash2, TriangleAlert, X } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type MutableRefObject } from 'react'
 
@@ -49,14 +49,6 @@ import { adjacentLinuxDoPostIds, linuxDoServerResumePosition, linuxDoTopicPositi
 import { useTopicPosition } from './useTopicPosition'
 import { linuxDoReadingMode, rememberLinuxDoReadingMode, type LinuxDoReadingMode } from '../topic/readingMode'
 import type { LinuxDoProfileDraft } from '../people/sections'
-
-async function openExternal(url: string): Promise<void> {
-  try {
-    await Browser.open({ url })
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-}
 
 function buildComposerTemplateVariables(
   topic: LinuxDoTopic | undefined,
@@ -726,7 +718,7 @@ export function LinuxDoComposer({
       <TemplatePickerSheet
         open={templatePickerOpen}
         onInsert={insertTemplate}
-        onOpenSource={(template) => void openExternal(`https://linux.do/t/${encodeURIComponent(template.slug || 'topic')}/${template.id}`)}
+        onOpenSource={(template) => openContentLink(`https://linux.do/t/${encodeURIComponent(template.slug || 'topic')}/${template.id}`)}
         onClose={() => setTemplatePickerOpen(false)}
       />
       <ConfirmDialog
@@ -1696,7 +1688,7 @@ export function LinuxDoTopicView({
                           if (topicMatch) {
                             onOpenTopic({ id: Number(topicMatch[2]), slug: topicMatch[1] || 'topic', title: onebox.textContent?.trim().slice(0, 100) || 'Linux.do 主题', postsCount: 0, replyCount: 0, views: 0, likeCount: 0, createdAt: '', lastPostedAt: '', tags: [], posters: [] }, topicMatch[3] ? Number(topicMatch[3]) : undefined)
                           } else {
-                            void openExternal(oneboxUrl.toString())
+                            openContentLink(oneboxUrl.href, { returnToReader: true })
                           }
                         } catch {
                           // Invalid onebox target is inert.
@@ -1759,7 +1751,7 @@ export function LinuxDoTopicView({
                           }
                         }
 
-                        void openExternal(url.toString())
+                        openContentLink(url.href, { returnToReader: true })
                       } catch {
                         // Invalid links remain inert instead of navigating the app WebView.
                       }

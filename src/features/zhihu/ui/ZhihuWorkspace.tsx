@@ -601,7 +601,7 @@ export function ZhihuWorkspace({ onExit, backHandlerRef, presetSwitcher, fontSca
 
   return (
     <ZhihuRemarkProvider key={sessionSnapshot.account?.id ?? 'guest'} accountId={sessionSnapshot.account?.id}>
-    <section className="relative flex h-full min-h-0 flex-1 flex-col bg-ink" aria-label="知乎工作区">
+    <section className="editorial-zhihu-workspace relative flex h-full min-h-0 flex-1 flex-col bg-ink" aria-label="知乎工作区">
       {/* AppShell 已经统一吃掉顶部 safe-area；工作区再次加 --sat 会在打孔/刘海机型上形成双倍顶部留白。 */}
       <header className={`relative z-20 flex shrink-0 items-center gap-2.5 border-b border-paper/[0.06] bg-ink/90 px-3 backdrop-blur-2xl sm:px-5 ${primaryRoute ? 'min-h-[56px]' : 'min-h-[50px]'}`}>
         <button

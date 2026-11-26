@@ -1550,6 +1550,7 @@ public class LinuxDoSessionPlugin extends Plugin {
         ));
 
         WebView webView = new WebView(getActivity());
+        DisplayRefreshPolicy.configureWebView(webView);
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);

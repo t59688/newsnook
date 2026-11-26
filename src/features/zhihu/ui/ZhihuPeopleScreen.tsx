@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Browser } from '@capacitor/browser'
 import { Ban, ExternalLink, Loader2, MessageCircle, RefreshCw, Search, UserPlus, UserRound } from 'lucide-react'
 
+import { openContentLink } from '../../browser/browserOpen'
 import type { PeopleContentKind, ZhihuPeopleColumn, ZhihuPeopleProfile, ZhihuPeopleService } from '../people/service'
 import type { ZhihuInteractionService } from '../interaction/service'
 import { canExecuteZhihuOperation } from '../protocol'
@@ -75,14 +75,6 @@ function isRelationTab(tab: Tab): tab is 'followers' | 'following' {
 
 function isColumnTab(tab: Tab): tab is 'columns' | 'following-columns' {
   return tab === 'columns' || tab === 'following-columns'
-}
-
-async function openZhihuColumn(url: string): Promise<void> {
-  try {
-    await Browser.open({ url })
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
 }
 
 function fallbackProfileForViewer(token: string, viewer?: ZhihuAccountRef | null): ZhihuPeopleProfile | null {
@@ -494,7 +486,7 @@ export function ZhihuPeopleScreen({ token, service, onOpen, interaction, authent
             <button
               key={column.id}
               type="button"
-              onClick={() => void openZhihuColumn(column.url)}
+              onClick={() => openContentLink(column.url)}
               className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition-colors hover:bg-paper/5"
             >
               {column.avatarUrl ? (

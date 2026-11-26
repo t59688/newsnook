@@ -55,7 +55,10 @@ async function findAlternative(article: Article, brokenUrl: string): Promise<str
   const url = article.originUrl
   try {
     const cached = loadCachedBody(article.id)
-    const fromCache = cached && firstImageIn(cached.html, url, brokenUrl)
+    const fromCache = cached && (
+      alternative(cached.article?.image, url, brokenUrl)
+      ?? firstImageIn(cached.html, url, brokenUrl)
+    )
     if (fromCache) return fromCache
   } catch {
     // 无本地正文缓存时继续，不能让缓存不可用阻断封面恢复。

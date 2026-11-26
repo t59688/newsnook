@@ -1,5 +1,4 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState, type MutableRefObject, type RefObject } from 'react'
-import { Browser } from '@capacitor/browser'
 import { Capacitor } from '@capacitor/core'
 import { ArrowLeft, BookmarkCheck, BookmarkPlus, ChevronDown, Globe, Languages, LoaderCircle, MessageSquare, MoreHorizontal, RefreshCw, ScrollText, Volume2, X } from 'lucide-react'
 
@@ -23,6 +22,7 @@ import {
   type OriginPlayerCloseHandle,
 } from '../components/OriginPlayerSurface'
 import { shouldUseOriginPlayerSurface } from '../features/mediaSniffer/originPlayerGate'
+import { openContentLink } from '../features/browser/browserOpen'
 import { loadPrestoredBody } from '../features/prestore/store'
 import { loadCachedBody, saveCachedBody } from '../lib/bodyCache'
 import { withArticlePreviewImage } from '../lib/articlePreview'
@@ -532,18 +532,18 @@ export function ReaderScreen({
 
     const onClick = (event: MouseEvent) => {
       const target = event.target
-      if (!(target instanceof Element)) return
-      const relatedLink = target.closest('a[data-reader-role="related-item"]')
-      if (relatedLink instanceof HTMLAnchorElement) {
-        const href = relatedLink.href
+      if (event.defaultPrevented || !(target instanceof Element)) return
+      const link = target.closest<HTMLAnchorElement>('a[href]')
+      if (link?.getAttribute('data-reader-role') === 'related-item') {
+        const href = link.href
         if (href && onOpenRelated) {
           event.preventDefault()
           event.stopPropagation()
           const title =
-            relatedLink.getAttribute('data-related-title') ||
-            relatedLink.textContent?.replace(/\s+/g, ' ').trim() ||
+            link.getAttribute('data-related-title') ||
+            link.textContent?.replace(/\s+/g, ' ').trim() ||
             href
-          const img = relatedLink.querySelector('img')
+          const img = link.querySelector('img')
           onOpenRelated(
             articleFromRelatedLink(
               article,
@@ -552,29 +552,34 @@ export function ReaderScreen({
               img?.currentSrc || img?.getAttribute('src') || undefined,
             ),
           )
+          return
         }
-        return
       }
-      if (einkMode) return
-      if (!(target instanceof HTMLImageElement)) return
-      if (target.classList.contains('async-img-failed')) return
-      if (target.getAttribute(DEFERRED_SRC_ATTR) && !target.getAttribute('src')) return
-      if (target.closest('[data-reader-deferred]')) return
       if (
-        target.classList.contains('reader-img-badge') ||
-        target.getAttribute('data-reader-role') === 'badge'
+        !einkMode && target instanceof HTMLImageElement &&
+        !target.classList.contains('async-img-failed') &&
+        !(target.getAttribute(DEFERRED_SRC_ATTR) && !target.getAttribute('src')) &&
+        !target.closest('[data-reader-deferred]') &&
+        !target.classList.contains('reader-img-badge') &&
+        target.getAttribute('data-reader-role') !== 'badge'
       ) {
-        return
+        const src = target.currentSrc || target.src
+        if (src) {
+          event.preventDefault()
+          setLightbox(collectImageGallery(root, { src, alt: target.alt || '' }))
+          return
+        }
       }
-      const src = target.currentSrc || target.src
-      if (!src) return
-      event.preventDefault()
-      setLightbox(collectImageGallery(root, { src, alt: target.alt || '' }))
+
+      const href = link?.getAttribute('href')?.trim()
+      if (href && !href.startsWith('#') && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey) {
+        if (openContentLink(href, { baseUrl: resolvedOriginUrl || article.originUrl, returnToReader: true })) event.preventDefault()
+      }
     }
 
     root.addEventListener('click', onClick)
     return () => root.removeEventListener('click', onClick)
-  }, [article, einkMode, html, loadState, onOpenRelated, showTranslation, translated])
+  }, [article, einkMode, html, loadState, onOpenRelated, resolvedOriginUrl, showTranslation, translated])
 
   useEffect(() => {
     setUnlockedMediaUrls([])
@@ -1181,9 +1186,8 @@ export function ReaderScreen({
   /** 出版社地址：只用于「浏览器核对原文」与分享 token 里的正文来源 */
   const originUrl = resolvedOriginUrl || article.originUrl
 
-  const openOriginal = async () => {
-    if (!originUrl) return
-    await Browser.open({ url: originUrl })
+  const openOriginal = () => {
+    if (originUrl) openContentLink(originUrl, { returnToReader: true })
   }
 
   /**
@@ -1401,7 +1405,7 @@ export function ReaderScreen({
   return (
     <div
       ref={shellRef}
-      className="reader-swipe-surface absolute inset-0 z-30 flex flex-col bg-ink"
+      className="editorial-reader-shell reader-swipe-surface absolute inset-0 z-30 flex flex-col bg-ink"
       style={{
         paddingTop: 'var(--sat)',
         paddingBottom: 'var(--sab)',
@@ -1430,7 +1434,7 @@ export function ReaderScreen({
       >
         <header
           data-surface="reader-chrome"
-          className={`shrink-0 pt-1 pb-1 border-b border-haze/30 bg-ink/90 backdrop-blur-md sticky top-0 z-20 ${
+          className={`editorial-reader-toolbar shrink-0 pt-1 pb-1 border-b border-haze/30 bg-ink/90 backdrop-blur-md sticky top-0 z-20 ${
             einkMode && !chromeVisible ? 'hidden' : ''
           }`}
         >
@@ -1624,7 +1628,7 @@ export function ReaderScreen({
             }`}
           >
           <div
-            className="mx-auto w-full max-w-3xl lg:max-w-4xl"
+            className="editorial-reader-column mx-auto w-full max-w-3xl lg:max-w-4xl"
             style={
               einkMode
                 ? {
@@ -1635,7 +1639,7 @@ export function ReaderScreen({
           >
             <div ref={contentMeasureRef}>
             {/* 标题在正文抽取期间就已就位，不随加载状态闪烁 */}
-            <div className="page-x lg:px-8 pt-4">
+            <div className="editorial-reader-heading page-x lg:px-8 pt-4">
               <span className="flex items-center gap-2 font-mono text-[10px] tracking-[0.16em] text-cinnabar-soft">
                 <span className="h-px w-5 bg-cinnabar" aria-hidden />
                 {articleRelativeTime(article)}
@@ -1662,7 +1666,7 @@ export function ReaderScreen({
                     {(resolvedOriginUrl || article.originUrl) && (
                       <button
                         type="button"
-                        onClick={() => void openOriginal()}
+                        onClick={openOriginal}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-cinnabar px-3 py-1.5 font-mono text-[11px] font-medium text-white hover:bg-cinnabar-soft active:scale-95 transition-all"
                       >
                         <Globe size={12} strokeWidth={2} />
@@ -1743,7 +1747,7 @@ export function ReaderScreen({
             </div>
 
             {showStandaloneCover && coverUrl && article.contentType !== 'video' && (
-              <div className="mt-5 page-x lg:px-8">
+              <div className="editorial-reader-cover mt-5 page-x lg:px-8">
                 <InkImage
                   src={coverUrl}
                   deferLoad={!autoLoadMedia}
@@ -1764,7 +1768,7 @@ export function ReaderScreen({
                 referrer={resolvedOriginUrl || article.originUrl || feedEmbeddedPlayerUrl}
                 title={article.title}
                 poster={article.image}
-                openOriginal={() => void openOriginal()}
+                openOriginal={openOriginal}
                 closeHandleRef={originPlayerCloseRef}
                 suppressResourceFab={speedReadOpen}
                 autoUseReader
@@ -1815,7 +1819,7 @@ export function ReaderScreen({
               </div>
             )}
 
-            <div className="page-x pt-6" style={{ paddingBottom: '40px' }}>
+            <div className="editorial-reader-main page-x pt-6" style={{ paddingBottom: '40px' }}>
               {loadState === 'loading' && <ReaderSkeleton />}
 
               {loadState === 'error' && (
@@ -1836,7 +1840,7 @@ export function ReaderScreen({
                     {(resolvedOriginUrl || article.originUrl) && (
                       <button
                         type="button"
-                        onClick={() => void openOriginal()}
+                        onClick={openOriginal}
                         className="inline-flex items-center gap-2 rounded-full border border-haze px-4 py-2.5 text-[13px] text-paper-muted"
                       >
                         <Globe size={14} strokeWidth={1.7} />
@@ -2014,7 +2018,7 @@ export function ReaderScreen({
         onExportMarkdown={() => void handleExportMarkdown()}
         onOpenOriginal={() => {
           setMoreMenuOpen(false)
-          void openOriginal()
+          openOriginal()
         }}
         onReextract={() => {
           setMoreMenuOpen(false)
@@ -2112,7 +2116,7 @@ export function ReaderScreen({
       )}
 
       {/* 底部右下角悬浮跟贴胶囊（随时一触即达） */}
-      {canComment && !commentsOpen && !shareSheetOpen && !einkMode && !speedReadOpen && (
+      {canComment && !commentsOpen && !shareSheetOpen && !einkMode && !speedReadOpen && !moreMenuOpen && !translationMenuOpen && !lightbox && (
         <div
           className={`fixed right-4 z-40 transition-all duration-300 pointer-events-auto safe-bottom-20 ${
             (einkMode ? chromeVisible : pillVisible)

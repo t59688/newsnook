@@ -124,6 +124,31 @@ public class BrowserHostLifecycleTest {
         return (WebView) webView.get(tab);
     }
 
+    @Test public void navigationTabSnapshotsOmitHeavyPreviewsUnlessRequested() throws Exception {
+        assertNull(open("https://example.com/performance").error);
+        Field currentField = BrowserHostPlugin.class.getDeclaredField("current");
+        currentField.setAccessible(true);
+        Object tab = currentField.get(host);
+        Field preview = tab.getClass().getDeclaredField("preview");
+        preview.setAccessible(true);
+        preview.set(tab, "data:image/jpeg;base64,CACHED");
+
+        Call metadata = new Call("tabs", new JSObject());
+        host.tabs(metadata);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(metadata.resolved);
+        assertFalse("Routine navigation state must never transfer JPEG thumbnails",
+            metadata.result.getJSONArray("tabs").getJSONObject(0).has("preview"));
+        assertEquals("data:image/jpeg;base64,CACHED", preview.get(tab));
+
+        Call switcher = new Call("tabs", new JSObject().put("includePreviews", true));
+        host.tabs(switcher);
+        Shadows.shadowOf(Looper.getMainLooper()).idle();
+        assertTrue(switcher.resolved);
+        assertTrue("Tab switcher must receive a preview property",
+            switcher.result.getJSONArray("tabs").getJSONObject(0).has("preview"));
+    }
+
     @org.robolectric.annotation.Implements(android.webkit.CookieManager.class)
     public static class CookiesWithPerViewPolicy extends org.robolectric.shadows.ShadowCookieManager {
         private static android.webkit.CookieManager instance;
@@ -168,10 +193,16 @@ public class BrowserHostLifecycleTest {
         WebView ordinary = currentView();
         int oldTabId = state().getInt("tabId");
         ordinary.getWebViewClient().onPageStarted(ordinary, "https://example.com/ordinary", null);
+        Field cacheField = BrowserHostPlugin.class.getDeclaredField("scriptDependencies");
+        cacheField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        java.util.Map<String, byte[]> cachedRequires = (java.util.Map<String, byte[]>) cacheField.get(host);
+        cachedRequires.put("https://example.com/private-unsafe.js", new byte[]{1, 2, 3});
         Call enabled = new Call("updateSettings", new JSObject().put("settings", new JSObject().put("privateMode", true)));
         host.updateSettings(enabled);
         await(enabled);
         assertNull(enabled.error);
+        assertTrue("switching to private mode clears public script dependencies", cachedRequires.isEmpty());
         WebView isolated = currentView();
         assertNotSame("privacy must not reuse a WebView's default profile", ordinary, isolated);
         assertNotEquals(oldTabId, state().getInt("tabId"));
@@ -368,6 +399,20 @@ public class BrowserHostLifecycleTest {
         assertTrue(cookies.getCookie("https://example.com").contains("ordinary_session=preserve"));
     }
 
+    @Test public void webProgressCallbacksOnlyBridgeSignificantChanges() throws Exception {
+        assertNull(open("https://example.com/progress").error);
+        WebView view = currentView();
+        view.getWebViewClient().onPageStarted(view, "https://example.com/progress", null);
+        host.events.clear();
+        host.payloads.clear();
+        for (int percent = 1; percent <= 100; percent++)
+            view.getWebChromeClient().onProgressChanged(view, percent);
+        int updates = 0;
+        for (String event : host.events) if ("navigation".equals(event)) updates++;
+        assertEquals("UI refresh and bridge traffic must be bounded to 10%% steps", 10, updates);
+        assertEquals(100, state().getInt("progress"));
+    }
+
     @Test public void embeddedProgressAndTitleDoNotRequireDialogChrome() throws Exception {
         assertNull(open("https://example.com/").error);
         WebView view = currentView();
@@ -493,6 +538,7 @@ public class BrowserHostLifecycleTest {
         org.json.JSONArray opened = tabs().getJSONArray("tabs");
         assertEquals(2, opened.length());
         assertEquals("https://developer.android.com/guide", opened.getJSONObject(1).getString("url"));
+        assertEquals("a background link retains its opener", articleTabId, opened.getJSONObject(1).getInt("openerTabId"));
         assertFalse("the long-press action must preserve the reading context",
             opened.getJSONObject(1).getBoolean("active"));
         assertEquals(articleTabId, state().getInt("tabId"));
@@ -516,8 +562,20 @@ public class BrowserHostLifecycleTest {
 
         assertEquals(2, tabs().getJSONArray("tabs").length());
         assertNotEquals(articleTabId, state().getInt("tabId"));
+        assertEquals("a long-pressed foreground link retains its opener", articleTabId, state().getInt("openerTabId"));
         assertEquals("https://developer.android.com/reference", state().getString("url"));
         assertNotSame(article, currentView());
+    }
+
+    @Test public void missingBackgroundTabOpenerDoesNotCrashFallback() throws Exception {
+        assertNull(open("https://example.com/original").error);
+        java.lang.reflect.Method animate = BrowserHostPlugin.class.getDeclaredMethod(
+            "animatePaperFlyIntoTabBadge", Class.forName("com.aizeek.newsnook.BrowserHostPlugin$Tab"), String.class);
+        animate.setAccessible(true);
+        animate.invoke(host, null, "https://example.com/background");
+        assertEquals(2, tabs().getJSONArray("tabs").length());
+        assertTrue("background fallback stays on the original tab", tabs().getJSONArray("tabs").getJSONObject(0).getBoolean("active"));
+        assertTrue(tabs().getJSONArray("tabs").getJSONObject(1).isNull("openerTabId"));
     }
 
     @Test public void initiallyHiddenBrowserStaysHiddenThroughAsynchronousPreparation() throws Exception {
@@ -587,6 +645,41 @@ public class BrowserHostLifecycleTest {
         first.getWebChromeClient().onReceivedTitle(first, "Finished example");
         first.getWebChromeClient().onProgressChanged(first, 100);
         assertEquals("late title or progress callbacks must not record the visit again", 1, completedNavigations());
+    }
+
+    @Test public void navigatingHomeIgnoresLatePreviousDocumentCompletion() throws Exception {
+        assertNull(open("https://example.com/slow").error);
+        WebView view = currentView();
+        view.getWebViewClient().onPageStarted(view, "https://example.com/slow", null);
+        view.getWebViewClient().onPageFinished(view, "https://example.com/slow");
+        Call home = new Call("navigate", new JSObject().put("action", "home"));
+        host.navigate(home);
+        assertTrue(home.resolved);
+        assertEquals("about:blank", state().getString("url"));
+        view.getWebViewClient().onPageFinished(view, "https://example.com/slow");
+        assertEquals("late old callbacks must not revert the visible home URL", "about:blank", state().getString("url"));
+    }
+
+    @Test public void failedPageRetryImmediatelyPublishesProgressAndDistinctFailure() throws Exception {
+        assertNull(open("https://does-not-exist.example/page").error);
+        WebView view = currentView();
+        view.getWebViewClient().onReceivedError(view, -2, "DNS failed", "https://does-not-exist.example/page");
+        assertNotNull(state().getString("error"));
+        Call reload = new Call("navigate", new JSObject().put("action", "reload"));
+        host.navigate(reload);
+        assertTrue(reload.resolved);
+        assertTrue("retry must publish an immediate loading indicator", state().getBoolean("loading", false));
+        assertTrue("error view stays covered while retrying", state().getBoolean("retrying", false));
+        view.getWebViewClient().onReceivedError(view, -2, "DNS failed", "https://does-not-exist.example/page");
+        assertFalse(state().getBoolean("retrying", true));
+        assertTrue("unexpected error=" + state().getString("error"), state().getString("error").contains("重新加载失败"));
+        // A subsequent successful document ends the retry attempt. A later, unrelated
+        // navigation failure must not be mislabeled as another retry failure.
+        view.getWebViewClient().onPageStarted(view, "https://does-not-exist.example/working", null);
+        view.getWebViewClient().onPageFinished(view, "https://does-not-exist.example/working");
+        view.getWebViewClient().onPageStarted(view, "https://does-not-exist.example/another", null);
+        view.getWebViewClient().onReceivedError(view, -2, "DNS failed", "https://does-not-exist.example/another");
+        assertFalse("a new document failure is not an explicit retry", state().getString("error").contains("重新加载失败"));
     }
 
     @Test public void stoppingInitialPreparationKeepsTheAddressForReload() throws Exception {

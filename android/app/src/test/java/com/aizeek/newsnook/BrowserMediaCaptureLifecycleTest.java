@@ -50,6 +50,27 @@ public class BrowserMediaCaptureLifecycleTest {
         return JSONObject.quote(new JSONObject().put("url", pageUrl).put("events", events).toString());
     }
 
+    @Test public void repeatedActiveStateDoesNotRepublishTheSamePage() throws Exception {
+        DeferredWebView view = new DeferredWebView(RuntimeEnvironment.getApplication());
+        List<String> pages = new ArrayList<>();
+        BrowserMediaCapture capture = new BrowserMediaCapture(view, "https://example.com/",
+            ignored -> {}, (url, reset) -> pages.add(url));
+        try {
+            capture.setActive(true);
+            assertEquals(1, pages.size());
+            capture.setActive(true);
+            capture.setActive(true);
+            assertEquals("Repeated viewport/layout notifications must not replay page events", 1, pages.size());
+            capture.setActive(false);
+            capture.setActive(false);
+            capture.setActive(true);
+            assertEquals("Actual resume must still publish the current page", 2, pages.size());
+        } finally {
+            capture.close();
+            view.destroy();
+        }
+    }
+
     @Test public void mediaProbeResultArrivingAfterHideCannotPublishAPageChange() throws Exception {
         DeferredWebView view = new DeferredWebView(RuntimeEnvironment.getApplication());
         List<String> pages = new ArrayList<>();

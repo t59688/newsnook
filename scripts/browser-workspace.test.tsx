@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { registerHooks } from 'node:module'
+import postcss from 'postcss'
 import { mock } from 'node:test'
 import React, { act, useState } from 'react'
 import { parseHTML } from 'linkedom'
 import type { BrowserRecoverySession, BrowserState, BrowserTab } from '../src/features/browser/useBrowserSession'
 import { installUserScript, saveUserScripts, type UserScript } from '../src/features/browser/scripts'
 import type { MediaResourceDescriptor } from '../src/features/mediaSniffer/types'
+import { VideoSessionManagerContext } from '../src/features/floatingVideo/context'
+import { createVideoSessionManager } from '../src/features/floatingVideo/session'
 
 // Node has no stylesheet loader. The dedicated launcher test exercises pending CSS;
 // this suite covers the real workspace controls and native session after styles load.
@@ -58,7 +62,7 @@ let nativeGeneration = 0
 let nextTabId = 1
 let exits = 0
 let fixture = 0
-type Bounds = { top: number; bottom: number; visible: boolean }
+type Bounds = { top: number; bottom: number; visible: boolean; animateReveal?: boolean; capturePreviewOnHide?: boolean }
 type OpenCall = Bounds & { url: string; embedded: boolean; recoverySession?: BrowserRecoverySession; scripts: unknown[]; palette: Record<string, string> }
 const openCalls: OpenCall[] = []
 const bounds: Bounds[] = []
@@ -241,12 +245,15 @@ mock.module('../src/components/InkVideoPlayer.tsx', { namedExports: {
 const { createRoot } = await import('react-dom/client')
 const { BrowserWorkspace } = await import('../src/features/browser/BrowserWorkspace')
 const { BrowserLauncher } = await import('../src/features/browser/BrowserLauncher')
-const { openBrowserWithUrl } = await import('../src/features/browser/browserOpen')
+const { BROWSER_OPEN_EVENT, openBrowserWithUrl } = await import('../src/features/browser/browserOpen')
 const { dismissTopHardwareBackLayer } = await import('../src/lib/hardwareBackStack')
 const root = createRoot(document.getElementById('root')!)
+const videoManager = createVideoSessionManager()
 function Harness({ recoverySession }: { recoverySession?: BrowserRecoverySession }) {
   const [open, setOpen] = useState(true)
-  return open ? <BrowserWorkspace recoverySession={recoverySession} onExit={() => { exits++; setOpen(false) }}/> : <div data-reader>有所闻</div>
+  return open ? <VideoSessionManagerContext.Provider value={videoManager}>
+    <BrowserWorkspace recoverySession={recoverySession} onExit={() => { exits++; setOpen(false) }}/>
+  </VideoSessionManagerContext.Provider> : <div data-reader>有所闻</div>
 }
 async function mount(preserveStorage = false, recoverySession?: BrowserRecoverySession, strict = false, privateMode = false) {
   await act(async () => root.render(null))
@@ -341,7 +348,31 @@ async function playFirst() {
 }
 
 try {
+  // Legacy WebViews discard an entire selector group when it contains the
+  // unsupported :focus-visible pseudo-class. Keep the keyboard fallback separate.
+  const focusStyles = postcss.parse(readFileSync(new URL('../src/features/browser/browser.css', import.meta.url), 'utf8'))
+  const cssRules = focusStyles.nodes.filter(rule => rule.type === 'rule')
+  const touchRule = cssRules.find(rule => rule.selector.includes('.browser-workspace button:focus,') && rule.selector.includes('.browser-workspace a:focus'))
+  assert.ok(touchRule && touchRule.nodes.some(node => node.type === 'decl' && node.prop === 'outline' && node.value === 'none'),
+    'touch-focused browser buttons have no persistent outline even without :focus-visible')
+  const keyboardRule = cssRules.find(rule => rule.selector.includes(".browser-workspace[data-focus-input='keyboard'] button:focus"))
+  assert.ok(keyboardRule && !keyboardRule.selector.includes(':focus-visible'),
+    'legacy keyboard focus fallback must not share a selector group with an unsupported pseudo-class')
+  assert.ok(keyboardRule.nodes.some(node => node.type === 'decl' && node.prop === 'outline' && node.value.includes('2px')),
+    'legacy hardware keyboard focus stays visible')
   await mount()
+  // A touch-focused address button must never retain the legacy WebView focus
+  // outline; keyboard/D-pad navigation must still have an explicit focus cue.
+  const browserRoot = select('.browser-workspace') as HTMLElement
+  const addressButton = button('搜索或输入网址')
+  await act(async () => {
+    const tab = new window.Event('keydown', { bubbles: true, cancelable: true })
+    Object.defineProperty(tab, 'key', { value: 'Tab' })
+    addressButton.dispatchEvent(tab)
+  })
+  assert.equal(browserRoot.dataset.focusInput, 'keyboard', 'Tab enables visible legacy keyboard focus')
+  await act(async () => addressButton.dispatchEvent(new window.Event('pointerdown', { bubbles: true })))
+  assert.equal(browserRoot.dataset.focusInput, 'pointer', 'touch/pen/mouse must clear the keyboard focus flag')
   await visit('https://historical.example/regular-search')
   const normalHistoryBeforeIncognito = storage.get(HISTORY)
   await menu('主页')
@@ -564,9 +595,43 @@ try {
   await click(button('播放 movie', select('[role="dialog"][aria-label="媒体资源"]')))
   assert.ok(select('[data-test-player]'), 'the address-bar entry leads to the existing playback pipeline')
   assert.equal(addressMediaCount(), '0', 'dedicated playback does not keep showing a redundant discovery affordance')
+  const revealGate = deferred()
+  boundsGate = revealGate
   await click(button('返回网页'))
+  assert.ok(select('[data-test-player]'), 'return keeps the player mounted until the native page acknowledges visibility')
+  assert.equal(bounds.at(-1)?.visible, true, 'return first requests the original webpage to be visible')
+  assert.equal(bounds.at(-1)?.animateReveal, true, 'the native compositor crossfades over the player')
+  assert.equal(addressMediaCount(), '0', 'the player stays on screen while the bridge is pending')
+  await act(async () => {
+    boundsGate = null
+    revealGate.resolve()
+    await Promise.resolve()
+  })
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 215)) })
+  assert.equal(Boolean(document.querySelector('[data-test-player]')), false, 'the player unmounts only after the native handoff settles')
   assert.equal(addressMediaCount(), '1', 'the count remains discoverable after playback')
+  assert.equal(bounds.at(-1)?.capturePreviewOnHide, false, 'player handoff does not perform a JPEG snapshot')
+  // Browser-owned Ink Player float is a persistent video session. The original
+  // webpage must reappear behind the floating session without pausing it.
+  await menu('媒体资源')
+  await click(button('播放 movie', select('[role="dialog"][aria-label="媒体资源"]')))
+  const browserOwner = select('[aria-label="NewsNook 网页浏览器"]') as HTMLElement
+  const testFloatId = 'browser-video-float-qa'
+  videoManager.register(testFloatId, {src:'https://cdn.example.com/movie.mp4', overlayContainer:browserOwner}, document.createElement('div'))
+  await act(async () => { videoManager.float(testFloatId); await Promise.resolve() })
+  assert.equal(bounds.at(-1)?.visible, true, 'browser page is revealed behind its own floating player')
+  assert.equal(bounds.at(-1)?.animateReveal, true, 'floating playback preserves native compositor handoff')
+  await act(async () => { await new Promise(resolve => setTimeout(resolve, 215)) })
+  assert.equal(Boolean(document.querySelector('[data-test-player]')), false, 'full-page player overlay releases after website appears')
+  assert.equal(videoManager.getSnapshot()[0]?.mode, 'floating', 'floating session survives browser handoff')
+  videoManager.close(testFloatId)
   await click(button('标签页'))
+  assert.equal(bounds.at(-1)?.capturePreviewOnHide, true, 'only the tab switcher captures a live thumbnail')
+  const thumbnail = 'data:image/jpeg;base64,dGVzdA=='
+  await act(async () => listeners.get('tabPreviewReady')?.({tabId: mediaTab, url: 'https://wrong.example/', preview: thumbnail}))
+  assert.equal(Boolean(document.querySelector('.browser-tab-preview-img')), false, 'a stale thumbnail cannot overwrite a new document')
+  await act(async () => listeners.get('tabPreviewReady')?.({tabId: mediaTab, url: current.url, preview: thumbnail}))
+  assert.equal(select('.browser-tab-preview-img').getAttribute('src'), thumbnail, 'native worker completion updates the visible tab preview without remounting the panel')
   await click(button('新建标签页'))
   assert.equal(addressMediaCount(), '0', 'a blank tab never inherits another tab\'s media')
   await visit('https://other.example/another-film')
@@ -1039,6 +1104,26 @@ try {
   await menu('返回有所闻')
   assert.equal(document.querySelector('[aria-label="NewsNook 网页浏览器"]'), null)
 
+  const readerUrl = 'https://example.com/article-link'
+  await act(async () => {
+    window.dispatchEvent(new window.CustomEvent(BROWSER_OPEN_EVENT, { detail: { url: readerUrl, returnToReader: true } }))
+  })
+  assert.equal(current.url, readerUrl)
+  await act(async () => { current = { ...current, back: true }; emitNavigation('end') })
+  await back()
+  assert.equal(commands.at(-1)?.action, 'back', 'the reader entry still goes back through webpage history')
+  assert.ok(document.querySelector('[aria-label="NewsNook 网页浏览器"]'))
+  await act(async () => { current = { ...current, back: false }; emitNavigation('end') })
+  const commandsBeforeReaderExit = commands.length
+  await back()
+  assert.ok(!document.querySelector('[aria-label="NewsNook 网页浏览器"]'), 'without webpage history, the first Back exits to the reader')
+  assert.equal(commands.length, commandsBeforeReaderExit, 'reader exit skips navigation to the browser home')
+
+  await act(async () => { openBrowserWithUrl(readerUrl) })
+  await back()
+  assert.equal(commands.at(-1)?.action, 'home', 'a standalone entry still returns to the browser home first')
+  await back()
+
   await mount()
   await visit('https://example.com/toolbar-exit')
   const toolbarCloseBtn = select('[aria-label="浏览器控制"] button[aria-label="返回有所闻"]')
@@ -1091,6 +1176,38 @@ try {
   assert.equal(bounds.at(-1)?.top, 250)
   await act(async () => { fireResize(); await new Promise(resolve => setTimeout(resolve, 20)) })
   assert.equal(bounds.length, beforeResize + 2, '未变化的像素边界无需重复发送')
+  await mount()
+  await visit('https://example.com/opener')
+  const openerId = current.tabId!
+  await act(async () => {
+    const childId = nextTabId++
+    tabList.push({index: tabList.length, id: childId, url: 'about:blank',
+      title: '网页', active: true, loading: true, openerTabId: openerId})
+    tabList.forEach(tab => {tab.active = tab.id === childId})
+    current = {...blank(), url: 'about:blank', tabId: childId, openerTabId: openerId,
+      openingPopup: true, loading: true}
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  assert.ok(document.body.textContent?.includes('正在打开新标签页'), 'a popup waiting for native transport must not show the start page')
+  assert.ok(!document.querySelector('.browser-start'), 'blank popup is not a new user tab homepage')
+  await act(async () => {
+    current = {...current, openingPopup: false, loading: false}
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  await back()
+  assert.equal(commands.at(-1)?.action, 'back', 'child popup at home must ask native browser to return to its opener')
+  assert.equal(closeCalls, 0, 'child popup back must not exit entire browser')
+  await act(async () => {
+    current = {...current, url: 'https://example.com/unreachable', retrying: true, loading: true}
+    emitNavigation('state')
+    await Promise.resolve()
+  })
+  assert.ok(document.body.textContent?.includes('正在重新加载网页'), 'failed-page retry displays immediate busy feedback')
+  assert.equal(document.querySelector('.browser-start'), null, 'retry never renders start page')
+  console.log('Browser popup loading, opener back dispatch, and retry status OK')
+
   console.log('Browser native viewport resize: frame coalescing, in-flight dedupe and latest position OK')
 
   console.log('Browser external intent: cold launch, hot navigation and menu exit OK')

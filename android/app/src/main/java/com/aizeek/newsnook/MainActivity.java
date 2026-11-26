@@ -213,6 +213,10 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         @Override
         public void onPageStarted(WebView webView) {
             if (!bindMainWebView(webView)) return;
+            // Capacitor creates the WebView before the Activity is attached to
+            // a Display. A rate vote in load()/onCreate() can therefore be lost.
+            // The first real navigation occurs after attachment; vote here.
+            DisplayRefreshPolicy.configureWebView(webView);
             cancelFirstUiDraw();
             webContentReady = false;
             webUiFirstFrameReady = false;
@@ -226,6 +230,7 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         @Override
         public void onPageCommitVisible(WebView webView, String url) {
             if (!bindMainWebView(webView)) return;
+            DisplayRefreshPolicy.configureWebView(webView);
             webView.setBackgroundColor(0xFF0E0F12);
             webContentReady = true;
             splashMayExit = true;
@@ -483,6 +488,7 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         // Installing the interface here makes it available to the first document.
         WebView webView = findViewById(com.getcapacitor.android.R.id.webview);
         if (bindMainWebView(webView)) {
+            DisplayRefreshPolicy.configureWebView(webView);
             webView.setBackgroundColor(0xFF0E0F12);
             webView.addJavascriptInterface(new NativeThemeBridge(), "NewsNookNative");
         }
@@ -515,6 +521,7 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         registerPlugin(ZhihuSessionPlugin.class);
         registerPlugin(LinuxDoSessionPlugin.class);
         registerPlugin(SyncNotificationPlugin.class);
+        registerPlugin(SourceWatchPlugin.class);
         registerPlugin(CatalogSnapshotPlugin.class);
         bridgeBuilder.addWebViewListener(mainWebViewListener);
         traceStartup("plugins-registered");
@@ -524,6 +531,7 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
         // BridgeActivity switches to Capacitor's no-action-bar theme and installs
         // its content view in super.onCreate(); reassert our window contract after it.
         configureEdgeToEdgeWindow();
+        DisplayRefreshPolicy.configureWindow(this);
 
         // 外部媒体仍由 WebView 播放；仅已登记的媒体会话走流式请求上下文桥接。
         if (bridge != null) {
@@ -533,6 +541,7 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
             // file pickers, Web permissions, alerts and prompts remain functional.
             WebView mainWebView = bridge.getWebView();
             if (bindMainWebView(mainWebView)) {
+                DisplayRefreshPolicy.configureWebView(mainWebView);
                 mainWebChromeClient = new NewsNookWebChromeClient(bridge, this);
                 mainWebView.setWebChromeClient(mainWebChromeClient);
             }
@@ -581,6 +590,8 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
     @Override
     public void onResume() {
         super.onResume();
+        DisplayRefreshPolicy.configureWindow(this);
+        DisplayRefreshPolicy.configureWebView(getCapacitorWebView());
         startupResumed = true;
         maybeRequestFirstUiDraw();
 
@@ -645,6 +656,8 @@ public class MainActivity extends BridgeActivity implements BrowserFullscreenHos
     @Override
     public void onConfigurationChanged(android.content.res.Configuration newConfig) {
         super.onConfigurationChanged(newConfig);
+        DisplayRefreshPolicy.configureWindow(this);
+        DisplayRefreshPolicy.configureWebView(getCapacitorWebView());
         // manifest 已声明 orientation 等 configChanges，Activity 不重建；
         // 但部分机型旋转后 insets controller 的隐藏状态会丢，视频全屏期间必须补隐藏
         if (videoFullscreenActive) {

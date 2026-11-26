@@ -94,13 +94,14 @@ export function SourceFilterChips({
     : []
 
   return (
-    <div className="relative w-full">
+    <div className="editorial-source-filters relative w-full">
       <div
         className="page-x horizontal-scroll-rail scroll-hidden max-w-[2400px] mx-auto flex items-center gap-1.5 overflow-x-auto lg:px-6 xl:px-8 2xl:px-10 py-1 select-none"
       >
         {sources.length > 1 && (
           <button
             type="button"
+            aria-pressed={selectedSourceId === null}
             onClick={() => onSelect(null)}
             className={`group flex h-[26px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2.5 font-mono text-[11px] transition-all duration-200 active:scale-95 ${
               selectedSourceId === null
@@ -123,6 +124,7 @@ export function SourceFilterChips({
             <button
               key={source.id}
               type="button"
+              aria-pressed={isSelected}
               onClick={() => {
                 if (longPress.consumeClick(source.id)) return
                 onSelect(isSelected ? null : source.id)

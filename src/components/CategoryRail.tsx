@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from 'react'
 import { ArrowLeft, ArrowRight, CircleMinus, PencilLine } from 'lucide-react'
 
 import { useLongPressAction } from '../hooks/useLongPressAction'
@@ -28,10 +28,14 @@ interface Props {
 
 const BASE_INDICATOR_WIDTH = 16 // 16px 精致杂志书签指示条
 
+export interface CategoryRailGestureHandle {
+  followSwipe: (offset: number, width: number, transitionMs?: number) => void
+}
+
 /**
  * 墨砚分类轨道：支持跟手横滑实时联动、丝滑水墨拉伸与自动居中对齐。
  */
-export function CategoryRail({
+export const CategoryRail = forwardRef<CategoryRailGestureHandle, Props>(function CategoryRail({
   categories,
   activeId,
   onChange,
@@ -42,7 +46,9 @@ export function CategoryRail({
   onRemoveCategory,
   onRenameCategory,
   onMoveCategory,
-}: Props) {
+}, gestureRef) {
+  const indicatorRef = useRef<HTMLSpanElement>(null)
+  const lastSwipeTargetRef = useRef<CategoryId | null>(null)
   const scrollerRef = useRef<HTMLDivElement>(null)
   const tabRefs = useRef<Map<CategoryId, HTMLButtonElement>>(new Map())
   const lastActiveIdRef = useRef(activeId)
@@ -151,6 +157,66 @@ export function CategoryRail({
     return center
   }
 
+  useImperativeHandle(gestureRef, () => ({
+    followSwipe: (offset, viewportWidth, animationMs = 0) => {
+      const indicator = indicatorRef.current
+      const scroller = scrollerRef.current
+      if (!indicator || !scroller || activeIndex < 0 || viewportWidth <= 0) return
+      const base = getTabCenter(activeId)
+      const targetIndex = offset < 0
+        ? Math.min(activeIndex + 1, categories.length - 1)
+        : Math.max(activeIndex - 1, 0)
+      const progress = Math.min(1, Math.abs(offset) / viewportWidth)
+      const target = getTabCenter(categories[targetIndex].id)
+      const center = base + (target - base) * progress
+      const stretch = targetIndex === activeIndex ? 0 : Math.sin(progress * Math.PI) * 5
+      const width = BASE_INDICATOR_WIDTH + stretch
+      // Keep the indicator's layout width constant: changing width every
+      // pointer frame invalidates the entire old WebView 69 category rail.
+      // translate3d + scaleX preserves the original liquid-stretch animation.
+      indicator.style.transition = animationMs > 0
+        ? `transform ${animationMs}ms var(--ease-ink)` : 'none'
+      indicator.style.transform = `translate3d(${center - BASE_INDICATOR_WIDTH / 2}px, 0, 0) scaleX(${width / BASE_INDICATOR_WIDTH})`
+      // Only two labels change during a gesture; writing styles for every
+      // category used to invalidate the entire masked scrolling rail per frame.
+      const tabTransition = animationMs > 0 ? `opacity ${animationMs}ms var(--ease-ink)` : 'none'
+      const setOpacity = (id: CategoryId, opacity: number) => {
+        const el = tabRefs.current.get(id)
+        if (!el) return
+        if (el.style.transition !== tabTransition) el.style.transition = tabTransition
+        el.style.opacity = String(opacity)
+      }
+      const targetId = categories[targetIndex].id
+      const lastTargetId = lastSwipeTargetRef.current
+      if (lastTargetId && lastTargetId !== targetId && lastTargetId !== activeId) {
+        setOpacity(lastTargetId, 0.68)
+      }
+      setOpacity(activeId, 1 - 0.32 * progress)
+      if (targetIndex !== activeIndex) setOpacity(targetId, 0.68 + 0.32 * progress)
+      lastSwipeTargetRef.current = targetId
+
+      const { scrollWidth, clientWidth } = scrollerMetricsRef.current
+      const maxScroll = Math.max(0, scrollWidth - clientWidth)
+      if (maxScroll <= 0) return
+      const visibleX = center - scroller.scrollLeft
+      const edge = 24
+      // Keep the indicator within the visible rail. Avoid native scrollLeft
+      // writes on ordinary drag frames: they trigger a full scroll-layer commit
+      // in WebView 69 even if the destination barely moved.
+      const neededScroll = visibleX < edge
+        ? center - edge
+        : visibleX > clientWidth - edge
+          ? center - clientWidth + edge
+          : scroller.scrollLeft
+      const targetScroll = Math.max(0, Math.min(maxScroll, neededScroll))
+      if (animationMs > 0 && typeof scroller.scrollTo === 'function') {
+        scroller.scrollTo({ left: Math.max(0, Math.min(maxScroll, center - clientWidth / 2)), behavior: 'smooth' })
+      } else if (Math.abs(targetScroll - scroller.scrollLeft) >= 4) {
+        scroller.scrollLeft = targetScroll
+      }
+    },
+  }), [activeId, activeIndex, categories])
+
   // 算出滑动进度与指示器位置
   const width =
     containerWidth > 0
@@ -202,7 +268,7 @@ export function CategoryRail({
   }
 
   const indicatorWidth = BASE_INDICATOR_WIDTH + stretch
-  const indicatorLeft = currentCenter > 0 ? currentCenter - indicatorWidth / 2 : 0
+  const indicatorLeft = currentCenter > 0 ? currentCenter - BASE_INDICATOR_WIDTH / 2 : 0
 
   // 指示器过渡动画规则：
   // 1. 无障碍减弱动画：none
@@ -212,10 +278,10 @@ export function CategoryRail({
   const indicatorTransition = reduced
     ? 'none'
     : transitionMs > 0
-      ? `transform ${transitionMs}ms var(--ease-ink), width ${transitionMs}ms var(--ease-ink)`
+      ? `transform ${transitionMs}ms var(--ease-ink)`
       : isDragging
         ? 'none'
-        : 'transform 260ms var(--ease-ink), width 260ms var(--ease-ink)'
+        : 'transform 260ms var(--ease-ink)'
 
   // 轨道滚动居中：滑动中同步跟手平移轨道，松手或点击时平滑对齐
   useEffect(() => {
@@ -241,7 +307,7 @@ export function CategoryRail({
   }, [activeId, currentCenter, isDragging, transitionMs])
 
   return (
-    <div className="relative">
+    <div className="editorial-category-rail relative">
       <div
         ref={scrollerRef}
         className="page-x horizontal-scroll-rail scroll-hidden mask-fade-x relative flex gap-0.5 overflow-x-auto"
@@ -325,10 +391,11 @@ export function CategoryRail({
         {/* 唯一动态浮动指示器 */}
         {currentCenter > 0 && (
           <span
+            ref={indicatorRef}
             className="pointer-events-none absolute bottom-1 left-0 h-[2.5px] rounded-full bg-cinnabar shadow-[0_1px_5px_rgba(196,92,74,0.4)] will-change-transform"
             style={{
-              width: `${indicatorWidth}px`,
-              transform: `translate3d(${indicatorLeft}px, 0, 0)`,
+              width: `${BASE_INDICATOR_WIDTH}px`,
+              transform: `translate3d(${indicatorLeft}px, 0, 0) scaleX(${indicatorWidth / BASE_INDICATOR_WIDTH})`,
               transition: indicatorTransition,
             }}
             aria-hidden
@@ -362,5 +429,5 @@ export function CategoryRail({
       />
     </div>
   )
-}
+})
 

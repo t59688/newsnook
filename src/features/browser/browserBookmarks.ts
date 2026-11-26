@@ -4,19 +4,28 @@
  */
 import { normalizeBrowserVisits, type BrowserVisit } from './browserHistory'
 import { BROWSER_KEYS, readBrowserList, writeBrowserPreference } from './browserPreferences'
+import { hasBookmarkLibrary, loadBookmarkLibrary, saveBookmarkLibrary } from './browserBookmarkLibrary'
 
 export type BookmarkScope = 'normal' | 'private'
 const bookmarkKey = (scope: BookmarkScope): string =>
   scope === 'private' ? BROWSER_KEYS.privateBookmarks : BROWSER_KEYS.bookmarks
 
 export function loadBrowserBookmarks(scope: BookmarkScope): BrowserVisit[] {
+  if (hasBookmarkLibrary(scope)) return loadBookmarkLibrary(scope).bookmarks.map(({url, title, time}) => ({url, title, time}))
   return normalizeBrowserVisits(readBrowserList(bookmarkKey(scope)))
 }
 
 /** Write before publishing UI changes, matching existing browser storage semantics. */
 export function saveBrowserBookmarks(scope: BookmarkScope, entries: BrowserVisit[]): BrowserVisit[] {
   const normalized = normalizeBrowserVisits(entries)
-  writeBrowserPreference(bookmarkKey(scope), normalized)
+  if (hasBookmarkLibrary(scope)) {
+    const previous = loadBookmarkLibrary(scope)
+    const folders = new Map(previous.bookmarks.map(item => [item.url, item.folderId]))
+    saveBookmarkLibrary(scope, {...previous, bookmarks:normalized.map(item => ({...item, folderId:folders.get(item.url) ?? null}))})
+  } else {
+    // Existing flat installs keep their original V1 key until a manager edit needs folders.
+    writeBrowserPreference(bookmarkKey(scope), normalized)
+  }
   return normalized
 }
 

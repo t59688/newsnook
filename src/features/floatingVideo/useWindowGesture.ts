@@ -19,16 +19,19 @@ export function readWindowBounds(): WindowBounds {
     height: Math.max(45, (viewport?.height || window.innerHeight) - top - bottom) }
 }
 
-export function useWindowGesture(rootRef: RefObject<HTMLDivElement | null>, slotRef: RefObject<HTMLDivElement | null>, hidden: boolean) {
+export function useWindowGesture(rootRef: RefObject<HTMLDivElement | null>, slotRef: RefObject<HTMLDivElement | null>, hidden: boolean, restoredRect?: WindowRect) {
   const [initialBounds] = useState(readWindowBounds)
-  const [rect, setRect] = useState(() => initialWindow(initialBounds, 16 / 9))
+  const restoredRatio = restoredRect?.height ? restoredRect.width / restoredRect.height : 16 / 9
+  const [rect, setRect] = useState(() => restoredRect
+    ? constrainWindow(restoredRect, initialBounds, restoredRatio)
+    : initialWindow(initialBounds, 16 / 9))
   const rectRef = useRef(rect)
   // Viewport constraints affect presentation, not the user's preferred placement.
   // In particular, rotating into fullscreen must not overwrite the floating rect.
   const preferredRect = useRef(rect)
   const hiddenRef = useRef(hidden)
   hiddenRef.current = hidden
-  const ratioRef = useRef(16 / 9)
+  const ratioRef = useRef(restoredRatio)
   const boundsRef = useRef(initialBounds)
   const frame = useRef<ReturnType<typeof requestAnimationFrame> | null>(null)
   const pointers = useRef(new Map<number, { x: number; y: number }>())

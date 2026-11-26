@@ -11,7 +11,9 @@ export function startCatalogMaintenance(options: MaintenanceOptions = {}): () =>
   let active = true
   const update = () => {
     if (!active) return
-    const load = options.load ?? (async () => (await import('./runtime')).rssCatalogService)
+    // Updating the 38k-entry catalog must never deserialize, hash or index on
+    // the application's main thread, including during idle startup work.
+    const load = options.load ?? (async () => (await import('./workerClient')).getCatalogWorkerClient())
     void load().then((service) => active ? service.refresh() : undefined)
       .catch(() => { if (active) log.feed.debug('RSS catalog update deferred; local catalog retained') })
   }

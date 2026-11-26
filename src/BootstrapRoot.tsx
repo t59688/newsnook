@@ -130,6 +130,19 @@ export function BootstrapRoot() {
   const showAppDownload = appReady && !appDownloadDismissed &&
     shouldShowWebAppDownloadBanner(Capacitor.isNativePlatform())
 
+  // The web-only download hint must never cover navigation after the reader
+  // starts using the app. Keep the link actionable until the first app input.
+  useEffect(() => {
+    if (!showAppDownload) return
+    const dismissOnAppInteraction = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-app-download-banner]')) return
+      setAppDownloadDismissed(true)
+    }
+    document.addEventListener('pointerdown', dismissOnAppInteraction, true)
+    return () => document.removeEventListener('pointerdown', dismissOnAppInteraction, true)
+  }, [showAppDownload])
+
   return (
     <>
       {appReady && (

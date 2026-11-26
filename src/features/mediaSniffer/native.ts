@@ -17,7 +17,7 @@ interface NativeMediaSnifferPlugin {
   startLiveSession(options: { url: string; referrer?: string; sessionId: string }): Promise<void>
   stopLiveSession(options: { sessionId: string }): Promise<void>
   setLiveSessionVisible(options: { visible: boolean; sessionId?: string }): Promise<void>
-  setLiveSessionInteractive(options: { interactive: boolean; sessionId?: string }): Promise<void>
+  setLiveSessionInteractive(options: { interactive: boolean; sessionId?: string; animateReveal?: boolean }): Promise<void>
   setLiveSurfaceSuppressed(options: { suppressed: boolean }): Promise<void>
   setLiveSessionBounds(options: {
     x: number
@@ -315,9 +315,10 @@ export async function setNativeLiveSessionVisible(visible: boolean, sessionId?: 
 export async function setNativeLiveSessionInteractive(
   interactive: boolean,
   sessionId?: string,
+  animateReveal = false,
 ): Promise<void> {
   if (Capacitor.getPlatform() !== 'android') return
-  await NativeMediaSniffer.setLiveSessionInteractive({ interactive, sessionId }).catch(() => undefined)
+  await NativeMediaSniffer.setLiveSessionInteractive({ interactive, sessionId, ...(animateReveal ? { animateReveal: true } : {}) }).catch(() => undefined)
 }
 
 export async function setNativeLiveSessionBounds(bounds: {

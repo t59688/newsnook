@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MutableRefObject } from 'react'
 import { EyeOff, MoreHorizontal, RefreshCw, UserMinus } from 'lucide-react'
 
@@ -128,6 +128,7 @@ export function ZhihuFeedScreen({
 }: Props) {
   const pullSurfaceRef = useRef<HTMLDivElement>(null)
   const swipeTrackRef = useRef<HTMLDivElement>(null)
+  const modeIndicatorRef = useRef<HTMLSpanElement>(null)
   const loadMoreSentinelRef = useRef<HTMLDivElement>(null)
   const loadRequestKeyRef = useRef('')
   const impressionTimersRef = useRef(new Map<string, ReturnType<typeof setTimeout>>())
@@ -276,8 +277,17 @@ export function ZhihuFeedScreen({
     return () => window.clearTimeout(timer)
   }, [loading, mode, nextMode?.id, onPrefetchMode, prevMode?.id])
 
+  const followSwipe = useCallback((offset: number, width: number, animationMs: number) => {
+    if (width <= 0) return
+    const indicator = modeIndicatorRef.current
+    if (!indicator) return
+    indicator.style.transition = animationMs > 0 ? `transform ${animationMs}ms var(--ease-ink)` : 'none'
+    indicator.style.transform = `translate3d(calc(${activeIndex * 100}% + ${(-offset / width) * 100}%), 0, 0)`
+  }, [activeIndex])
+
   const { dragX, transitionMs, containerWidth } = useSwipeCategory({
     containerRef: swipeTrackRef,
+    activeKey: mode,
     disabled: enabledModes.length < 2,
     reduced,
     canGo: (direction) => Boolean(neighbourOf(direction)),
@@ -286,11 +296,11 @@ export function ZhihuFeedScreen({
       if (target) onModeChange(target.id)
     },
     onHorizontalLock: cancelPull,
+    onDragFrame: followSwipe,
   })
 
   const swipeTransition = transitionMs > 0 ? `transform ${transitionMs}ms var(--ease-ink)` : 'none'
   const indicatorDragPct = containerWidth > 0 ? (-dragX / containerWidth) * 100 : 0
-  const dragProgress = containerWidth > 0 ? Math.min(1, Math.abs(dragX) / containerWidth) : 0
 
   const prevPreview = prevMode ? previews[prevMode.id] : undefined
   const nextPreview = nextMode ? previews[nextMode.id] : undefined
@@ -303,6 +313,7 @@ export function ZhihuFeedScreen({
         <div className="flex items-center gap-2">
           <div className="relative grid min-w-0 flex-1 grid-cols-3">
             <span
+              ref={modeIndicatorRef}
               aria-hidden
               className="pointer-events-none absolute bottom-0 left-0 flex h-[3px] w-1/3 justify-center"
               style={{
@@ -353,14 +364,17 @@ export function ZhihuFeedScreen({
 
       <div ref={pullSurfaceRef} className="pb-28 pt-3">
         <div ref={swipeTrackRef} className="relative overflow-hidden" style={{ touchAction: 'pan-y' }}>
-          {dragX > 0 && prevMode && (
+          {prevMode && (
             <div
+              data-swipe-layer="prev"
+              data-swipe-fade=""
               className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-ink"
               style={{
-                transform: `translate3d(calc(${dragX}px - 100%), 0, 0)`,
+                transform: 'translate3d(-100%, 0, 0)',
+                visibility: 'hidden',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
-                opacity: 0.86 + dragProgress * 0.14,
+                opacity: 0.86,
               }}
               aria-hidden
             >
@@ -373,6 +387,8 @@ export function ZhihuFeedScreen({
           )}
 
           <div
+            data-swipe-layer="current"
+            data-swipe-shadow=""
             className="relative z-10"
             style={{
               transform: dragX === 0 && transitionMs === 0 ? undefined : `translate3d(${dragX}px, 0, 0)`,
@@ -467,14 +483,17 @@ export function ZhihuFeedScreen({
             )}
           </div>
 
-          {dragX < 0 && nextMode && (
+          {nextMode && (
             <div
+              data-swipe-layer="next"
+              data-swipe-fade=""
               className="pointer-events-none absolute inset-0 z-0 overflow-hidden bg-ink"
               style={{
-                transform: `translate3d(calc(${dragX}px + 100%), 0, 0)`,
+                transform: 'translate3d(100%, 0, 0)',
+                visibility: 'hidden',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
-                opacity: 0.86 + dragProgress * 0.14,
+                opacity: 0.86,
               }}
               aria-hidden
             >

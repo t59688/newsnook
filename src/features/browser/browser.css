@@ -1,3 +1,5 @@
+@import './browser-bookmarks.css';
+
 .browser-workspace {
   font-family: var(--font-sans, system-ui), sans-serif;
   font-size: 15px;
@@ -6,11 +8,25 @@
 }
 .browser-workspace button { -webkit-tap-highlight-color: transparent; }
 .browser-workspace button, .browser-workspace input, .browser-workspace textarea, .browser-workspace select { font-family: inherit; }
-.browser-workspace button:focus, .browser-workspace a:focus {
+/* WebView 69 does not support :focus-visible. The previous :focus:not(:focus-visible)
+   rule was therefore discarded, leaving an outline around buttons after touch.
+   Default touch focus to no ring, then restore visible keyboard focus via the
+   workspace's input-modality flag (legacy) or :focus-visible (modern WebView). */
+.browser-workspace button:focus, .browser-workspace a:focus { outline: none; }
+.browser-workspace[data-focus-input='keyboard'] button:focus,
+.browser-workspace[data-focus-input='keyboard'] a:focus {
   outline: 2px solid var(--color-paper-muted);
   outline-offset: 2px;
 }
-.browser-workspace button:focus:not(:focus-visible), .browser-workspace a:focus:not(:focus-visible) { outline: none; }
+/* Keep unsupported pseudo-classes out of the legacy fallback selector list. */
+.browser-workspace button:focus-visible,
+.browser-workspace a:focus-visible {
+  outline: 2px solid var(--color-paper-muted);
+  outline-offset: 2px;
+}
+/* Modern WebView: the native modality heuristic wins over a stale keyboard flag. */
+.browser-workspace button:focus:not(:focus-visible),
+.browser-workspace a:focus:not(:focus-visible) { outline: none; }
 .browser-workspace button:disabled { cursor: default; }
 /* Keep line icons intact under the Buer theme's global accent-badge SVG rule. */
 html[data-scheme='buer'] .browser-workspace svg.lucide[fill='none'] { fill: none !important; }

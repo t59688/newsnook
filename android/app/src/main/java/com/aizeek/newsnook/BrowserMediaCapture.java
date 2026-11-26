@@ -117,7 +117,7 @@ final class BrowserMediaCapture {
     }
 
     void setActive(boolean value) {
-        if (closed) return;
+        if (closed || active == value) return;
         active = value;
         if (active) {
             Page current = page;

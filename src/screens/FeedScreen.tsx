@@ -1,9 +1,11 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { ChevronLeft, Loader2, RotateCw, Search, X } from 'lucide-react'
+import { WatchInboxButton } from '../features/sourceWatch/WatchInboxButton'
 
 import { ArticleRow, LeadStory } from '../components/ArticleItem'
+import { ViewportArticleRow } from '../components/ViewportArticleRow'
 import { BrandLogo } from '../components/BrandLogo'
-import { CategoryRail } from '../components/CategoryRail'
+import { CategoryRail, type CategoryRailGestureHandle } from '../components/CategoryRail'
 import { FeedLayoutSwitcher } from '../components/FeedLayoutSwitcher'
 import { FeedSkeleton } from '../components/FeedSkeleton'
 import { PullIndicator } from '../components/PullIndicator'
@@ -83,6 +85,9 @@ interface Props {
   onBrandTap?: () => void
   /** 打开本地离线搜索；与 searchTemplate 的站内联网搜索是两回事 */
   onOpenLocalSearch?: () => void
+  /** 全局关注动态收件箱。未读数量跨预设计算，不依赖当前信息流。 */
+  onOpenWatch?: () => void
+  watchUnreadCount?: number
   /** 递增时触发与下拉相同的刷新动画与加载（底栏双击速闻） */
   pullRefreshSeq?: number
   catalogSource?: NewsSource
@@ -90,7 +95,7 @@ interface Props {
 }
 
 /** 邻页预览：排版与正式列表对齐，并恢复该分类上次滚动位置，避免滑入时先顶后跳 */
-function CategoryPeek({
+const CategoryPeek = memo(function CategoryPeek({
   articles,
   showLead,
   readIds,
@@ -160,7 +165,7 @@ function CategoryPeek({
           />
         )}
         {homeFeedLayout === 'cards' ? (
-          <ul className="grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
+          <ul className="editorial-mobile-card-grid grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
             {rest.map((article) => (
               <ArticleRow
                 key={article.id}
@@ -201,7 +206,7 @@ function CategoryPeek({
       </div>
     </div>
   )
-}
+})
 
 export const FeedScreen = memo(function FeedScreen({
   title,
@@ -244,6 +249,8 @@ export const FeedScreen = memo(function FeedScreen({
   onBack,
   onBrandTap,
   onOpenLocalSearch,
+  onOpenWatch,
+  watchUnreadCount = 0,
   pullRefreshSeq = 0,
   catalogSource,
   resolvedTheme,
@@ -255,6 +262,10 @@ export const FeedScreen = memo(function FeedScreen({
   const listRef = useRef<HTMLDivElement>(null)
   const pulseRef = useRef<HTMLSpanElement>(null)
   const trackRef = useRef<HTMLDivElement>(null)
+  const categoryRailGestureRef = useRef<CategoryRailGestureHandle>(null)
+  const followSwipe = useCallback((offset: number, width: number, animationMs: number) => {
+    categoryRailGestureRef.current?.followSwipe(offset, width, animationMs)
+  }, [])
   const wasRefreshing = useRef(refreshing)
   /** 各分类独立记住滚动位置，避免共用滚动容器时互相串位 */
   const scrollByCategory = useRef<Partial<Record<CategoryId, number>>>({})
@@ -271,9 +282,20 @@ export const FeedScreen = memo(function FeedScreen({
   const searchTemplate = Boolean(profile?.search)
   const frameworkCategories = profile?.categories
   const searching = catalogMode === 'search' && catalogState.loading
-  const searchResults = catalogMode === 'search' ? catalogState.history.flatMap((page) => page.articles).filter((article, index, all) => all.findIndex((item) => item.id === article.id) === index) : null
+  // Catalog pagination may contain duplicates. Deduplicate once per history
+  // update instead of doing O(n²) findIndex work on every gesture render.
+  const catalogArticles = useMemo(() => {
+    if (catalogMode === null) return null
+    const seen = new Set<string>()
+    return catalogState.history.flatMap((page) => page.articles).filter((article) => {
+      if (seen.has(article.id)) return false
+      seen.add(article.id)
+      return true
+    })
+  }, [catalogMode, catalogState.history])
+  const searchResults = catalogMode === 'search' ? catalogArticles : null
   const searchError = catalogState.error ?? null
-  const fwCatArticles = catalogMode === 'category' ? catalogState.history.flatMap((page) => page.articles).filter((article, index, all) => all.findIndex((item) => item.id === article.id) === index) : null
+  const fwCatArticles = catalogMode === 'category' ? catalogArticles : null
   const fwCatLoading = catalogMode === 'category' && catalogState.loading
   const fwCatExhausted = catalogState.exhausted
   useEffect(() => {
@@ -359,6 +381,7 @@ export const FeedScreen = memo(function FeedScreen({
 
   const { dragX, transitionMs, containerWidth } = useSwipeCategory({
     containerRef: trackRef,
+    activeKey: categoryId ?? undefined,
     disabled: !swipeEnabled,
     reduced,
     canGo: (direction) => Boolean(neighbourOf(direction)),
@@ -369,6 +392,7 @@ export const FeedScreen = memo(function FeedScreen({
       onCategoryChange?.(target.id)
     },
     onHorizontalLock: cancelPull,
+    onDragFrame: followSwipe,
   })
 
   const lead = showLead ? articles.find((item) => item.image) : undefined
@@ -491,7 +515,7 @@ export const FeedScreen = memo(function FeedScreen({
   }, [articles])
 
   const listBody = (
-    <div ref={listRef} className="w-full max-w-[2400px] mx-auto pb-12">
+    <div ref={listRef} className="editorial-feed-list w-full max-w-[2400px] mx-auto pb-12">
       {lead && (
         <LeadStory
           key={lead.id}
@@ -673,10 +697,10 @@ export const FeedScreen = memo(function FeedScreen({
           )}
 
           {useCompactCards ? (
-            /* 手机双列卡片：连续优雅杂志流，卡片自然并排排满，左右严整对齐，杜绝被日期硬切碎导致的空洞与横竖混杂 */
-            <ul className="grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
+            /* 手机双列卡片：保留双列高密度，首条变为跨列编辑特写以建立阅读节奏。 */
+            <ul className="editorial-mobile-card-grid grid grid-cols-1 items-start gap-2.5 px-3.5 py-2.5 min-[360px]:grid-cols-2 min-[430px]:gap-3 min-[430px]:px-4">
               {rest.map((article) => (
-                <ArticleRow
+                <ViewportArticleRow
                   key={article.id}
                   article={article}
                   read={readIds.has(article.id)}
@@ -693,14 +717,14 @@ export const FeedScreen = memo(function FeedScreen({
           ) : !isDesktop ? (
             /* 移动端经典单列时间线：按今天/昨天/更早分组 */
             grouped.map(([bucket, items]) => (
-              <div key={bucket}>
-                <div className="page-x flex items-center gap-2.5 pt-5 pb-2 lg:px-6 xl:px-8 2xl:px-10">
+              <div key={bucket} className="editorial-feed-day-group">
+                <div className="editorial-feed-day page-x flex items-center gap-2.5 pt-5 pb-2 lg:px-6 xl:px-8 2xl:px-10">
                   <span className="font-mono text-[11px] font-medium tracking-[0.18em] text-paper-muted/90">{bucket}</span>
                   <span className="h-px w-8 bg-gradient-to-r from-haze/80 to-transparent" aria-hidden />
                 </div>
-                <ul className="divide-y divide-haze/35">
+                <ul className="editorial-feed-rows divide-y divide-haze/35">
                   {items.map((article) => (
-                    <ArticleRow
+                    <ViewportArticleRow
                       key={article.id}
                       article={article}
                       read={readIds.has(article.id)}
@@ -718,14 +742,14 @@ export const FeedScreen = memo(function FeedScreen({
             ))
           ) : homeFeedLayout === 'classic' ? (
             /* 桌面端经典单列时间线：居中舒适宽度，保持与移动端一致的经典阅读节奏 */
-            <div className="mx-auto w-full max-w-4xl px-4 py-2">
+            <div className="editorial-feed-timeline mx-auto w-full max-w-4xl px-4 py-2">
               {grouped.map(([bucket, items]) => (
-                <div key={bucket}>
-                  <div className="flex items-center gap-2.5 pt-5 pb-2">
+                <div key={bucket} className="editorial-feed-day-group">
+                  <div className="editorial-feed-day flex items-center gap-2.5 pt-5 pb-2">
                     <span className="font-mono text-[11px] font-medium tracking-[0.18em] text-paper-muted/90">{bucket}</span>
                     <span className="h-px w-8 bg-gradient-to-r from-haze/80 to-transparent" aria-hidden />
                   </div>
-                  <ul className="divide-y divide-haze/35">
+                  <ul className="editorial-feed-rows divide-y divide-haze/35">
                     {items.map((article) => (
                       <ArticleRow
                         key={article.id}
@@ -746,7 +770,7 @@ export const FeedScreen = memo(function FeedScreen({
             </div>
           ) : (
             /* 桌面端规则多列网格：双栏/多栏卡片杂志流 */
-            <ul className="grid grid-cols-2 gap-4 px-6 py-4 xl:grid-cols-3 2xl:grid-cols-4 min-[2100px]:grid-cols-5 xl:px-8 2xl:px-10 min-[2100px]:gap-5">
+            <ul className="editorial-desktop-card-grid grid grid-cols-2 gap-4 px-6 py-4 xl:grid-cols-3 2xl:grid-cols-4 min-[2100px]:grid-cols-5 xl:px-8 2xl:px-10 min-[2100px]:gap-5">
               {rest.map((article) => (
                 <ArticleRow
                   key={article.id}
@@ -841,8 +865,8 @@ export const FeedScreen = memo(function FeedScreen({
   )
 
   return (
-    <section className="relative flex min-h-0 flex-1 flex-col">
-      <header className="relative z-20 shrink-0 bg-ink/90 pt-2 pb-1.5 backdrop-blur-xl border-b border-haze/30">
+    <section className="editorial-feed-shell relative flex min-h-0 flex-1 flex-col">
+      <header className="editorial-feed-header relative z-20 shrink-0 pt-2 pb-1.5 border-b border-haze/30">
         <div className="page-x lg:px-6 xl:px-8 2xl:px-10 max-w-[2400px] mx-auto flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2">
             {onBack && (
@@ -895,7 +919,7 @@ export const FeedScreen = memo(function FeedScreen({
               </div>
             ) : (
               <div className="flex min-w-0 items-center gap-2">
-                <h1 className="shrink-0 font-display text-[19px] sm:text-[20px] leading-tight text-paper md:text-[20px] lg:text-[22px]">
+                <h1 className="min-w-0 truncate font-display text-[19px] sm:text-[20px] leading-tight text-paper md:text-[20px] lg:text-[22px]">
                   {title}
                 </h1>
                 <p className="hidden md:inline-block min-w-0 truncate font-mono text-[11px] lg:text-[11.5px] tracking-[0.12em] text-paper-faint">
@@ -919,6 +943,8 @@ export const FeedScreen = memo(function FeedScreen({
                 onChange={onHomeFeedLayoutChange}
               />
             )}
+
+            {onOpenWatch && <WatchInboxButton unreadCount={watchUnreadCount} onOpen={onOpenWatch} />}
 
             {onOpenLocalSearch && (
               <button
@@ -959,6 +985,7 @@ export const FeedScreen = memo(function FeedScreen({
         {categoryId && categories && categories.length > 0 && onCategoryChange && (
           <div className="mt-1 lg:hidden" data-tour="category-rail">
             <CategoryRail
+              ref={categoryRailGestureRef}
               categories={categories}
               activeId={categoryId}
               onChange={onCategoryChange}
@@ -1043,15 +1070,14 @@ export const FeedScreen = memo(function FeedScreen({
           className="relative h-full w-full"
           style={{ touchAction: swipeEnabled ? 'pan-y' : undefined }}
         >
-          {/*
-            三页均 absolute inset-0：布局盒始终在裁剪视口内，各自 translate 跟手。
-            按手势方向单向挂载邻页视图（向右滑挂载上一分类，向左滑挂载下一分类），消除不可见反方向的 DOM 与图片开销。
-          */}
-          {swipeEnabled && dragX > 0 && prevCategory && (
+          {/* 预先准备两侧各 8 条邻页预览。拖动期间只更新合成层，不再挂载 React 子树。 */}
+          {swipeEnabled && prevCategory && (
             <div
+              data-swipe-layer="prev"
               className="pointer-events-none absolute inset-0 overflow-hidden bg-ink"
               style={{
-                transform: `translate3d(calc(${dragX}px - 100%), 0, 0)`,
+                transform: 'translate3d(-100%, 0, 0)',
+                visibility: 'hidden',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
               }}
@@ -1072,6 +1098,7 @@ export const FeedScreen = memo(function FeedScreen({
 
           {swipeEnabled ? (
             <div
+              data-swipe-layer="current"
               className="absolute inset-0"
               style={{
                 // 静止时不要让纵向滚动容器常驻合成层；Android WebView 在触摸
@@ -1091,11 +1118,13 @@ export const FeedScreen = memo(function FeedScreen({
             listScroller
           )}
 
-          {swipeEnabled && dragX < 0 && nextCategory && (
+          {swipeEnabled && nextCategory && (
             <div
+              data-swipe-layer="next"
               className="pointer-events-none absolute inset-0 overflow-hidden bg-ink"
               style={{
-                transform: `translate3d(calc(${dragX}px + 100%), 0, 0)`,
+                transform: 'translate3d(100%, 0, 0)',
+                visibility: 'hidden',
                 transition: swipeTransition,
                 backfaceVisibility: 'hidden',
               }}

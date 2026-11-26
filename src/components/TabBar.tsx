@@ -16,6 +16,7 @@ const TABS: { key: TabKey; label: string; Icon: typeof Newspaper }[] = [
 interface Props {
   active: TabKey
   laterCount: number
+  watchUnreadCount?: number
   hasUpdate?: boolean
   onChange: (key: TabKey) => void
   onTodayDoubleTap?: () => void
@@ -29,6 +30,7 @@ interface Props {
 export const TabBar = memo(function TabBar({
   active,
   laterCount,
+  watchUnreadCount = 0,
   hasUpdate,
   onChange,
   onTodayDoubleTap,
@@ -59,7 +61,7 @@ export const TabBar = memo(function TabBar({
             onChange(key)
           }}
           aria-current={isActive ? 'page' : undefined}
-          aria-label={key === 'today' && isActive ? '速闻，双击刷新' : undefined}
+          aria-label={key === 'today' && isActive ? '速闻，双击刷新' : key === 'me' && watchUnreadCount > 0 ? `我的，关注动态有 ${watchUnreadCount} 篇未读` : undefined}
           className="group relative flex h-full w-full flex-col items-center justify-center gap-0.5 transition-transform duration-100 active:scale-[0.93]"
         >
           <span className="relative flex items-center justify-center">
@@ -69,9 +71,10 @@ export const TabBar = memo(function TabBar({
               className={`transition-all duration-200 ${
                 isActive
                   ? 'scale-105 text-cinnabar'
-                  : 'text-paper-muted/75 group-hover:text-paper group-active:scale-95'
+                  : 'text-paper-muted group-hover:text-paper group-active:scale-95'
               }`}
             />
+            {key === 'me' && watchUnreadCount > 0 && <span className="absolute -left-1.5 -top-1 h-[7px] w-[7px] rounded-full bg-cinnabar ring-2 ring-ink" aria-hidden="true" />}
             {key === 'me' && (
               laterCount > 0 ? (
                 <span className="absolute -top-1 -right-2 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-cinnabar px-1 font-mono text-[9px] font-medium leading-none text-white shadow-sm">
@@ -86,7 +89,7 @@ export const TabBar = memo(function TabBar({
             className={`font-mono text-[10.5px] tracking-[0.14em] transition-colors duration-200 ${
               isActive
                 ? 'font-medium text-cinnabar'
-                : 'text-paper-muted/75 group-hover:text-paper'
+                : 'text-paper-muted group-hover:text-paper'
             }`}
           >
             {label}

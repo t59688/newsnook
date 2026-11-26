@@ -23,26 +23,27 @@ export function observationKey(value: MediaObservation): string {
 export function reduceBrowserMedia(
   previous: ReadonlyMap<number, BrowserMediaTab>,
   event: BrowserMediaEvent,
-): Map<number, BrowserMediaTab> {
-  if (!Number.isInteger(event.tabId) || event.tabId < 1) return new Map(previous)
-  const result = new Map(previous)
-  const last = result.get(event.tabId)
+): ReadonlyMap<number, BrowserMediaTab> {
+  if (!Number.isInteger(event.tabId) || event.tabId < 1) return previous
+  const last = previous.get(event.tabId)
   if (event.type === 'reset' || event.type === 'page') {
     if (!/^https?:\/\//i.test(event.pageUrl)) {
+      if (!last) return previous
+      const result = new Map(previous)
       result.delete(event.tabId)
       return result
     }
-    if (event.type === 'reset' || last?.pageUrl !== event.pageUrl) {
-      result.set(event.tabId, { pageUrl: event.pageUrl, observations: [], keys: new Set() })
-    }
+    if (event.type !== 'reset' && last?.pageUrl === event.pageUrl) return previous
+    const result = new Map(previous)
+    result.set(event.tabId, { pageUrl: event.pageUrl, observations: [], keys: new Set() })
     return result
   }
-  if (event.type !== 'observation') return result
+  if (event.type !== 'observation') return previous
   const observation = event.observation
-  if (!observation || typeof observation.pageUrl !== 'string') return result
+  if (!observation || typeof observation.pageUrl !== 'string') return previous
   const pageUrl = last?.pageUrl || observation.pageUrl
   // Cross-origin frame observations are retained only after native provenance checks.
-  if (observation.pageUrl !== pageUrl && observation.fromIframe !== true) return result
+  if (observation.pageUrl !== pageUrl && observation.fromIframe !== true) return previous
   const current = last ?? { pageUrl, observations: [], keys: new Set<string>() }
   const key = observationKey(observation)
   if (current.keys.has(key)) {
@@ -53,14 +54,16 @@ export function reduceBrowserMedia(
       if (field !== 'timestamp' && value !== undefined) updates[field] = value
     }
     const merged = { ...old, ...updates, ...mergeMediaMetadata(old, observation) }
-    if (JSON.stringify(merged) === JSON.stringify(old)) return result
+    if (JSON.stringify(merged) === JSON.stringify(old)) return previous
     const observations = current.observations.slice()
     observations[index] = merged
+    const result = new Map(previous)
     result.set(event.tabId, { ...current, observations })
     return result
   }
   const observations = [...current.observations, observation].slice(-240)
   const keys = new Set(observations.map(observationKey))
+  const result = new Map(previous)
   result.set(event.tabId, { pageUrl, observations, keys })
   return result
 }

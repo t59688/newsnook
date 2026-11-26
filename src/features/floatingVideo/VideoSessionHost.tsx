@@ -6,15 +6,27 @@ import { useHardwareBackLayer } from '../../hooks/useHardwareBackLayer'
 import { VideoPresentationContext } from './context'
 import { FloatingVideoWindow } from './FloatingVideoWindow'
 import type { VideoSessionManager } from './session'
+import type { FloatingVideoBounds } from './nativeSurfaceCoordinator'
 import type { VideoSession } from './types'
 
-export function VideoSessionHost({ manager, session }: { manager: VideoSessionManager; session: VideoSession }) {
+export function VideoSessionHost({ manager, session, onFloatingBounds }: {
+  manager: VideoSessionManager
+  session: VideoSession
+  onFloatingBounds: (bounds: FloatingVideoBounds) => void
+}) {
   const [host] = useState(() => {
     const element = document.createElement('div')
     element.dataset.videoSessionHost = ''
     return element
   })
   const windowSlotRef = useRef<HTMLDivElement>(null)
+  // Changing a React portal target remounts FloatingVideoWindow; preserve its
+  // on-screen geometry when a browser-owned player detaches to document.body.
+  const lastFloatingBounds = useRef<FloatingVideoBounds | null>(null)
+  const syncFloatingBounds = useCallback((bounds: FloatingVideoBounds) => {
+    lastFloatingBounds.current = bounds
+    onFloatingBounds(bounds)
+  }, [onFloatingBounds])
   const pageSlotRef = useRef<HTMLDivElement>(null)
   const immersive = session.immersive
   const overlayContainer = session.slot && session.props.overlayContainer?.isConnected
@@ -78,7 +90,11 @@ export function VideoSessionHost({ manager, session }: { manager: VideoSessionMa
     {createPortal(<FloatingVideoWindow
       domFullscreen={domFullscreen}
       title={session.props.title || '文章视频'} active={session.mode === 'floating'} hidden={immersive || session.mode !== 'floating'} slotRef={windowSlotRef}
-      onRestore={restore} onClose={close}
+      onRestore={restore} onClose={close} onBoundsChange={syncFloatingBounds}
+      restoredRect={lastFloatingBounds.current ? {
+        x: lastFloatingBounds.current.left, y: lastFloatingBounds.current.top,
+        width: lastFloatingBounds.current.width, height: lastFloatingBounds.current.height,
+      } : undefined}
     />, portalTarget)}
     {session.mode === 'page' && createPortal(<section
       data-video-session-page="" data-theme="dark" aria-label="独立视频播放页"

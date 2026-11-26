@@ -52,8 +52,8 @@ export const THEME_SCHEMES: ThemeSchemeMeta[] = [
     label: '墨问',
     caption: '宣纸 · 朱砂 · 默认',
     swatch: {
-      light: { ink: '#F6F2E9', raised: '#FFFCF5', paper: '#1A1815', accent: '#B43D26' },
-      dark: { ink: '#0E0F12', raised: '#16181D', paper: '#EAE4D8', accent: '#C45C4A' },
+      light: { ink: '#F6F2E9', raised: '#FFFCF5', paper: '#1A1815', accent: '#8D314D' },
+      dark: { ink: '#0E0F12', raised: '#16181D', paper: '#EAE4D8', accent: '#CF8597' },
     },
   },
   {
@@ -79,8 +79,8 @@ export const THEME_SCHEMES: ThemeSchemeMeta[] = [
     label: '赤霞',
     caption: '暖砂陶土 · 落日晚霞',
     swatch: {
-      light: { ink: '#F6EFEA', raised: '#FCF8F5', paper: '#241814', accent: '#C44820' },
-      dark: { ink: '#14100E', raised: '#1E1815', paper: '#ECE1D8', accent: '#E0653E' },
+      light: { ink: '#F6EFEA', raised: '#FCF8F5', paper: '#241814', accent: '#9D5815' },
+      dark: { ink: '#14100E', raised: '#1E1815', paper: '#ECE1D8', accent: '#E7A66E' },
     },
   },
   {
@@ -106,8 +106,8 @@ export const THEME_SCHEMES: ThemeSchemeMeta[] = [
     label: '自定义',
     caption: '自选底色与强调色',
     swatch: {
-      light: { ink: '#F6F2E9', raised: '#FBF9F1', paper: '#1C1915', accent: '#B43D26' },
-      dark: { ink: '#0E0F12', raised: '#16181D', paper: '#EAE4D8', accent: '#C45C4A' },
+      light: { ink: '#F6F2E9', raised: '#FBF9F1', paper: '#1C1915', accent: '#8D314D' },
+      dark: { ink: '#0E0F12', raised: '#16181D', paper: '#EAE4D8', accent: '#CF8597' },
     },
   },
 ]

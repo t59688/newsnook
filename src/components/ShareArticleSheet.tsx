@@ -1,5 +1,6 @@
 import { Copy, Share2, X } from 'lucide-react'
 
+import { openContentLink } from '../features/browser/browserOpen'
 import { shareUrlDisplay } from '../lib/shareLink'
 import { articleRelativeTime } from '../lib/time'
 
@@ -108,6 +109,9 @@ export function ShareArticleSheet({
                     href={shareUrl}
                     target="_blank"
                     rel="noopener noreferrer"
+                    onClick={(event) => {
+                      if (openContentLink(shareUrl)) event.preventDefault()
+                    }}
                     title={shareUrl}
                     className="mt-0.5 block truncate font-mono text-[10px] text-paper-faint underline-offset-2 hover:text-cinnabar-soft hover:underline"
                   >

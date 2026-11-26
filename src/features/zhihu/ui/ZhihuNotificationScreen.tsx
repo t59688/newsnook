@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Browser } from '@capacitor/browser'
 import { AtSign, Bell, Bookmark, CheckCheck, CircleHelp, Heart, Loader2, UserPlus } from 'lucide-react'
 
+import { openContentLink } from '../../browser/browserOpen'
 import { parseZhihuCommentDeepLink, parseZhihuLink, parseZhihuMessagePeerId } from '../content/links'
 import type {
   ZhihuNotificationCategory,
@@ -158,15 +158,8 @@ export function ZhihuNotificationScreen({ service, onOpen, onMessage }: Props) {
       return
     }
     if (item.targetUrl) {
-      try {
-        const target = new URL(item.targetUrl, 'https://www.zhihu.com')
-        if (target.protocol === 'http:' || target.protocol === 'https:') {
-          void Browser.open({ url: target.href }).catch(() => undefined)
-        } else {
-          setError('这条知乎消息使用了暂未支持的内部链接，已阻止跳转以避免应用卡住。')
-        }
-      } catch {
-        setError('这条知乎消息的跳转地址无效。')
+      if (!openContentLink(item.targetUrl, { baseUrl: 'https://www.zhihu.com' })) {
+        setError('这条知乎消息的跳转地址无效或暂不支持。')
       }
     }
   }

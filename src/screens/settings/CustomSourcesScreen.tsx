@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { openContentLink } from '../../features/browser/browserOpen'
 import {
   AlertCircle,
   ArrowDownToLine,
@@ -1053,6 +1054,9 @@ export function CustomSourcesScreen({
                               href={source.siteUrl}
                               target="_blank"
                               rel="noreferrer"
+                              onClick={(event) => {
+                                if (openContentLink(event.currentTarget.href)) event.preventDefault()
+                              }}
                               className="rounded-lg p-2 text-paper-faint transition-colors hover:bg-paper/5 hover:text-paper"
                               title="打开站点"
                             >

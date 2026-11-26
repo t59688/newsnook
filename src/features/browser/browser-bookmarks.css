@@ -1,0 +1,62 @@
+/* Bookmark manager: stays inside the browser's ink/paper system. */
+.browser-bookmark-content { padding-top: 4px; }
+.browser-bookmark-filter { padding-bottom: 2px; }
+.browser-bookmark-collection { min-width: 0; }
+.browser-bookmark-private { margin-top: 28px; padding-top: 15px; border-top: 1px solid var(--color-haze); }
+.browser-bookmark-private-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 0 0 8px; }
+.browser-bookmark-private-heading h3 { display: inline-flex; align-items: center; gap: 8px; margin: 0; color: var(--color-paper); font-size: 15px; font-weight: 600; }
+.browser-bookmark-private-heading svg { color: var(--color-paper-muted); }
+.browser-bookmark-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 62px; padding: 8px 0 7px; }
+.browser-bookmark-location { display: flex; flex-direction: column; min-width: 0; color: var(--color-paper); font-size: 15px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.browser-bookmark-location small { color: var(--color-paper-muted); font-size: 12px; font-weight: 400; line-height: 1.6; }
+.browser-bookmark-toolbar-actions { display: flex; align-items: center; flex-shrink: 0; }
+.browser-bookmark-toolbar-actions .browser-icon-button { width: 42px; min-width: 42px; }
+.browser-bookmark-toolbar-actions .browser-text-button { color: var(--color-paper); }
+.browser-bookmark-breadcrumb { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; padding: 11px 0 2px; color: var(--color-paper-muted); font-size: 13px; line-height: 1.6; }
+.browser-bookmark-breadcrumb button { max-width: 160px; min-height: 32px; padding: 4px 5px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; border-radius: 7px; }
+.browser-bookmark-breadcrumb button[aria-current='page'] { color: var(--color-paper); font-weight: 600; }
+.browser-bookmark-crumb { display: inline-flex; align-items: center; gap: 2px; min-width: 0; }
+.browser-bookmark-folder-row { display: flex; align-items: center; min-width: 0; border-bottom: 1px solid var(--color-haze); }
+.browser-bookmark-folder-row:last-child { margin-bottom: 8px; }
+.browser-bookmark-folder-open { display: flex; align-items: center; flex: 1; min-width: 0; gap: 12px; min-height: 70px; padding: 9px 5px 9px 0; text-align: left; border-radius: 10px; }
+.browser-bookmark-folder-open:active, .browser-bookmark-open:active { background: var(--color-ink-raised); }
+.browser-bookmark-folder-icon { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 38px; height: 38px; border-radius: 11px; background: var(--color-ink-raised); color: var(--color-paper-muted); }
+.browser-bookmark-folder-copy { display: flex; flex: 1; flex-direction: column; min-width: 0; gap: 2px; }
+.browser-bookmark-folder-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; font-weight: 550; color: var(--color-paper); }
+.browser-bookmark-folder-copy small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 400; color: var(--color-paper-muted); }
+.browser-bookmark-chevron { flex-shrink: 0; color: var(--color-paper-muted); }
+.browser-bookmark-items { border-top: 1px solid var(--color-haze); }
+.browser-bookmark-item { min-width: 0; }
+.browser-bookmark-item .browser-icon-button { width: 40px; min-width: 40px; }
+.browser-bookmark-open { display: grid; grid-template-columns: 34px minmax(0,1fr); column-gap: 11px; align-items: center; min-height: 73px; padding-right: 0; }
+.browser-bookmark-open .browser-place-meta { margin-top: 3px; }
+.browser-bookmark-direct-delete { display: none; color: var(--color-paper-muted); }
+.browser-bookmark-private .browser-bookmark-direct-delete { display: inline-flex; }
+.browser-bookmark-selection { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding: 7px 0 11px; border-bottom: 1px solid var(--color-haze); }
+.browser-bookmark-selection button { display: inline-flex; align-items: center; gap: 5px; min-height: 40px; padding: 5px 9px; border-radius: 9px; color: var(--color-paper); font-size: 13px; }
+.browser-bookmark-selection button:disabled { opacity: .35; }
+.browser-bookmark-selection-count { flex: 1; min-width: 60px; text-align: center; font-size: 12px; color: var(--color-paper-muted); }
+.browser-bookmark-selection .browser-bookmark-checkbox { display: inline-block; width: 16px; height: 16px; border: 1.5px solid currentColor; border-radius: 5px; }
+.browser-bookmark-select { display: flex; align-items: center; justify-content: center; flex-shrink: 0; width: 27px; height: 27px; margin-right: 9px; border: 1.5px solid var(--color-paper-muted); border-radius: 8px; color: var(--color-ink); }
+.browser-bookmark-select[aria-pressed='true'] { color: var(--color-ink); background: var(--color-paper); border-color: var(--color-paper); }
+.browser-bookmark-form { display: flex; flex-direction: column; gap: 8px; padding: 3px 0 14px; }
+.browser-bookmark-form label { font-size: 13px; font-weight: 500; color: var(--color-paper-muted); }
+.browser-bookmark-form input { width: 100%; height: 48px; margin-bottom: 10px; padding: 10px 13px; border: 1px solid var(--color-haze); border-radius: 12px; color: var(--color-paper); background: var(--color-ink); font-size: 15px; outline: none; }
+.browser-bookmark-form input:focus { border-color: var(--color-paper-muted); }
+.browser-bookmark-form .browser-action-button { margin-top: 5px; }
+.browser-bookmark-action-list { display: flex; flex-direction: column; padding-bottom: 8px; }
+.browser-bookmark-action-list button { display: flex; align-items: center; gap: 13px; min-height: 54px; width: 100%; padding: 10px 9px; text-align: left; border-bottom: 1px solid var(--color-haze); font-size: 15px; color: var(--color-paper); }
+.browser-bookmark-action-list button:last-child { border-bottom: 0; }
+.browser-bookmark-action-list button:active, .browser-bookmark-destinations button:active { background: var(--color-haze); }
+.browser-bookmark-action-list .browser-bookmark-danger { color: var(--color-cinnabar); }
+.browser-bookmark-destinations { max-height: min(56vh,440px); overflow-y: auto; padding: 0 0 12px; }
+.browser-bookmark-destinations p { margin: 4px 0 8px; font-size: 13px; color: var(--color-paper-muted); }
+.browser-bookmark-destinations button { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 50px; padding: 9px 12px; border-bottom: 1px solid var(--color-haze); color: var(--color-paper); text-align: left; font-size: 14px; }
+.browser-bookmark-destinations button span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.browser-bookmark-destinations button svg:last-child { color: var(--color-paper-muted); }
+@media (max-width: 360px) {
+  .browser-bookmark-content { padding-left: 12px; padding-right: 12px; }
+  .browser-bookmark-toolbar-actions .browser-icon-button { width: 39px; min-width: 39px; }
+  .browser-bookmark-toolbar-actions .browser-text-button { padding-left: 6px; padding-right: 6px; }
+  .browser-bookmark-item .browser-icon-button { width: 38px; min-width: 38px; }
+}

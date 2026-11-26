@@ -33,6 +33,7 @@ import android.os.Looper;
 import android.os.Message;
 import android.text.InputType;
 import android.view.Gravity;
+import android.view.PixelCopy;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
@@ -76,6 +77,8 @@ import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -157,6 +160,10 @@ public class BrowserHostPlugin extends Plugin {
         // A tab outlives its renderer. Clear this reference before releasing callbacks.
         volatile WebView webView;
         final int id;
+        int openerTabId = -1;
+        boolean popupPending;
+        boolean retrying;
+        boolean retryAttempt;
         String userAgentMode = "system";
         String findQuery = "";
         int findMatch = -1;
@@ -209,6 +216,9 @@ public class BrowserHostPlugin extends Plugin {
      */
     private static final class ClippedBrowserFrame extends FrameLayout {
         private int occludedBottomPx;
+        /** Bounds in android.R.id.content coordinates; follows the moving Ink Player. */
+        private Rect floatingVideoBounds;
+        private final Path floatingVideoCutout = new Path();
         private boolean agentOperating;
         private final Paint agentPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
         private final RectF agentBorder = new RectF();
@@ -280,10 +290,31 @@ public class BrowserHostPlugin extends Plugin {
             invalidate();
         }
 
+        void setFloatingVideoBounds(Rect bounds) {
+            if (floatingVideoBounds == bounds || floatingVideoBounds != null && floatingVideoBounds.equals(bounds)) return;
+            floatingVideoBounds = bounds == null ? null : new Rect(bounds);
+            // Do not resize or pause the website. Its viewport, scroll state and
+            // video decoding continue unchanged beneath the app-owned player.
+            invalidate();
+        }
+
         @Override public void draw(Canvas canvas) {
             int visibleHeight = Math.max(0, getHeight() - occludedBottomPx);
             int save = canvas.save();
             canvas.clipRect(0, 0, getWidth(), visibleHeight);
+            if (floatingVideoBounds != null) {
+                // Native BrowserHostPlugin's WebView sits above the Capacitor UI:
+                // clip the exact rounded mini-window out of this native layer.
+                // CSS z-index cannot change the stacking order of two WebViews.
+                Rect area = floatingVideoBounds;
+                float left = area.left - getLeft(), top = area.top - getTop();
+                float right = area.right - getLeft(), bottom = area.bottom - getTop();
+                floatingVideoCutout.reset();
+                float radius = 13f * getResources().getDisplayMetrics().density;
+                floatingVideoCutout.addRoundRect(left, top, right, bottom,
+                    radius, radius, Path.Direction.CW);
+                canvas.clipOutPath(floatingVideoCutout);
+            }
             super.draw(canvas);
             if (occludedBottomPx > 0 && visibleHeight > 0) {
                 // HTML shadows sit UNDER this native WebView, so paint the sheet's
@@ -314,10 +345,15 @@ public class BrowserHostPlugin extends Plugin {
         }
 
         @Override public boolean dispatchTouchEvent(MotionEvent event) {
-            // Let the Capacitor HTML layer underneath handle dragging and clicking
-            // inside the assistant sheet. Native web content remains interactive above.
-            if (event.getActionMasked() == MotionEvent.ACTION_DOWN
-                    && event.getY() >= Math.max(0, getHeight() - occludedBottomPx)) return false;
+            if (event.getActionMasked() == MotionEvent.ACTION_DOWN) {
+                // A touch begun in Ink Player must be dispatched to the lower
+                // Capacitor WebView, including its drag and pinch gestures.
+                Rect bounds = floatingVideoBounds;
+                if (bounds != null && bounds.contains(
+                    Math.round(event.getX()) + getLeft(), Math.round(event.getY()) + getTop())) return false;
+                // Existing agent sheet keeps its own pass-through behavior.
+                if (event.getY() >= Math.max(0, getHeight() - occludedBottomPx)) return false;
+            }
             return super.dispatchTouchEvent(event);
         }
     }
@@ -329,6 +365,8 @@ public class BrowserHostPlugin extends Plugin {
     /** Disposable session profile, shared only by tabs within the current session. */
     private String temporaryProfileName;
     private FrameLayout pageFrame;
+    /** The mini-player can predate the browser and must survive native tab recreation. */
+    private Rect floatingVideoBounds;
     private LinearLayout root;
     private EditText address;
     private TextView titleView;
@@ -340,6 +378,15 @@ public class BrowserHostPlugin extends Plugin {
     private TextView menuButton;
     private PopupWindow linkContextPopup;
     private final List<Tab> tabs = new ArrayList<>();
+    // LRU of public @require bytes in the current in-memory browser context.
+    // No filesystem persistence in private/incognito mode; clear at every
+    // context switch and close, so script dependencies cannot cross sessions.
+    private final java.util.Map<String, byte[]> scriptDependencies = java.util.Collections.synchronizedMap(
+        new java.util.LinkedHashMap<String, byte[]>(16, .75f, true) {
+            @Override protected boolean removeEldestEntry(java.util.Map.Entry<String, byte[]> entry) {
+                return size() > 16;
+            }
+        });
     private int nextTabId = 1;
     private Tab current;
     private JSArray scriptSnapshot;
@@ -374,6 +421,12 @@ public class BrowserHostPlugin extends Plugin {
     private final List<java.util.function.Consumer<String>> agentDrainFailure = new ArrayList<>();
     private boolean agentTabTransition;
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
+    // WebView.draw must run on Android UI, but JPEG encode and Base64 must not.
+    private final ExecutorService previewEncoder = Executors.newSingleThreadExecutor(r -> {
+        Thread thread = new Thread(r, "NewsNookPreviewEncoder");
+        thread.setDaemon(true);
+        return thread;
+    });
     private Tab fullscreenTab;
     private View customFullscreen;
     private WebChromeClient.CustomViewCallback customViewCallback;
@@ -501,6 +554,7 @@ public class BrowserHostPlugin extends Plugin {
         current = null;
         for (Tab tab : retired) releaseTab(tab);
         String oldProfile = temporaryProfileName;
+        scriptDependencies.clear();
         temporaryProfileName = nextProfile;
         browserSettings = requested;
         disposeTemporaryProfile(oldProfile);
@@ -1001,6 +1055,7 @@ public class BrowserHostPlugin extends Plugin {
             String previous = scriptSnapshot == null ? "[]" : scriptSnapshot.toString();
             if (next.equals(previous)) { call.resolve(); return; }
             scriptSnapshot = scripts;
+            scriptDependencies.clear();
             scriptVersion++;
             // Existing documents keep their running scripts and granted ports until navigation.
             // runNavigation prepares the latest snapshot before the next document is loaded.
@@ -1014,6 +1069,9 @@ public class BrowserHostPlugin extends Plugin {
         state.put("tabId", tab == null ? JSONObject.NULL : tab.id);
         state.put("title", tab == null ? "" : tab.title);
         state.put("back", tab != null && tab.webView != null && tab.webView.canGoBack());
+        state.put("openerTabId", tab == null || findTabById(tab.openerTabId) == null ? JSONObject.NULL : tab.openerTabId);
+        state.put("openingPopup", tab != null && tab.popupPending);
+        state.put("retrying", tab != null && tab.retrying);
         state.put("forward", tab != null && tab.webView != null && tab.webView.canGoForward());
         state.put("desktop", tab != null && tab.desktop);
         state.put("privateMode", privateMode());
@@ -1046,11 +1104,31 @@ public class BrowserHostPlugin extends Plugin {
             .put("layoutPending", view != null && (view.isLayoutRequested() || pageFrame != null && pageFrame.isLayoutRequested()));
     }
 
+    @PluginMethod public void setFloatingVideoBounds(PluginCall call) {
+        boolean visible = Boolean.TRUE.equals(call.getBoolean("visible", false));
+        float left = call.getFloat("left", 0f), top = call.getFloat("top", 0f);
+        float width = call.getFloat("width", 0f), height = call.getFloat("height", 0f);
+        if (visible && (!Float.isFinite(left) || !Float.isFinite(top)
+                || !Float.isFinite(width) || !Float.isFinite(height) || width <= 0 || height <= 0)) {
+            call.reject("Invalid floating video bounds");
+            return;
+        }
+        onUi(call, () -> {
+            Rect next = visible ? new Rect(dp(left), dp(top), dp(left + width), dp(top + height)) : null;
+            floatingVideoBounds = next;
+            if (pageFrame instanceof ClippedBrowserFrame)
+                ((ClippedBrowserFrame) pageFrame).setFloatingVideoBounds(next);
+            call.resolve();
+        });
+    }
+
     @PluginMethod public void setBounds(PluginCall call) {
         float top = call.getFloat("top", 0f);
         float bottom = call.getFloat("bottom", 0f);
         boolean visible = Boolean.TRUE.equals(call.getBoolean("visible", true));
         boolean agentOperating = Boolean.TRUE.equals(call.getBoolean("agentOperating", false));
+        boolean animateReveal = Boolean.TRUE.equals(call.getBoolean("animateReveal", false));
+        boolean capturePreviewOnHide = Boolean.TRUE.equals(call.getBoolean("capturePreviewOnHide", false));
         float occludedBottom = call.getFloat("occludedBottom", 0f);
         onUi(call, () -> {
             if (!embeddedMode || pageFrame == null) { call.resolve(); return; }
@@ -1063,14 +1141,32 @@ public class BrowserHostPlugin extends Plugin {
             // 拖拽面板期间会高频更新可视区域。仅在显隐真正改变时切换 WebView 生命周期，
             // 否则每帧 onResume()/onPause() 都会干扰渲染与视频播放。
             if (embeddedVisible != visible) {
-                if (!visible && current != null && current.webView != null) {
+                // Only the explicit tab switcher requests a fresh live thumbnail.
+                // Ordinary menus, player overlays and search must not draw and
+                // JPEG-encode the whole WebView on Android's input/UI thread.
+                if (!visible && capturePreviewOnHide && current != null && current.webView != null) {
                     captureTabPreview(current);
                 }
                 embeddedVisible = visible;
                 if (current != null && current.agent != null) current.agent.invalidateVisual();
                 if (!visible) pauseAgentForHuman("hidden");
-                pageFrame.setVisibility(visible ? View.VISIBLE : View.GONE);
-                syncTabActivity();
+                pageFrame.animate().cancel();
+                if (visible && animateReveal) {
+                    // Crossfade the native page over the still-mounted React player.
+                    pageFrame.setAlpha(0f);
+                    pageFrame.setVisibility(View.VISIBLE);
+                    syncTabActivity();
+                    final View revealedFrame = pageFrame;
+                    revealedFrame.postOnAnimation(() -> {
+                        if (embeddedMode && embeddedVisible && pageFrame == revealedFrame) {
+                            revealedFrame.animate().alpha(1f).setDuration(160L).start();
+                        }
+                    });
+                } else {
+                    pageFrame.setAlpha(1f);
+                    pageFrame.setVisibility(visible ? View.VISIBLE : View.GONE);
+                    syncTabActivity();
+                }
             }
             // Occlusion changes only the clipped overlay. The shot still requires identical
             // visible bounds at dispatch, while real View layout/scroll events retire it.
@@ -1082,8 +1178,11 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     @PluginMethod public void tabs(PluginCall call) {
+        // Navigation state reads must not render WebView into a bitmap or transfer
+        // JPEG thumbnails through the JS bridge. Only the tab switcher needs them.
+        final boolean includePreviews = Boolean.TRUE.equals(call.getBoolean("includePreviews", false));
         onUi(call, () -> {
-            if (current != null && current.webView != null) {
+            if (includePreviews && embeddedVisible && current != null && current.webView != null) {
                 captureTabPreview(current);
             }
             JSArray list = new JSArray();
@@ -1095,9 +1194,10 @@ public class BrowserHostPlugin extends Plugin {
                 entry.put("title",tab.title);
                 entry.put("url",tab.url);
                 entry.put("active",tab == current);
+                entry.put("openerTabId", findTabById(tab.openerTabId) == null ? JSONObject.NULL : tab.openerTabId);
                 entry.put("loading",tab.loading || tab.preparing);
                 entry.put("error",tab.error == null ? JSONObject.NULL : tab.error);
-                entry.put("preview",tab.preview == null ? JSONObject.NULL : tab.preview);
+                if (includePreviews) entry.put("preview",tab.preview == null ? JSONObject.NULL : tab.preview);
                 list.put(entry);
             }
             JSObject result=new JSObject();result.put("tabs",list);call.resolve(result);
@@ -1678,6 +1778,7 @@ public class BrowserHostPlugin extends Plugin {
         pageFrame.setBackgroundColor(Color.WHITE);
         pageFrame.setVisibility(embeddedVisible ? View.VISIBLE : View.GONE);
         embeddedRoot().addView(pageFrame, new FrameLayout.LayoutParams(-1, -1, Gravity.TOP));
+        ((ClippedBrowserFrame) pageFrame).setFloatingVideoBounds(floatingVideoBounds);
         setEmbeddedBounds(top, bottom);
     }
 
@@ -1792,12 +1893,17 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void createTab(String url, PluginCall call, boolean activate) {
+        createTab(url, call, activate, -1);
+    }
+
+    private void createTab(String url, PluginCall call, boolean activate, int openerTabId) {
         if (tabs.size() >= MAX_TABS) {
             if (call != null) call.reject("最多同时打开 6 个标签页");
             Toast.makeText(getContext(), "最多同时打开 6 个标签页", Toast.LENGTH_SHORT).show();
             return;
         }
         Tab tab = createBrowserTab(url, nextTabId++, browserSettings);
+        tab.openerTabId = findTabById(openerTabId) == null ? -1 : openerTabId;
         tab.pendingOpen = call;
         tabs.add(tab);
         initializeTab(tab, activate);
@@ -1817,7 +1923,7 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private WebView createBrowserWebView(Tab tab) {
-        return new WebView(getActivity()) {
+        WebView webView = new WebView(getActivity()) {
             @Override public boolean dispatchKeyEvent(KeyEvent event) {
                 if (event.getAction() == KeyEvent.ACTION_DOWN && (tab.agentInput == null || !tab.agentInput.isDispatching())
                         && agentOwner.tabId() == tab.id) pauseAgentForHuman("user_key");
@@ -1840,6 +1946,8 @@ public class BrowserHostPlugin extends Plugin {
                 return connection;
             }
         };
+        DisplayRefreshPolicy.configureWebView(webView);
+        return webView;
     }
 
     private void initializeTab(Tab tab, boolean activate, WebView preparedView) {
@@ -1909,6 +2017,7 @@ public class BrowserHostPlugin extends Plugin {
                     tab.agent.onPageStarted(address);
                 }
                 tab.url = address; tab.loading = true; tab.progress = 0; tab.error = null;
+                tab.popupPending = false;
                 tab.recordHistory = !recordingDisabled();
                 tab.documentScriptVersion = tab.scriptVersion;
                 tab.freshDocumentRequired = false;
@@ -1928,17 +2037,16 @@ public class BrowserHostPlugin extends Plugin {
                 if (!isLive(tab, web) || (tab.loading && !address.equals(tab.url))) return;
                 if (tab.runtime != null) tab.runtime.onDocumentCommitted(address);
                 tab.url = address; tab.title = web.getTitle() == null ? address : web.getTitle();
-                tab.loading = false; tab.progress = 100;
+                tab.loading = false; tab.progress = 100; tab.retrying = false;
+                tab.popupPending = false;
+                if (tab.error == null) tab.retryAttempt = false;
                 if (current == tab) updateChrome();
                 if (!embeddedMode && tab.recordHistory && !recordingDisabled() && isHttpUrl(address)) recordVisit(tab.title, address);
                 if (tab.pageProfile != null) tab.pageProfile.onPageFinished();
                 if (current == tab) sendNavigation(address, "end");
                 if (tab.media != null) tab.media.onPageFinished();
-                if (isLive(tab, web)) {
-                    web.postDelayed(() -> {
-                        if (isLive(tab, web)) captureTabPreview(tab);
-                    }, 350);
-                }
+                // A completed website is not evidence that the user needs a tab
+                // screenshot. Capture on the explicit switcher request instead.
             }
             @Override public boolean onRenderProcessGone(WebView web, RenderProcessGoneDetail detail) {
                 if (!recordingDisabled()) android.util.Log.e("NewsNookBrowser", "Renderer terminated: crashed=" + detail.didCrash()
@@ -1988,13 +2096,11 @@ public class BrowserHostPlugin extends Plugin {
             }
             @Override public void onReceivedError(WebView web, WebResourceRequest request, android.webkit.WebResourceError error) {
                 if (!isLive(tab, web) || !request.isForMainFrame()) return;
-                tab.loading = false;
-                tab.error = "页面加载失败";
-                if (current == tab) {
-                    updateChrome();
-                    sendNavigation(tab.url, "state");
-                    if (progress != null) progress.setText("页面加载失败 · " + error.getDescription());
-                }
+                finishPageError(tab, error == null ? "" : String.valueOf(error.getDescription()));
+            }
+            @Override public void onReceivedError(WebView web, int errorCode, String description, String failingUrl) {
+                if (!isLive(tab, web)) return;
+                finishPageError(tab, description);
             }
         });
         view.setWebChromeClient(new WebChromeClient() {
@@ -2006,6 +2112,10 @@ public class BrowserHostPlugin extends Plugin {
                 createTab("about:blank", null);
                 Tab popup = current;
                 if (popup == null || popup == tab || popup.webView == null) return false;
+                popup.openerTabId = tab.id;
+                popup.popupPending = true;
+                popup.loading = true;
+                sendNavigation(popup.url, "state");
                 // The transport owns the first navigation. Userscript preparation must not
                 // later overwrite a login window's URL with our initial about:blank value.
                 popup.hasLoaded = true;
@@ -2040,9 +2150,17 @@ public class BrowserHostPlugin extends Plugin {
             }
             @Override public void onProgressChanged(WebView web, int percent) {
                 if (!isLive(tab, web)) return;
+                int before = tab.progress;
                 tab.progress = Math.max(0, Math.min(100, percent));
-                if (current == tab) {
-                    if (tab.loading && progress != null) progress.setText(percent < 100 ? "正在加载 · " + percent + "%" : "");
+                // WebChromeClient may call this for every single percentage. Each
+                // JS bridge event otherwise drives two native state queries and a
+                // complete browser React render. The progress UI needs 10% steps,
+                // while the exact final state remains available from state().
+                boolean significant = tab.progress == 100 || tab.progress < before
+                    || tab.progress / 10 != before / 10;
+                if (current == tab && significant && tab.progress != before) {
+                    if (tab.loading && progress != null)
+                        progress.setText(tab.progress < 100 ? "正在加载 · " + tab.progress + "%" : "");
                     sendNavigation(tab.url, "state");
                 }
             }
@@ -2202,7 +2320,7 @@ public class BrowserHostPlugin extends Plugin {
         card.addView(createLinkActionRow(isImage ? "新标签页查看图片" : "新标签页打开", "link-open-foreground",
             LinkActionIconType.EXTERNAL_LINK, true, () -> {
                 dismissLinkActionSurface(null, true);
-                if (!closing && tabs.contains(source)) createTab(target, null, true);
+                if (!closing && tabs.contains(source)) createTab(target, null, true, source.id);
             }), new LinearLayout.LayoutParams(-1, dp(40)));
 
         card.addView(createLinkActionRow(isImage ? "后台打开图片" : "后台标签页打开", "link-open-background",
@@ -2443,8 +2561,12 @@ public class BrowserHostPlugin extends Plugin {
     }
 
     private void animatePaperFlyIntoTabBadge(Tab source, String targetUrl) {
+        if (tabs.size() >= MAX_TABS) {
+            createTab(targetUrl, null, false, source == null ? -1 : source.id);
+            return;
+        }
         if (source == null || source.webView == null || closing || destroyed || getActivity() == null) {
-            createTab(targetUrl, null, false);
+            createTab(targetUrl, null, false, source == null ? -1 : source.id);
             return;
         }
 
@@ -2454,7 +2576,7 @@ public class BrowserHostPlugin extends Plugin {
         final FrameLayout rootContainer = embeddedRoot();
 
         if (w <= 0 || h <= 0 || rootContainer == null) {
-            createTab(targetUrl, null, false);
+            createTab(targetUrl, null, false, source.id);
             return;
         }
 
@@ -2465,20 +2587,19 @@ public class BrowserHostPlugin extends Plugin {
         final int startX = viewLoc[0] - rootLoc[0];
         final int startY = viewLoc[1] - rootLoc[1];
 
-        Bitmap snapshot = null;
+        // PixelCopy uses the existing Window surface and never calls WebView.draw
+        // on Android's input thread. Allocate only a flyer-sized destination;
+        // the screenshot is delivered asynchronously while the tab is opening.
+        Bitmap shot = null;
         try {
-            float snapScale = Math.min(1f, 720f / w);
-            int bw = Math.max(1, Math.round(w * snapScale));
-            int bh = Math.max(1, Math.round(h * snapScale));
-            snapshot = Bitmap.createBitmap(bw, bh, Bitmap.Config.ARGB_8888);
-            Canvas canvas = new Canvas(snapshot);
-            canvas.scale(snapScale, snapScale);
-            view.draw(canvas);
-        } catch (Throwable ignored) {
-            snapshot = null;
-        }
-
-        final Bitmap finalSnapshot = snapshot;
+            float scale = Math.min(1f, 720f / w);
+            shot = Bitmap.createBitmap(Math.max(1, Math.round(w * scale)),
+                Math.max(1, Math.round(h * scale)), Bitmap.Config.ARGB_8888);
+        } catch (Throwable ignored) { }
+        final Bitmap flyerBitmap = shot;
+        final boolean[] flyerFinished = {false};
+        final boolean[] shotCompleted = {false};
+        final boolean[] shotDisplayed = {false};
         final FrameLayout flyerCard = new FrameLayout(getActivity());
         flyerCard.setElevation(dp(22));
         flyerCard.setBackgroundColor(surface);
@@ -2491,12 +2612,9 @@ public class BrowserHostPlugin extends Plugin {
             flyerCard.setClipToOutline(true);
         }
 
-        if (finalSnapshot != null) {
-            ImageView iv = new ImageView(getActivity());
-            iv.setScaleType(ImageView.ScaleType.FIT_XY);
-            iv.setImageBitmap(finalSnapshot);
-            flyerCard.addView(iv, new FrameLayout.LayoutParams(-1, -1));
-        }
+        final ImageView flyerImage = new ImageView(getActivity());
+        flyerImage.setScaleType(ImageView.ScaleType.FIT_XY);
+        flyerCard.addView(flyerImage, new FrameLayout.LayoutParams(-1, -1));
 
         View borderOverlay = new View(getActivity());
         GradientDrawable borderBg = new GradientDrawable();
@@ -2509,7 +2627,8 @@ public class BrowserHostPlugin extends Plugin {
         FrameLayout.LayoutParams params = new FrameLayout.LayoutParams(w, h);
         params.leftMargin = startX;
         params.topMargin = startY;
-        rootContainer.addView(flyerCard, params);
+        // Keep the native page unobstructed until PixelCopy has sampled it.
+        // The completed flyer will be attached when its asynchronous copy finishes.
 
         int rootWidth = rootContainer.getWidth() > 0 ? rootContainer.getWidth() : getContext().getResources().getDisplayMetrics().widthPixels;
         int rootHeight = rootContainer.getHeight() > 0 ? rootContainer.getHeight() : getContext().getResources().getDisplayMetrics().heightPixels;
@@ -2564,28 +2683,66 @@ public class BrowserHostPlugin extends Plugin {
                 if (finished) return;
                 finished = true;
                 try { rootContainer.removeView(flyerCard); } catch (Throwable ignored) {}
-                if (finalSnapshot != null && !finalSnapshot.isRecycled()) {
-                    try { finalSnapshot.recycle(); } catch (Throwable ignored) {}
+                flyerFinished[0] = true;
+                // If PixelCopy is still running, its callback owns recycling.
+                if (shotCompleted[0] && shotDisplayed[0] && flyerBitmap != null && !flyerBitmap.isRecycled()) {
+                    flyerImage.setImageDrawable(null);
+                    flyerBitmap.recycle();
                 }
             }
 
             @Override public void onAnimationEnd(Animator animation) {
+                if (finished) return;
                 cleanUp();
                 try { view.performHapticFeedback(android.view.HapticFeedbackConstants.CONTEXT_CLICK); } catch (Throwable ignored) {}
-                if (!closing && tabs.contains(source)) {
-                    createTab(targetUrl, null, false);
-                }
             }
 
             @Override public void onAnimationCancel(Animator animation) {
+                if (finished) return;
                 cleanUp();
-                if (!closing && tabs.contains(source)) {
-                    createTab(targetUrl, null, false);
-                }
             }
         });
 
-        animator.start();
+        final boolean[] started = {false};
+        final Runnable startFlyer = () -> {
+            if (started[0]) return;
+            started[0] = true;
+            if (closing || destroyed || source.webView != view || !tabs.contains(source)
+                    || rootContainer.getParent() == null) {
+                flyerFinished[0] = true;
+                if (shotCompleted[0] && flyerBitmap != null && !flyerBitmap.isRecycled()) flyerBitmap.recycle();
+                return;
+            }
+            rootContainer.addView(flyerCard, params);
+            animator.start();
+        };
+        // Create the background tab immediately. Previously this operation was
+        // delayed until the 400 ms decorative flight had finished.
+        createTab(targetUrl, null, false, source.id);
+        if (flyerBitmap == null) {
+            startFlyer.run();
+            return;
+        }
+        try {
+            PixelCopy.request(getActivity().getWindow(),
+                new Rect(viewLoc[0], viewLoc[1], viewLoc[0] + w, viewLoc[1] + h),
+                flyerBitmap, result -> {
+                    shotCompleted[0] = true;
+                    if (result == PixelCopy.SUCCESS && !flyerFinished[0]) {
+                        flyerImage.setImageBitmap(flyerBitmap);
+                        shotDisplayed[0] = true;
+                    } else if (!flyerBitmap.isRecycled()) {
+                        flyerBitmap.recycle();
+                    }
+                    startFlyer.run();
+                }, mainHandler);
+            // A stalled copy may not stall tab feedback or decorative motion.
+            mainHandler.postDelayed(startFlyer, 120);
+        } catch (Throwable ignored) {
+            shotCompleted[0] = true;
+            if (!flyerBitmap.isRecycled()) flyerBitmap.recycle();
+            startFlyer.run();
+        }
     }
 
     private void finishPreparedNavigation(Tab tab, WebView view, int version, String warning) {
@@ -2628,7 +2785,7 @@ public class BrowserHostPlugin extends Plugin {
             });
             return;
         }
-        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view, recordingDisabled());
+        final UserscriptRuntime runtime = new UserscriptRuntime(getContext(), view, recordingDisabled(), scriptDependencies);
         tab.preparingRuntime = runtime;
         new Thread(() -> {
             String warning = null;
@@ -2686,13 +2843,25 @@ public class BrowserHostPlugin extends Plugin {
         tab.recreateAfterSiteClear = false;
         tab.url = url;
         tab.error = null;
+        tab.loading = true;
+        tab.progress = 0;
+        tab.retrying = false;
+        tab.retryAttempt = false;
+        tab.popupPending = false;
+        if (tab == current) { updateChrome(); sendNavigation(url, "state"); }
         if (tab.webView == null) initializeTab(tab);
         else runNavigation(tab, () -> tab.webView.loadUrl(url));
     }
 
     private void reloadTab(Tab tab) {
         if (deferForSiteClear(tab, tab.url)) return;
+        boolean retry = tab.error != null;
+        tab.retrying = retry;
+        tab.retryAttempt = retry;
         tab.error = null;
+        tab.loading = true;
+        tab.progress = 0;
+        if (tab == current) { updateChrome(); sendNavigation(tab.url, "state"); }
         if (tab.webView == null) initializeTab(tab);
         else if (tab.webView.getUrl() == null) loadTabUrl(tab, tab.url);
         else runNavigation(tab, () -> {
@@ -2704,17 +2873,60 @@ public class BrowserHostPlugin extends Plugin {
         });
     }
 
+    private void finishPageError(Tab tab, String description) {
+        tab.loading = false;
+        tab.retrying = false;
+        tab.popupPending = false;
+        String reason = description == null || description.trim().isEmpty() ? "网页无法访问" : description.trim();
+        tab.error = (tab.retryAttempt ? "重新加载失败：" : "页面加载失败：") + reason;
+        if (current == tab) {
+            updateChrome();
+            sendNavigation(tab.url, "state");
+        }
+    }
+
     private void stopTab(Tab tab) {
         if (tab.preparingRuntime != null) tab.preparingRuntime.close();
         tab.preparingRuntime = null;
         tab.pendingNavigation = null;
         tab.preparing = false;
         tab.loading = false;
+        tab.retrying = false;
+        tab.popupPending = false;
         tab.hasLoaded = true;
         if (tab.webView != null) tab.webView.stopLoading();
         resolvePendingOpen(tab);
         updateChrome();
         sendNavigation(tab.url, "state");
+    }
+
+    /** Encode thumbnails off the Android input/UI thread; deliver once ready. */
+    private void encodeTabPreviewAsync(Tab tab, Bitmap thumbnail) {
+        if (thumbnail == null || thumbnail.isRecycled()) return;
+        final String capturedUrl = tab.url;
+        try {
+            previewEncoder.execute(() -> {
+                try {
+                    ByteArrayOutputStream stream = new ByteArrayOutputStream();
+                    if (!thumbnail.compress(Bitmap.CompressFormat.JPEG, 65, stream)) return;
+                    final String preview = "data:image/jpeg;base64,"
+                        + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
+                    mainHandler.post(() -> {
+                        if (closing || destroyed || !tabs.contains(tab)) return;
+                        if (capturedUrl == null ? tab.url != null : !capturedUrl.equals(tab.url)) return;
+                        tab.preview = preview;
+                        notifyListeners("tabPreviewReady", new JSObject()
+                            .put("tabId", tab.id).put("url", tab.url == null ? "" : tab.url)
+                            .put("preview", preview));
+                    });
+                } catch (Throwable ignored) {
+                } finally {
+                    if (!thumbnail.isRecycled()) thumbnail.recycle();
+                }
+            });
+        } catch (RuntimeException ignored) {
+            if (!thumbnail.isRecycled()) thumbnail.recycle();
+        }
     }
 
     private void captureTabPreview(Tab tab) {
@@ -2723,40 +2935,21 @@ public class BrowserHostPlugin extends Plugin {
         int width = view.getWidth(), height = view.getHeight();
         if (width <= 0 || height <= 0) return;
         float scale = Math.min(1f, 360f / width);
-        int targetWidth = Math.max(1, Math.round(width * scale));
-        int targetHeight = Math.max(1, Math.round(height * scale));
         Bitmap bitmap = null;
         try {
-            bitmap = Bitmap.createBitmap(targetWidth, targetHeight, Bitmap.Config.RGB_565);
+            bitmap = Bitmap.createBitmap(Math.max(1, Math.round(width * scale)),
+                Math.max(1, Math.round(height * scale)), Bitmap.Config.RGB_565);
             Canvas canvas = new Canvas(bitmap);
             canvas.drawColor(surface);
             canvas.scale(scale, scale);
             view.draw(canvas);
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 65, stream);
-            tab.preview = "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
+            Bitmap ready = bitmap;
+            bitmap = null;
+            encodeTabPreviewAsync(tab, ready);
         } catch (Throwable ignored) {
         } finally {
             if (bitmap != null && !bitmap.isRecycled()) bitmap.recycle();
         }
-    }
-
-    private void saveTabPreviewFromBitmap(Tab tab, Bitmap source) {
-        if (tab == null || source == null || source.isRecycled()) return;
-        try {
-            int w = source.getWidth(), h = source.getHeight();
-            if (w <= 0 || h <= 0) return;
-            float scale = Math.min(1f, 360f / w);
-            int targetW = Math.max(1, Math.round(w * scale));
-            int targetH = Math.max(1, Math.round(h * scale));
-            Bitmap thumbnail = Bitmap.createScaledBitmap(source, targetW, targetH, true);
-            ByteArrayOutputStream stream = new ByteArrayOutputStream();
-            thumbnail.compress(Bitmap.CompressFormat.JPEG, 65, stream);
-            tab.preview = "data:image/jpeg;base64," + Base64.encodeToString(stream.toByteArray(), Base64.NO_WRAP);
-            if (thumbnail != source && !thumbnail.isRecycled()) {
-                thumbnail.recycle();
-            }
-        } catch (Throwable ignored) {}
     }
 
     private void selectTab(Tab tab) {
@@ -2789,58 +2982,48 @@ public class BrowserHostPlugin extends Plugin {
                 && tab.webView != null && pageFrame.getWidth() > 0 && pageFrame.getHeight() > 0
                 && (!embeddedMode || embeddedVisible) && !activityPaused && !closing;
 
+        // Cancel and normalize any unfinished transition before reusing a tab.
+        // Repeated quick taps must not leave WebView alpha/translation behind.
+        for (int index = 0; index < pageFrame.getChildCount(); index++) {
+            View child = pageFrame.getChildAt(index);
+            child.animate().cancel();
+            child.setTranslationX(0f);
+            child.setAlpha(1f);
+        }
+
         if (canAnimate) {
-            Bitmap previousSnapshot = null;
-            try {
-                int w = pageFrame.getWidth();
-                int h = pageFrame.getHeight();
-                previousSnapshot = Bitmap.createBitmap(w, h, Bitmap.Config.RGB_565);
-                Canvas canvas = new Canvas(previousSnapshot);
-                canvas.drawColor(surface);
-                previous.webView.draw(canvas);
-                saveTabPreviewFromBitmap(previous, previousSnapshot);
-            } catch (Throwable ignored) {
-                previousSnapshot = null;
-            }
-
-            if (previousSnapshot != null) {
-                final Bitmap bmpToRecycle = previousSnapshot;
-                final ImageView snapshotView = new ImageView(getActivity());
-                snapshotView.setImageBitmap(previousSnapshot);
-                snapshotView.setScaleType(ImageView.ScaleType.FIT_XY);
-
-                pageFrame.removeAllViews();
-                pageFrame.addView(snapshotView, new FrameLayout.LayoutParams(-1, -1));
-
-                if (tab.webView.getParent() != null) {
-                    ((ViewGroup) tab.webView.getParent()).removeView(tab.webView);
-                }
-                final int width = pageFrame.getWidth();
-                tab.webView.setTranslationX(width * 0.35f);
-                tab.webView.setAlpha(0f);
-                pageFrame.addView(tab.webView, new FrameLayout.LayoutParams(-1, -1));
-
-                tab.webView.animate()
-                    .translationX(0f)
-                    .alpha(1f)
-                    .setDuration(220)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
-                    .withEndAction(() -> {
-                        if (pageFrame != null) pageFrame.removeView(snapshotView);
-                        if (bmpToRecycle != null && !bmpToRecycle.isRecycled()) bmpToRecycle.recycle();
-                    })
-                    .start();
-
-                snapshotView.animate()
-                    .translationX(-width * 0.15f)
-                    .alpha(0.6f)
-                    .setDuration(220)
-                    .setInterpolator(new android.view.animation.DecelerateInterpolator(1.4f))
-                    .start();
-
-                layoutBackgroundAgent();
-                return;
-            }
+            // The previous code synchronously WebView.draw()'d the entire page
+            // into an RGB_565 bitmap on Android's UI thread before animating.
+            // Animate the already-rendered native WebViews instead: same visual
+            // motion, no full-screen allocation, screenshot, or JPEG work.
+            final WebView outgoing = previous.webView;
+            final WebView incoming = tab.webView;
+            final FrameLayout frame = pageFrame;
+            final int width = frame.getWidth();
+            ViewGroup oldParent = (ViewGroup) outgoing.getParent();
+            if (oldParent != null) oldParent.removeView(outgoing);
+            ViewGroup newParent = (ViewGroup) incoming.getParent();
+            if (newParent != null) newParent.removeView(incoming);
+            frame.removeAllViews();
+            frame.addView(outgoing, new FrameLayout.LayoutParams(-1, -1));
+            incoming.setTranslationX(width * 0.35f);
+            incoming.setAlpha(0f);
+            frame.addView(incoming, new FrameLayout.LayoutParams(-1, -1));
+            android.view.animation.DecelerateInterpolator easing =
+                new android.view.animation.DecelerateInterpolator(1.4f);
+            incoming.animate().translationX(0f).alpha(1f)
+                .setDuration(220).setInterpolator(easing)
+                .withEndAction(() -> {
+                    if (pageFrame == frame && current == tab && outgoing.getParent() == frame) {
+                        frame.removeView(outgoing);
+                    }
+                    outgoing.setTranslationX(0f);
+                    outgoing.setAlpha(1f);
+                }).start();
+            outgoing.animate().translationX(-width * 0.15f).alpha(0.6f)
+                .setDuration(220).setInterpolator(easing).start();
+            layoutBackgroundAgent();
+            return;
         }
 
         pageFrame.removeAllViews();
@@ -2897,8 +3080,12 @@ public class BrowserHostPlugin extends Plugin {
     private void syncTabActivity() {
         if (current == null || current.webView == null) return;
         boolean active = !closing && (!activityPaused || agentBackgroundHeld && agentOwner.isRunning()) && (!embeddedMode || embeddedVisible);
-        if (active) current.webView.onResume();
-        else current.webView.onPause();
+        if (active) {
+            // A resumed native browser tab can return to the platform default
+            // vote after an Activity pause; restore its device-rate preference.
+            DisplayRefreshPolicy.configureWebView(current.webView);
+            current.webView.onResume();
+        } else current.webView.onPause();
         current.webView.getSettings().setOffscreenPreRaster(agentBackgroundHeld && agentOwner.isRunning());
         layoutBackgroundAgent();
         if (current.media != null) current.media.setActive(active && !activityPaused);
@@ -2983,11 +3170,25 @@ public class BrowserHostPlugin extends Plugin {
         updateChrome();
         reloadTab(current);
     }
+    private Tab findTabById(int id) {
+        if (id < 0) return null;
+        for (Tab tab : tabs) if (tab.id == id) return tab;
+        return null;
+    }
+
     private void goBack() {
-        if (current != null && current.webView != null && current.webView.canGoBack()) {
-            final Tab tab = current;
+        if (current == null) return;
+        final Tab tab = current;
+        Tab opener = findTabById(tab.openerTabId);
+        if ("about:blank".equals(tab.url) && opener != null) {
+            closeTab(tab);
+        } else if (tab.webView != null && tab.webView.canGoBack()) {
             runNavigation(tab, () -> tab.webView.goBack());
-        } else closeNative();
+        } else if (!"about:blank".equals(tab.url)) {
+            loadTabUrl(tab, "about:blank");
+        } else {
+            closeNative();
+        }
     }
     private void showTabs() {
         if (current == null) return;
@@ -3009,10 +3210,12 @@ public class BrowserHostPlugin extends Plugin {
         boolean wasCurrent = current == tab;
         if (fullscreenTab == tab) exitFullscreen();
         if (wasCurrent) current = null;
+        Tab opener = findTabById(tab.openerTabId);
         tabs.remove(tab);
+        for (Tab other : tabs) if (other.openerTabId == tab.id) other.openerTabId = opener == null ? -1 : opener.id;
         releaseTab(tab);
         if (tabs.isEmpty()) { closeNative(); return; }
-        if (wasCurrent) selectTab(tabs.get(Math.min(index, tabs.size() - 1)));
+        if (wasCurrent) selectTab(opener != null ? opener : tabs.get(Math.min(index, tabs.size() - 1)));
         updateChrome();
     }
     private void showMore() {
@@ -3263,6 +3466,7 @@ public class BrowserHostPlugin extends Plugin {
         disposeTemporaryProfile(retiredProfile);
         finishAgentDrain(null);
         nextTabId = 1;
+        scriptDependencies.clear();
         scriptSnapshot=null; address=null; titleView=null; tabCounter=null; menuButton=null;
         progress=null; backButton=null; forwardButton=null; desktopButton=null;
         pageFrame=null; root=null;
@@ -3290,6 +3494,7 @@ public class BrowserHostPlugin extends Plugin {
 
     @Override protected void handleOnDestroy() {
         destroyed = true;
+        previewEncoder.shutdown();
         if (agentChooserLauncher != null) { agentChooserLauncher.unregister(); agentChooserLauncher = null; }
         if (Looper.myLooper() == Looper.getMainLooper()) closeNative();
         else mainHandler.post(this::closeNative);

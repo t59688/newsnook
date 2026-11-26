@@ -24,6 +24,9 @@ export const BROWSER_KEYS = {
   bookmarks: 'newsnook:browser:bookmarks:v1',
   /** Explicitly saved while privacy recording is enabled; never mixed into public bookmarks. */
   privateBookmarks: 'newsnook:browser:private-bookmarks:v1',
+  /** V2 is an atomic folder + bookmark snapshot; V1 remains readable for existing installs. */
+  bookmarkLibrary: 'newsnook:browser:bookmark-library:v2',
+  privateBookmarkLibrary: 'newsnook:browser:private-bookmark-library:v2',
   search: 'newsnook:browser:search:v1',
   addressPosition: 'newsnook:browser:address-position:v1',
   hiddenHosts: 'newsnook:browser:hidden-hosts:v1',

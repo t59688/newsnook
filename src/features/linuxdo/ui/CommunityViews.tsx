@@ -2,12 +2,11 @@ import { NotificationRow } from './NotificationRow'
 import { PrivateMessagesView } from './PrivateMessagesView'
 import type { LinuxDoPrivateMessagesCache } from './privateMessagesCache'
 import { advanceLinuxDoNotificationPagination, emptyLinuxDoNotificationPagination } from '../notification/pagination'
-import { Browser } from '@capacitor/browser'
-import { Capacitor } from '@capacitor/core'
 import { Bell, Loader2, RotateCw, X } from 'lucide-react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
+import { openContentLink } from '../../browser/browserOpen'
 import { RefreshSurface } from './RefreshSurface'
 import { LinuxDoRequestError } from './VerificationAction'
 
@@ -37,14 +36,6 @@ import { ago, readableError } from './utils'
 export { SearchView } from './SearchView'
 
 export { DiscoverView } from './DiscoverView'
-
-async function openLinuxDoNotificationExternal(url: string): Promise<void> {
-  if (Capacitor.isNativePlatform()) {
-    await Browser.open({ url })
-  } else {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-}
 
 export function NotificationsView({
   session,
@@ -313,9 +304,7 @@ export function NotificationsView({
     }
 
     if (target.kind === 'external') {
-      void openLinuxDoNotificationExternal(target.url).catch((nextError) => {
-        if (mountedRef.current) setError('无法打开通知内容：' + readableError(nextError))
-      })
+      if (!openContentLink(target.url)) setError('通知链接无效或暂不支持。')
       return
     }
 

@@ -1,8 +1,9 @@
-import { lazy, startTransition, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { App as CapacitorApp } from '@capacitor/app'
 import { Capacitor } from '@capacitor/core'
 
 import { AppShell } from './components/AppShell'
+import { ReaderEntranceShell } from './components/ReaderEntranceShell'
 import { StartupPending } from './components/StartupReadiness'
 import { useStartupBlocker, useStartupReady } from './hooks/useStartupReadiness'
 import { BrowserLauncher } from './features/browser/BrowserLauncher'
@@ -15,6 +16,13 @@ import { SchemeOnboardingPrompt } from './components/SchemeOnboardingPrompt'
 import { SyncOnboardingPrompt } from './features/account/SyncOnboardingPrompt'
 import { useAccount } from './features/account/useAccount'
 import { syncRouteFromAppUrl } from './features/sync/nativeNotification'
+import { checkWatchedSources } from './features/sourceWatch/runtime'
+import { supportsNativeSourceWatch } from './features/sourceWatch/eligibility'
+import { WatchBanner } from './features/sourceWatch/WatchBanner'
+import { muteWatchBannersForNotificationOpen } from './features/sourceWatch/announcements'
+import { loadWatchState, markWatchArticleRead, updateWatchArticlePreview } from './features/sourceWatch/store'
+import { useWatchUnreadCount } from './features/sourceWatch/useWatchUnreadCount'
+import { importNativeWatchEvents, syncNativeWatchRules } from './features/sourceWatch/native'
 import { toastForSyncEvent, syncStatusCaption, type SyncToastModel } from './features/sync/notifier'
 import { useCloudSync } from './features/sync/useCloudSync'
 import { SyncToast } from './components/SyncToast'
@@ -36,7 +44,7 @@ import { recoverAppScrollAfterNavigation } from './lib/gestureStyles'
 import { dismissTopHardwareBackLayer } from './lib/hardwareBackStack'
 import { useLaterArticles } from './hooks/useLaterArticles'
 import { log } from './lib/logger'
-import { scheduleIdleWork } from './lib/idleWork'
+import { scheduleAfterPaint, scheduleIdleWork } from './lib/idleWork'
 import { startCatalogMaintenance } from './features/rssCatalog/maintenance'
 import {
   buildReadingProfile,
@@ -179,6 +187,10 @@ const HistoryScreen = lazyScreen(() => Promise.all([
 ]).then(([module]) => ({ default: module.HistoryScreen })))
 const LaterScreen = lazyScreen(() => import('./screens/settings/LaterScreen').then(module => ({ default: module.LaterScreen })))
 const LocalSearchScreen = lazyScreen(() => import('./screens/settings/LocalSearchScreen').then(module => ({ default: module.LocalSearchScreen })))
+const SourceWatchScreen = lazyScreen(() => Promise.all([
+  import('./screens/settings/SourceWatchScreen'),
+  import('./styles/source-watch.css'),
+]).then(([module]) => ({ default: module.SourceWatchScreen })))
 const PresetListScreen = lazyScreen(() => import('./screens/settings/PresetListScreen').then(module => ({ default: module.PresetListScreen })))
 const StorageScreen = lazyScreen(() => import('./screens/settings/StorageScreen').then(module => ({ default: module.StorageScreen })))
 const TypographyScreen = lazyScreen(() => import('./screens/settings/TypographyScreen').then(module => ({ default: module.TypographyScreen })))
@@ -220,12 +232,14 @@ const LinuxDoWorkspace = lazy(() =>
 // Warm local page code after the first usable frame, one idle turn at a time.
 // Importing a screen does not mount it or start its data requests.
 const navigationScreens = [
-  FeedStoreScreen, MeScreen, AppearanceScreen, TypographyScreen,
+  // Reader is the first destination from the feed. Warm its module graph before
+  // settings screens so the first article tap never waits behind idle imports.
+  ReaderScreen, FeedStoreScreen, MeScreen, AppearanceScreen, TypographyScreen,
   CategorySettingsScreen, CustomSourcesScreen, LaterScreen, HistoryScreen,
   LocalSearchScreen, PresetListScreen, CategorySourcesScreen, CategoryEditScreen,
   CustomSchemeScreen, StorageScreen, TranslationScreen, ReadAloudScreen,
   AiSettingsScreen, ProxyScreen, AccountSyncScreen, AboutScreen,
-  ChangelogScreen, OpenSourceScreen, ChannelsScreen, SiteScreen, ReaderScreen,
+  ChangelogScreen, OpenSourceScreen, ChannelsScreen, SiteScreen,
 ]
 
 const DEFAULT_ENABLED = SOURCES.filter((source) => source.enabled).map((source) => source.id)
@@ -384,13 +398,82 @@ export default function App() {
     () => defaultFeedCategoryId(visibleCategories(prefs)),
   )
   const [settingsRoute, commitSettingsRoute] = useState<SettingsRoute | null>(null)
-  // Keep the current page (and its back controls) until a cold destination is ready.
+  // Navigation is an urgent user action: commit the route synchronously so the
+  // Suspense boundary can show feedback immediately even when the page is cold.
   const setSettingsRoute = useCallback((route: SettingsRoute | null) => {
-    startTransition(() => commitSettingsRoute(route))
+    commitSettingsRoute(route)
   }, [])
   const appUpdate = useAppUpdate({ settingsOpen: settingsRoute != null })
+  const watchUnreadCount = useWatchUnreadCount()
   const [focusReturnRoute, setFocusReturnRoute] = useState<SettingsRoute | null>(null)
   const [enabledIds, setEnabledIds] = useState<string[]>(() => loadEnabledSources() ?? DEFAULT_ENABLED)
+  useEffect(() => {
+    if (!startupReady) return
+    const sources = allRegisteredSources(prefs)
+    let disposed = false
+    let timer: ReturnType<typeof setInterval> | undefined
+    let previousSchedule = ''
+    let previousNativeRules = ''
+
+    const checkWhenVisible = () => {
+      if (disposed || document.visibilityState !== 'visible') return
+      // Native events are reconciled first, so a foreground fetch cannot
+      // re-discover them before the Android inbox has been imported.
+      void importNativeWatchEvents(sources).catch(() => 0).then(imported => {
+        if (disposed || document.visibilityState !== 'visible') return
+        // Native RSS only knows title and URL. Reparse the newly imported
+        // source once with the existing foreground adapter so the inbox can
+        // display the same image, summary and publication time as the home feed.
+        // This never fetches unmonitored sources or adds extra alerts.
+        const hydrateIds = imported > 0
+          ? new Set(loadWatchState().events.filter(event =>
+              !event.article.hasRealDate && event.article.id === event.key,
+            ).map(event => event.sourceId))
+          : undefined
+        void checkWatchedSources(sources, false, hydrateIds)
+      })
+    }
+    const configure = () => {
+      if (disposed) return
+      const state = loadWatchState()
+      const watched = sources.filter(source => !source.paused && state.rules.some(rule => rule.sourceId === source.id && rule.enabled))
+      const eligible = watched.filter(supportsNativeSourceWatch)
+      const nativeRules = eligible.map(source => ({
+        id: source.id, name: source.name, url: source.url,
+        mode: state.rules.find(rule => rule.sourceId === source.id)?.mode || 'inbox',
+        seen: (state.cursors[source.id] || []).map(key => key.slice(source.id.length + 1)),
+      }))
+      const nativeSignature = JSON.stringify([nativeRules, state.intervalMinutes, state.quietHours, state.wifiOnly])
+      if (nativeSignature !== previousNativeRules) {
+        previousNativeRules = nativeSignature
+        void syncNativeWatchRules(nativeRules, state.intervalMinutes, state.quietHours, state.wifiOnly)
+          .then(() => window.dispatchEvent(new Event('newsnook:source-watch-native-synced')))
+          .catch(error => log.app.warn('Android source-watch schedule sync failed', error))
+      }
+      const scheduleSignature = JSON.stringify([watched.map(source => source.id), state.intervalMinutes])
+      if (scheduleSignature === previousSchedule) return
+      previousSchedule = scheduleSignature
+      if (timer) clearInterval(timer)
+      timer = undefined
+      if (watched.length) {
+        timer = setInterval(checkWhenVisible, 60000)
+        checkWhenVisible()
+      }
+    }
+    const visible = () => { if (document.visibilityState === 'visible') checkWhenVisible() }
+    window.addEventListener('newsnook:source-watch-changed', configure)
+    document.addEventListener('visibilitychange', visible)
+    configure()
+    // Native jobs may have found new articles while the WebView was suspended,
+    // even when all watch rules were disabled in the meantime.
+    void importNativeWatchEvents(sources).catch(() => {})
+    return () => {
+      disposed = true
+      if (timer) clearInterval(timer)
+      window.removeEventListener('newsnook:source-watch-changed', configure)
+      document.removeEventListener('visibilitychange', visible)
+    }
+  }, [prefs, startupReady])
   const presets = usePresets({
     prefs,
     enabledIds,
@@ -459,6 +542,10 @@ export default function App() {
     if (!sharedEntry?.payload) return null
     return articleFromSharePayload(sharedEntry.payload, prefs.customSources)
   })
+  const readingRef = useRef(reading)
+  readingRef.current = reading
+  const [readerShellOnly, setReaderShellOnly] = useState(false)
+  const readerEntranceSeq = useRef(0)
   const [deepLinkError, setDeepLinkError] = useState(sharedEntry?.payload === null)
 
   const [readAloudUiEnabled, setReadAloudUiEnabled] = useState(() => Boolean(reading))
@@ -667,6 +754,8 @@ export default function App() {
   }, [focusReturnRoute, setSettingsRoute])
 
   const closeReader = useCallback(() => {
+    readerEntranceSeq.current += 1
+    setReaderShellOnly(false)
     setReading(null)
     clearShareLocation()
     window.requestAnimationFrame(() => {
@@ -786,6 +875,7 @@ export default function App() {
     if (article) {
       updateArticlePreview(article)
       updatePrestorePreview(article)
+      updateWatchArticlePreview(article)
     }
     notifyCacheChange()
   }, [notifyCacheChange, updateArticlePreview, updatePrestorePreview])
@@ -1006,10 +1096,34 @@ export default function App() {
   customSourcesRef.current = prefs.customSources
 
   const openArticle = useCallback((article: Article) => {
+    // React can show the reader on this tap without first parsing watch state
+    // and serializing up to 500 reading-history entries on the JS main thread.
     setReaderReturnArticle(null)
+    const fromFeed = readingRef.current === null
+    const sequence = ++readerEntranceSeq.current
+    // The full ReaderScreen initializes media, translation and article hooks.
+    // Render the inexpensive title shell in the first click commit; mount those
+    // heavy hooks only after the browser has painted that immediate feedback.
+    setReaderShellOnly(fromFeed)
     setReading(article)
-    setReadIds((prev) => new Set(prev).add(article.id))
-    setReadingHistory(recordArticleRead(article, findSource(article.sourceId, customSourcesRef.current)?.kind === 'web-catalog' ? 'cms' : 'feed'))
+    if (fromFeed) {
+      window.requestAnimationFrame(() => {
+        window.setTimeout(() => {
+          if (readerEntranceSeq.current === sequence) setReaderShellOnly(false)
+        }, 0)
+      })
+    }
+    // Marking an item as read changes every feed row's props and invalidates
+    // recommendation readiness. On Android 9 this used to share the same React
+    // commit as navigation through a 150+ item feed, delaying the reader shell.
+    // Keep history/read indicators accurate, but update them only after the
+    // requested reader surface has had a chance to paint.
+    const historyOrigin = findSource(article.sourceId, customSourcesRef.current)?.kind === 'web-catalog' ? 'cms' : 'feed'
+    scheduleAfterPaint(() => {
+      setReadIds((prev) => prev.has(article.id) ? prev : new Set(prev).add(article.id))
+      markWatchArticleRead(article)
+      setReadingHistory(recordArticleRead(article, historyOrigin))
+    })
   }, [])
 
   /**
@@ -1034,6 +1148,39 @@ export default function App() {
       if (trimmed === lastHandledUrl && now - lastHandledAt < 1500) return
       lastHandledUrl = trimmed
       lastHandledAt = now
+
+      // The test notification is an inbox shortcut, not an artificial article.
+      if (trimmed === 'newsnook://watch/inbox') {
+        muteWatchBannersForNotificationOpen()
+        leaveActiveSite()
+        setTab('me')
+        setSettingsRoute({ name: 'source-watch' })
+        // When the watch screen is already mounted on its Settings tab, navigate
+        // within that screen instead of merely redisplaying the current route.
+        window.dispatchEvent(new Event('newsnook:source-watch-open-inbox'))
+        return
+      }
+
+      // Local source-watch notification opens the exact article without switching presets.
+      if (trimmed.startsWith('newsnook://watch?')) {
+        muteWatchBannersForNotificationOpen()
+        const params = new URLSearchParams(trimmed.slice('newsnook://watch?'.length))
+        const sourceId = params.get('source') || ''
+        const url = params.get('url') || ''
+        const title = params.get('title') || ''
+        if (sourceId && title && /^https?:\/\//i.test(url)) {
+          const source = findSource(sourceId, customSourcesRef.current)
+          const article: Article = { id: sourceId + ':' + url, sourceId, sourceName: source?.name || sourceId,
+            sourceLabel: source?.label || sourceId, sourceGroup: source?.group || 'custom',
+            title, summary: '', originUrl: url, publishedAt: Date.now(), hasRealDate: false }
+          openArticle(article)
+          // The notification may have opened a cold app before native pending
+          // events were hydrated into the WebView inbox. Reconcile, then mark read.
+          void importNativeWatchEvents([...SOURCES, ...(customSourcesRef.current ?? [])])
+            .then(() => { markWatchArticleRead(article) }).catch(() => {})
+        }
+        return
+      }
 
       // 1. 同步通知点开后落到「账户与同步」，不是分享深链
       if (syncRouteFromAppUrl(trimmed)) {
@@ -1084,7 +1231,7 @@ export default function App() {
       disposed = true
       if (removeListener) void removeListener()
     }
-  }, [openAccountSync, openArticle])
+  }, [openAccountSync, openArticle, leaveActiveSite, setSettingsRoute])
 
   /**
    * 「在 App 中打开」引导条：网页版打开分享深链、且是 Android 浏览器时才给。
@@ -1488,6 +1635,19 @@ export default function App() {
       )
     }
 
+    if (settingsRoute.name === 'source-watch') {
+      return <SourceWatchScreen
+        sources={allRegisteredSources(prefs)}
+        homeFeedLayout={prefs.homeFeedLayout}
+        readIds={readIds}
+        savedIds={laterIds}
+        prestoredIds={prestore.articleIds}
+        translationPrefs={prefs.translation}
+        onBack={() => setSettingsRoute(null)}
+        onOpenArticle={(article) => { setSettingsRoute(null); openArticle(article) }}
+      />
+    }
+
     if (settingsRoute.name === 'presets') {
       return (
         <PresetListScreen
@@ -1822,6 +1982,8 @@ export default function App() {
     if (focusSource) {
       return (
         <FeedScreen
+          watchUnreadCount={watchUnreadCount}
+          onOpenWatch={() => setSettingsRoute({ name: 'source-watch' })}
           title={focusSource.name}
           caption={focusSource.url.replace(/^https?:\/\//, '').slice(0, 38)}
           articles={focusArticles}
@@ -1881,6 +2043,8 @@ export default function App() {
           onOpenFeedStore={() => setSettingsRoute({ name: 'feed-store' })}
           onOpenCategories={() => setSettingsRoute({ name: 'categories', returnTo: 'me' })}
           onOpenPresets={() => setSettingsRoute({ name: 'presets' })}
+          onOpenSourceWatch={() => setSettingsRoute({ name: 'source-watch' })}
+          watchUnreadCount={watchUnreadCount}
           onOpenTypographySettings={() => setSettingsRoute({ name: 'typography' })}
           onOpenAppearanceSettings={() => setSettingsRoute({ name: 'appearance' })}
           onOpenTranslationSettings={() => setSettingsRoute({ name: 'translation' })}
@@ -1929,6 +2093,8 @@ export default function App() {
     return (
       <FeedScreen
         key={`preset:${activePresetId}`}
+        watchUnreadCount={watchUnreadCount}
+        onOpenWatch={() => setSettingsRoute({ name: 'source-watch' })}
         title={BRAND_TITLE}
         caption={
           activeFilterSource
@@ -1993,8 +2159,17 @@ export default function App() {
     )
   }
 
+  // Feed and article toolbars use the editorial raised surface; settings and other
+  // workspaces keep their existing page surface. The reader owns this while open.
+  const statusBarSurface = reading
+    ? (prefs.einkMode ? 'page' : 'toolbar')
+    : !activeSiteId && !settingsRoute && !showSchemeOnboarding && !eggOpen &&
+      (Boolean(focusSource) || tab === 'today')
+      ? 'toolbar'
+      : 'page'
+
   return (
-    <AppShell>
+    <AppShell statusBarSurface={statusBarSurface}>
       <BrowserLauncher onVisibilityChange={setBrowserOpen} />
       <div className="flex h-full w-full flex-row overflow-hidden">
         {!activeSiteId && <DesktopSidebar
@@ -2026,10 +2201,8 @@ export default function App() {
           onNavigateLater={() => setSettingsRoute({ name: 'later' })}
           onNavigateHistory={() => setSettingsRoute({ name: 'history' })}
           onNavigateSettings={() => {
-            startTransition(() => {
-              setTab('me')
-              setSettingsRoute(null)
-            })
+            setTab('me')
+            setSettingsRoute(null)
           }}
           onNavigateAbout={() => setSettingsRoute({ name: 'about' })}
           onBrandTap={onBrandTap}
@@ -2040,6 +2213,10 @@ export default function App() {
           渐进增强为 content-visibility:hidden。两条路径都保留 React DOM/状态，并让下层长列表
           退出主题预览的渲染热路径；现代内核额外保留布局盒与滚动状态。
         */}
+        {startupReady && <WatchBanner onOpen={openArticle} onOpenInbox={() => {
+          setSettingsRoute({ name: 'source-watch' })
+          window.dispatchEvent(new Event('newsnook:source-watch-open-inbox'))
+        }} />}
         <main
           className={`relative flex min-h-0 flex-1 flex-col overflow-hidden bg-ink${
             showSchemeOnboarding ? ' content-parked' : ''
@@ -2100,15 +2277,14 @@ export default function App() {
                 <TabBar
                   active={tab}
                   laterCount={later.length}
+                  watchUnreadCount={watchUnreadCount}
                   hasUpdate={appUpdate.hasUpdate}
                   onChange={(key) => {
-                    // Preserve the current surface until a cold lazy tab is ready.
-                    startTransition(() => {
-                      setFocusSourceId(null)
-                      setFocusReturnRoute(null)
-                      if (key !== 'me') setReaderReturnArticle(null)
-                      setTab(key)
-                    })
+                    // Tab taps are urgent; Suspense shows a loading state for cold tabs.
+                    setFocusSourceId(null)
+                    setFocusReturnRoute(null)
+                    if (key !== 'me') setReaderReturnArticle(null)
+                    setTab(key)
                   }}
                   onTodayDoubleTap={() => setTodayPullRefreshSeq((seq) => seq + 1)}
                   presetSwitcher={presetSwitcherConfig}
@@ -2133,24 +2309,14 @@ export default function App() {
         <CurrentEasterEgg onClose={() => setEggOpen(false)} />
       </EasterEggShell>
 
-      {reading && (
-        <Suspense
-          fallback={
-            <StartupPending pending={!browserOpen}><div
-              role="status"
-              aria-label="正在打开文章"
-              className="absolute inset-0 z-30 flex items-center justify-center bg-ink"
-              style={{ paddingTop: 'var(--sat)' }}
-            >
-              {/* 分享深链落地时明示状态，避免看起来像闪了一下首页 */}
-              {sharedEntry?.payload ? (
-                <span className="font-mono text-[12px] tracking-[0.12em] text-paper-muted">
-                  正在打开分享的文章…
-                </span>
-              ) : null}
-            </div></StartupPending>
-          }
-        >
+      {reading && (readerShellOnly ? (
+        <ReaderEntranceShell article={reading} onBack={closeReader} />
+      ) : (
+        <Suspense fallback={
+          <StartupPending pending={!browserOpen}>
+            <ReaderEntranceShell article={reading} onBack={closeReader} shared={Boolean(sharedEntry?.payload)} />
+          </StartupPending>
+        }>
           <ReaderScreen
             article={reading}
             startupVisible={!browserOpen}
@@ -2191,7 +2357,7 @@ export default function App() {
             onOpenRelated={openArticle}
           />
         </Suspense>
-      )}
+      ))}
 
       {showOpenInAppBanner && openInAppUrl && (
         <OpenInAppBanner href={openInAppUrl} onDismiss={() => setOpenInAppDismissed(true)} />

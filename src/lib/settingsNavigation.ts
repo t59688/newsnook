@@ -4,6 +4,7 @@ type CategoryReturnTo = 'presets' | 'me'
 
 export type SettingsRoute =
   | { name: 'presets' }
+  | { name: 'source-watch' }
   | { name: 'categories'; returnTo?: CategoryReturnTo }
   | { name: 'category-sources'; categoryId: CategoryId; returnTo?: CategoryReturnTo }
   | { name: 'category-edit'; categoryId?: CategoryId; returnTo?: CategoryReturnTo }
