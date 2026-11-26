@@ -114,7 +114,7 @@ export function ReaderMoreMenu({
             <ActionRow
               icon={Globe}
               title="在浏览器核对原文"
-              caption={hasOriginUrl ? '站内阅读为主，核对时才外跳' : '这篇没有原文地址'}
+              caption={hasOriginUrl ? '查看来源网站上的文章' : '这篇没有原文地址'}
               disabled={!hasOriginUrl}
               onClick={onOpenOriginal}
             />

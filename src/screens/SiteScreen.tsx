@@ -17,6 +17,7 @@ import {
   Sparkles,
   X,
 } from 'lucide-react'
+import { openContentLink } from '../features/browser/browserOpen'
 import type { FrameworkHint } from '../features/frameworkDetect/types'
 import type { NewsSource } from '../sources/registry'
 import type { Article } from '../lib/types'
@@ -160,11 +161,9 @@ export const SiteScreen = memo(function SiteScreen({
     }
   }
 
-  const handleOpenExternal = () => {
+  const handleOpenOriginal = () => {
     const url = state.page?.url || selectedUrl || source?.url
-    if (url) {
-      window.open(url, '_blank', 'noopener,noreferrer')
-    }
+    if (url) openContentLink(url)
   }
 
   const handlePageChange = (type: 'prev' | 'next') => {
@@ -299,7 +298,7 @@ export const SiteScreen = memo(function SiteScreen({
 
             <button
               type="button"
-              onClick={handleOpenExternal}
+              onClick={handleOpenOriginal}
               aria-label="在浏览器中打开"
               title="在浏览器中打开"
               className="hidden size-8.5 items-center justify-center rounded-full text-paper-muted transition-colors hover:bg-paper/8 hover:text-paper sm:inline-flex active:scale-95"
@@ -426,7 +425,7 @@ export const SiteScreen = memo(function SiteScreen({
             capabilities={capabilities}
             loading={state.loading}
             onChoose={(controlId, choiceId) => { void session?.choose(controlId, choiceId) }}
-            onOpenOriginal={handleOpenExternal}
+            onOpenOriginal={handleOpenOriginal}
           />
         )}
       </header>

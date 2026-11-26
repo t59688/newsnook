@@ -25,6 +25,7 @@ function readStartupRecovery() {
 interface WorkspaceState {
   recoverySession?: BrowserRecoverySession
   initialUrl?: string
+  returnToReader?: boolean
 }
 
 /** Native WebView site viewport and a themed NewsNook browser chrome. */
@@ -43,8 +44,9 @@ export function BrowserLauncher({ onVisibilityChange }: { onVisibilityChange?: (
       startupRecovery = Promise.resolve(null)
       const detail = 'detail' in event ? (event as CustomEvent<BrowserOpenDetail>).detail : undefined
       const initialUrl = detail?.url && /^https?:\/\//i.test(detail.url) ? detail.url : undefined
+      const returnToReader = Boolean(initialUrl && detail?.returnToReader)
       setWorkspace(current => {
-        if (!current) return { initialUrl }
+        if (!current) return { initialUrl, returnToReader }
         return initialUrl ? { ...current, initialUrl } : current
       })
       setStartupRecoveryResolved(true)
@@ -67,6 +69,7 @@ export function BrowserLauncher({ onVisibilityChange }: { onVisibilityChange?: (
     <Suspense fallback={<StartupPending><div role="status" className="fixed inset-0 z-50 bg-ink text-paper flex items-center justify-center">正在打开浏览器…</div></StartupPending>}>
       <BrowserWorkspace
         initialUrl={workspace.initialUrl}
+        returnToReader={workspace.returnToReader}
         recoverySession={workspace.recoverySession}
         onExit={() => {
           startupRecovery = Promise.resolve(null)

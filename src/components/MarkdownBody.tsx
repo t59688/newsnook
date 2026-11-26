@@ -1,6 +1,6 @@
-import { Browser } from '@capacitor/browser'
 import type { MouseEvent } from 'react'
 
+import { openContentLink } from '../features/browser/browserOpen'
 import { markdownToSafeHtml } from '../lib/markdown'
 
 type Props = {
@@ -8,15 +8,7 @@ type Props = {
   className?: string
 }
 
-async function openExternalUrl(url: string) {
-  try {
-    await Browser.open({ url })
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-}
-
-/** 安全渲染 Markdown；外链点击走系统浏览器 */
+/** 安全渲染 Markdown，网页链接使用应用的浏览器入口。 */
 export function MarkdownBody({ markdown, className }: Props) {
   const html = markdownToSafeHtml(markdown)
 
@@ -24,9 +16,7 @@ export function MarkdownBody({ markdown, className }: Props) {
     const anchor = (event.target as HTMLElement | null)?.closest?.('a')
     if (!anchor) return
     const href = anchor.getAttribute('href')
-    if (!href || !/^https?:/i.test(href)) return
-    event.preventDefault()
-    void openExternalUrl(href)
+    if (href && openContentLink(href)) event.preventDefault()
   }
 
   return (

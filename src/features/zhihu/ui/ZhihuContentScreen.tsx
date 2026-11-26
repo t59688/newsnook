@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { MouseEvent, MutableRefObject, ReactNode, RefObject } from 'react'
 import { createPortal } from 'react-dom'
-import { Browser } from '@capacitor/browser'
 import { ChevronDown, ChevronUp, Copy, ExternalLink, Heart, Info, Loader2, LockKeyhole, MessageCircle, MessageSquareQuote, SquarePen, ThumbsDown, ThumbsUp, UserPlus, X } from 'lucide-react'
+import { openContentLink } from '../../browser/browserOpen'
 import type { ZhihuCommentDraftStore } from '../comments/draftStore'
 import type { ZhihuCommentsService } from '../comments/service'
 import type { ZhihuContentDetail } from '../api/decode'
@@ -92,14 +92,6 @@ function detailFromPreview(preview: ZhihuContentSummary): ZhihuContentDetail {
     allowSegmentInteraction: false,
     voteState: 'neutral',
     isFollowing: false,
-  }
-}
-
-async function openExternal(url: string): Promise<void> {
-  try {
-    await Browser.open({ url })
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer')
   }
 }
 
@@ -811,7 +803,7 @@ export function ZhihuContentScreen({ refValue, preview, onArticleRead, contentSe
 
     const ref = parseZhihuLink(anchor.href)
     if (ref) onNavigate(ref)
-    else void openExternal(anchor.href)
+    else openContentLink(anchor.href, { returnToReader: true })
   }
 
   if (loading && !detail) {
@@ -999,7 +991,7 @@ export function ZhihuContentScreen({ refValue, preview, onArticleRead, contentSe
           <ZhihuCollectionPicker refValue={refValue} service={interaction} authenticated={authenticated} />
           <button
             type="button"
-            onClick={() => void openExternal(detail.url)}
+            onClick={() => openContentLink(detail.url, { returnToReader: true })}
             aria-label="打开知乎原页"
             title="打开知乎原页"
             className={actionClass}

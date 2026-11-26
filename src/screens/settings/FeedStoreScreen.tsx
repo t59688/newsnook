@@ -14,6 +14,7 @@ import {
   X,
 } from 'lucide-react'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { openContentLink } from '../../features/browser/browserOpen'
 import { SegmentedControl } from '../../components/SegmentedControl'
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { FeedStorePicker } from '../../features/feedDiscovery/FeedStorePicker'
@@ -662,7 +663,9 @@ export function FeedStoreScreen({ prefs, currentCategoryId, currentPresetId, cur
           {attribution.length ? (
             <div className="mt-3 space-y-1 px-0.5">
               {attribution.map((item) => (
-                <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" className="block text-[10.5px] text-paper-faint transition-colors hover:text-paper-muted">
+                <a key={item.href} href={item.href} target="_blank" rel="noopener noreferrer" onClick={(event) => {
+                  if (openContentLink(item.href)) event.preventDefault()
+                }} className="block text-[10.5px] text-paper-faint transition-colors hover:text-paper-muted">
                   {item.label}
                 </a>
               ))}

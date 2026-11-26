@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { ExternalLink } from 'lucide-react'
-import { Browser } from '@capacitor/browser'
+import { openContentLink } from '../../features/browser/browserOpen'
 
 import { MarkdownBody } from '../../components/MarkdownBody'
 import { SettingsHint, SettingsShell } from '../../components/SettingsShell'
@@ -15,14 +15,6 @@ type LoadState =
   | { status: 'ok'; body: string; tagName: string }
   | { status: 'empty'; tagName: string }
   | { status: 'error'; message: string }
-
-async function openExternalUrl(url: string) {
-  try {
-    await Browser.open({ url })
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
-}
 
 /** 展示当前安装版本对应的 GitHub Release 说明 */
 export function ChangelogScreen({ onBack }: Props) {
@@ -93,7 +85,7 @@ export function ChangelogScreen({ onBack }: Props) {
       <SettingsHint>
         <button
           type="button"
-          onClick={() => void openExternalUrl(releaseUrl)}
+          onClick={() => openContentLink(releaseUrl)}
           className="inline-flex items-center gap-1.5 text-left text-paper-faint transition-colors hover:text-paper-muted"
         >
           <ExternalLink size={12} strokeWidth={1.6} />

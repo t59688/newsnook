@@ -14,7 +14,7 @@ import {
   ScrollText,
   ShieldCheck,
 } from 'lucide-react'
-import { Browser } from '@capacitor/browser'
+import { openContentLink } from '../../features/browser/browserOpen'
 
 import { SettingsSection, SettingsShell } from '../../components/SettingsShell'
 import { BrandLogo } from '../../components/BrandLogo'
@@ -70,14 +70,6 @@ function GithubIcon({ size = 18, className = '' }: { size?: number; className?: 
       <path d="M9 18c-4.51 2-5-2-7-2" />
     </svg>
   )
-}
-
-async function openExternalUrl(url: string) {
-  try {
-    await Browser.open({ url })
-  } catch {
-    window.open(url, '_blank', 'noopener,noreferrer')
-  }
 }
 
 export function AboutScreen({
@@ -268,9 +260,9 @@ export function AboutScreen({
             <div
               role="button"
               tabIndex={0}
-              onClick={() => openExternalUrl(ABOUT_CONFIG.repoUrl)}
+              onClick={() => openContentLink(ABOUT_CONFIG.repoUrl)}
               onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') openExternalUrl(ABOUT_CONFIG.repoUrl)
+                if (e.key === 'Enter' || e.key === ' ') openContentLink(ABOUT_CONFIG.repoUrl)
               }}
               className="page-x flex w-full cursor-pointer items-center gap-3.5 py-4 text-left"
             >
@@ -312,7 +304,7 @@ export function AboutScreen({
           <li className="transition-colors hover:bg-ink-raised/30 active:bg-ink-raised/50">
             <button
               type="button"
-              onClick={() => openExternalUrl(ABOUT_CONFIG.wechatArticleUrl)}
+              onClick={() => openContentLink(ABOUT_CONFIG.wechatArticleUrl)}
               className="page-x flex w-full items-center gap-3.5 py-4 text-left"
             >
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-ink-raised/60 text-paper">

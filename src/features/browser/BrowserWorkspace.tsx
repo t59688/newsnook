@@ -73,10 +73,12 @@ export function BrowserWorkspace({
   onExit,
   recoverySession,
   initialUrl,
+  returnToReader = false,
 }: {
   onExit: () => void
   recoverySession?: BrowserRecoverySession
   initialUrl?: string
+  returnToReader?: boolean
 }) {
   const workspace = useBrowserDialogFocus<HTMLDivElement>()
   const videoSessions = useContext(VideoSessionManagerContext)
@@ -334,7 +336,7 @@ export function BrowserWorkspace({
     // Closing bypasses that pending operation, so Back always remains immediately effective.
     if (!session.ready) {close(); return true}
     if (active && session.state.back) {void session.command('back'); return true}
-    if (active) {goHome(); return true}
+    if (active && (!returnToReader || session.state.openerTabId != null)) {goHome(); return true}
     if (session.state.openerTabId != null) {void session.command('back'); return true}
     close()
     return true

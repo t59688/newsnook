@@ -245,7 +245,7 @@ mock.module('../src/components/InkVideoPlayer.tsx', { namedExports: {
 const { createRoot } = await import('react-dom/client')
 const { BrowserWorkspace } = await import('../src/features/browser/BrowserWorkspace')
 const { BrowserLauncher } = await import('../src/features/browser/BrowserLauncher')
-const { openBrowserWithUrl } = await import('../src/features/browser/browserOpen')
+const { BROWSER_OPEN_EVENT, openBrowserWithUrl } = await import('../src/features/browser/browserOpen')
 const { dismissTopHardwareBackLayer } = await import('../src/lib/hardwareBackStack')
 const root = createRoot(document.getElementById('root')!)
 const videoManager = createVideoSessionManager()
@@ -1103,6 +1103,26 @@ try {
 
   await menu('返回有所闻')
   assert.equal(document.querySelector('[aria-label="NewsNook 网页浏览器"]'), null)
+
+  const readerUrl = 'https://example.com/article-link'
+  await act(async () => {
+    window.dispatchEvent(new window.CustomEvent(BROWSER_OPEN_EVENT, { detail: { url: readerUrl, returnToReader: true } }))
+  })
+  assert.equal(current.url, readerUrl)
+  await act(async () => { current = { ...current, back: true }; emitNavigation('end') })
+  await back()
+  assert.equal(commands.at(-1)?.action, 'back', 'the reader entry still goes back through webpage history')
+  assert.ok(document.querySelector('[aria-label="NewsNook 网页浏览器"]'))
+  await act(async () => { current = { ...current, back: false }; emitNavigation('end') })
+  const commandsBeforeReaderExit = commands.length
+  await back()
+  assert.ok(!document.querySelector('[aria-label="NewsNook 网页浏览器"]'), 'without webpage history, the first Back exits to the reader')
+  assert.equal(commands.length, commandsBeforeReaderExit, 'reader exit skips navigation to the browser home')
+
+  await act(async () => { openBrowserWithUrl(readerUrl) })
+  await back()
+  assert.equal(commands.at(-1)?.action, 'home', 'a standalone entry still returns to the browser home first')
+  await back()
 
   await mount()
   await visit('https://example.com/toolbar-exit')

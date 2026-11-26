@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { mock } from 'node:test'
 import React, { act } from 'react'
 import { parseHTML } from 'linkedom'
+import { Capacitor } from '@capacitor/core'
+import { BROWSER_OPEN_EVENT, type BrowserOpenDetail } from '../src/features/browser/browserOpen'
 import type { Article } from '../src/lib/types'
 import type { PrestoredBody } from '../src/features/prestore/store'
 
@@ -18,6 +20,7 @@ let frameId = 0
 const requestFrame = (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId }
 const cancelFrame = (id: number) => frames.delete(id)
 Object.assign(window, {
+  open: () => null,
   requestAnimationFrame: requestFrame, cancelAnimationFrame: cancelFrame,
   matchMedia: () => ({ matches: true, addEventListener() {}, removeEventListener() {} }),
 })
@@ -53,6 +56,8 @@ mock.module('../src/features/readAloud/useReadAloud.ts', { namedExports: {
   useReadAloud: () => ({ snapshot: { state: 'idle' }, isCurrentArticle: false }),
 } })
 const partial = { body: '', thinking: '', status: '' }
+const externalBrowserOpen = mock.fn(async () => {})
+mock.module('@capacitor/browser', { namedExports: { Browser: { open: externalBrowserOpen } } })
 mock.module('../src/features/speedRead/useSpeedRead.ts', { namedExports: {
   useSpeedRead: () => ({ available: false, open: false, state: 'idle', markdown: '', closePanel() {},
     partialStore: { subscribe: () => () => {}, getSnapshot: () => partial } }),
@@ -77,7 +82,7 @@ const article: Article = {
   originUrl: 'https://example.org/offline', contentType: 'article',
 }
 const prestored = {
-  article, html: '<p>Restored offline body is available.</p>', bodySource: 'readability', savedAt: 1,
+  article, html: '<p>Restored offline body is available. <a href="/source"><strong>Source</strong></a></p>', bodySource: 'readability', savedAt: 1,
 } as PrestoredBody
 let readyCalls = 0
 const onReady = () => { readyCalls++ }
@@ -113,6 +118,34 @@ try {
   await frame(); await frame()
   assert.equal(readyCalls, 1, 'the persisted body must be committed before the initial Reader frame is reported')
   assert.equal(networkReads, 0)
+
+  const link = document.querySelector('.reader-prose a strong')!
+  const browserRequests: BrowserOpenDetail[] = []
+  window.addEventListener(BROWSER_OPEN_EVENT, (event: Event) => {
+    browserRequests.push((event as CustomEvent<BrowserOpenDetail>).detail)
+  })
+  const platform = mock.method(Capacitor, 'getPlatform', () => 'android')
+  const androidClick = new window.Event('click', { bubbles: true, cancelable: true })
+  await act(async () => { link.dispatchEvent(androidClick) })
+  assert.deepEqual(browserRequests, [{ url: 'https://example.org/source', returnToReader: true }], 'Android opens the article link in the NewsNook browser')
+  assert.equal(androidClick.defaultPrevented, true)
+
+  const more = document.querySelector('button[aria-label^="更多操作"]')!
+  await act(async () => { more.dispatchEvent(new window.Event('click', { bubbles: true })) })
+  const original = Array.from(document.querySelectorAll('[role="dialog"] button'))
+    .find(button => button.textContent?.includes('在浏览器核对原文'))
+  assert.ok(original)
+  await act(async () => { original.dispatchEvent(new window.Event('click', { bubbles: true })) })
+  assert.deepEqual(browserRequests.at(-1), { url: 'https://example.org/offline', returnToReader: true }, 'Android opens the original article in NewsNook')
+  assert.equal(externalBrowserOpen.mock.callCount(), 0)
+  platform.mock.restore()
+
+  const webOpen = mock.method(window, 'open', () => null)
+  const webClick = new window.Event('click', { bubbles: true, cancelable: true })
+  await act(async () => { link.dispatchEvent(webClick) })
+  assert.deepEqual(webOpen.mock.calls.map(call => call.arguments), [['https://example.org/source', '_blank', 'noopener,noreferrer']])
+  assert.equal(webClick.defaultPrevented, true)
+  webOpen.mock.restore()
 
   await reset()
   await act(async () => root.render(surface()))

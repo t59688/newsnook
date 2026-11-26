@@ -10,7 +10,7 @@ import {
 } from './encyclopedia'
 import { WikiSearchBrowserSheet } from './WikiSearchBrowserSheet'
 import { WikiSheetGrabber } from './WikiSheetGrabber'
-import { openBrowserWithUrl } from '../browser/browserOpen'
+import { openBrowserWithUrl, openContentLink } from '../browser/browserOpen'
 import './wiki.css'
 
 interface SelectionInfo { text: string; x: number; y: number }
@@ -714,7 +714,12 @@ export function WikiSelectionLayer() {
                     </div>
                     {entry && (
                       <div className="wiki-footer-actions">
-                        <a href={entry.url} target="_blank" rel="noopener noreferrer">原文</a>
+                        <a href={entry.url} target="_blank" rel="noopener noreferrer" onClick={(event) => {
+                          if (openContentLink(entry.url)) {
+                            event.preventDefault()
+                            dismiss()
+                          }
+                        }}>原文</a>
                         <button
                           type="button"
                           className={`wiki-btn-icon ${isBookmarked ? 'is-active' : ''}`}
